@@ -154,7 +154,6 @@ public final class LiteApiFeatureControl {
     private List<String> collectFeatureList() {
         Set<String> allFeatures = new LinkedHashSet<>();
 
-        allFeatures.addAll(List.of("xray", "fly", "speed", "freecam", "killaura", "fullbright", "gamma"));
 
         for (Module m : ModuleManager.getInstance().getModules()) {
             allFeatures.addAll(getModuleAliases(m));
