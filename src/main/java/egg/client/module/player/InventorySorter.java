@@ -118,10 +118,10 @@ public class InventorySorter extends Module {
         if (!taskQueue.isEmpty()) {
             sortingActive = true;
             tickTimer = 0;
-            statusMessage = "Сортировка: " + taskQueue.size() + " действий...";
+            statusMessage = "Сортировка: " + taskQueue.size();
             GuiSoundManager.playSelect();
         } else {
-            statusMessage = "Инвентарь уже разложен по КФГ!";
+            statusMessage = "Уже разложен!";
             GuiSoundManager.playToggle(true);
         }
     }
@@ -220,7 +220,7 @@ public class InventorySorter extends Module {
         if (!(mc.currentScreen instanceof InventoryScreen)) {
             taskQueue.clear();
             sortingActive = false;
-            statusMessage = "Сортировка прервана";
+            statusMessage = "Прервано";
             return;
         }
 
@@ -233,7 +233,7 @@ public class InventorySorter extends Module {
 
         if (taskQueue.isEmpty()) {
             sortingActive = false;
-            statusMessage = "Инвентарь успешно отсортирован!";
+            statusMessage = "Отсортировано!";
             GuiSoundManager.playToggle(true);
             return;
         }

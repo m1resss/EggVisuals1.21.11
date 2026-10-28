@@ -92,6 +92,7 @@ public class ConfigManager {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
                 save();
+                egg.client.inventory.InventoryLayoutManager.getInstance().save();
             } catch (Throwable ignored) {}
         }, "Egg-Config-ShutdownSave"));
     }
@@ -174,6 +175,9 @@ public class ConfigManager {
 
             currentConfig = cleanName;
             persistActiveConfig(cleanName);
+            try {
+                egg.client.inventory.InventoryLayoutManager.getInstance().save();
+            } catch (Throwable ignored) {}
             return true;
         } catch (Exception e) {
             EggClient.LOGGER.error("[Egg Visual] Failed to save config: " + file.getName(), e);
@@ -242,6 +246,10 @@ public class ConfigManager {
 
             currentConfig = cleanName;
             persistActiveConfig(cleanName);
+            try {
+                egg.client.inventory.InventoryLayoutManager.getInstance().load();
+                egg.client.module.player.InventorySorter.getInstance().updatePresetModes();
+            } catch (Throwable ignored) {}
             return true;
         } catch (Exception e) {
             EggClient.LOGGER.error("[Egg Visual] Failed to load config: " + file.getName(), e);

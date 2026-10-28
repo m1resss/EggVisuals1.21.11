@@ -63,6 +63,14 @@ public class InventoryLayoutManager {
                 EggClient.LOGGER.error("[InventoryLayoutManager] Failed to load inventory presets", e);
             }
         }
+        if (presets.isEmpty()) {
+            presets.add(new InventoryPreset("1"));
+            activeIndex = 0;
+            save();
+        }
+        if (activeIndex < 0 || activeIndex >= presets.size()) {
+            activeIndex = 0;
+        }
     }
 
     public synchronized void save() {

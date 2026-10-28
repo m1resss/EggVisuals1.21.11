@@ -142,6 +142,28 @@ public class Interface extends Module {
     private boolean hasCoverArt = false;
     private int dominantAccentColor = 0xFF4A7CC4; // Blue/Cyan tint from screenshot
 
+    // Dynamic Island expanded card state
+    private boolean islandExpanded = false;
+    private float islandExpandAnim = 0.0f;
+    private boolean isSeeking = false;
+    private long currentDurationMs = 0L;
+    private long currentPositionMs = 0L;
+    private long lastFrameTime = 0L;
+    private float scrollOffset = 0.0f;
+    private long lastScrollTime = 0L;
+
+    // Hitbox state for click handling
+    private float lastArtX = 0.0f;
+    private float lastArtY = 0.0f;
+    private float lastArtSize = 22.0f;
+    private float lastWaveX = 0.0f;
+    private float lastWaveW = 0.0f;
+    private float lastRowY = 0.0f;
+    private float lastBtnPrevX = 0.0f;
+    private float lastBtnNextX = 0.0f;
+    private float lastCloseX = 0.0f;
+    private float lastCloseY = 0.0f;
+
     // Dragging & context menu state (in ChatScreen or ClickGUI)
     private boolean dragging = false;
     private float dragOffsetX = 0.0f;
@@ -188,15 +210,40 @@ public class Interface extends Module {
         boolean inCombat = isInCombat();
         combatAnim.setTarget(inCombat ? 1.0f : 0.0f);
 
-        // 2. Render Dynamic Island (if enabled and playing)
+        // 2. Render Dynamic Island (if enabled and playing or expanding/collapsing)
         boolean islandActive = false;
         float islandBottom = 8.0f;
         if (showDynamicIsland.isEnabled()) {
-            boolean playing = (hasActiveMedia && isMediaPlaying);
+            boolean inChat = (mc.currentScreen instanceof net.minecraft.client.gui.screen.ChatScreen);
+            if (!inChat) {
+                islandExpanded = false;
+            }
+            float targetExpand = islandExpanded ? 1.0f : 0.0f;
+            this.islandExpandAnim += (targetExpand - this.islandExpandAnim) * 0.22f;
+            if (Math.abs(this.islandExpandAnim - targetExpand) < 0.001f) {
+                this.islandExpandAnim = targetExpand;
+            }
+
+            // Local time interpolation for silky smooth progress bar
+            if (hasActiveMedia && isMediaPlaying && currentDurationMs > 0L) {
+                long nowTime = System.currentTimeMillis();
+                if (lastFrameTime != 0L) {
+                    long elapsed = nowTime - lastFrameTime;
+                    if (!isSeeking && elapsed > 0 && elapsed < 500) {
+                        currentPositionMs = Math.min(currentDurationMs, currentPositionMs + elapsed);
+                    }
+                }
+                lastFrameTime = nowTime;
+            } else {
+                lastFrameTime = System.currentTimeMillis();
+            }
+
+            boolean playing = (hasActiveMedia && isMediaPlaying) || this.islandExpandAnim > 0.01f;
             if (playing) {
                 islandActive = true;
                 renderDynamicIsland(context, screenW);
-                islandBottom = 8.0f + 30.0f + 6.0f;
+                float curH = MathHelper.lerp(this.islandExpandAnim, 30.0f, 68.0f);
+                islandBottom = 8.0f + curH + 6.0f;
             }
         }
 
@@ -271,9 +318,9 @@ public class Interface extends Module {
         }
 
         // 2. Dynamic Island collision detection:
-        float islandW = 185.0f;
-        float islandX = (screenW - islandW) / 2.0f;
-        boolean horizontalOverlap = (baseX < islandX + islandW + 4.0f) && (baseX + totalW > islandX - 4.0f);
+        float curIslandW = MathHelper.lerp(this.islandExpandAnim, 185.0f, 230.0f);
+        float islandX = (screenW - curIslandW) / 2.0f;
+        boolean horizontalOverlap = (baseX < islandX + curIslandW + 4.0f) && (baseX + totalW > islandX - 4.0f);
 
         float userTargetY = Math.clamp(posY.getValueFloat() * (screenH - pillHeight), 4.0f, screenH - pillHeight - 4.0f);
         float targetBaseY = (islandActive && horizontalOverlap && userTargetY < islandBottom) ? islandBottom : userTargetY;
@@ -451,12 +498,19 @@ public class Interface extends Module {
     }
 
     // =========================================================================
-    // Dynamic Island Renderer (Photo 2: Pill with Album Art & Equalizer Bars)
+    // Dynamic Island Renderer (Smooth morph between Pill and Solid OLED Card)
     // =========================================================================
 
     private void renderDynamicIsland(DrawContext context, int screenW) {
-        float curW = 185.0f;
-        float curH = 30.0f;
+        float collapsedW = 185.0f;
+        float collapsedH = 30.0f;
+        float expandedW = 230.0f;
+        float expandedH = 68.0f;
+
+        float curW = MathHelper.lerp(this.islandExpandAnim, collapsedW, expandedW);
+        float curH = MathHelper.lerp(this.islandExpandAnim, collapsedH, expandedH);
+        float radius = MathHelper.lerp(this.islandExpandAnim, 15.0f, 16.0f);
+
         float baseIslandS = islandScale.getValueFloat();
         float combatS = getCombatScaleFactor("island");
         float islandS = baseIslandS * combatS;
@@ -466,7 +520,6 @@ public class Interface extends Module {
 
         float x = (screenW - curW) / 2.0f;
         float y = 8.0f;
-        float radius = 15.0f; // Half-height capsule
         float centerX = x + curW / 2.0f;
 
         this.lastIslandX = (screenW - curW * islandS) / 2.0f;
@@ -487,28 +540,35 @@ public class Interface extends Module {
             context.getMatrices().translate(-centerX, -y);
         }
 
-        // 1. OLED Pure Black Capsule Background (strictly pure black like reference photo)
-        int baseIslandBg = ColorUtil.withAlphaFloat(0xFF000000, alphaFactor);
-        Draw2DProcessor.INSTANCE.drawGlow(mat, x, y, curW, curH, radius, ColorUtil.withAlphaFloat(ColorUtil.rgba(0, 0, 0, 140), alphaFactor), 10.0f);
+        // 1. Sleek Apple OLED Dark Card Background (solid #141418, non-transparent as requested)
+        int baseIslandBg = ColorUtil.withAlphaFloat(0xFF141418, alphaFactor);
+        Draw2DProcessor.INSTANCE.drawGlow(mat, x, y, curW, curH, radius, ColorUtil.withAlphaFloat(ColorUtil.rgba(0, 0, 0, 160), alphaFactor), 12.0f);
         Draw2DProcessor.INSTANCE.drawRect(mat, x, y, curW, curH, radius, baseIslandBg);
 
-        // 2. Ambient Fluid Gradient on right (color derived dynamically from track cover)
-        int accent = dominantAccentColor;
-        int accentGrad = ColorUtil.withAlphaFloat(ColorUtil.rgba(ColorUtil.red(accent), ColorUtil.green(accent), ColorUtil.blue(accent), 65), alphaFactor);
+        // Dynamic fluid ambient gradient glow (derived dynamically from track cover)
+        int accent = (dominantAccentColor & 0xFFFFFF) != 0 ? dominantAccentColor : 0xFF30D158;
+        float glowA = (0.25f + 0.10f * (float) Math.sin(System.currentTimeMillis() * 0.002)) * alphaFactor;
+        int accentGrad = ColorUtil.withAlphaFloat(ColorUtil.rgba(ColorUtil.red(accent), ColorUtil.green(accent), ColorUtil.blue(accent), (int) (110 * (0.3f + 0.7f * this.islandExpandAnim))), glowA);
         Draw2DProcessor.INSTANCE.drawGradient(mat, x, y, curW, curH, radius, 0x00000000, 0x00000000, 0x00000000, accentGrad);
 
-        // 3. Crisp Subtle Border
-        Draw2DProcessor.INSTANCE.drawOutline(mat, x, y, curW, curH, radius, 0.8f, ColorUtil.withAlphaFloat(ColorUtil.rgba(255, 255, 255, 28), alphaFactor));
+        // Crisp subtle outline
+        Draw2DProcessor.INSTANCE.drawOutline(mat, x, y, curW, curH, radius, 0.9f, ColorUtil.withAlphaFloat(ColorUtil.rgba(255, 255, 255, 28), alphaFactor));
         DrawBatcher.flushPending();
         if (alphaFactor > 0.15f) {
             Render2D.drawDiagonalSheen(context, x, y, curW, curH, radius, 2500L);
         }
 
-        // 4. Album Cover Art (comfortable margin so corners don't poke out of capsule)
-        float artSize = 22.0f;
-        float artX = x + 6.0f;
-        float artY = y + (curH - artSize) / 2.0f;
-        float artRadius = 5.0f;
+        // 2. Album Cover (Smooth morph between compact 22px and expanded 46px card art)
+        float collapsedArtSize = 22.0f;
+        float expandedArtSize = 46.0f;
+        float artSize = MathHelper.lerp(this.islandExpandAnim, collapsedArtSize, expandedArtSize);
+        float artX = MathHelper.lerp(this.islandExpandAnim, x + 6.0f, x + 10.0f);
+        float artY = MathHelper.lerp(this.islandExpandAnim, y + (curH - artSize) / 2.0f, y + 11.0f);
+        float artRadius = MathHelper.lerp(this.islandExpandAnim, 5.0f, 8.0f);
+
+        this.lastArtX = artX;
+        this.lastArtY = artY;
+        this.lastArtSize = artSize;
 
         if (hasCoverArt) {
             Draw2DProcessor.INSTANCE.a(mat, ALBUM_ART_ID, artX, artY, artSize, artSize, artRadius, ColorUtil.withAlphaFloat(0xFFFFFFFF, alphaFactor));
@@ -517,64 +577,309 @@ public class Interface extends Module {
             Draw2DProcessor.INSTANCE.drawRect(mat, artX, artY, artSize, artSize, artRadius, ColorUtil.withAlphaFloat(ColorUtil.rgba(24, 25, 34, 250), alphaFactor));
             Draw2DProcessor.INSTANCE.drawOutline(mat, artX, artY, artSize, artSize, artRadius, 0.8f, ColorUtil.withAlphaFloat(ColorUtil.rgba(255, 255, 255, 22), alphaFactor));
             Identifier noteIcon = DynamicGuiTextures.getMusicNoteIcon();
-            context.drawTexture(RenderPipelines.GUI_TEXTURED, noteIcon, (int) (artX + 5.0f), (int) (artY + 5.0f), 0, 0, 12, 12, 12, 12, ColorUtil.withAlphaFloat(0xFFE0E0E0, alphaFactor));
+            context.drawTexture(RenderPipelines.GUI_TEXTURED, noteIcon, (int) (artX + (artSize - 12.0f) / 2.0f), (int) (artY + (artSize - 12.0f) / 2.0f), 0, 0, 12, 12, 12, 12, ColorUtil.withAlphaFloat(0xFFE0E0E0, alphaFactor));
         }
 
-        // Subtle separator after cover art
-        float sepX = artX + artSize + 6.0f;
-        drawDivider(mat, sepX, y, curH, alphaFactor);
+        // 3. Stop / Play Button directly ON the album cover when expanded
+        if (this.islandExpandAnim > 0.05f) {
+            float expA = this.islandExpandAnim * alphaFactor;
+            float cx = artX + artSize * 0.5f;
+            float cy = artY + artSize * 0.5f;
+            float btnR = 11.0f;
 
-        // 5. Animated Equalizer Sound Bars on right (Blue/Cyan bars from Photo 2)
-        float barW = 2.0f;
-        float barGap = 1.8f;
-        int barCount = 5;
-        float totalBarsW = barCount * barW + (barCount - 1) * barGap;
-        float barsStartX = x + curW - 10.0f - totalBarsW;
-        float barsCenterY = y + curH / 2.0f;
+            // Dark circular glass button backing
+            Draw2DProcessor.INSTANCE.drawRect(mat, cx - btnR, cy - btnR, btnR * 2.0f, btnR * 2.0f, btnR, ColorUtil.withAlphaFloat(ColorUtil.rgba(0, 0, 0, 150), expA));
+            Draw2DProcessor.INSTANCE.drawOutline(mat, cx - btnR, cy - btnR, btnR * 2.0f, btnR * 2.0f, btnR, 0.8f, ColorUtil.withAlphaFloat(ColorUtil.rgba(255, 255, 255, 60), expA));
 
-        long now = System.currentTimeMillis();
-        float timeSec = (float) (now % 1000000L) / 1000.0f;
-
-        for (int b = 0; b < barCount; b++) {
-            float phase = b * 1.25f;
-            float wave = (float) Math.sin(timeSec * 7.5f + phase);
-            float bh = 4.0f + 8.5f * (0.5f + 0.5f * wave);
-            float bx = barsStartX + b * (barW + barGap);
-            float by = barsCenterY - bh / 2.0f;
-            int barBaseColor = (hasCoverArt && (dominantAccentColor & 0xFFFFFF) != 0) ? dominantAccentColor : 0xFF4A7CC4;
-            int barColor = ColorUtil.lerp(barBaseColor, 0xFFFFFFFF, (float) b / 7.0f);
-            Draw2DProcessor.INSTANCE.drawRect(mat, bx, by, barW, bh, 1.0f, ColorUtil.withAlphaFloat(barColor, alphaFactor));
+            int iconCol = ColorUtil.withAlphaFloat(0xFFFFFFFF, expA);
+            if (isMediaPlaying) {
+                // Stop / Pause icon: two vertical bars
+                float pW = 2.4f;
+                float pH = 9.0f;
+                float gap = 2.6f;
+                Draw2DProcessor.INSTANCE.drawRect(mat, cx - pW - gap * 0.5f, cy - pH * 0.5f, pW, pH, 1.0f, iconCol);
+                Draw2DProcessor.INSTANCE.drawRect(mat, cx + gap * 0.5f, cy - pH * 0.5f, pW, pH, 1.0f, iconCol);
+            } else {
+                // Play triangle
+                drawPlayIconVector(mat, cx + 0.6f, cy, 8.5f, iconCol);
+            }
         }
 
-        // 6. Two-line track display: Title on top, Artist below
         String displayTitle = hasActiveMedia ? currentMediaTitle : "Unknown Track";
         String displayArtist = hasActiveMedia ? currentMediaArtist : "Unknown Artist";
 
-        float textStartX = sepX + 7.0f;
-        float maxTextW = barsStartX - 6.0f - textStartX;
+        // 4. Collapsed Mode
+        float collapsedAlpha = (1.0f - this.islandExpandAnim) * alphaFactor;
+        if (collapsedAlpha > 0.05f) {
+            float sepX = artX + artSize + 6.0f;
+            drawDivider(mat, sepX, y, curH, collapsedAlpha);
 
-        float titleY = y + 3.2f;
-        float artistY = y + 15.6f;
-        float titleFontSize = 11.5f;
-        float artistFontSize = 8.5f;
+            float barW = 2.0f;
+            float barGap = 1.8f;
+            int barCount = 5;
+            float totalBarsW = barCount * barW + (barCount - 1) * barGap;
+            float barsStartX = x + curW - 10.0f - totalBarsW;
+            float barsCenterY = y + curH / 2.0f;
 
-        float tw = Fonts.d.a(displayTitle, titleFontSize);
-        if (tw <= maxTextW) {
-            Fonts.d.a(mat, displayTitle, textStartX, titleY, titleFontSize, ColorUtil.withAlphaFloat(0xFFFFFFFF, alphaFactor));
-        } else {
-            Fonts.d.c(mat, displayTitle, textStartX, titleY, titleFontSize, ColorUtil.withAlphaFloat(0xFFFFFFFF, alphaFactor), maxTextW);
+            long now = System.currentTimeMillis();
+            float timeSec = (float) (now % 1000000L) / 1000.0f;
+
+            for (int b = 0; b < barCount; b++) {
+                float phase = b * 1.25f;
+                float wave = (float) Math.sin(timeSec * 7.5f + phase);
+                float bh = 4.0f + 8.5f * (0.5f + 0.5f * wave);
+                float bx = barsStartX + b * (barW + barGap);
+                float by = barsCenterY - bh / 2.0f;
+                int barBaseColor = (hasCoverArt && (dominantAccentColor & 0xFFFFFF) != 0) ? dominantAccentColor : 0xFF4A7CC4;
+                int barColor = ColorUtil.lerp(barBaseColor, 0xFFFFFFFF, (float) b / 7.0f);
+                Draw2DProcessor.INSTANCE.drawRect(mat, bx, by, barW, bh, 1.0f, ColorUtil.withAlphaFloat(barColor, collapsedAlpha));
+            }
+
+            float textStartX = sepX + 7.0f;
+            float maxTextW = barsStartX - 6.0f - textStartX;
+            float titleY = y + 3.2f;
+            float artistY = y + 15.6f;
+
+            float tw = Fonts.d.a(displayTitle, 11.5f);
+            if (tw <= maxTextW) {
+                Fonts.d.a(mat, displayTitle, textStartX, titleY, 11.5f, ColorUtil.withAlphaFloat(0xFFFFFFFF, collapsedAlpha));
+            } else {
+                Fonts.d.c(mat, displayTitle, textStartX, titleY, 11.5f, ColorUtil.withAlphaFloat(0xFFFFFFFF, collapsedAlpha), maxTextW);
+            }
+
+            float aw = Fonts.d.a(displayArtist, 8.5f);
+            if (aw <= maxTextW) {
+                Fonts.d.a(mat, displayArtist, textStartX, artistY, 8.5f, ColorUtil.withAlphaFloat(0xFFE2E4EE, collapsedAlpha));
+            } else {
+                Fonts.d.c(mat, displayArtist, textStartX, artistY, 8.5f, ColorUtil.withAlphaFloat(0xFFE2E4EE, collapsedAlpha), maxTextW);
+            }
         }
 
-        float aw = Fonts.d.a(displayArtist, artistFontSize);
-        if (aw <= maxTextW) {
-            Fonts.d.a(mat, displayArtist, textStartX, artistY, artistFontSize, ColorUtil.withAlphaFloat(0xFFE2E4EE, alphaFactor));
-        } else {
-            Fonts.d.c(mat, displayArtist, textStartX, artistY, artistFontSize, ColorUtil.withAlphaFloat(0xFFE2E4EE, alphaFactor), maxTextW);
+        // 5. Expanded Mode
+        float expandedAlpha = this.islandExpandAnim * alphaFactor;
+        if (expandedAlpha > 0.05f) {
+            float textStartX = artX + artSize + 9.0f;
+            float textMaxW = curW - (textStartX - x) - 22.0f;
+
+            // Title & Artist
+            float titleY = y + 10.0f;
+            float artistY = y + 25.0f;
+
+            float tw = Fonts.d.a(displayTitle, 11.5f);
+            if (tw <= textMaxW) {
+                Fonts.d.a(mat, displayTitle, textStartX, titleY, 11.5f, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha));
+            } else {
+                long now = System.currentTimeMillis();
+                if (lastScrollTime == 0L) lastScrollTime = now;
+                float dt = (now - lastScrollTime) / 1000.0f;
+                lastScrollTime = now;
+                scrollOffset = (scrollOffset + dt * 18.0f) % (tw + 20.0f);
+
+                context.enableScissor((int) textStartX, (int) (y + 6.0f), (int) (textStartX + textMaxW), (int) (y + 24.0f));
+                Fonts.d.a(mat, displayTitle, textStartX - scrollOffset, titleY, 11.5f, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha));
+                Fonts.d.a(mat, displayTitle, textStartX - scrollOffset + tw + 20.0f, titleY, 11.5f, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha));
+                context.disableScissor();
+            }
+
+            float aw = Fonts.d.a(displayArtist, 9.0f);
+            if (aw <= textMaxW) {
+                Fonts.d.a(mat, displayArtist, textStartX, artistY, 9.0f, ColorUtil.withAlphaFloat(0xFF8E8E93, expandedAlpha));
+            } else {
+                Fonts.d.c(mat, displayArtist, textStartX, artistY, 9.0f, ColorUtil.withAlphaFloat(0xFF8E8E93, expandedAlpha), textMaxW);
+            }
+
+            // Minimalist Collapse Chevron at top right
+            float closeX = x + curW - 14.0f;
+            float closeY = y + 10.0f;
+            this.lastCloseX = closeX;
+            this.lastCloseY = closeY;
+            int closeCol = ColorUtil.withAlphaFloat(0xFF8E8E93, expandedAlpha);
+            drawChevronUpVector(mat, closeX + 2.0f, closeY + 2.0f, closeCol);
+
+            // Bottom Row: Current Time | Waveform Progress | Remaining Time | Prev | Next
+            float rowY = y + 46.0f;
+            this.lastRowY = rowY;
+
+            long duration = currentDurationMs;
+            long position = currentPositionMs;
+            float progress = 0.0f;
+            String curTimeStr;
+            String remTimeStr;
+
+            if (duration > 0L) {
+                progress = MathHelper.clamp((float) position / (float) duration, 0.0f, 1.0f);
+                curTimeStr = formatTime(position);
+                remTimeStr = formatRemainingTime(position, duration);
+            } else {
+                curTimeStr = "0:00";
+                remTimeStr = "-0:00";
+            }
+
+            float curTimeW = Fonts.b.a(curTimeStr, 8.5f);
+            Fonts.b.a(mat, curTimeStr, textStartX, rowY + 1.0f, 8.5f, ColorUtil.withAlphaFloat(0xFF8E8E93, expandedAlpha));
+
+            // Controls anchored from right edge
+            float rightEdge = x + curW - 10.0f;
+            float btnNextX = rightEdge - 8.0f;
+            float btnPrevX = btnNextX - 13.0f;
+            this.lastBtnPrevX = btnPrevX;
+            this.lastBtnNextX = btnNextX;
+
+            // Remaining Time placed before skip buttons
+            float remW = Fonts.b.a(remTimeStr, 8.5f);
+            float remX = btnPrevX - 6.0f - remW;
+            Fonts.b.a(mat, remTimeStr, remX, rowY + 1.0f, 8.5f, ColorUtil.withAlphaFloat(0xFF8E8E93, expandedAlpha));
+
+            // Fluid Waveform Seekbar spanning between curTime and remTime
+            float waveX = textStartX + curTimeW + 5.5f;
+            float waveW = (remX - 5.5f) - waveX;
+            float waveH = 9.0f;
+            float waveCenterY = rowY + 4.5f;
+            this.lastWaveX = waveX;
+            this.lastWaveW = waveW;
+
+            int playedStart = ColorUtil.withAlphaFloat(0xFF30D158, expandedAlpha); // Apple Music Green
+            int playedEnd = ColorUtil.withAlphaFloat(0xFF34C759, expandedAlpha);
+            int unplayedColor = ColorUtil.withAlphaFloat(0xFF38383C, (int) (210 * (expandedAlpha / 255.0f)));
+
+            float waveTime = (float) (System.currentTimeMillis() % 1000000L) * 0.0028f;
+            float motionFactor = isMediaPlaying ? 1.0f : 0.25f;
+
+            int totalSlices = 36;
+            float sliceW = waveW / (float) totalSlices;
+
+            for (int i = 0; i < totalSlices; i++) {
+                float u = (float) i / (float) (totalSlices - 1);
+                float bass = (float) Math.abs(Math.sin(waveTime * 2.2f + u * 8.5f) * 0.65f + Math.sin(waveTime * 1.1f - u * 4.0f) * 0.35f);
+                float voice = (float) Math.abs(Math.sin(waveTime * 4.8f + u * 18.0f) * 0.55f + Math.cos(waveTime * 7.2f - u * 26.0f) * 0.30f);
+                float combined = (float) Math.abs((bass * 0.50f + voice * 0.50f) * 1.15f + Math.sin(waveTime * 9.5f + u * 32.0f) * 0.25f);
+
+                float wBass = MathHelper.clamp(1.0f - (u / 0.38f), 0.0f, 1.0f);
+                float wComb = MathHelper.clamp((u - 0.62f) / 0.38f, 0.0f, 1.0f);
+                float wVoice = Math.max(0.0f, 1.0f - wBass - wComb);
+
+                float dynamicAmp = (wBass * bass + wVoice * voice + wComb * combined) * motionFactor;
+                float organicEnvelope = 0.45f + 0.35f * (float) Math.sin(u * Math.PI) + 0.12f * (float) Math.sin(u * 2.0f * Math.PI + 0.5f);
+                float hFactor = MathHelper.clamp(organicEnvelope + dynamicAmp * 0.42f, 0.30f, 1.0f);
+                float sliceH = Math.max(2.5f, waveH * hFactor);
+
+                float sx = waveX + i * sliceW;
+                float sy = waveCenterY - sliceH * 0.5f;
+
+                int col = (u <= progress) ? ColorUtil.lerp(playedStart, playedEnd, u) : unplayedColor;
+                Draw2DProcessor.INSTANCE.drawRect(mat, sx, sy, Math.max(1.0f, sliceW - 0.6f), sliceH, 0.8f, col);
+            }
+
+            // Playhead thumb dot with green glowing aura
+            float headX = waveX + waveW * progress;
+            Draw2DProcessor.INSTANCE.drawRect(mat, headX - 4.0f, waveCenterY - 4.0f, 8.0f, 8.0f, 4.0f, ColorUtil.withAlphaFloat(0x6030D158, expandedAlpha));
+            Draw2DProcessor.INSTANCE.drawRect(mat, headX - 2.0f, waveCenterY - 2.0f, 4.0f, 4.0f, 2.0f, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha));
+
+            // Prev and Next Skip Controls
+            int btnColor = ColorUtil.withAlphaFloat(0xFF8E8E93, expandedAlpha);
+            drawSkipPrevVector(mat, btnPrevX, waveCenterY, btnColor);
+            drawSkipNextVector(mat, btnNextX, waveCenterY, btnColor);
         }
 
         DrawBatcher.flushPending();
         if (customIslandScale) {
             context.getMatrices().popMatrix();
+        }
+    }
+
+    private void drawPlayIconVector(Matrix3x2f mat, float cx, float cy, float size, int color) {
+        float half = size * 0.5f;
+        int steps = (int) size;
+        float sliceW = size / Math.max(1, steps);
+        float startX = cx - half * 0.6f;
+        for (int i = 0; i < steps; i++) {
+            float t = (steps - 1 - i + 0.6f) / (float) steps;
+            float sliceH = Math.max(1.2f, size * t);
+            float sx = startX + i * sliceW;
+            float sy = cy - sliceH * 0.5f;
+            Draw2DProcessor.INSTANCE.drawRect(mat, sx, sy, sliceW + 0.3f, sliceH, 0.4f, color);
+        }
+    }
+
+    private void drawSkipPrevVector(Matrix3x2f mat, float x, float cy, int color) {
+        float barW = 1.2f;
+        float h = 7.0f;
+        Draw2DProcessor.INSTANCE.drawRect(mat, x, cy - h * 0.5f, barW, h, 0.5f, color);
+        drawLeftTriangleVector(mat, x + barW + 1.0f, cy, 3.2f, h, color);
+        drawLeftTriangleVector(mat, x + barW + 4.5f, cy, 3.2f, h, color);
+    }
+
+    private void drawSkipNextVector(Matrix3x2f mat, float x, float cy, int color) {
+        float h = 7.0f;
+        drawRightTriangleVector(mat, x, cy, 3.2f, h, color);
+        drawRightTriangleVector(mat, x + 3.5f, cy, 3.2f, h, color);
+        float barW = 1.2f;
+        Draw2DProcessor.INSTANCE.drawRect(mat, x + 7.0f, cy - h * 0.5f, barW, h, 0.5f, color);
+    }
+
+    private void drawLeftTriangleVector(Matrix3x2f mat, float x, float cy, float w, float h, int color) {
+        int steps = 4;
+        float sliceW = w / (float) steps;
+        for (int i = 0; i < steps; i++) {
+            float t = (i + 0.6f) / (float) steps;
+            float sliceH = Math.max(1.2f, h * t);
+            float sx = x + i * sliceW;
+            float sy = cy - sliceH * 0.5f;
+            Draw2DProcessor.INSTANCE.drawRect(mat, sx, sy, sliceW + 0.3f, sliceH, 0.3f, color);
+        }
+    }
+
+    private void drawRightTriangleVector(Matrix3x2f mat, float x, float cy, float w, float h, int color) {
+        int steps = 4;
+        float sliceW = w / (float) steps;
+        for (int i = 0; i < steps; i++) {
+            float t = (steps - 1 - i + 0.6f) / (float) steps;
+            float sliceH = Math.max(1.2f, h * t);
+            float sx = x + i * sliceW;
+            float sy = cy - sliceH * 0.5f;
+            Draw2DProcessor.INSTANCE.drawRect(mat, sx, sy, sliceW + 0.3f, sliceH, 0.3f, color);
+        }
+    }
+
+    private void drawChevronUpVector(Matrix3x2f mat, float cx, float cy, int color) {
+        Draw2DProcessor.INSTANCE.drawRect(mat, cx - 3.5f, cy + 1.5f, 1.5f, 1.3f, 0.3f, color);
+        Draw2DProcessor.INSTANCE.drawRect(mat, cx - 2.2f, cy + 0.3f, 1.4f, 1.3f, 0.3f, color);
+        Draw2DProcessor.INSTANCE.drawRect(mat, cx - 0.9f, cy - 0.9f, 1.4f, 1.3f, 0.3f, color);
+        Draw2DProcessor.INSTANCE.drawRect(mat, cx, cy - 1.8f, 1.4f, 1.3f, 0.3f, color);
+        Draw2DProcessor.INSTANCE.drawRect(mat, cx + 0.9f, cy - 0.9f, 1.4f, 1.3f, 0.3f, color);
+        Draw2DProcessor.INSTANCE.drawRect(mat, cx + 2.2f, cy + 0.3f, 1.4f, 1.3f, 0.3f, color);
+        Draw2DProcessor.INSTANCE.drawRect(mat, cx + 3.5f, cy + 1.5f, 1.4f, 1.3f, 0.3f, color);
+    }
+
+    private String formatTime(long ms) {
+        if (ms <= 0L) return "0:00";
+        long totalSec = ms / 1000L;
+        long min = totalSec / 60L;
+        long sec = totalSec % 60L;
+        return min + ":" + (sec < 10L ? "0" : "") + sec;
+    }
+
+    private String formatRemainingTime(long positionMs, long durationMs) {
+        if (durationMs <= 0L) return "-0:00";
+        long remMs = Math.max(0L, durationMs - positionMs);
+        return "-" + formatTime(remMs);
+    }
+
+    private boolean isInside(double mx, double my, float x, float y, float w, float h) {
+        return mx >= x && mx <= x + w && my >= y && my <= y + h;
+    }
+
+    private void seekWave(double mouseX) {
+        if (lastWaveW <= 1.0f) return;
+        float pct = MathHelper.clamp((float) (mouseX - lastWaveX) / lastWaveW, 0.0f, 1.0f);
+        if (currentDurationMs > 0L) {
+            long targetMs = (long) (currentDurationMs * pct);
+            currentPositionMs = targetMs;
+            if (OptMedia.init() && OptMedia.INSTANCE != null) {
+                try {
+                    OptMedia.INSTANCE.SeekToMs(targetMs);
+                } catch (Throwable ignored) {}
+            }
         }
     }
 
@@ -596,6 +901,10 @@ public class Interface extends Module {
                         currentMediaTitle = artistStruct.getTitle().trim();
                         currentMediaArtist = artistStruct.getArtist().trim();
                         isMediaPlaying = artistStruct.isPlaying();
+                        currentDurationMs = Math.max(0L, artistStruct.durationMs);
+                        if (!isSeeking) {
+                            currentPositionMs = Math.max(0L, artistStruct.positionMs);
+                        }
 
                         String trackKey = currentMediaTitle + "|" + currentMediaArtist;
                         boolean trackChanged = !trackKey.equals(lastTrackKey);
@@ -850,7 +1159,7 @@ public class Interface extends Module {
         boolean insideIsland = showDynamicIsland.isEnabled() && hasActiveMedia
                 && mouseX >= lastIslandX - 2.0f && mouseX <= lastIslandX + lastIslandW + 2.0f
                 && mouseY >= lastIslandY - 2.0f && mouseY <= lastIslandY + lastIslandH + 2.0f;
-        if (insideIsland) {
+        if (insideIsland && !islandExpanded) {
             float iRad = 15.0f * islandScale.getValueFloat() + 1.0f;
             Draw2DProcessor.INSTANCE.drawOutline(null, lastIslandX - 2.0f, lastIslandY - 2.0f, lastIslandW + 4.0f, lastIslandH + 4.0f, iRad, 1.0f, Theme.getAccent());
 
@@ -860,6 +1169,16 @@ public class Interface extends Module {
             float iby = lastIslandY + lastIslandH + 5.0f;
             Draw2DProcessor.INSTANCE.drawRect(null, ibx, iby, ibw, 13.0f, 3.0f, ColorUtil.rgba(14, 15, 20, 220));
             Fonts.b.a(null, islandBadge, ibx + 4.0f, iby + 2.5f, 9.5f, Theme.getAccentHover());
+        }
+
+        // Active seek scrubbing while left click is held
+        if (isSeeking) {
+            long window = MinecraftClient.getInstance().getWindow().getHandle();
+            if (org.lwjgl.glfw.GLFW.glfwGetMouseButton(window, org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS) {
+                seekWave(mouseX);
+            } else {
+                isSeeking = false;
+            }
         }
 
         // 3. Context Menu
@@ -957,6 +1276,64 @@ public class Interface extends Module {
         int screenW = mc.getWindow().getScaledWidth();
         int screenH = mc.getWindow().getScaledHeight();
 
+        // 0. Dynamic Island Click (Collapsed -> Expand, or Expanded Controls)
+        if (showDynamicIsland.isEnabled() && hasActiveMedia && button == 0) {
+            if (!islandExpanded) {
+                if (isInside(mouseX, mouseY, lastIslandX, lastIslandY, lastIslandW, lastIslandH)) {
+                    islandExpanded = true;
+                    return true;
+                }
+            } else {
+                // 1. Cover Click: toggle play / pause / stop
+                if (isInside(mouseX, mouseY, lastArtX, lastArtY, lastArtSize, lastArtSize)) {
+                    if (OptMedia.init() && OptMedia.INSTANCE != null) {
+                        try {
+                            OptMedia.INSTANCE.TogglePlayPause();
+                        } catch (Throwable ignored) {}
+                    }
+                    return true;
+                }
+
+                // 2. Prev track
+                if (lastBtnPrevX > 0.0f && isInside(mouseX, mouseY, lastBtnPrevX - 3.0f, lastRowY - 3.0f, 13.0f, 16.0f)) {
+                    if (OptMedia.init() && OptMedia.INSTANCE != null) {
+                        try {
+                            OptMedia.INSTANCE.SkipPrevious();
+                        } catch (Throwable ignored) {}
+                    }
+                    return true;
+                }
+
+                // 3. Next track
+                if (lastBtnNextX > 0.0f && isInside(mouseX, mouseY, lastBtnNextX - 3.0f, lastRowY - 3.0f, 13.0f, 16.0f)) {
+                    if (OptMedia.init() && OptMedia.INSTANCE != null) {
+                        try {
+                            OptMedia.INSTANCE.SkipNext();
+                        } catch (Throwable ignored) {}
+                    }
+                    return true;
+                }
+
+                // 4. Waveform seek click
+                if (lastWaveX > 0.0f && isInside(mouseX, mouseY, lastWaveX - 3.0f, lastRowY - 3.0f, lastWaveW + 6.0f, 16.0f)) {
+                    isSeeking = true;
+                    seekWave(mouseX);
+                    return true;
+                }
+
+                // 5. Close / Collapse chevron click
+                if (isInside(mouseX, mouseY, lastCloseX - 4.0f, lastCloseY - 4.0f, 16.0f, 16.0f)) {
+                    islandExpanded = false;
+                    return true;
+                }
+
+                // 6. Click anywhere on expanded card consumes click
+                if (isInside(mouseX, mouseY, lastIslandX, lastIslandY, lastIslandW, lastIslandH)) {
+                    return true;
+                }
+            }
+        }
+
         // 1. Click inside context menu
         if (contextMenuOpen) {
             float mw = 130.0f;
@@ -1009,10 +1386,16 @@ public class Interface extends Module {
     }
 
     public boolean onChatMouseReleased(double mouseX, double mouseY, int button) {
-        if (button == 0 && dragging) {
-            dragging = false;
-            ConfigManager.save();
-            return true;
+        if (button == 0) {
+            if (isSeeking) {
+                isSeeking = false;
+                return true;
+            }
+            if (dragging) {
+                dragging = false;
+                ConfigManager.save();
+                return true;
+            }
         }
         return false;
     }

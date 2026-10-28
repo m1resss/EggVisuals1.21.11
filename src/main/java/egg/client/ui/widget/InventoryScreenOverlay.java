@@ -30,8 +30,8 @@ public class InventoryScreenOverlay {
         boolean hasStatus = (status != null && !status.isEmpty());
 
         // Ultra compact & sleek floating pill widget
-        float panelW = 106.0f;
-        float panelH = hasStatus ? 84.0f : 68.0f;
+        float panelW = 108.0f;
+        float panelH = hasStatus ? 88.0f : 68.0f;
 
         // Position on the right side of inventory (guiX + 176 + 6)
         float panelX = guiX + 176.0f + 6.0f;
@@ -107,10 +107,14 @@ public class InventoryScreenOverlay {
         Render2D.drawRoundedOutline(context, btnX, saveY, btnW, saveH, 4.0f, 1.0f, ColorUtil.rgba(255, 255, 255, 22));
         ClientFont.drawCentered(context, "Сохранить", btnX + btnW / 2.0f, saveY + saveH / 2.0f, ClientFont.SF_MEDIUM, hoverSave ? 0xFFFFFFFF : 0xFFCBD5E1);
 
-        // 5. Status message if sorting
+        // 5. Status message if sorting (compact badge strictly within panel bounds)
         if (hasStatus) {
-            int statCol = status.contains("успешно") || status.contains("разложен") ? 0xFF2ECC71 : (status.contains("Сортировка") ? 0xFFF1C40F : 0xFFA0B0C5);
-            ClientFont.drawCentered(context, status, panelX + panelW / 2.0f, saveY + saveH + 7.5f, ClientFont.SF_REGULAR, statCol);
+            float statY = saveY + saveH + 4.0f;
+            float statH = 13.0f;
+            int statCol = (status.contains("Отсортировано") || status.contains("разложен")) ? 0xFF2ECC71 : (status.contains("Сортировка") ? 0xFFF1C40F : 0xFFA0B0C5);
+            Render2D.drawRoundedRect(context, btnX, statY, btnW, statH, 3.5f, ColorUtil.rgba(20, 24, 34, 200));
+            Render2D.drawRoundedOutline(context, btnX, statY, btnW, statH, 3.5f, 1.0f, ColorUtil.rgba(255, 255, 255, 14));
+            ClientFont.drawCentered(context, status, btnX + btnW / 2.0f, statY + statH / 2.0f, ClientFont.SF_MEDIUM, statCol);
         }
     }
 
