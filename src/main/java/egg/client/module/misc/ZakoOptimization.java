@@ -38,6 +38,7 @@ public class ZakoOptimization extends Module {
         super("Zako Optimization", "Комплексная оптимизация рендера, сущностей, партиклов и CPU на базе ZakoOpt", Category.MISC);
         addSettings(settingsBtn);
         setEnabled(true);
+        sanitizeUnsafeFeatures();
     }
 
     @Override
@@ -50,11 +51,28 @@ public class ZakoOptimization extends Module {
         setZakoOptEnabled(false);
     }
 
+    private void sanitizeUnsafeFeatures() {
+        try {
+            Class<?> featuresClass = Class.forName("zako.opt.feature.Features");
+            for (String featName : new String[]{"FAST_BLIT", "FBO_SHARE", "LAZY_CLEAR"}) {
+                try {
+                    var fField = featuresClass.getField(featName);
+                    Object feat = fField.get(null);
+                    if (feat != null) {
+                        feat.getClass().getField("value").setBoolean(feat, false);
+                        feat.getClass().getField("on").setBoolean(feat, false);
+                    }
+                } catch (Throwable ignored) {}
+            }
+        } catch (Throwable ignored) {}
+    }
+
     private void setZakoOptEnabled(boolean enabled) {
         try {
             Class<?> configClass = Class.forName("zako.opt.ZakoOptConfig");
             var field = configClass.getField("enabled");
             field.setBoolean(null, enabled);
+            sanitizeUnsafeFeatures();
             var saveMethod = configClass.getMethod("save");
             saveMethod.invoke(null);
             var refreshMethod = configClass.getMethod("refresh");
