@@ -43,16 +43,18 @@ public final class LiteApiFeatureControl {
 
             ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
                 activeBlocklist.clear();
-
+                lastRequestTime = 0L;
+                EggClient.LOGGER.info("[LiteAPI] Connected to server, scheduling checkFeatures");
                 new Timer("LiteAPI-Join-Timer", true).schedule(new TimerTask() {
                     @Override
                     public void run() {
                         client.execute(() -> sendCheckFeatures(client));
                     }
-                }, 500L);
+                }, 400L);
             });
 
             ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+                lastRequestTime = 0L;
                 client.execute(this::unblockAll);
             });
 
@@ -63,6 +65,10 @@ public final class LiteApiFeatureControl {
     }
 
     public boolean sendCheckFeatures(MinecraftClient client) {
+        if (client == null || client.getNetworkHandler() == null) {
+            return false;
+        }
+
         long now = System.currentTimeMillis();
         if (now - lastRequestTime < RATE_LIMIT_MS) {
             return false;
@@ -70,18 +76,13 @@ public final class LiteApiFeatureControl {
         lastRequestTime = now;
 
         try {
-            if (!ClientPlayNetworking.canSend(LiteApiPayload.ID)) {
-
-                return false;
-            }
-
             List<String> features = collectFeatureList();
             CheckFeaturesRequest request = new CheckFeaturesRequest(CLIENT_ID, features);
             String json = gson.toJson(request);
             byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
 
             ClientPlayNetworking.send(new LiteApiPayload(bytes));
-            EggClient.LOGGER.info("[LiteAPI] Sent checkFeatures request with " + features.size() + " features");
+            EggClient.LOGGER.info("[LiteAPI] Sent checkFeatures request with " + features.size() + " features (id: " + request.getId() + ")");
             return true;
         } catch (Throwable t) {
             EggClient.LOGGER.error("[LiteAPI] Error sending checkFeatures request", t);
@@ -92,6 +93,7 @@ public final class LiteApiFeatureControl {
     private void handleServerResponse(byte[] data, MinecraftClient client) {
         try {
             String json = new String(data, StandardCharsets.UTF_8);
+            EggClient.LOGGER.info("[LiteAPI] Server response: " + json);
             CheckFeaturesResponse response = gson.fromJson(json, CheckFeaturesResponse.class);
             if (response == null) return;
 
