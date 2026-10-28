@@ -41,6 +41,9 @@ dependencies {
     modImplementation "zako.opt:zakoopt:1.1.6+1.21.11"
     include "zako.opt:zakoopt:1.1.6+1.21.11"
 
+    modImplementation "net.raphimc:immediatelyfast:1.14.3+1.21.11"
+    include "net.raphimc:immediatelyfast:1.14.3+1.21.11"
+
     implementation 'com.google.code.findbugs:jsr305:3.0.2'
     implementation 'com.google.code.gson:gson:2.11.0'
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
