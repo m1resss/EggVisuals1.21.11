@@ -242,7 +242,7 @@ public class Interface extends Module {
             if (playing) {
                 islandActive = true;
                 renderDynamicIsland(context, screenW);
-                float curH = MathHelper.lerp(this.islandExpandAnim, 30.0f, 68.0f);
+                float curH = MathHelper.lerp(this.islandExpandAnim, 30.0f, 70.0f);
                 islandBottom = 8.0f + curH + 6.0f;
             }
         }
@@ -318,7 +318,7 @@ public class Interface extends Module {
         }
 
         // 2. Dynamic Island collision detection:
-        float curIslandW = MathHelper.lerp(this.islandExpandAnim, 185.0f, 230.0f);
+        float curIslandW = MathHelper.lerp(this.islandExpandAnim, 185.0f, 242.0f);
         float islandX = (screenW - curIslandW) / 2.0f;
         boolean horizontalOverlap = (baseX < islandX + curIslandW + 4.0f) && (baseX + totalW > islandX - 4.0f);
 
@@ -504,8 +504,8 @@ public class Interface extends Module {
     private void renderDynamicIsland(DrawContext context, int screenW) {
         float collapsedW = 185.0f;
         float collapsedH = 30.0f;
-        float expandedW = 230.0f;
-        float expandedH = 68.0f;
+        float expandedW = 242.0f;
+        float expandedH = 70.0f;
 
         float curW = MathHelper.lerp(this.islandExpandAnim, collapsedW, expandedW);
         float curH = MathHelper.lerp(this.islandExpandAnim, collapsedH, expandedH);
@@ -658,46 +658,25 @@ public class Interface extends Module {
         // 5. Expanded Mode
         float expandedAlpha = this.islandExpandAnim * alphaFactor;
         if (expandedAlpha > 0.05f) {
-            float textStartX = artX + artSize + 9.0f;
-            float textMaxW = curW - (textStartX - x) - 22.0f;
-
-            // Title & Artist
-            float titleY = y + 10.0f;
-            float artistY = y + 25.0f;
-
-            float tw = Fonts.d.a(displayTitle, 11.5f);
-            if (tw <= textMaxW) {
-                Fonts.d.a(mat, displayTitle, textStartX, titleY, 11.5f, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha));
-            } else {
-                long now = System.currentTimeMillis();
-                if (lastScrollTime == 0L) lastScrollTime = now;
-                float dt = (now - lastScrollTime) / 1000.0f;
-                lastScrollTime = now;
-                scrollOffset = (scrollOffset + dt * 18.0f) % (tw + 20.0f);
-
-                context.enableScissor((int) textStartX, (int) (y + 6.0f), (int) (textStartX + textMaxW), (int) (y + 24.0f));
-                Fonts.d.a(mat, displayTitle, textStartX - scrollOffset, titleY, 11.5f, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha));
-                Fonts.d.a(mat, displayTitle, textStartX - scrollOffset + tw + 20.0f, titleY, 11.5f, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha));
-                context.disableScissor();
-            }
-
-            float aw = Fonts.d.a(displayArtist, 9.0f);
-            if (aw <= textMaxW) {
-                Fonts.d.a(mat, displayArtist, textStartX, artistY, 9.0f, ColorUtil.withAlphaFloat(0xFF8E8E93, expandedAlpha));
-            } else {
-                Fonts.d.c(mat, displayArtist, textStartX, artistY, 9.0f, ColorUtil.withAlphaFloat(0xFF8E8E93, expandedAlpha), textMaxW);
-            }
-
             // Minimalist Collapse Chevron at top right
-            float closeX = x + curW - 14.0f;
+            float closeX = x + curW - 16.0f;
             float closeY = y + 10.0f;
             this.lastCloseX = closeX;
             this.lastCloseY = closeY;
             int closeCol = ColorUtil.withAlphaFloat(0xFF8E8E93, expandedAlpha);
             drawChevronUpVector(mat, closeX + 2.0f, closeY + 2.0f, closeCol);
 
+            // Title & Artist — bounded strictly within textMaxW using shader fading, no overflow!
+            float textStartX = artX + artSize + 10.0f;
+            float textMaxW = (closeX - 8.0f) - textStartX;
+            float titleY = y + 10.5f;
+            float artistY = y + 25.5f;
+
+            Fonts.d.c(mat, displayTitle, textStartX, titleY, 11.5f, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha), textMaxW);
+            Fonts.d.c(mat, displayArtist, textStartX, artistY, 9.0f, ColorUtil.withAlphaFloat(0xFF8E8E93, expandedAlpha), textMaxW);
+
             // Bottom Row: Current Time | Waveform Progress | Remaining Time | Prev | Next
-            float rowY = y + 46.0f;
+            float rowY = y + 47.0f;
             this.lastRowY = rowY;
 
             long duration = currentDurationMs;
@@ -715,37 +694,39 @@ public class Interface extends Module {
                 remTimeStr = "-0:00";
             }
 
+            // Timer color synchronized with client theme!
+            int timerColor = ColorUtil.withAlphaFloat(Theme.getAccent(), expandedAlpha);
             float curTimeW = Fonts.b.a(curTimeStr, 8.5f);
-            Fonts.b.a(mat, curTimeStr, textStartX, rowY + 1.0f, 8.5f, ColorUtil.withAlphaFloat(0xFF8E8E93, expandedAlpha));
+            Fonts.b.a(mat, curTimeStr, textStartX, rowY + 1.0f, 8.5f, timerColor);
 
             // Controls anchored from right edge
-            float rightEdge = x + curW - 10.0f;
+            float rightEdge = x + curW - 12.0f;
             float btnNextX = rightEdge - 8.0f;
-            float btnPrevX = btnNextX - 13.0f;
+            float btnPrevX = btnNextX - 16.0f;
             this.lastBtnPrevX = btnPrevX;
             this.lastBtnNextX = btnNextX;
 
-            // Remaining Time placed before skip buttons
+            // Remaining Time placed before skip buttons (also in theme color)
             float remW = Fonts.b.a(remTimeStr, 8.5f);
-            float remX = btnPrevX - 6.0f - remW;
-            Fonts.b.a(mat, remTimeStr, remX, rowY + 1.0f, 8.5f, ColorUtil.withAlphaFloat(0xFF8E8E93, expandedAlpha));
+            float remX = btnPrevX - 8.0f - remW;
+            Fonts.b.a(mat, remTimeStr, remX, rowY + 1.0f, 8.5f, timerColor);
 
             // Fluid Waveform Seekbar spanning between curTime and remTime
-            float waveX = textStartX + curTimeW + 5.5f;
-            float waveW = (remX - 5.5f) - waveX;
+            float waveX = textStartX + curTimeW + 6.0f;
+            float waveW = (remX - 6.0f) - waveX;
             float waveH = 9.0f;
-            float waveCenterY = rowY + 4.5f;
+            float waveCenterY = rowY + 5.0f;
             this.lastWaveX = waveX;
             this.lastWaveW = waveW;
 
             int playedStart = ColorUtil.withAlphaFloat(0xFF30D158, expandedAlpha); // Apple Music Green
-            int playedEnd = ColorUtil.withAlphaFloat(0xFF34C759, expandedAlpha);
-            int unplayedColor = ColorUtil.withAlphaFloat(0xFF38383C, (int) (210 * (expandedAlpha / 255.0f)));
+            int playedEnd = ColorUtil.withAlphaFloat(ColorUtil.lerp(0xFF30D158, Theme.getAccent(), 0.35f), expandedAlpha);
+            int unplayedColor = ColorUtil.withAlphaFloat(0xFF44444A, expandedAlpha * 0.75f); // Visible gray wave track
 
             float waveTime = (float) (System.currentTimeMillis() % 1000000L) * 0.0028f;
             float motionFactor = isMediaPlaying ? 1.0f : 0.25f;
 
-            int totalSlices = 36;
+            int totalSlices = 32;
             float sliceW = waveW / (float) totalSlices;
 
             for (int i = 0; i < totalSlices; i++) {
@@ -767,16 +748,16 @@ public class Interface extends Module {
                 float sy = waveCenterY - sliceH * 0.5f;
 
                 int col = (u <= progress) ? ColorUtil.lerp(playedStart, playedEnd, u) : unplayedColor;
-                Draw2DProcessor.INSTANCE.drawRect(mat, sx, sy, Math.max(1.0f, sliceW - 0.6f), sliceH, 0.8f, col);
+                Draw2DProcessor.INSTANCE.drawRect(mat, sx, sy, Math.max(1.2f, sliceW - 0.8f), sliceH, 0.8f, col);
             }
 
-            // Playhead thumb dot with green glowing aura
+            // Playhead thumb dot with theme glowing aura
             float headX = waveX + waveW * progress;
-            Draw2DProcessor.INSTANCE.drawRect(mat, headX - 4.0f, waveCenterY - 4.0f, 8.0f, 8.0f, 4.0f, ColorUtil.withAlphaFloat(0x6030D158, expandedAlpha));
+            Draw2DProcessor.INSTANCE.drawRect(mat, headX - 4.0f, waveCenterY - 4.0f, 8.0f, 8.0f, 4.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), expandedAlpha * 0.5f));
             Draw2DProcessor.INSTANCE.drawRect(mat, headX - 2.0f, waveCenterY - 2.0f, 4.0f, 4.0f, 2.0f, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha));
 
             // Prev and Next Skip Controls
-            int btnColor = ColorUtil.withAlphaFloat(0xFF8E8E93, expandedAlpha);
+            int btnColor = ColorUtil.withAlphaFloat(0xFFB0B0B8, expandedAlpha);
             drawSkipPrevVector(mat, btnPrevX, waveCenterY, btnColor);
             drawSkipNextVector(mat, btnNextX, waveCenterY, btnColor);
         }
@@ -802,19 +783,19 @@ public class Interface extends Module {
     }
 
     private void drawSkipPrevVector(Matrix3x2f mat, float x, float cy, int color) {
-        float barW = 1.2f;
-        float h = 7.0f;
+        float barW = 1.4f;
+        float h = 8.0f;
         Draw2DProcessor.INSTANCE.drawRect(mat, x, cy - h * 0.5f, barW, h, 0.5f, color);
-        drawLeftTriangleVector(mat, x + barW + 1.0f, cy, 3.2f, h, color);
-        drawLeftTriangleVector(mat, x + barW + 4.5f, cy, 3.2f, h, color);
+        drawLeftTriangleVector(mat, x + barW + 1.2f, cy, 3.8f, h, color);
+        drawLeftTriangleVector(mat, x + barW + 5.2f, cy, 3.8f, h, color);
     }
 
     private void drawSkipNextVector(Matrix3x2f mat, float x, float cy, int color) {
-        float h = 7.0f;
-        drawRightTriangleVector(mat, x, cy, 3.2f, h, color);
-        drawRightTriangleVector(mat, x + 3.5f, cy, 3.2f, h, color);
-        float barW = 1.2f;
-        Draw2DProcessor.INSTANCE.drawRect(mat, x + 7.0f, cy - h * 0.5f, barW, h, 0.5f, color);
+        float h = 8.0f;
+        drawRightTriangleVector(mat, x, cy, 3.8f, h, color);
+        drawRightTriangleVector(mat, x + 4.0f, cy, 3.8f, h, color);
+        float barW = 1.4f;
+        Draw2DProcessor.INSTANCE.drawRect(mat, x + 8.2f, cy - h * 0.5f, barW, h, 0.5f, color);
     }
 
     private void drawLeftTriangleVector(Matrix3x2f mat, float x, float cy, float w, float h, int color) {
@@ -1175,7 +1156,17 @@ public class Interface extends Module {
         if (isSeeking) {
             long window = MinecraftClient.getInstance().getWindow().getHandle();
             if (org.lwjgl.glfw.GLFW.glfwGetMouseButton(window, org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS) {
-                seekWave(mouseX);
+                float curW = MathHelper.lerp(this.islandExpandAnim, 185.0f, 242.0f);
+                float x = (screenW - curW) / 2.0f;
+                float centerX = x + curW / 2.0f;
+                float baseIslandS = islandScale.getValueFloat();
+                float combatS = getCombatScaleFactor("island");
+                float islandS = baseIslandS * combatS;
+                float localMX = mouseX;
+                if (Math.abs(islandS - 1.0f) > 0.001f && islandS > 0.01f) {
+                    localMX = centerX + (localMX - centerX) / islandS;
+                }
+                seekWave(localMX);
             } else {
                 isSeeking = false;
             }
@@ -1278,14 +1269,36 @@ public class Interface extends Module {
 
         // 0. Dynamic Island Click (Collapsed -> Expand, or Expanded Controls)
         if (showDynamicIsland.isEnabled() && hasActiveMedia && button == 0) {
+            float collapsedW = 185.0f;
+            float expandedW = 242.0f;
+            float curW = MathHelper.lerp(this.islandExpandAnim, collapsedW, expandedW);
+            float curH = MathHelper.lerp(this.islandExpandAnim, 30.0f, 70.0f);
+            float x = (screenW - curW) / 2.0f;
+            float y = 8.0f;
+            float centerX = x + curW / 2.0f;
+
+            float baseIslandS = islandScale.getValueFloat();
+            float combatS = getCombatScaleFactor("island");
+            float islandS = baseIslandS * combatS;
+            boolean customIslandScale = Math.abs(islandS - 1.0f) > 0.001f;
+
+            // Map mouse coordinates to local island coordinate space
+            float localMX = (float) mouseX;
+            float localMY = (float) mouseY;
+            if (customIslandScale && islandS > 0.01f) {
+                localMX = centerX + (localMX - centerX) / islandS;
+                localMY = y + (localMY - y) / islandS;
+            }
+
             if (!islandExpanded) {
-                if (isInside(mouseX, mouseY, lastIslandX, lastIslandY, lastIslandW, lastIslandH)) {
+                if (localMX >= x && localMX <= x + curW && localMY >= y && localMY <= y + curH) {
                     islandExpanded = true;
                     return true;
                 }
             } else {
-                // 1. Cover Click: toggle play / pause / stop
-                if (isInside(mouseX, mouseY, lastArtX, lastArtY, lastArtSize, lastArtSize)) {
+                // 1. Cover Click: toggle play / pause / stop (entire 46x46 cover area)
+                if (localMX >= lastArtX - 2.0f && localMX <= lastArtX + lastArtSize + 2.0f
+                        && localMY >= lastArtY - 2.0f && localMY <= lastArtY + lastArtSize + 2.0f) {
                     if (OptMedia.init() && OptMedia.INSTANCE != null) {
                         try {
                             OptMedia.INSTANCE.TogglePlayPause();
@@ -1294,18 +1307,16 @@ public class Interface extends Module {
                     return true;
                 }
 
-                // 2. Prev track
-                if (lastBtnPrevX > 0.0f && isInside(mouseX, mouseY, lastBtnPrevX - 3.0f, lastRowY - 3.0f, 13.0f, 16.0f)) {
-                    if (OptMedia.init() && OptMedia.INSTANCE != null) {
-                        try {
-                            OptMedia.INSTANCE.SkipPrevious();
-                        } catch (Throwable ignored) {}
-                    }
+                // 2. Collapse chevron at top right
+                if (localMX >= lastCloseX - 8.0f && localMX <= x + curW + 4.0f
+                        && localMY >= y && localMY <= y + 24.0f) {
+                    islandExpanded = false;
                     return true;
                 }
 
-                // 3. Next track
-                if (lastBtnNextX > 0.0f && isInside(mouseX, mouseY, lastBtnNextX - 3.0f, lastRowY - 3.0f, 13.0f, 16.0f)) {
+                // 3. Next track button
+                if (lastBtnNextX > 0.0f && localMX >= lastBtnNextX - 4.0f && localMX <= lastBtnNextX + 16.0f
+                        && localMY >= lastRowY - 6.0f && localMY <= lastRowY + 18.0f) {
                     if (OptMedia.init() && OptMedia.INSTANCE != null) {
                         try {
                             OptMedia.INSTANCE.SkipNext();
@@ -1314,21 +1325,27 @@ public class Interface extends Module {
                     return true;
                 }
 
-                // 4. Waveform seek click
-                if (lastWaveX > 0.0f && isInside(mouseX, mouseY, lastWaveX - 3.0f, lastRowY - 3.0f, lastWaveW + 6.0f, 16.0f)) {
-                    isSeeking = true;
-                    seekWave(mouseX);
+                // 4. Prev track button
+                if (lastBtnPrevX > 0.0f && localMX >= lastBtnPrevX - 6.0f && localMX <= lastBtnPrevX + 10.0f
+                        && localMY >= lastRowY - 6.0f && localMY <= lastRowY + 18.0f) {
+                    if (OptMedia.init() && OptMedia.INSTANCE != null) {
+                        try {
+                            OptMedia.INSTANCE.SkipPrevious();
+                        } catch (Throwable ignored) {}
+                    }
                     return true;
                 }
 
-                // 5. Close / Collapse chevron click
-                if (isInside(mouseX, mouseY, lastCloseX - 4.0f, lastCloseY - 4.0f, 16.0f, 16.0f)) {
-                    islandExpanded = false;
+                // 5. Waveform seek click
+                if (lastWaveX > 0.0f && localMX >= lastWaveX - 4.0f && localMX <= lastWaveX + lastWaveW + 4.0f
+                        && localMY >= lastRowY - 6.0f && localMY <= lastRowY + 18.0f) {
+                    isSeeking = true;
+                    seekWave(localMX);
                     return true;
                 }
 
                 // 6. Click anywhere on expanded card consumes click
-                if (isInside(mouseX, mouseY, lastIslandX, lastIslandY, lastIslandW, lastIslandH)) {
+                if (localMX >= x && localMX <= x + curW && localMY >= y && localMY <= y + curH) {
                     return true;
                 }
             }
