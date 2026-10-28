@@ -42,6 +42,15 @@ public class InventorySlotRule {
         if (isEmpty()) return false;
         if (stack == null || stack.isEmpty()) return false;
 
+        Item ruleItem = getItem();
+        Item currentItem = stack.getItem();
+
+        // Обычные и зачарованные яблоки - принципиально разные предметы, никогда не смешивать
+        if ((ruleItem == Items.GOLDEN_APPLE && currentItem == Items.ENCHANTED_GOLDEN_APPLE) ||
+            (ruleItem == Items.ENCHANTED_GOLDEN_APPLE && currentItem == Items.GOLDEN_APPLE)) {
+            return false;
+        }
+
         // 1. Приоритетное совпадение по кастомному имени (для предметов HolyWorld / FunTime)
         if (customName != null && !customName.isEmpty()) {
             String stackName = stack.getName().getString().toLowerCase();
@@ -51,7 +60,7 @@ public class InventorySlotRule {
         }
 
         // 2. Точное совпадение по ID предмета
-        String sId = Registries.ITEM.getId(stack.getItem()).toString();
+        String sId = Registries.ITEM.getId(currentItem).toString();
         if (sId.equalsIgnoreCase(itemId)) {
             return true;
         }
@@ -76,9 +85,6 @@ public class InventorySlotRule {
         // Лук / арбалет
         if ((ruleItem == Items.BOW || ruleItem == Items.CROSSBOW) &&
             (currentItem == Items.BOW || currentItem == Items.CROSSBOW)) return true;
-        // Золотые яблоки (обычные и зачарованные)
-        if ((ruleItem == Items.GOLDEN_APPLE || ruleItem == Items.ENCHANTED_GOLDEN_APPLE) &&
-            (currentItem == Items.GOLDEN_APPLE || currentItem == Items.ENCHANTED_GOLDEN_APPLE)) return true;
         // Тотемы бессмертия
         if (ruleItem == Items.TOTEM_OF_UNDYING && currentItem == Items.TOTEM_OF_UNDYING) return true;
         // Броня
