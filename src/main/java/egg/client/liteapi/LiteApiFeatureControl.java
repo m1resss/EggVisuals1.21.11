@@ -173,13 +173,8 @@ public final class LiteApiFeatureControl {
 
         switch (compact) {
             case "fullbright" -> { list.add("gamma"); list.add("brightness"); }
-            case "breakblock" -> { list.add("fastbreak"); list.add("fast_break"); }
-            case "targetesp" -> { list.add("esp"); list.add("box_esp"); list.add("glow_esp"); }
-            case "inventorysorter" -> { list.add("sorter"); list.add("invsorter"); list.add("cheststealer"); }
-            case "tapemouse" -> { list.add("autoclicker"); list.add("clicker"); }
-            case "shifttap" -> { list.add("wtap"); list.add("w_tap"); }
-            case "worldtweaks" -> { list.add("timechanger"); list.add("weather"); }
-            case "itemscroller" -> { list.add("quickcraft"); }
+            case "targetesp" -> { list.add("esp"); }
+            case "inventorysorter" -> { list.add("invsorter"); }
             case "thirdperson" -> { list.add("freelook"); }
         }
         return list;
