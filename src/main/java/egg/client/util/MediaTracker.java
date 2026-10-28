@@ -4,9 +4,6 @@ import com.sun.jna.platform.win32.User32;
 import com.sun.jna.platform.win32.WinDef.HWND;
 import net.minecraft.util.Identifier;
 
-/**
- * Lightweight background media tracker for Windows players (Spotify, Yandex Music, etc.)
- */
 public final class MediaTracker {
     private static final MediaTracker INSTANCE = new MediaTracker();
     public static MediaTracker getInstance() {
@@ -74,11 +71,10 @@ public final class MediaTracker {
                     int classLen = User32.INSTANCE.GetClassName(hwnd, classBuffer, classBuffer.length);
                     String className = classLen > 0 ? new String(classBuffer, 0, classLen) : "";
 
-                    // 1. Spotify
                     if (className.equals("Chrome_WidgetWin_0")) {
-                        // Spotify window
+
                         if (winTitle.equals("Spotify") || winTitle.equals("Spotify Free") || winTitle.equals("Spotify Premium")) {
-                            // Paused or idle
+
                             return true;
                         }
                         if (winTitle.contains(" - ")) {
@@ -86,11 +82,10 @@ public final class MediaTracker {
                             foundArtist[0] = parts[0].trim();
                             foundTitle[0] = parts[1].trim();
                             found[0] = true;
-                            return false; // stop enumeration
+                            return false;
                         }
                     }
 
-                    // 2. Yandex Music
                     if (winTitle.contains(" — Яндекс Музыка") || winTitle.contains(" - Яндекс Музыка")) {
                         String clean = winTitle.replace(" — Яндекс Музыка", "").replace(" - Яндекс Музыка", "");
                         if (clean.contains(" — ")) {
@@ -108,7 +103,6 @@ public final class MediaTracker {
                         }
                     }
 
-                    // 3. YouTube Music / Browser Media (e.g. "Song - Artist - YouTube")
                     if (winTitle.endsWith(" - YouTube") || winTitle.endsWith(" - YouTube Music")) {
                         String clean = winTitle.replace(" - YouTube Music", "").replace(" - YouTube", "");
                         if (clean.contains(" - ")) {

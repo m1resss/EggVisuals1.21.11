@@ -21,9 +21,6 @@ import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Vector2f;
 
-/**
- * 1:1 BreakBlock port from egg 1.21.4 (delta.module.render.BreakBlock).
- */
 public class BreakBlock extends Module {
     private final ModeSetting colorMode = new ModeSetting("Режим цвета", "Кастом", "Цветовая схема", "Кастом", "Тема", "Градиент");
     private final ColorSetting customColor = new ColorSetting("Свой цвет", 0xFF8B5CF6, "Цвет индикатора");

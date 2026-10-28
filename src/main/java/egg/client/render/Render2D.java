@@ -41,32 +41,30 @@ public final class Render2D {
         int ts = texSize;
         int midTex = ts - tc * 2;
 
-        // 1. Top-left corner
         context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix, iy, 0.0f, 0.0f, ir, ir, tc, tc, ts, ts, color);
-        // 2. Top-right corner
+
         context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + iw - ir, iy, (float) (ts - tc), 0.0f, ir, ir, tc, tc, ts, ts, color);
-        // 3. Bottom-left corner
+
         context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix, iy + ih - ir, 0.0f, (float) (ts - tc), ir, ir, tc, tc, ts, ts, color);
-        // 4. Bottom-right corner
+
         context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + iw - ir, iy + ih - ir, (float) (ts - tc), (float) (ts - tc), ir, ir, tc, tc, ts, ts, color);
 
-        // 5. Top edge
         if (midW > 0) {
             context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + ir, iy, (float) tc, 0.0f, midW, ir, midTex, tc, ts, ts, color);
         }
-        // 6. Bottom edge
+
         if (midW > 0) {
             context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + ir, iy + ih - ir, (float) tc, (float) (ts - tc), midW, ir, midTex, tc, ts, ts, color);
         }
-        // 7. Left edge
+
         if (midH > 0) {
             context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix, iy + ir, 0.0f, (float) tc, ir, midH, tc, midTex, ts, ts, color);
         }
-        // 8. Right edge
+
         if (midH > 0) {
             context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + iw - ir, iy + ir, (float) (ts - tc), (float) tc, ir, midH, tc, midTex, ts, ts, color);
         }
-        // 9. Center
+
         if (midW > 0 && midH > 0) {
             context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + ir, iy + ir, (float) tc, (float) tc, midW, midH, midTex, midTex, ts, ts, color);
         }
@@ -91,13 +89,11 @@ public final class Render2D {
         int ts = texSize;
         int midTex = ts - tc * 2;
 
-        // Corners
         context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix, iy, 0.0f, 0.0f, ir, ir, tc, tc, ts, ts, color);
         context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + iw - ir, iy, (float) (ts - tc), 0.0f, ir, ir, tc, tc, ts, ts, color);
         context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix, iy + ih - ir, 0.0f, (float) (ts - tc), ir, ir, tc, tc, ts, ts, color);
         context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + iw - ir, iy + ih - ir, (float) (ts - tc), (float) (ts - tc), ir, ir, tc, tc, ts, ts, color);
 
-        // Edges
         if (midW > 0) {
             context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + ir, iy, (float) tc, 0.0f, midW, ir, midTex, tc, ts, ts, color);
             context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + ir, iy + ih - ir, (float) tc, (float) (ts - tc), midW, ir, midTex, tc, ts, ts, color);
@@ -111,7 +107,7 @@ public final class Render2D {
     public static void drawRoundedRect(DrawContext context, float x, float y, float width, float height, float radius, int color) {
         int r = Math.max(1, Math.round(radius));
         Identifier tex = DynamicGuiTextures.getRoundedRect(r);
-        int texSize = r * 2 * 2; // scale 2 default
+        int texSize = r * 2 * 2;
         drawNineSlice(context, tex, x, y, width, height, radius, r * 2, texSize, color);
     }
 
@@ -206,7 +202,6 @@ public final class Render2D {
         context.fillGradient(x1, y1, x2, y2, startColor, endColor);
     }
 
-
     public static void drawRoundedGradientRect(DrawContext context, float x, float y, float width, float height, float radius, int colTop, int colBot) {
         drawRoundedRect(context, x, y, width, height, radius, colTop);
     }
@@ -255,8 +250,7 @@ public final class Render2D {
 
         float bandW = 34.0f;
         float halfW = bandW / 2.0f;
-        // Slant along the other diagonal (/): top is to the left, bottom is to the right
-        // As it advances, it sweeps from top-left downwards and across (сверху вниз)
+
         float slantX = height * 0.65f;
         float totalTravel = width + slantX + bandW * 2.0f;
         float startX = x - slantX - bandW;

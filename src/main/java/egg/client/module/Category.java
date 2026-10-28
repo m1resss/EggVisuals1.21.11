@@ -1,19 +1,16 @@
 package egg.client.module;
 
 public enum Category {
-    // Main
+
     COMBAT("Combat", "Бой", "V", "Main"),
     MOVEMENT("Movement", "Движение", "I", "Main"),
 
-    // Visual
     ESP("Visuals", "Визуалы", "&", "Visual"),
 
-    // Other
     PLAYER("Player", "Игрок", "L", "Other"),
     INVENTORY("Inventory", "Инвентарь", "H", "Other"),
     MISC("Misc", "Разное", "D", "Other"),
 
-    // Addons
     SETTINGS("Settings", "Настройки", "*", "Addons");
 
     private final String name;

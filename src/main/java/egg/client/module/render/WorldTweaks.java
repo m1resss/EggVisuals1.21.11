@@ -32,7 +32,6 @@ import java.util.Random;
 public class WorldTweaks extends Module {
     private static WorldTweaks instance;
 
-    // Textures
     private static final Identifier[] SNOWFLAKE_TEXTURES = new Identifier[]{
             Identifier.of("egg", "textures/world/snowflake_1.png"),
             Identifier.of("egg", "textures/world/snowflake_2.png"),
@@ -58,7 +57,6 @@ public class WorldTweaks extends Module {
 
     private static final Identifier RAIN_DROP_TEXTURE = Identifier.of("egg", "textures/world/rain_drop.png");
 
-    // Settings
     private final ModeSetting timeMode = new ModeSetting("Время суток", "Кастом", "Режим времени", "Кастом", "Синхрон", "Выкл");
     private final SliderSetting timeOfDay = new SliderSetting("Час дня", 6000.0, 0.0, 24000.0, 100.0, "Время игрового мира (0..24000)");
 
@@ -68,7 +66,6 @@ public class WorldTweaks extends Module {
     private final BooleanSetting particles = new BooleanSetting("Партиклы", true, "3D планирующие частицы в воздухе");
     private final SliderSetting particleDensity = new SliderSetting("Кол-во частиц", 80.0, 20.0, 180.0, 10.0, "Плотность частиц");
 
-    // Native Vanilla Fog Color (Lightweight, zero-FPS cost)
     private final BooleanSetting customFog = new BooleanSetting("Кастомный туман", false, "Атмосферный цвет тумана горизонта");
     private final ModeSetting fogColorMode = new ModeSetting("Цвет тумана", "По сезону", "Режим цвета тумана", "По сезону", "Кастом", "Ванилла");
     private final ColorSetting fogCustomColor = new ColorSetting("Цвет", 0xFF9FC5E8, "Цвет кастомного тумана");
@@ -76,7 +73,6 @@ public class WorldTweaks extends Module {
     private final BooleanSetting customSound = new BooleanSetting("Звуки дождя/грозы", true, "Кастомный шум дождя и раскаты грома");
     private final SliderSetting soundVolume = new SliderSetting("Громкость звука", 0.65, 0.0, 1.0, 0.05, "Громкость MP3 звуков");
 
-    // Dynamic State
     private final List<FallingParticle> fallingParticles = new ArrayList<>();
     private final List<RainStreak> rainStreaks = new ArrayList<>();
     private final Random random = new Random();
@@ -136,7 +132,6 @@ public class WorldTweaks extends Module {
             return;
         }
 
-        // Thunderstorm sound triggers
         if ("Гроза".equals(this.weather.get())) {
             this.thunderCooldown--;
             if (this.thunderCooldown <= 0) {
@@ -209,7 +204,6 @@ public class WorldTweaks extends Module {
 
             boolean shouldReset = p.age >= p.maxAge || distSq > 24.0 * 24.0 || p.y < center.y - 5.5;
 
-            // Fast ground collision check near player feet (zero VoxelShape allocations)
             if (!shouldReset && p.y <= center.y + 0.8) {
                 int bx = MathHelper.floor(p.x);
                 int by = MathHelper.floor(p.y);
@@ -245,7 +239,7 @@ public class WorldTweaks extends Module {
                 : (center.y + 6.0 + this.random.nextDouble() * 6.0);
 
         p.age = 0.0f;
-        p.maxAge = 240.0f + this.random.nextFloat() * 160.0f; // 12 - 20 seconds
+        p.maxAge = 240.0f + this.random.nextFloat() * 160.0f;
         p.swayPhase = this.random.nextFloat() * 6.28f;
         p.roll = this.random.nextFloat() * 360.0f;
         p.pitch = this.random.nextFloat() * 360.0f;
@@ -290,7 +284,7 @@ public class WorldTweaks extends Module {
     }
 
     private void updateRainSmooth(Vec3d center, float dt, MinecraftClient mc) {
-        int streakCount = 140; // Lightweight, sleek cinematic rain
+        int streakCount = 140;
         while (this.rainStreaks.size() < streakCount) {
             RainStreak s = new RainStreak();
             resetRainStreak(s, center, true, mc);
@@ -374,13 +368,11 @@ public class WorldTweaks extends Module {
 
         syncAudioState();
 
-        // 1. Falling 3D Seasonal Particles (Batched per texture)
         if (this.particles.get() && !"Выкл".equals(this.season.get())) {
             updateParticlesSmooth(camPos, dt, mc);
             renderParticles3D(consumers, camPos, mc);
         }
 
-        // 2. Cinema Rain in 3D (Single draw call)
         if (isRain) {
             updateRainSmooth(camPos, dt, mc);
             renderCinemaRain3D(consumers, camPos, mc);
@@ -407,7 +399,6 @@ public class WorldTweaks extends Module {
         Camera camera = mc.gameRenderer != null ? mc.gameRenderer.getCamera() : null;
         Quaternionf camRot = camera != null ? camera.getRotation() : new Quaternionf();
 
-        // Batch rendering by texture index: exactly texArray.length draw calls total!
         for (int t = 0; t < texArray.length; t++) {
             Identifier tex = texArray[t];
             VertexConsumer buffer = null;
@@ -612,7 +603,6 @@ public class WorldTweaks extends Module {
         }
     }
 
-    // Helper classes
     private static class FallingParticle {
         double x, y, z;
         float vx, vy, vz;

@@ -1,15 +1,12 @@
 package egg.client.ui.lens;
 
-/**
- * Constants and physics formulas for the Meizu Liquid Lens animation.
- */
 public final class LensParams {
     private LensParams() {}
 
     public static final long OPEN_DURATION_MS = 800L;
     public static final long CLOSE_DURATION_MS = 600L;
 
-    public static final float MIN_RADIUS = 30.0f; // Initial 60px diameter
+    public static final float MIN_RADIUS = 30.0f;
     public static final float RIPPLE_FREQ = 28.0f;
     public static final float RIPPLE_SPEED = 9.0f;
     public static final float RIPPLE_AMP = 0.012f;

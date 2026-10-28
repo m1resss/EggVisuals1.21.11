@@ -44,7 +44,7 @@ public class ClientPlayNetworkHandlerMixin {
         if (mc.world != null) {
             Entity entity = packet.getEntity(mc.world);
             if (entity != null) {
-                if (packet.getStatus() == 35) { // USE_TOTEM_OF_UNDYING
+                if (packet.getStatus() == 35) {
                     TotemPopConfetti confetti = ModuleManager.getInstance().getModule(TotemPopConfetti.class);
                     if (confetti != null && confetti.isEnabled()) {
                         confetti.onTotemPop(entity);
@@ -55,7 +55,7 @@ public class ClientPlayNetworkHandlerMixin {
                             ci.cancel();
                         }
                     }
-                } else if (packet.getStatus() == 2) { // DAMAGE_TILT
+                } else if (packet.getStatus() == 2) {
                     Hitmarker hitmarker = ModuleManager.getInstance().getModule(Hitmarker.class);
                     if (hitmarker != null) {
                         hitmarker.onPacket(packet);

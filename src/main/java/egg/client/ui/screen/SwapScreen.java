@@ -26,7 +26,7 @@ public class SwapScreen extends Screen {
 
     @Override
     public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
-        // НЕ ЗАТЕМНЯТЬ ФОН: мир игры остается полностью прозрачным
+
     }
 
     @Override
@@ -65,7 +65,7 @@ public class SwapScreen extends Screen {
                 ItemStack stack = as.getWheelSlot(this.hoveredSector);
                 if (stack != null && !stack.isEmpty()) {
                     if (AutoSwap.performLegitSwap(stack)) {
-                        return; // DO NOT call this.close()! startSwap already opened InventoryScreen
+                        return;
                     }
                 }
             }

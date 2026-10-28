@@ -21,10 +21,8 @@ public final class ClientFont {
     public static final StyleSpriteSource.Font SF_SEMIBOLD = new StyleSpriteSource.Font(Identifier.of("egg", "sf_medium"));
     public static final StyleSpriteSource.Font SF_BOLD = new StyleSpriteSource.Font(Identifier.of("egg", "sf_bold"));
 
-    // Real font height for SF Pro with size ~11 (avoids tr.fontHeight default vanilla 9.0)
     public static final float FONT_HEIGHT = 9.0f;
 
-    // Nested caches to completely eliminate string concatenation (text + "@" + font.id())
     private static final Map<StyleSpriteSource.Font, Map<String, Text>> FONT_TEXT_CACHE = new ConcurrentHashMap<>();
     private static final Map<StyleSpriteSource.Font, Map<String, Float>> FONT_WIDTH_CACHE = new ConcurrentHashMap<>();
     private static final Map<Long, Map<String, Text>> GRADIENT_CACHE = new ConcurrentHashMap<>();

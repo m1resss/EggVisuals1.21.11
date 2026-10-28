@@ -21,7 +21,6 @@ public class Sprint extends Module {
     public void onTick(MinecraftClient client) {
         if (client.player == null) return;
 
-        // Auto-sprint forward if not sneaking and hunger allows
         boolean canSprint = !client.player.isSneaking() && client.player.getHungerManager().getFoodLevel() > 6;
         boolean movingForward = client.options.forwardKey.isPressed();
 

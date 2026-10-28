@@ -26,7 +26,6 @@ public class FpsBenchmark {
     private long lastFrameNano = 0;
     private double accumulatedFrameTimeMs = 0;
 
-    // Results in FPS
     public double fpsClosed = 0.0;
     public double fpsOpenBaseline = 0.0;
     public double fpsOpenNoBlur = 0.0;
@@ -34,7 +33,6 @@ public class FpsBenchmark {
     public double fpsOpenNoText = 0.0;
     public double fpsOpenOptimized = 0.0;
 
-    // Overrides for benchmarking
     public static boolean overrideNoBlur = false;
     public static boolean overrideNoShadow = false;
     public static boolean overrideNoText = false;
@@ -63,7 +61,6 @@ public class FpsBenchmark {
             return;
         }
 
-        // Skip outlier frames (e.g. world load spike > 100ms)
         if (frameTimeMs > 100.0) return;
 
         accumulatedFrameTimeMs += frameTimeMs;
@@ -79,7 +76,7 @@ public class FpsBenchmark {
                 case MEASURE_CLOSED -> {
                     fpsClosed = fps;
                     EggClient.LOGGER.info(String.format(Locale.US, "[EggProfiler] Stage 1/5: GUI Closed -> %.1f FPS (%.2f ms)", fps, avgFrameTime));
-                    // Switch to Open Baseline
+
                     currentMode = Mode.MEASURE_OPEN_BASELINE;
                     overrideNoBlur = false;
                     overrideNoShadow = false;
@@ -91,7 +88,7 @@ public class FpsBenchmark {
                 case MEASURE_OPEN_BASELINE -> {
                     fpsOpenBaseline = fps;
                     EggClient.LOGGER.info(String.format(Locale.US, "[EggProfiler] Stage 2/5: GUI Open (Baseline) -> %.1f FPS (%.2f ms)", fps, avgFrameTime));
-                    // Switch to No Blur
+
                     currentMode = Mode.MEASURE_OPEN_NO_BLUR;
                     overrideNoBlur = true;
                     overrideNoShadow = false;
@@ -100,7 +97,7 @@ public class FpsBenchmark {
                 case MEASURE_OPEN_NO_BLUR -> {
                     fpsOpenNoBlur = fps;
                     EggClient.LOGGER.info(String.format(Locale.US, "[EggProfiler] Stage 3/5: GUI Open (No Blur) -> %.1f FPS (%.2f ms)", fps, avgFrameTime));
-                    // Switch to No Shadow
+
                     currentMode = Mode.MEASURE_OPEN_NO_SHADOW;
                     overrideNoBlur = false;
                     overrideNoShadow = true;
@@ -109,7 +106,7 @@ public class FpsBenchmark {
                 case MEASURE_OPEN_NO_SHADOW -> {
                     fpsOpenNoShadow = fps;
                     EggClient.LOGGER.info(String.format(Locale.US, "[EggProfiler] Stage 4/5: GUI Open (No Shadow) -> %.1f FPS (%.2f ms)", fps, avgFrameTime));
-                    // Switch to No Text
+
                     currentMode = Mode.MEASURE_OPEN_NO_TEXT;
                     overrideNoBlur = false;
                     overrideNoShadow = false;
@@ -118,7 +115,7 @@ public class FpsBenchmark {
                 case MEASURE_OPEN_NO_TEXT -> {
                     fpsOpenNoText = fps;
                     EggClient.LOGGER.info(String.format(Locale.US, "[EggProfiler] Stage 5/6: GUI Open (No Text) -> %.1f FPS (%.2f ms)", fps, avgFrameTime));
-                    // Switch to Optimized
+
                     currentMode = Mode.MEASURE_OPEN_OPTIMIZED;
                     overrideNoBlur = false;
                     overrideNoShadow = false;

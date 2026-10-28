@@ -22,7 +22,6 @@ public abstract class Module {
 
     private final List<Setting> settings = new ArrayList<>();
 
-    // UI Animations
     private final Animation switchAnimation = new Animation(0.0f, 220L, Easing.EASE_OUT_BACK);
     private final Animation expandAnimation = new Animation(0.0f, 240L, Easing.EASE_IN_OUT_QUART);
     private final Animation hoverAnimation = new Animation(0.0f, 160L, Easing.EASE_OUT_CUBIC);
@@ -85,7 +84,6 @@ public abstract class Module {
 
     public void onTick(MinecraftClient client) {}
 
-    // Getters & Setters
     public String getName() {
         return name;
     }

@@ -40,14 +40,12 @@ public final class CommandManager {
     }
 
     private void buildDispatcher() {
-        // help
+
         dispatcher.register(literal("help"));
 
-        // confetti / totem
         dispatcher.register(literal("confetti"));
         dispatcher.register(literal("totem"));
 
-        // toggle / t
         for (String t : new String[]{"toggle", "t"}) {
             dispatcher.register(literal(t)
                     .then(argument("module", StringArgumentType.word())
@@ -62,7 +60,6 @@ public final class CommandManager {
             );
         }
 
-        // bind
         dispatcher.register(literal("bind")
                 .then(argument("module", StringArgumentType.word())
                         .suggests((ctx, builder) -> {
@@ -76,13 +73,11 @@ public final class CommandManager {
                         .then(argument("key", StringArgumentType.word())))
         );
 
-        // cases
         dispatcher.register(literal("cases")
                 .then(literal("open"))
                 .then(literal("list"))
         );
 
-        // friend / f
         for (String f : new String[]{"friend", "f"}) {
             dispatcher.register(literal(f)
                     .then(literal("add").then(argument("name", StringArgumentType.word())))
@@ -91,7 +86,6 @@ public final class CommandManager {
             );
         }
 
-        // config / cfg
         for (String c : new String[]{"config", "cfg"}) {
             dispatcher.register(literal(c)
                     .then(literal("dir"))
@@ -118,7 +112,6 @@ public final class CommandManager {
             );
         }
 
-        // waypoint / wp
         for (String wp : new String[]{"waypoint", "wp"}) {
             dispatcher.register(literal(wp)
                     .then(literal("add").then(argument("name", StringArgumentType.word())))

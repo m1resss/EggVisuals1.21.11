@@ -8,10 +8,6 @@ import net.minecraft.util.Identifier;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Procedural rasterizer for pixel-perfect anti-aliased geometry textures
- * mapped 1:1 to physical screen pixels at the user's GUI scale.
- */
 public final class DynamicGuiTextures {
     private DynamicGuiTextures() {}
 
@@ -223,7 +219,6 @@ public final class DynamicGuiTextures {
         float innerR = 7.1f * scale;
         float pivotR = 1.6f * scale;
 
-        // Needle vector: pointing up-right (~40 deg from horizontal)
         float ndx = 5.2f * scale;
         float ndy = -4.2f * scale;
         float nlen = (float) Math.hypot(ndx, ndy);
@@ -235,17 +230,15 @@ public final class DynamicGuiTextures {
                 float dx = x - cx;
                 float dy = y - cy;
                 float dist = (float) Math.sqrt(dx * dx + dy * dy);
-                float angle = (float) Math.toDegrees(Math.atan2(dy, dx)); // -180 to 180
+                float angle = (float) Math.toDegrees(Math.atan2(dy, dx));
 
-                // 1. Gauge Arc (from -145 to 145 deg)
                 float arcAlpha = 0.0f;
-                boolean inArcRange = !(angle > 50.0f && angle < 130.0f); // open at bottom
+                boolean inArcRange = !(angle > 50.0f && angle < 130.0f);
                 if (inArcRange) {
                     float ringDist = Math.abs(dist - (outerR + innerR) / 2.0f);
                     float halfThick = (outerR - innerR) / 2.0f;
                     arcAlpha = clamp01(halfThick - ringDist + 0.5f);
 
-                    // Fade ends of arc
                     if (angle >= 40.0f && angle <= 50.0f) {
                         arcAlpha *= (50.0f - angle) / 10.0f;
                     } else if (angle >= 130.0f && angle <= 140.0f) {
@@ -253,10 +246,8 @@ public final class DynamicGuiTextures {
                     }
                 }
 
-                // 2. Center Pivot Dot
                 float pivotAlpha = clamp01(pivotR - dist + 0.5f);
 
-                // 3. Needle (segment from center to needle tip)
                 float needleAlpha = 0.0f;
                 float proj = dx * nnx + dy * nny;
                 if (proj >= 0.0f && proj <= nlen) {
@@ -284,14 +275,12 @@ public final class DynamicGuiTextures {
         float innerR = 7.1f * scale;
         float pivotR = 1.3f * scale;
 
-        // Hour hand: to 10:00 (dx = -2.8, dy = -2.8)
         float hx = -2.8f * scale;
         float hy = -2.8f * scale;
         float hlen = (float) Math.hypot(hx, hy);
         float hnx = hx / hlen;
         float hny = hy / hlen;
 
-        // Minute hand: to 02:05 (dx = 4.2, dy = -2.2)
         float mx = 4.2f * scale;
         float my = -2.2f * scale;
         float mlen = (float) Math.hypot(mx, my);
@@ -304,14 +293,11 @@ public final class DynamicGuiTextures {
                 float dy = y - cy;
                 float dist = (float) Math.sqrt(dx * dx + dy * dy);
 
-                // 1. Clock Outer Ring
                 float ringDist = Math.abs(dist - (outerR + innerR) / 2.0f);
                 float ringAlpha = clamp01(((outerR - innerR) / 2.0f) - ringDist + 0.5f);
 
-                // 2. Center Pivot
                 float pivotAlpha = clamp01(pivotR - dist + 0.5f);
 
-                // 3. Hour hand
                 float hourAlpha = 0.0f;
                 float hproj = dx * hnx + dy * hny;
                 if (hproj >= 0.0f && hproj <= hlen) {
@@ -319,7 +305,6 @@ public final class DynamicGuiTextures {
                     hourAlpha = clamp01((0.85f * scale) - hperp + 0.5f);
                 }
 
-                // 4. Minute hand
                 float minAlpha = 0.0f;
                 float mproj = dx * mnx + dy * mny;
                 if (mproj >= 0.0f && mproj <= mlen) {
@@ -347,7 +332,6 @@ public final class DynamicGuiTextures {
         float ryTop = 10.5f * scale;
         float ryBot = 8.8f * scale;
 
-        // Light direction: from top-left-front
         float lx = -0.55f;
         float ly = -0.65f;
         float lz = 0.75f;
@@ -372,7 +356,6 @@ public final class DynamicGuiTextures {
                     float dot = nx * lx + ny * ly + nz * lz;
                     float diffuse = Math.max(0.0f, dot);
 
-                    // Specular highlight on top-left
                     float spec = (float) Math.pow(Math.max(0.0f, dot), 8.0) * 0.45f;
                     float ambient = 0.65f;
                     float brightness = clamp01(ambient + diffuse * 0.35f + spec);
@@ -397,21 +380,20 @@ public final class DynamicGuiTextures {
         NativeImage image = new NativeImage(size, size, false);
         float s = scale;
 
-        // Clean folder outline with plus [+] inside
         for (int y = 0; y < size; y++) {
             for (int x = 0; x < size; x++) {
                 float fx = x / s;
                 float fy = y / s;
 
                 float alpha = 0.0f;
-                // Outer body rect: [2.5 .. 17.5], [4.5 .. 16.5]
+
                 boolean inBody = (fx >= 2.5f && fx <= 17.5f && fy >= 5.5f && fy <= 16.5f);
-                // Top tab: [2.5 .. 8.5], [3.5 .. 6.0]
+
                 boolean inTab = (fx >= 2.5f && fx <= 8.5f && fy >= 3.5f && fy <= 6.0f);
 
                 if (inBody || inTab) {
                     boolean border = (fx <= 3.5f || fx >= 16.5f || fy >= 15.5f || (inTab && fy <= 4.5f) || (fx >= 8.5f && fy <= 6.5f));
-                    // Center plus: vertical [9.5..10.5], [8.0..14.0], horizontal [7.0..13.0], [10.5..11.5]
+
                     boolean plusH = (fx >= 7.0f && fx <= 13.0f && fy >= 10.3f && fy <= 11.7f);
                     boolean plusV = (fx >= 9.3f && fx <= 10.7f && fy >= 8.0f && fy <= 14.0f);
                     if (border || plusH || plusV) {
@@ -437,16 +419,15 @@ public final class DynamicGuiTextures {
         float r = 6.2f * scale;
         float stroke = 1.25f * scale;
 
-        // Circular reload arrow ⟳
         for (int y = 0; y < size; y++) {
             for (int x = 0; x < size; x++) {
                 float dx = x - cx;
                 float dy = y - cy;
                 float dist = (float) Math.sqrt(dx * dx + dy * dy);
-                float angle = (float) Math.atan2(dy, dx); // -PI to PI
+                float angle = (float) Math.atan2(dy, dx);
 
                 float alpha = 0.0f;
-                // Ring segment from -0.8 PI to 0.7 PI (~270 degrees)
+
                 float ringDist = Math.abs(dist - r);
                 float ringAlpha = clamp01(stroke - ringDist + 0.5f);
 
@@ -455,7 +436,6 @@ public final class DynamicGuiTextures {
                 }
                 alpha = Math.max(alpha, ringAlpha);
 
-                // Arrow head at end of arc (~0.65 PI)
                 float ahX = cx + r * (float) Math.cos(0.65 * Math.PI);
                 float ahY = cy + r * (float) Math.sin(0.65 * Math.PI);
                 float adx = (x - ahX) / scale;
@@ -481,20 +461,19 @@ public final class DynamicGuiTextures {
         NativeImage image = new NativeImage(size, size, false);
         float s = scale;
 
-        // Cellular signal bars (ascending 4 vertical bars)
         for (int y = 0; y < size; y++) {
             for (int x = 0; x < size; x++) {
                 float fx = x / s;
                 float fy = y / s;
 
                 float alpha = 0.0f;
-                // Bar 1 (height 3): fx in [3..5], fy in [13..16]
+
                 if (fx >= 3.0f && fx <= 5.0f && fy >= 13.0f && fy <= 16.0f) alpha = 1.0f;
-                // Bar 2 (height 6): fx in [7..9], fy in [10..16]
+
                 if (fx >= 7.0f && fx <= 9.0f && fy >= 10.0f && fy <= 16.0f) alpha = 1.0f;
-                // Bar 3 (height 9): fx in [11..13], fy in [7..16]
+
                 if (fx >= 11.0f && fx <= 13.0f && fy >= 7.0f && fy <= 16.0f) alpha = 1.0f;
-                // Bar 4 (height 12): fx in [15..17], fy in [4..16]
+
                 if (fx >= 15.0f && fx <= 17.0f && fy >= 4.0f && fy <= 16.0f) alpha = 1.0f;
 
                 int a = Math.round(clamp01(alpha) * 255.0f);
@@ -518,23 +497,19 @@ public final class DynamicGuiTextures {
                 float fy = y / s;
 
                 float alpha = 0.0f;
-                // Note head 1: oval at [5..8.5], [14..18]
+
                 float dx1 = fx - 7.0f;
                 float dy1 = (fy - 16.0f) * 1.3f;
                 if (dx1 * dx1 + dy1 * dy1 <= 4.0f) alpha = 1.0f;
 
-                // Vertical stem 1: fx in [7.8..9.2], fy in [6..16]
                 if (fx >= 7.8f && fx <= 9.2f && fy >= 6.0f && fy <= 16.0f) alpha = 1.0f;
 
-                // Note head 2: oval at [13..16.5], [12..16]
                 float dx2 = fx - 15.0f;
                 float dy2 = (fy - 14.0f) * 1.3f;
                 if (dx2 * dx2 + dy2 * dy2 <= 4.0f) alpha = 1.0f;
 
-                // Vertical stem 2: fx in [15.8..17.2], fy in [4..14]
                 if (fx >= 15.8f && fx <= 17.2f && fy >= 4.0f && fy <= 14.0f) alpha = 1.0f;
 
-                // Beam connecting tops: fx in [8.0..17.0], slanted fy
                 float beamY = 6.0f - (fx - 8.0f) * 0.22f;
                 if (fx >= 8.0f && fx <= 17.0f && fy >= beamY - 1.2f && fy <= beamY + 1.2f) alpha = 1.0f;
 
@@ -605,11 +580,11 @@ public final class DynamicGuiTextures {
 
                 int a = Math.round(ringAlpha * 255.0f);
                 if (inWinArc) {
-                    // Vibrant Emerald / Lime Green with light highlight
+
                     int rgb = (ringDist < halfThick * 0.4f) ? 0x004ADE80 : 0x0022C55E;
                     image.setColorArgb(x, y, (a << 24) | rgb);
                 } else {
-                    // Clearly visible dark slate gauge track with subtle metallic border
+
                     int rgb = (ringDist > halfThick * 0.7f) ? 0x003A455E : 0x00242B3C;
                     image.setColorArgb(x, y, (a << 24) | rgb);
                 }
@@ -687,7 +662,7 @@ public final class DynamicGuiTextures {
                     }
                 }
             } catch (Throwable t) {
-                // Ignore and fall back to procedural
+
             }
             return createProceduralCase(k);
         });
@@ -726,7 +701,6 @@ public final class DynamicGuiTextures {
             }
         }
 
-        // Lid
         float ly0 = 34.0f * s, ly1 = 44.0f * s;
         for (int y = (int) ly0; y <= (int) ly1 && y < size; y++) {
             for (int x = (int) (bx0 - 3 * s); x <= (int) (bx1 + 3 * s) && x < size; x++) {
@@ -734,7 +708,6 @@ public final class DynamicGuiTextures {
             }
         }
 
-        // Emblem in center
         float emCX = 64.0f * s, emCY = 72.0f * s, emR = 12.0f * s;
         for (int y = (int) (emCY - emR); y <= (int) (emCY + emR) && y < size; y++) {
             for (int x = (int) (emCX - emR); x <= (int) (emCX + emR) && x < size; x++) {
@@ -749,7 +722,6 @@ public final class DynamicGuiTextures {
         register(id, image);
         return id;
     }
-
 
     public static Identifier getCardArc(int width, int height) {
         int scale = getScale();
@@ -824,17 +796,17 @@ public final class DynamicGuiTextures {
 
                 float distBoundary;
                 if (sectorIndex == 0) {
-                    // Sector 0 (Top): bounded by ray -150 deg and ray -30 deg
+
                     float dA = dx * 0.5f - dy * sqrt3_2;
                     float dB = -dx * 0.5f - dy * sqrt3_2;
                     distBoundary = Math.min(dA, dB);
                 } else if (sectorIndex == 1) {
-                    // Sector 1 (Bottom-Left): bounded by ray 90 deg and ray 210 deg (-150 deg)
+
                     float dA = -dx;
                     float dB = -dx * 0.5f + dy * sqrt3_2;
                     distBoundary = Math.min(dA, dB);
                 } else {
-                    // Sector 2 (Bottom-Right): bounded by ray -30 deg and ray 90 deg
+
                     float dA = dx * 0.5f + dy * sqrt3_2;
                     float dB = dx;
                     distBoundary = Math.min(dA, dB);
@@ -888,10 +860,9 @@ public final class DynamicGuiTextures {
                 float edgeAlpha = clamp01(R - dist + 0.5f);
                 if (edgeAlpha <= 0.0f) continue;
 
-                // Gradient along the edges of the wheel (from 0.55 R to R)
                 float t = clamp01((dist - 0.55f * R) / (0.45f * R));
-                float glow = t * t; // smooth ease-in
-                float rimWeight = glow * 0.60f; // up to 60% theme color at outer edge
+                float glow = t * t;
+                float rimWeight = glow * 0.60f;
 
                 int cr = Math.round(baseR * (1.0f - rimWeight) + tR * rimWeight);
                 int cg = Math.round(baseG * (1.0f - rimWeight) + tG * rimWeight);
@@ -938,24 +909,19 @@ public final class DynamicGuiTextures {
                 float circleMask = clamp01(R - dist + 0.5f);
                 if (circleMask <= 0.0f) continue;
 
-                // 1. Ray 1: straight down (90 deg)
                 float d1 = (dy >= -hw) ? Math.abs(dx) : 1000.0f;
 
-                // 2. Ray 2: up-left (210 deg / -150 deg)
                 float proj2 = -dx * sqrt3_2 - dy * 0.5f;
                 float d2 = (proj2 >= -hw) ? Math.abs(-0.5f * dx + sqrt3_2 * dy) : 1000.0f;
 
-                // 3. Ray 3: up-right (330 deg / -30 deg)
                 float proj3 = dx * sqrt3_2 - dy * 0.5f;
                 float d3 = (proj3 >= -hw) ? Math.abs(-0.5f * dx - sqrt3_2 * dy) : 1000.0f;
 
                 float minDist = Math.min(d1, Math.min(d2, d3));
                 float lineAlpha = clamp01(hw - minDist + 0.5f);
 
-                // Center hub dot
                 float hubAlpha = clamp01(hubR - dist + 0.5f);
 
-                // Outer circle outline ring
                 float ringDist = Math.abs(dist - (R - stroke * 0.5f));
                 float ringAlpha = clamp01(stroke * 0.5f - ringDist + 0.5f);
 

@@ -36,8 +36,6 @@ public class InGameHudMixin {
         }
     }
 
-
-
     @Inject(method = "render", at = @At("TAIL"))
     private void onRenderHudTail(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
         Interface iface = ModuleManager.getInstance().getModule(Interface.class);

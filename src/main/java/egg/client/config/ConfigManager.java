@@ -25,7 +25,6 @@ public class ConfigManager {
     private static final File ACTIVE_CONFIG_FILE;
     private static String currentConfig = "test1";
 
-    // 2-minute recurring autosave executor
     private static final ScheduledExecutorService AUTOSAVE_EXECUTOR = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "Egg-Config-AutoSave");
         t.setDaemon(true);
@@ -40,7 +39,6 @@ public class ConfigManager {
         }
         ACTIVE_CONFIG_FILE = new File(CONFIG_DIR, "active_config.txt");
 
-        // Migrate legacy single config or bundle if default.json does not exist yet
         File defaultFile = new File(CONFIG_DIR, "default.json");
         if (!defaultFile.exists()) {
             File legacyFile = FabricLoader.getInstance().getConfigDir().resolve("egg_client.json").toFile();
@@ -64,7 +62,6 @@ public class ConfigManager {
             }
         }
 
-        // Restore active config name from active_config.txt
         if (ACTIVE_CONFIG_FILE.exists()) {
             try {
                 String saved = java.nio.file.Files.readString(ACTIVE_CONFIG_FILE.toPath()).trim();
@@ -78,7 +75,6 @@ public class ConfigManager {
             currentConfig = "default";
         }
 
-        // Schedule autosave every 2 minutes (120 seconds)
         AUTOSAVE_EXECUTOR.scheduleAtFixedRate(() -> {
             try {
                 save();
@@ -88,7 +84,6 @@ public class ConfigManager {
             }
         }, 2, 2, TimeUnit.MINUTES);
 
-        // JVM shutdown hook save
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
                 save();
@@ -198,7 +193,7 @@ public class ConfigManager {
 
         File file = getConfigFile(cleanName);
         if (!file.exists()) {
-            // Fallback to default if requested was different
+
             if (!cleanName.equals("default")) {
                 return false;
             }

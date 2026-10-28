@@ -9,9 +9,9 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 
 public class InventorySlotRule {
-    private final int slotIndex; // 0..40 (0-8 hotbar, 9-35 main, 36 boots, 37 legs, 38 chest, 39 helm, 40 offhand)
-    private String itemId;       // e.g. "minecraft:netherite_sword"
-    private String customName;   // e.g. "Снежок заморозка", or null
+    private final int slotIndex;
+    private String itemId;
+    private String customName;
     private int count = 1;
     private transient ItemStack cachedIcon;
 
@@ -45,13 +45,11 @@ public class InventorySlotRule {
         Item ruleItem = getItem();
         Item currentItem = stack.getItem();
 
-        // Обычные и зачарованные яблоки - принципиально разные предметы, никогда не смешивать
         if ((ruleItem == Items.GOLDEN_APPLE && currentItem == Items.ENCHANTED_GOLDEN_APPLE) ||
             (ruleItem == Items.ENCHANTED_GOLDEN_APPLE && currentItem == Items.GOLDEN_APPLE)) {
             return false;
         }
 
-        // 1. Приоритетное совпадение по кастомному имени (для предметов HolyWorld / FunTime)
         if (customName != null && !customName.isEmpty()) {
             String stackName = stack.getName().getString().toLowerCase();
             if (stackName.contains(customName.toLowerCase())) {
@@ -59,13 +57,11 @@ public class InventorySlotRule {
             }
         }
 
-        // 2. Точное совпадение по ID предмета
         String sId = Registries.ITEM.getId(currentItem).toString();
         if (sId.equalsIgnoreCase(itemId)) {
             return true;
         }
 
-        // 3. Совместимое совпадение по категории (любой меч, любая кирка, броня)
         return isCompatibleFallback(stack);
     }
 
@@ -74,20 +70,19 @@ public class InventorySlotRule {
         Item ruleItem = getItem();
         Item currentItem = stack.getItem();
 
-        // Мечи
         if (isSword(ruleItem) && isSword(currentItem)) return true;
-        // Кирки
+
         if (isPickaxe(ruleItem) && isPickaxe(currentItem)) return true;
-        // Топоры
+
         if (isAxe(ruleItem) && isAxe(currentItem)) return true;
-        // Лопаты
+
         if (isShovel(ruleItem) && isShovel(currentItem)) return true;
-        // Лук / арбалет
+
         if ((ruleItem == Items.BOW || ruleItem == Items.CROSSBOW) &&
             (currentItem == Items.BOW || currentItem == Items.CROSSBOW)) return true;
-        // Тотемы бессмертия
+
         if (ruleItem == Items.TOTEM_OF_UNDYING && currentItem == Items.TOTEM_OF_UNDYING) return true;
-        // Броня
+
         if (isHelmet(ruleItem) && isHelmet(currentItem)) return true;
         if (isChestplate(ruleItem) && isChestplate(currentItem)) return true;
         if (isLeggings(ruleItem) && isLeggings(currentItem)) return true;

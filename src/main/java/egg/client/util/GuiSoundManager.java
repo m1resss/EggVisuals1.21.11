@@ -104,7 +104,7 @@ public final class GuiSoundManager {
 
     public static void playSlider() {
         long now = System.currentTimeMillis();
-        if (now - lastSliderPlayTime < 38L) return; // Crisp tactile rate limit
+        if (now - lastSliderPlayTime < 38L) return;
         lastSliderPlayTime = now;
 
         ASYNC.submit(() -> {

@@ -23,7 +23,7 @@ public final class LiteApiFeatureControl {
     private final Gson gson = new Gson();
     private final Set<String> activeBlocklist = ConcurrentHashMap.newKeySet();
     private long lastRequestTime = 0L;
-    private static final long RATE_LIMIT_MS = 10_000L; // 1 request per 10 seconds per HolyWorld spec
+    private static final long RATE_LIMIT_MS = 10_000L;
 
     private LiteApiFeatureControl() {}
 
@@ -33,19 +33,17 @@ public final class LiteApiFeatureControl {
 
     public void init() {
         try {
-            // Register custom payloads
+
             PayloadTypeRegistry.playS2C().register(LiteApiPayload.ID, LiteApiPayload.CODEC);
             PayloadTypeRegistry.playC2S().register(LiteApiPayload.ID, LiteApiPayload.CODEC);
 
-            // Register packet receiver
             ClientPlayNetworking.registerGlobalReceiver(LiteApiPayload.ID, (payload, context) -> {
                 handleServerResponse(payload.data(), context.client());
             });
 
-            // On Server Join
             ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
                 activeBlocklist.clear();
-                // Send checkFeatures after a brief 500ms delay to let the connection stabilize
+
                 new Timer("LiteAPI-Join-Timer", true).schedule(new TimerTask() {
                     @Override
                     public void run() {
@@ -54,7 +52,6 @@ public final class LiteApiFeatureControl {
                 }, 500L);
             });
 
-            // On Server Disconnect
             ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
                 client.execute(this::unblockAll);
             });
@@ -74,7 +71,7 @@ public final class LiteApiFeatureControl {
 
         try {
             if (!ClientPlayNetworking.canSend(LiteApiPayload.ID)) {
-                // Server doesn't support LiteAPI channel, don't block anything
+
                 return false;
             }
 
@@ -156,7 +153,7 @@ public final class LiteApiFeatureControl {
 
     private List<String> collectFeatureList() {
         Set<String> allFeatures = new LinkedHashSet<>();
-        // Add common standard Minecraft feature names checked by HolyWorld
+
         allFeatures.addAll(List.of("xray", "fly", "speed", "freecam", "killaura", "fullbright", "gamma"));
 
         for (Module m : ModuleManager.getInstance().getModules()) {
@@ -173,7 +170,6 @@ public final class LiteApiFeatureControl {
         list.add(raw.replace(" ", "_"));
         list.add(raw.replace(" ", "-"));
 
-        // Specific semantic aliases
         switch (compact) {
             case "fullbright" -> { list.add("gamma"); list.add("brightness"); }
             case "breakblock" -> { list.add("fastbreak"); list.add("fast_break"); }

@@ -81,15 +81,12 @@ public final class WaypointManager {
             float bx = screen.x - badgeW / 2.0f;
             float by = screen.y - badgeH / 2.0f;
 
-            // Background badge
             Render2D.drawShadow(context, bx, by, badgeW, badgeH, 4.0f, 8.0f, ColorUtil.rgba(0, 0, 0, 160));
             Render2D.drawRoundedRect(context, bx, by, badgeW, badgeH, 4.0f, ColorUtil.rgba(18, 19, 24, 215));
             Render2D.drawRoundedOutline(context, bx, by, badgeW, badgeH, 4.0f, 1.0f, ColorUtil.rgba(168, 85, 247, 180));
 
-            // Accent dot
             Render2D.drawCircle(context, bx + 7.0f, by + badgeH / 2.0f, 2.0f, Theme.getAccent());
 
-            // Text
             ClientFont.draw(context, label, bx + 13.0f, by + 3.5f, ClientFont.SF_MEDIUM, 0xFFFFFFFF);
         }
     }

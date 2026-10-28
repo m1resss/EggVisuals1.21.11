@@ -42,7 +42,7 @@ public class MouseMixin {
                 if (as != null) {
                     if (action == GLFW.GLFW_PRESS) {
                         if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
-                            // Right click: clear the sector
+
                             as.setWheelSlot(sector, ItemStack.EMPTY);
                             GuiSoundManager.playSlider();
                             ci.cancel();
@@ -124,7 +124,6 @@ public class MouseMixin {
             float mouseX = (float) client.mouse.getX() * (float) client.getWindow().getScaledWidth() / (float) client.getWindow().getWidth();
             float mouseY = (float) client.mouse.getY() * (float) client.getWindow().getScaledHeight() / (float) client.getWindow().getHeight();
 
-            // 1. Check Interface / Watermark HUD & Dynamic Island
             egg.client.module.render.Interface iface = ModuleManager.getInstance().getModule(egg.client.module.render.Interface.class);
             if (iface != null && iface.isEnabled()) {
                 if (iface.onMouseScrolled(mouseX, mouseY, vertical)) {
@@ -133,7 +132,6 @@ public class MouseMixin {
                 }
             }
 
-            // 2. Check PotionHUD
             egg.client.module.render.PotionHUD potionHUD = ModuleManager.getInstance().getModule(egg.client.module.render.PotionHUD.class);
             if (potionHUD != null && potionHUD.isEnabled()) {
                 if (potionHUD.onMouseScrolled(mouseX, mouseY, vertical)) {

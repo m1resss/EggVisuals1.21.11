@@ -27,10 +27,6 @@ import org.joml.Vector2f;
 
 import java.util.Optional;
 
-/**
- * 3D-projected Target ESP featuring Astral Souls and Cubes.
- * Wraps entities organically in 3D without raw OpenGL state pollution.
- */
 public class TargetESP extends Module {
     private static TargetESP instance;
 
@@ -194,10 +190,6 @@ public class TargetESP extends Module {
         }
     }
 
-    /**
-     * 3 orbital souls swirling organically in tilted 3D space, wrapping the target like spirits.
-     * Features intense luminous glow and radiant particle halos.
-     */
     private void renderSouls(DrawContext context, double cx, double cy, double cz, double height,
                              float timeSec, float baseR, float spd, float sizeMult, int steps, int color) {
         double timeMs = timeSec * 1000.0;
@@ -227,32 +219,27 @@ public class TargetESP extends Module {
                 }
 
                 if (i == 0) {
-                    // Head: bright glowing orb with clean vibrant bloom and white-hot spark
+
                     float headSz = 0.35f * sizeMult;
                     float alpha = this.animProgress * 0.95f;
 
-                    // 1. Radiant bloom aura (vibrant, luminous halo)
                     drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, headSz * 1.9f, ColorUtil.withAlphaFloat(color, alpha * 0.70f));
 
-                    // 2. Glowing body
                     drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, headSz, ColorUtil.withAlphaFloat(color, alpha * 0.95f));
 
-                    // 3. Bright white luminous spark in center (makes it shine and glow brightly)
                     if (this.coreGlow.get()) {
                         drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, headSz * 0.45f, ColorUtil.withAlphaFloat(0xFFFFFFFF, this.animProgress * 0.98f));
                     }
                 } else {
-                    // Sleek fading particle trail
+
                     float tailSz = 0.22f * sizeMult * (0.25f + 0.75f * trailFactor);
                     float alpha = this.animProgress * (0.08f + 0.65f * trailFactor * trailFactor);
 
-                    // Soft glow on upper trail only
                     if (i <= 2) {
                         drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, tailSz * 1.4f, ColorUtil.withAlphaFloat(color, alpha * 0.45f));
                     }
                     drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, tailSz, ColorUtil.withAlphaFloat(color, alpha));
 
-                    // Delicate spark along upper trail
                     if (i < steps / 3) {
                         drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, tailSz * 0.35f, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha * 0.60f));
                     }
@@ -261,9 +248,6 @@ public class TargetESP extends Module {
         }
     }
 
-    /**
-     * 3D floating and orbiting cube wisps.
-     */
     private void renderCubes(DrawContext context, double cx, double cy, double cz, double height,
                             float timeSec, float baseR, float spd, float sizeMult, int color) {
         int cubeCount = 8;
@@ -282,9 +266,6 @@ public class TargetESP extends Module {
         }
     }
 
-    /**
-     * Billboard particle projection with depth scaling and screen-boundary clipping.
-     */
     private void drawParticle(DrawContext context, Identifier texture, double worldX, double worldY, double worldZ,
                               float worldSize, int color) {
         if ((color & 0xFF000000) == 0) return;

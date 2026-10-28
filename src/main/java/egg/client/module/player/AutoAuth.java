@@ -5,9 +5,6 @@ import egg.client.module.Module;
 import egg.client.module.setting.StringSetting;
 import net.minecraft.client.MinecraftClient;
 
-/**
- * 1:1 AutoAuth port from egg 1.21.4 (delta.module.player.AutoAuth).
- */
 public class AutoAuth extends Module {
     private final StringSetting authPassword = new StringSetting("Пароль авторизации", "", "Пароль для автоматического /login");
     private final StringSetting regPassword = new StringSetting("Пароль регистрации", "", "Пароль для автоматического /register");

@@ -20,19 +20,17 @@ public class ModuleManager {
     private final Map<Class<? extends Module>, Module> moduleClassMap = new HashMap<>();
 
     public ModuleManager() {
-        // Combat
+
         register(new HitColor());
         register(new TapeMouse());
         register(new ShiftTAP());
         register(new egg.client.module.combat.NoFriendDamage());
         register(new egg.client.module.combat.AutoSwap());
 
-        // Movement
         register(new Sprint());
         register(new NoJumpDelay());
         register(new FastPlace());
 
-        // Visual (under Category.ESP / Visuals)
         register(new Interface());
         register(new PotionHUD());
         register(new FullBright());
@@ -51,7 +49,6 @@ public class ModuleManager {
         register(new TargetHUD());
         register(new HitSparks());
 
-        // Player
         register(new egg.client.module.player.InventorySorter());
         register(new AutoRespawn());
         register(new NoChatBackground());
@@ -63,15 +60,13 @@ public class ModuleManager {
         register(new ThirdPerson());
         register(new AutoAuth());
 
-        // Misc
         register(new ClientSettings());
         register(new StreamerMode());
         register(new egg.client.module.render.WorldTweaks());
         register(new egg.client.module.misc.ZakoOptimization());
 
         /*
-        // Cosmetic
-        register(new egg.client.module.cosmetic.MeleeSkins());
+                register(new egg.client.module.cosmetic.MeleeSkins());
         */
     }
 
@@ -132,7 +127,7 @@ public class ModuleManager {
     }
 
     public void onKey(int key, int action) {
-        if (action != 1) return; // GLFW_PRESS only
+        if (action != 1) return;
         for (Module m : modules) {
             if (m.isBlocked()) continue;
             if (m.getKey() != 0 && m.getKey() == key) {

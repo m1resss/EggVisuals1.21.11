@@ -48,31 +48,24 @@ public class InventoryPreset {
         return rules;
     }
 
-    /**
-     * Снимок текущего инвентаря игрока со всеми слотами (хотбар, основной, броня, вторая рука)
-     */
     public void snapshotFromPlayer(PlayerInventory playerInv) {
         if (playerInv == null) return;
 
-        // 0..8: Hotbar
         for (int i = 0; i < 9; i++) {
             ItemStack stack = playerInv.getStack(i);
             rules.put(i, InventorySlotRule.fromStack(i, stack));
         }
 
-        // 9..35: Main Inventory
         for (int i = 9; i < 36; i++) {
             ItemStack stack = playerInv.getStack(i);
             rules.put(i, InventorySlotRule.fromStack(i, stack));
         }
 
-        // 36: Boots, 37: Leggings, 38: Chestplate, 39: Helmet
         for (int i = 36; i <= 39; i++) {
             ItemStack stack = playerInv.getStack(i);
             rules.put(i, InventorySlotRule.fromStack(i, stack));
         }
 
-        // 40: Offhand
         ItemStack offhand = playerInv.getStack(40);
         rules.put(40, InventorySlotRule.fromStack(40, offhand));
     }

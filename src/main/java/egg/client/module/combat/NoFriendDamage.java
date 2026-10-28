@@ -5,9 +5,6 @@ import egg.client.module.Module;
 import egg.client.util.FriendManager;
 import net.minecraft.entity.Entity;
 
-/**
- * 1:1 NoFriendDamage port from egg 1.21.4 (delta.module.combat.NoFriendDamage).
- */
 public class NoFriendDamage extends Module {
     public NoFriendDamage() {
         super("No Friend Damage", "Не позволяет наносить урон вашим друзьям", Category.COMBAT);

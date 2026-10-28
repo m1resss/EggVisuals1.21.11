@@ -11,9 +11,6 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.util.hit.EntityHitResult;
 
-/**
- * 100% mathematically symmetric esports Crosshair.
- */
 public class Crosshair extends Module {
     private final SliderSetting gap = new SliderSetting("Расстояние от центра", 3.0, 0.0, 10.0, 0.5, "Зазор между центром и сегментами");
     private final SliderSetting length = new SliderSetting("Длина сегментов", 3.5, 1.0, 10.0, 0.5, "Длина каждого сегмента прицела");
@@ -52,25 +49,21 @@ public class Crosshair extends Module {
         int hSpanY = (th == 1) ? cy : cy - (th / 2);
         int vSpanX = (th == 1) ? cx : cx - (th / 2);
 
-        // Right segment
         int rX1 = cx + actualGap;
         int rX2 = rX1 + lenVal;
         int rY1 = hSpanY;
         int rY2 = rY1 + th;
 
-        // Left segment (symmetric distance from center)
         int lX1 = cx - actualGap - lenVal + 1;
         int lX2 = cx - actualGap + 1;
         int lY1 = hSpanY;
         int lY2 = lY1 + th;
 
-        // Bottom segment
         int bX1 = vSpanX;
         int bX2 = bX1 + th;
         int bY1 = cy + actualGap;
         int bY2 = bY1 + lenVal;
 
-        // Top segment (symmetric distance from center)
         int tX1 = vSpanX;
         int tX2 = tX1 + th;
         int tY1 = cy - actualGap - lenVal + 1;
@@ -88,7 +81,6 @@ public class Crosshair extends Module {
         context.fill(bX1, bY1, bX2, bY2, color);
         context.fill(tX1, tY1, tX2, tY2, color);
 
-        // Center dot
         if (this.dot.get() && actualGap > 0) {
             int dotX1 = vSpanX;
             int dotX2 = vSpanX + th;

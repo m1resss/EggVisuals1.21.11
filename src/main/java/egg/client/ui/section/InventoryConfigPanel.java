@@ -18,10 +18,6 @@ import net.minecraft.text.Text;
 
 import java.util.List;
 
-/**
- * Dedicated spacious Inventory Configs section in ClickGUI.
- * Displays preset cards and uncompressed visual inventory grid with tooltips and sorting.
- */
 public class InventoryConfigPanel {
 
     private static InventoryPreset detailedPreset = null;
@@ -29,7 +25,6 @@ public class InventoryConfigPanel {
     private static float targetScroll = 0.0f;
     private static float maxScroll = 0.0f;
 
-    // Hover tooltip info
     private static InventorySlotRule hoveredRule = null;
     private static int hoveredSlotId = -1;
     private static boolean hoveredSlotHasItem = false;
@@ -62,15 +57,10 @@ public class InventoryConfigPanel {
 
         context.disableScissor();
 
-        // Render floating tooltip on top of everything
         if (hoveredRule != null && !hoveredRule.getDisplayStack().isEmpty()) {
             renderTooltip(context, hoveredRule, hoveredSlotId, hoveredSlotHasItem, mouseX, mouseY);
         }
     }
-
-    // =========================================================================
-    // VIEW 1: PRESET CARDS LIST VIEW
-    // =========================================================================
 
     private static void renderCardsView(DrawContext context, float x, float y, float w, float h, float mouseX, float mouseY, float alpha) {
         InventoryLayoutManager lm = InventoryLayoutManager.getInstance();
@@ -79,11 +69,9 @@ public class InventoryConfigPanel {
 
         float curY = y + 4.0f - scrollOffset;
 
-        // Header Title
         ClientFont.draw(context, "Профили инвентаря", x + 4.0f, curY, ClientFont.SF_BOLD, ColorUtil.rgba(255, 255, 255, (int) (255 * alpha)));
         ClientFont.draw(context, "Раскладки и авто-сортировка", x + 4.0f, curY + 14.0f, ClientFont.SF_REGULAR, ColorUtil.rgba(160, 168, 185, (int) (210 * alpha)));
 
-        // "+ Создать профиль" button
         float newBtnW = 124.0f;
         float newBtnH = 22.0f;
         float newBtnX = x + w - newBtnW - 4.0f;
@@ -107,7 +95,6 @@ public class InventoryConfigPanel {
             return;
         }
 
-        // Grid of Preset Cards (2 columns)
         float colGap = 8.0f;
         float rowGap = 8.0f;
         float cardW = (w - colGap) / 2.0f;
@@ -128,13 +115,11 @@ public class InventoryConfigPanel {
             Render2D.drawRoundedRect(context, cx, cy, cardW, cardH, Theme.CARD_RADIUS, ColorUtil.withAlphaFloat(cardBg, alpha));
             Render2D.drawRoundedOutline(context, cx, cy, cardW, cardH, Theme.CARD_RADIUS, isActive ? 1.5f : 1.0f, ColorUtil.withAlphaFloat(cardBorder, alpha));
 
-            // Card Title
             String name = p.getName();
             if (name.startsWith("КФГ ")) name = name.substring(4);
             if (name.startsWith("Профиль ")) name = name.substring(8);
             ClientFont.draw(context, name, cx + 10.0f, cy + 9.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
 
-            // Active Badge or Select Pill
             if (isActive) {
                 float badgeW = 58.0f;
                 float badgeH = 16.0f;
@@ -153,9 +138,8 @@ public class InventoryConfigPanel {
                 ClientFont.drawCentered(context, "Выбрать", px + pillW / 2.0f, py + pillH / 2.0f, ClientFont.SF_MEDIUM, hoverAct ? 0xFFFFFFFF : 0xFFB0B8C8);
             }
 
-            // Key item preview row (6 items)
             float slotY = cy + 30.0f;
-            int[] previewSlots = {0, 1, 2, 3, 39, 40}; // Sword, pearl/gapple, totem, armor, offhand
+            int[] previewSlots = {0, 1, 2, 3, 39, 40};
             for (int s = 0; s < previewSlots.length; s++) {
                 float sx = cx + 10.0f + s * 24.0f;
                 Render2D.drawRoundedRect(context, sx, slotY, 21.0f, 21.0f, 4.0f, ColorUtil.rgba(24, 26, 34, 220));
@@ -167,11 +151,9 @@ public class InventoryConfigPanel {
                 }
             }
 
-            // Card Footer Buttons
             float btnH = 20.0f;
             float btnY = cy + cardH - btnH - 8.0f;
 
-            // 1. "Сортировка" Button
             float sortBtnW = 78.0f;
             float sortBtnX = cx + 10.0f;
             boolean hoverSort = mouseX >= sortBtnX && mouseX <= sortBtnX + sortBtnW && mouseY >= btnY && mouseY <= btnY + btnH;
@@ -179,7 +161,6 @@ public class InventoryConfigPanel {
             Render2D.drawRoundedRect(context, sortBtnX, btnY, sortBtnW, btnH, 4.0f, ColorUtil.withAlphaFloat(sBg, alpha));
             ClientFont.drawCentered(context, "Сортировка", sortBtnX + sortBtnW / 2.0f, btnY + btnH / 2.0f, ClientFont.SF_MEDIUM, 0xFFFFFFFF);
 
-            // 2. "Открыть" Button
             float viewBtnW = 66.0f;
             float viewBtnX = sortBtnX + sortBtnW + 6.0f;
             boolean hoverView = mouseX >= viewBtnX && mouseX <= viewBtnX + viewBtnW && mouseY >= btnY && mouseY <= btnY + btnH;
@@ -187,7 +168,6 @@ public class InventoryConfigPanel {
             Render2D.drawRoundedRect(context, viewBtnX, btnY, viewBtnW, btnH, 4.0f, ColorUtil.withAlphaFloat(vBg, alpha));
             ClientFont.drawCentered(context, "Открыть", viewBtnX + viewBtnW / 2.0f, btnY + btnH / 2.0f, ClientFont.SF_MEDIUM, 0xFFFFFFFF);
 
-            // 3. Delete button
             float delBtnW = 20.0f;
             float delBtnX = cx + cardW - delBtnW - 8.0f;
             boolean hoverDel = mouseX >= delBtnX && mouseX <= delBtnX + delBtnW && mouseY >= btnY && mouseY <= btnY + btnH;
@@ -207,10 +187,6 @@ public class InventoryConfigPanel {
         maxScroll = Math.max(0.0f, totalH - h);
     }
 
-    // =========================================================================
-    // VIEW 2: FULL DETAILED INVENTORY VIEW
-    // =========================================================================
-
     private static void renderDetailView(DrawContext context, float x, float y, float w, float h, float mouseX, float mouseY, float alpha) {
         if (detailedPreset == null) return;
         MinecraftClient mc = MinecraftClient.getInstance();
@@ -219,7 +195,6 @@ public class InventoryConfigPanel {
 
         float curY = y + 4.0f - scrollOffset;
 
-        // Navigation Top Bar
         float backBtnW = 68.0f;
         float backBtnH = 22.0f;
         boolean hoverBack = mouseX >= x + 4.0f && mouseX <= x + 4.0f + backBtnW && mouseY >= curY && mouseY <= curY + backBtnH;
@@ -235,17 +210,14 @@ public class InventoryConfigPanel {
         Render2D.drawLine(context, arrowX, arrowY, arrowX + 8.0f, arrowY, arrCol, 1.5f);
         ClientFont.draw(context, "Назад", x + 27.0f, curY + (backBtnH - ClientFont.FONT_HEIGHT) / 2.0f + 0.5f, ClientFont.SF_MEDIUM, ColorUtil.withAlphaFloat(hoverBack ? 0xFFFFFFFF : 0xFFE2E8F0, alpha));
 
-        // Title: vertically centered with the 22px bar
         float titleX = x + 4.0f + backBtnW + 12.0f;
         String dName = detailedPreset.getName();
         if (dName.startsWith("КФГ ")) dName = dName.substring(4);
         if (dName.startsWith("Профиль ")) dName = dName.substring(8);
         ClientFont.draw(context, dName, titleX, curY + (backBtnH - ClientFont.FONT_HEIGHT) / 2.0f + 0.5f, ClientFont.SF_BOLD, 0xFFFFFFFF);
 
-        // Right side action buttons
         float actionBtnH = 22.0f;
 
-        // 1. "Сортировка" Button
         float sortBtnW = 84.0f;
         float sortBtnX = x + w - sortBtnW - 4.0f;
         boolean hoverSort = mouseX >= sortBtnX && mouseX <= sortBtnX + sortBtnW && mouseY >= curY && mouseY <= curY + actionBtnH;
@@ -253,7 +225,6 @@ public class InventoryConfigPanel {
         Render2D.drawRoundedRect(context, sortBtnX, curY, sortBtnW, actionBtnH, 5.0f, ColorUtil.withAlphaFloat(sBg, alpha));
         ClientFont.drawCentered(context, "Сортировка", sortBtnX + sortBtnW / 2.0f, curY + actionBtnH / 2.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
 
-        // 2. "Снимок" Button
         float snapBtnW = 64.0f;
         float snapBtnX = sortBtnX - snapBtnW - 6.0f;
         boolean hoverSnap = mouseX >= snapBtnX && mouseX <= snapBtnX + snapBtnW && mouseY >= curY && mouseY <= curY + actionBtnH;
@@ -261,7 +232,6 @@ public class InventoryConfigPanel {
         Render2D.drawRoundedRect(context, snapBtnX, curY, snapBtnW, actionBtnH, 5.0f, ColorUtil.withAlphaFloat(snBg, alpha));
         ClientFont.drawCentered(context, "Снимок", snapBtnX + snapBtnW / 2.0f, curY + actionBtnH / 2.0f, ClientFont.SF_MEDIUM, 0xFFFFFFFF);
 
-        // 3. "Активен" / "Выбрать" Button
         float actBtnW = 66.0f;
         float actBtnX = snapBtnX - actBtnW - 6.0f;
         boolean hoverAct = mouseX >= actBtnX && mouseX <= actBtnX + actBtnW && mouseY >= curY && mouseY <= curY + actionBtnH;
@@ -271,7 +241,6 @@ public class InventoryConfigPanel {
 
         curY += 32.0f;
 
-        // Inventory Container Card
         float containerW = w - 8.0f;
         float containerH = 176.0f;
         float containerX = x + 4.0f;
@@ -280,14 +249,12 @@ public class InventoryConfigPanel {
         Render2D.drawRoundedRect(context, containerX, containerY, containerW, containerH, Theme.CARD_RADIUS, ColorUtil.withAlphaFloat(Theme.getCardBg(), alpha));
         Render2D.drawRoundedOutline(context, containerX, containerY, containerW, containerH, Theme.CARD_RADIUS, 1.0f, ColorUtil.withAlphaFloat(Theme.CARD_BORDER, alpha));
 
-        // Uncompressed Inventory Layout inside container
         float slotSize = 21.0f;
         float slotStep = 23.0f;
 
         float gridStartX = containerX + 16.0f;
         float gridStartY = containerY + 14.0f;
 
-        // 1. Armor column on left (Helmet 39, Chest 38, Legs 37, Boots 36)
         int[] armorSlots = {39, 38, 37, 36};
         for (int i = 0; i < 4; i++) {
             float sx = gridStartX;
@@ -295,16 +262,13 @@ public class InventoryConfigPanel {
             renderSlot(context, detailedPreset, armorSlots[i], sx, sy, slotSize, mouseX, mouseY, mc);
         }
 
-        // 2. Offhand slot (Slot 40)
         float offhandX = gridStartX + 28.0f;
         float offhandY = gridStartY + 3 * slotStep;
         renderSlot(context, detailedPreset, 40, offhandX, offhandY, slotSize, mouseX, mouseY, mc);
 
-        // Divider
         float divX = offhandX + slotSize + 8.0f;
         Render2D.drawRect(context, divX, gridStartY, 1.0f, 4 * slotStep - 2.0f, ColorUtil.rgba(255, 255, 255, 14));
 
-        // 3. Main Inventory (3 rows x 9 columns, slots 9 to 35)
         float mainX = divX + 9.0f;
         float mainY = gridStartY;
         for (int row = 0; row < 3; row++) {
@@ -316,11 +280,9 @@ public class InventoryConfigPanel {
             }
         }
 
-        // Horizontal divider before hotbar
         float hotbarDivY = mainY + 3 * slotStep + 3.0f;
         Render2D.drawRect(context, mainX, hotbarDivY, 9 * slotStep - 2.0f, 1.0f, ColorUtil.rgba(255, 255, 255, 16));
 
-        // 4. Hotbar (1 row x 9 columns, slots 0 to 8)
         float hotbarY = hotbarDivY + 5.0f;
         for (int col = 0; col < 9; col++) {
             float sx = mainX + col * slotStep;
@@ -355,13 +317,13 @@ public class InventoryConfigPanel {
 
         if (rule != null && !rule.getDisplayStack().isEmpty()) {
             ItemStack stack = rule.getDisplayStack();
-            // Dimmed if missing in player inventory
+
             if (!hasItemInInv) {
                 context.drawItem(stack, (int) sx + 2, (int) sy + 2);
                 Render2D.drawRoundedRect(context, sx + 1.0f, sy + 1.0f, size - 2.0f, size - 2.0f, 3.0f, ColorUtil.rgba(0, 0, 0, 110));
             } else {
                 context.drawItem(stack, (int) sx + 2, (int) sy + 2);
-                // Subtle green match dot in top-right corner
+
                 Render2D.drawCircle(context, sx + size - 3.5f, sy + 3.5f, 2.0f, ColorUtil.rgba(46, 204, 113, 240));
             }
             context.drawStackOverlay(mc.textRenderer, stack, (int) sx + 2, (int) sy + 2);
@@ -399,7 +361,6 @@ public class InventoryConfigPanel {
         float tx = mouseX + 12.0f;
         float ty = mouseY + 12.0f;
 
-        // Keep inside screen bounds
         if (tx + tipW > mc.getWindow().getScaledWidth() - 4.0f) {
             tx = mouseX - tipW - 8.0f;
         }
@@ -426,10 +387,6 @@ public class InventoryConfigPanel {
         return "Основной инвентарь · Слот " + (slotId - 8);
     }
 
-    // =========================================================================
-    // MOUSE INPUT HANDLING
-    // =========================================================================
-
     public static boolean mouseClicked(float x, float y, float w, float h, double mouseX, double mouseY, int button) {
         if (button != 0) return false;
 
@@ -439,7 +396,6 @@ public class InventoryConfigPanel {
         if (detailedPreset != null) {
             float curY = y + 4.0f - scrollOffset;
 
-            // 1. "Назад" Button
             float backBtnW = 64.0f;
             float backBtnH = 22.0f;
             if (mouseX >= x + 4.0f && mouseX <= x + 4.0f + backBtnW && mouseY >= curY && mouseY <= curY + backBtnH) {
@@ -448,7 +404,6 @@ public class InventoryConfigPanel {
                 return true;
             }
 
-            // 2. "Сортировка" Button
             float sortBtnW = 84.0f;
             float sortBtnX = x + w - sortBtnW - 4.0f;
             if (mouseX >= sortBtnX && mouseX <= sortBtnX + sortBtnW && mouseY >= curY && mouseY <= curY + 22.0f) {
@@ -459,7 +414,6 @@ public class InventoryConfigPanel {
                 return true;
             }
 
-            // 3. "Снимок" Button
             float snapBtnW = 64.0f;
             float snapBtnX = sortBtnX - snapBtnW - 6.0f;
             if (mouseX >= snapBtnX && mouseX <= snapBtnX + snapBtnW && mouseY >= curY && mouseY <= curY + 22.0f) {
@@ -470,7 +424,6 @@ public class InventoryConfigPanel {
                 return true;
             }
 
-            // 4. "Активен" / "Выбрать" Button
             float actBtnW = 66.0f;
             float actBtnX = snapBtnX - actBtnW - 6.0f;
             if (mouseX >= actBtnX && mouseX <= actBtnX + actBtnW && mouseY >= curY && mouseY <= curY + 22.0f) {
@@ -484,10 +437,8 @@ public class InventoryConfigPanel {
             return false;
         }
 
-        // CARDS VIEW CLICKS
         float curY = y + 4.0f - scrollOffset;
 
-        // 1. "+ Создать профиль" Button
         float newBtnW = 124.0f;
         float newBtnH = 22.0f;
         float newBtnX = x + w - newBtnW - 4.0f;
@@ -523,7 +474,6 @@ public class InventoryConfigPanel {
                 float btnH = 20.0f;
                 float btnY = cy + cardH - btnH - 8.0f;
 
-                // 1. "Сортировка" button on card
                 float sortBtnW = 78.0f;
                 float sortBtnX = cx + 10.0f;
                 if (mouseX >= sortBtnX && mouseX <= sortBtnX + sortBtnW && mouseY >= btnY && mouseY <= btnY + btnH) {
@@ -534,7 +484,6 @@ public class InventoryConfigPanel {
                     return true;
                 }
 
-                // 2. "Открыть" button on card
                 float viewBtnW = 66.0f;
                 float viewBtnX = sortBtnX + sortBtnW + 6.0f;
                 if (mouseX >= viewBtnX && mouseX <= viewBtnX + viewBtnW && mouseY >= btnY && mouseY <= btnY + btnH) {
@@ -543,7 +492,6 @@ public class InventoryConfigPanel {
                     return true;
                 }
 
-                // 3. Select Pill
                 float pillW = 60.0f;
                 float pillH = 16.0f;
                 float px = cx + cardW - pillW - 8.0f;
@@ -556,7 +504,6 @@ public class InventoryConfigPanel {
                     return true;
                 }
 
-                // 4. Delete button
                 float delBtnW = 20.0f;
                 float delBtnX = cx + cardW - delBtnW - 8.0f;
                 if (mouseX >= delBtnX && mouseX <= delBtnX + delBtnW && mouseY >= btnY && mouseY <= btnY + btnH) {
@@ -568,7 +515,6 @@ public class InventoryConfigPanel {
                     return true;
                 }
 
-                // Click on card body -> open detailed view
                 detailedPreset = p;
                 GuiSoundManager.playSelect();
                 return true;
@@ -583,6 +529,6 @@ public class InventoryConfigPanel {
     }
 
     public static void mouseReleased() {
-        // cleanup drag if any
+
     }
 }

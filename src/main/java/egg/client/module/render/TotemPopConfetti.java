@@ -35,23 +35,21 @@ public class TotemPopConfetti extends Module {
     private final Random random = new Random();
     private long lastFrameNanos = 0L;
 
-    // Green shades for polygons (parallelograms, triangles, rectangles)
     private static final int[] GREEN_PALETTE = {
-            0x2ECC71, // Emerald
-            0x10B981, // Mint
-            0x22C55E, // Bright Spring Green
-            0x4ADE80, // Pastel Green
-            0x16A34A, // Forest Green
-            0x84CC16, // Lime
-            0x059669  // Deep Jade
+            0x2ECC71,
+            0x10B981,
+            0x22C55E,
+            0x4ADE80,
+            0x16A34A,
+            0x84CC16,
+            0x059669
     };
 
-    // Yellow shades for glowing circles
     private static final int[] YELLOW_PALETTE = {
-            0xFFD700, // Gold
-            0xFFFF33, // Neon Yellow
-            0xFFE033, // Radiant Yellow
-            0xFFF566  // Light Sun Yellow
+            0xFFD700,
+            0xFFFF33,
+            0xFFE033,
+            0xFFF566
     };
 
     public TotemPopConfetti() {
@@ -75,7 +73,7 @@ public class TotemPopConfetti extends Module {
         float lifeSec = lifetime.getValueFloat();
 
         for (int i = 0; i < num; i++) {
-            // Pick shape: 0 = PARALLELOGRAM, 1 = TRIANGLE, 2 = RECTANGLE, 3 = GLOWING_CIRCLE
+
             int typeIndex = i % 4;
             Shape shape = Shape.values()[typeIndex];
 
@@ -85,29 +83,24 @@ public class TotemPopConfetti extends Module {
             p.y = origin.y + (random.nextDouble() - 0.5) * 0.2;
             p.z = origin.z + (random.nextDouble() - 0.5) * 0.2;
 
-            // Explosion velocity: fountain cone upwards
             double azimuth = random.nextDouble() * Math.PI * 2.0;
-            double elevation = 0.25 + random.nextDouble() * 1.15; // 15 to 80 degrees up
+            double elevation = 0.25 + random.nextDouble() * 1.15;
             double vMag = (0.16 + random.nextDouble() * 0.30) * speedMul;
 
             p.vx = Math.cos(azimuth) * Math.cos(elevation) * vMag;
             p.vz = Math.sin(azimuth) * Math.cos(elevation) * vMag;
             p.vy = Math.sin(elevation) * vMag + (0.10 + random.nextDouble() * 0.16) * speedMul;
 
-            // Terminal fall speed for light paper
             p.terminalVelocity = 0.038f + random.nextFloat() * 0.035f;
 
-            // 3D orientation & rotation
             p.pitch = random.nextFloat() * 360.0f;
             p.yaw = random.nextFloat() * 360.0f;
             p.roll = random.nextFloat() * 360.0f;
 
-            // Angular velocity (tumble rate)
             p.rotSpeedPitch = (random.nextFloat() - 0.5f) * 450.0f;
             p.rotSpeedYaw = (random.nextFloat() - 0.5f) * 450.0f;
             p.rotSpeedRoll = (random.nextFloat() - 0.5f) * 450.0f;
 
-            // Aerodynamic flutter
             p.flutterPhaseX = random.nextFloat() * 6.28f;
             p.flutterPhaseZ = random.nextFloat() * 6.28f;
             p.flutterFreqX = 3.5f + random.nextFloat() * 3.5f;
@@ -117,7 +110,6 @@ public class TotemPopConfetti extends Module {
             p.age = 0.0f;
             p.maxAge = lifeSec * (0.85f + random.nextFloat() * 0.35f);
 
-            // Shape dimensions & colors
             if (shape == Shape.GLOWING_CIRCLE) {
                 p.radius = 0.045f + random.nextFloat() * 0.035f;
                 int baseCol = YELLOW_PALETTE[random.nextInt(YELLOW_PALETTE.length)];
@@ -138,7 +130,7 @@ public class TotemPopConfetti extends Module {
                     p.width = 0.09f + random.nextFloat() * 0.05f;
                     p.height = 0.07f + random.nextFloat() * 0.04f;
                     p.shear = (random.nextFloat() - 0.5f) * p.width * 0.4f;
-                } else { // RECTANGLE
+                } else {
                     p.width = 0.045f + random.nextFloat() * 0.025f;
                     p.height = 0.11f + random.nextFloat() * 0.06f;
                 }
@@ -173,7 +165,6 @@ public class TotemPopConfetti extends Module {
         float gravMul = gravity.getValueFloat();
         float flutterMul = flutter.getValueFloat();
 
-        // 1. Physics update
         Iterator<ConfettiParticle> it = particles.iterator();
         while (it.hasNext()) {
             ConfettiParticle p = it.next();
@@ -184,20 +175,17 @@ public class TotemPopConfetti extends Module {
             }
 
             if (!p.onGround) {
-                // Drag (air friction)
+
                 double drag = Math.pow(0.92, dt * 20.0);
                 p.vx *= drag;
                 p.vz *= drag;
 
-                // Gravity
                 p.vy -= 0.007 * gravMul * (dt * 20.0);
 
-                // Terminal velocity for falling paper
                 if (p.vy < -p.terminalVelocity) {
                     p.vy = MathHelper.lerp(0.08f * (dt * 20.0f), (float) p.vy, -p.terminalVelocity);
                 }
 
-                // Aerodynamic flutter / glide
                 float swayX = (float) Math.sin(p.age * p.flutterFreqX + p.flutterPhaseX) * p.flutterAmp * flutterMul;
                 float swayZ = (float) Math.cos(p.age * p.flutterFreqZ + p.flutterPhaseZ) * p.flutterAmp * flutterMul;
 
@@ -205,7 +193,6 @@ public class TotemPopConfetti extends Module {
                 double nextY = p.y + p.vy * (dt * 20.0);
                 double nextZ = p.z + (p.vz + swayZ) * (dt * 20.0);
 
-                // Collision with blocks
                 BlockPos bpos = BlockPos.ofFloored(nextX, nextY, nextZ);
                 if (mc.world.isChunkLoaded(bpos.getX() >> 4, bpos.getZ() >> 4)) {
                     BlockState state = mc.world.getBlockState(bpos);
@@ -226,18 +213,16 @@ public class TotemPopConfetti extends Module {
                     p.z = nextZ;
                 }
 
-                // 3D Tumbling rotation
                 p.pitch += p.rotSpeedPitch * dt;
                 p.yaw += p.rotSpeedYaw * dt;
                 p.roll += p.rotSpeedRoll * dt;
 
-                // Rotational damping
                 float rotDamp = (float) Math.pow(0.985, dt * 20.0);
                 p.rotSpeedPitch *= rotDamp;
                 p.rotSpeedYaw *= rotDamp;
                 p.rotSpeedRoll *= rotDamp;
             } else {
-                // Resting on ground: settle flat gently
+
                 p.pitch = MathHelper.lerp(dt * 8.0f, p.pitch, 0.0f);
                 p.roll = MathHelper.lerp(dt * 8.0f, p.roll, 0.0f);
             }
@@ -245,39 +230,33 @@ public class TotemPopConfetti extends Module {
 
         if (particles.isEmpty()) return;
 
-        // 2. Render 3D Paper Confetti
-        // RenderLayers.debugQuads() uses POSITION_COLOR, translucent blend, no face culling (visible from both sides!)
         VertexConsumer quadBuffer = consumers.getBuffer(RenderLayers.debugQuads());
 
-        // Directional light vector from above-front
         Vector3f lightDir = new Vector3f(0.25f, 0.95f, 0.18f).normalize();
 
         for (ConfettiParticle p : particles) {
-            // Fade-out over the last 1.2 seconds of lifetime
+
             float fadeProgress = (p.maxAge - p.age) / 1.2f;
             float alpha = MathHelper.clamp(fadeProgress, 0.0f, 1.0f);
             if (alpha <= 0.005f) continue;
 
             int alphaInt = Math.round(alpha * 255.0f);
 
-            // 3D rotation quaternion
             Quaternionf rot = new Quaternionf()
                     .rotationYXZ((float) Math.toRadians(p.yaw),
                                  (float) Math.toRadians(p.pitch),
                                  (float) Math.toRadians(p.roll));
 
-            // Surface normal in world space (for realistic paper lighting)
             Vector3f normal = new Vector3f(0.0f, 0.0f, 1.0f).rotate(rot);
             float dotLight = Math.abs(normal.dot(lightDir));
             float brightness = 0.65f + 0.35f * dotLight;
 
-            // Camera view vector for backface shading
             float dx = (float) (p.x - camPos.x);
             float dy = (float) (p.y - camPos.y);
             float dz = (float) (p.z - camPos.z);
             Vector3f viewDir = new Vector3f(dx, dy, dz).normalize();
             boolean isFrontFace = normal.dot(viewDir) < 0;
-            float faceMul = isFrontFace ? 1.0f : 0.82f; // Distinct front/back face shading!
+            float faceMul = isFrontFace ? 1.0f : 0.82f;
 
             int cr = MathHelper.clamp(Math.round(p.r * brightness * faceMul), 0, 255);
             int cg = MathHelper.clamp(Math.round(p.g * brightness * faceMul), 0, 255);
@@ -294,7 +273,6 @@ public class TotemPopConfetti extends Module {
             }
         }
 
-        // 3. Render glowing halos for yellow circles with additive lighting
         if (glow.isEnabled()) {
             VertexConsumer glowBuffer = consumers.getBuffer(RenderLayers.lightning());
             for (ConfettiParticle p : particles) {
@@ -358,7 +336,6 @@ public class TotemPopConfetti extends Module {
         float hh = p.height * 0.5f;
         float apex = p.shear;
 
-        // Quad with 4th vertex collapsed to 3rd forms a true 3D triangle
         emitQuad(buf, p, rot, camPos,
                 -hw,  -hh,
                  hw,  -hh,
@@ -369,7 +346,7 @@ public class TotemPopConfetti extends Module {
 
     private void renderCircle(VertexConsumer buf, ConfettiParticle p, Quaternionf rot, Vec3d camPos, int r, int g, int b, int a) {
         float rad = p.radius;
-        // Clean 12-segment triangle fan disc centered at (0, 0)
+
         for (int i = 0; i < CIRCLE_SEGS; i++) {
             float x1 = COS_TABLE[i] * rad;
             float y1 = SIN_TABLE[i] * rad;
@@ -389,8 +366,6 @@ public class TotemPopConfetti extends Module {
         float innerRad = p.radius * 0.55f;
         float outerRad = p.radius * 2.1f;
 
-        // Radial glowing ring: smoothly fades from glowAlpha at circle boundary to 0 at outer perimeter
-        // Circular 12-segment ring completely eliminates square boxes
         for (int i = 0; i < CIRCLE_SEGS; i++) {
             float inX0 = COS_TABLE[i] * innerRad;
             float inY0 = SIN_TABLE[i] * innerRad;

@@ -24,10 +24,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 
-/**
- * 1:1 HitSparks module ported from Deadcode (org.deadcode.client.modules.impl.visual.HitSparks).
- * Renders glowing ballistic needle sparks on entity attack with exact air resistance and gravity.
- */
 public class HitSparks extends Module {
 
     private static HitSparks instance;
@@ -51,9 +47,6 @@ public class HitSparks extends Module {
         return instance;
     }
 
-    /**
-     * Called on player attacking entity (from ClientPlayerInteractionManagerMixin).
-     */
     public void onAttack(PlayerEntity player, Entity target) {
         if (!isEnabled() || target == null || !(target instanceof LivingEntity)) return;
 
@@ -69,9 +62,6 @@ public class HitSparks extends Module {
         spawnBurst(hitPos, spray, isCrit, (float) amount.get());
     }
 
-    /**
-     * Checks if the attack satisfies Minecraft's critical hit criteria (Class1080.method7222 in Deadcode).
-     */
     public static boolean isCriticalHit(PlayerEntity player, Entity target) {
         return target instanceof LivingEntity
                 && player.getAttackCooldownProgress(0.5f) > 0.9f
@@ -84,9 +74,6 @@ public class HitSparks extends Module {
                 && !player.isSprinting();
     }
 
-    /**
-     * Raycasts eye vector to entity bounding box (Class1080.method7223 in Deadcode).
-     */
     public static Vec3d getHitPosition(PlayerEntity player, Entity target) {
         Vec3d eyePos = player.getEyePos();
         Vec3d look = player.getRotationVec(1.0f);
@@ -96,13 +83,8 @@ public class HitSparks extends Module {
         return hitOpt.orElseGet(() -> new Vec3d(target.getX(), target.getY() + target.getHeight() * 0.7, target.getZ()));
     }
 
-    /**
-     * Spawns a burst of needle sparks according to Deadcode's HitSparksRenderer.Style.
-     */
     public void spawnBurst(Vec3d origin, Vec3d sprayAxis, boolean isCrit, float amountMul) {
-        // Deadcode Style parameters:
-        // Crit (field5658): count=38, speed=6.5, life=0.75, halfAngle=70 deg, width=2.0, length=2.4
-        // Normal (NORMAL):  count=14, speed=4.5, life=0.50, halfAngle=55 deg, width=1.7, length=1.7
+
         int baseCount = isCrit ? 38 : 14;
         int count = Math.clamp(Math.round(baseCount * amountMul), 1, 96);
         float baseSpeed = isCrit ? 6.5f : 4.5f;
@@ -111,7 +93,6 @@ public class HitSparks extends Module {
         float baseWidth = isCrit ? 2.0f : 1.7f;
         float baseLen = isCrit ? 2.4f : 1.7f;
 
-        // Coordinate frame for the spray cone
         Vec3d axisD = sprayAxis.normalize();
         Vec3d helper = Math.abs(axisD.y) < 0.95 ? new Vec3d(0, 1, 0) : new Vec3d(1, 0, 0);
         Vec3d axisT = helper.crossProduct(axisD).normalize();
@@ -128,7 +109,6 @@ public class HitSparks extends Module {
             float randB = random.nextFloat();
             float randA = random.nextFloat();
 
-            // Uniform sampling inside solid angle of cone
             float cosA = MathHelper.lerp(randX, 1.0f, (float) Math.cos(halfAngle));
             float sinA = (float) Math.sqrt(Math.max(0.0f, 1.0f - cosA * cosA));
             float phi = (float) (2.0 * Math.PI * randY);
@@ -144,15 +124,11 @@ public class HitSparks extends Module {
             particles.add(new SparkParticle(origin, dir, speed, life, startDelay, randG, randB, baseWidth, baseLen, tint));
         }
 
-        // Keep maximum 256 sparks active to guarantee peak 144+ FPS
         while (particles.size() > 256) {
             particles.remove(0);
         }
     }
 
-    /**
-     * Renders all active sparks in 3D world space (called from WorldRendererMixin).
-     */
     public void render(VertexConsumerProvider immediate, Vec3d camPos) {
         if (!isEnabled()) {
             if (!particles.isEmpty()) particles.clear();
@@ -185,7 +161,6 @@ public class HitSparks extends Module {
             float t = p.age - p.startDelay;
             if (t <= 0.0f || t >= p.life) continue;
 
-            // Closed-form ballistic flight with air resistance (k=2.6) and gravity (w=8.0)
             float k = 2.6f;
             float g = 8.0f;
             float decay = (float) Math.exp(-k * t);
@@ -198,7 +173,6 @@ public class HitSparks extends Module {
             double vy = p.dir.y * (p.speed * decay) - g * t;
             double vz = p.dir.z * (p.speed * decay);
 
-            // Vector to camera
             double rx = px - camPos.x;
             double ry = py - camPos.y;
             double rz = pz - camPos.z;
@@ -214,7 +188,6 @@ public class HitSparks extends Module {
             double alongY = vLen > 0.0001 ? vy / vLen : 1.0;
             double alongZ = vLen > 0.0001 ? vz / vLen : 0.0;
 
-            // Lateral axis perpendicular to speed vector and view
             double sideX = alongY * toCamZ - alongZ * toCamY;
             double sideY = alongZ * toCamX - alongX * toCamZ;
             double sideZ = alongX * toCamY - alongY * toCamX;
@@ -228,7 +201,7 @@ public class HitSparks extends Module {
             }
 
             float fade = 1.0f - (t / p.life);
-            // Units per pixel scale for needle thickness
+
             float unitsPerPixel = (float) (dist / 700.0);
             float coreWidthPx = Math.max(1.0f, p.baseWidth * (0.75f + 0.5f * p.randG) * (0.7f + 0.3f * fade));
             float width = coreWidthPx * 3.0f * unitsPerPixel;
@@ -241,13 +214,11 @@ public class HitSparks extends Module {
             int tg = (p.tintColor >> 8) & 0xFF;
             int tb = p.tintColor & 0xFF;
 
-            // Head color: intense hot core (mix of theme color and warm white-yellow)
             int headR = MathHelper.clamp((int) MathHelper.lerp(fade * 0.85f, tr, 255), 0, 255);
             int headG = MathHelper.clamp((int) MathHelper.lerp(fade * 0.85f, tg, 252), 0, 255);
             int headB = MathHelper.clamp((int) MathHelper.lerp(fade * 0.85f, tb, 235), 0, 255);
             int headAlpha = (int) (255 * alpha);
 
-            // Tail color: fades to 0 quadratically
             int tailR = tr;
             int tailG = tg;
             int tailB = tb;
@@ -261,7 +232,6 @@ public class HitSparks extends Module {
             double ty = hy - alongY * len;
             double tz = hz - alongZ * len;
 
-            // 1. Soft glowing outer halo
             double haloHw = width * 0.5;
             double hsx = sideX * haloHw;
             double hsy = sideY * haloHw;
@@ -269,7 +239,6 @@ public class HitSparks extends Module {
             int haloA = (int) (headAlpha * 0.40f);
             drawNeedleQuad(buf, hx, hy, hz, tx, ty, tz, hsx, hsy, hsz, tr, tg, tb, haloA, tailR, tailG, tailB, tailAlpha);
 
-            // 2. Sharp hot needle core
             double coreHw = width * 0.18;
             double csx = sideX * coreHw;
             double csy = sideY * coreHw;

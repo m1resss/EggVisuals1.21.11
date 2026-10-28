@@ -28,7 +28,6 @@ public abstract class InventoryScreenMixin {
     private void onRender(DrawContext context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
         InventoryScreen self = (InventoryScreen) (Object) this;
 
-        // AutoSwap mini wheel on the left side
         AutoSwap as = ModuleManager.getInstance().getModule(AutoSwap.class);
         if (as != null && as.isEnabled()) {
             int guiX = ((HandledScreenAccessor) self).getX();
@@ -40,13 +39,11 @@ public abstract class InventoryScreenMixin {
             int hoveredSector = SwapWheelWidget.getSectorAt(mouseX, mouseY, miniCx, miniCy, miniRadius);
             SwapWheelWidget.renderWheel(context, miniCx, miniCy, miniRadius, hoveredSector, as.getWheelSlots());
 
-            // Header above the mini wheel
             ClientFont.drawCentered(context, "AutoSwap", miniCx, miniCy - miniRadius - 12.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
-            // Hint below the mini wheel
+
             ClientFont.drawCentered(context, "ПКМ - сброс", miniCx, miniCy + miniRadius + 6.0f, ClientFont.SF_REGULAR, 0x80FFFFFF);
         }
 
-        // InventorySorter panel on the right side
         InventoryScreenOverlay.render(context, self, mouseX, mouseY);
     }
 }

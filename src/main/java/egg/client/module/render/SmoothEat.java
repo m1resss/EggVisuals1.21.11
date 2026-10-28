@@ -4,9 +4,6 @@ import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.setting.SliderSetting;
 
-/**
- * 1:1 SmoothEat port from egg 1.21.4 (delta.module.render.SmoothEat).
- */
 public class SmoothEat extends Module {
     private final SliderSetting strength = new SliderSetting("Сила тряски", 0.25, 0.0, 1.0, 0.05, "Интенсивность тряски при поедании");
 

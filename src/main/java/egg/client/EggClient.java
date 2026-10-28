@@ -16,12 +16,10 @@ public class EggClient implements ClientModInitializer {
         instance = this;
         LOGGER.info("[Egg Visual] Initializing client...");
 
-        // Initialize Module Manager
         ModuleManager.getInstance();
         egg.client.config.ConfigManager.load();
         egg.client.liteapi.LiteApiFeatureControl.getInstance().init();
 
-        // Register client tick listener for module updates
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             ModuleManager.getInstance().onTick(client);
         });

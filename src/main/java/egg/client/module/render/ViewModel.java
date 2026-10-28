@@ -31,7 +31,6 @@ public class ViewModel extends Module {
 
     private final ButtonSetting resetBtn = new ButtonSetting("Сбросить позиции", "Сбросить все настройки рук", this::resetLayout);
 
-    // Interactive drag state (для режима "Через чат")
     private float mainOffsetX;
     private float mainOffsetY;
     private float offOffsetX;
@@ -105,12 +104,10 @@ public class ViewModel extends Module {
 
         float screenH = mc.getWindow().getScaledHeight();
 
-        // 1. Поле ввода чата внизу экрана
         if (mouseY >= screenH - 24.0f) {
             return true;
         }
 
-        // 2. Область сообщений чата (слева снизу)
         int rawW = 320;
         int rawH = 140;
         try {
@@ -147,8 +144,8 @@ public class ViewModel extends Module {
         float mouseX = (float) mc.mouse.getX() * (float) mc.getWindow().getScaledWidth() / (float) mc.getWindow().getWidth();
         float mouseY = (float) mc.mouse.getY() * (float) mc.getWindow().getScaledHeight() / (float) mc.getWindow().getHeight();
 
-        if (action == 1) { // PRESS
-            // Не перехватывать клики внутри чата
+        if (action == 1) {
+
             if (isMouseOverChat(mouseX, mouseY)) {
                 return false;
             }
@@ -167,7 +164,7 @@ public class ViewModel extends Module {
             this.grabOffsetX = this.activeHand == Hand.MAIN_HAND ? this.mainTargetX : this.offTargetX;
             this.grabOffsetY = this.activeHand == Hand.MAIN_HAND ? this.mainTargetY : this.offTargetY;
             return true;
-        } else if (action == 0) { // RELEASE
+        } else if (action == 0) {
             if (this.holding) {
                 this.holding = false;
                 syncToSettings();
@@ -186,7 +183,6 @@ public class ViewModel extends Module {
         float mouseX = (float) mc.mouse.getX() * (float) mc.getWindow().getScaledWidth() / (float) mc.getWindow().getWidth();
         float mouseY = (float) mc.mouse.getY() * (float) mc.getWindow().getScaledHeight() / (float) mc.getWindow().getHeight();
 
-        // Если курсор в радиусе чата, размер предмета колесиком НЕ меняется
         if (isMouseOverChat(mouseX, mouseY)) {
             return false;
         }
@@ -250,7 +246,6 @@ public class ViewModel extends Module {
             syncToSettings();
         }
 
-        // Подсказка возле курсора при перетаскивании или скролле в режиме чата
         if (isChatMode && inChatScreen && (this.holding || timeSinceScroll < 2500L)) {
             float mouseX = (float) mc.mouse.getX() * (float) mc.getWindow().getScaledWidth() / (float) mc.getWindow().getWidth();
             float mouseY = (float) mc.mouse.getY() * (float) mc.getWindow().getScaledHeight() / (float) mc.getWindow().getHeight();
@@ -265,7 +260,6 @@ public class ViewModel extends Module {
             Render2D.drawText(context, info, mouseX + 12.0f, mouseY - 12.0f, 0xFFFFFFFF);
         }
 
-        // Синхронизация из слайдеров в режиме "Ползунки" или когда в чате ничего не трогают
         if (!isChatMode || (!inChatScreen && !this.holding && timeSinceScroll > 2000L)) {
             this.mainScaleTarget = (float) this.mainScaleSetting.get();
             this.offScaleTarget = (float) this.offScaleSetting.get();
@@ -275,7 +269,6 @@ public class ViewModel extends Module {
             this.offTargetY = (float) this.offY.get();
         }
 
-        // Плавная интерполяция
         float follow = this.holding ? 1.0f : 0.45f;
         this.mainOffsetX += (this.mainTargetX - this.mainOffsetX) * follow;
         this.mainOffsetY += (this.mainTargetY - this.mainOffsetY) * follow;

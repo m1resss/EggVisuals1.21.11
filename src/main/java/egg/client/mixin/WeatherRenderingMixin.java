@@ -35,7 +35,7 @@ public class WeatherRenderingMixin {
     private void onAddParticlesAndSound(ClientWorld world, Camera camera, int ticks, ParticlesMode particlesMode, int i, CallbackInfo ci) {
         WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
         if (wt != null && wt.isEnabled() && wt.shouldOverrideVanillaSound()) {
-            ci.cancel(); // Cancel vanilla rain sound so custom rainsound.mp3 plays!
+            ci.cancel();
         }
     }
 }

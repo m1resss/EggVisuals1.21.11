@@ -70,12 +70,10 @@ public class Interface extends Module {
         return t;
     });
 
-    // Dynamic Island settings
     private final BooleanSetting showDynamicIsland = new BooleanSetting("Динамик айленд", true, "Отображать Dynamic Island при воспроизведении музыки");
     private final SliderSetting islandScale = new SliderSetting("Размер острова", 1.0, 0.5, 1.5, 0.05, "Масштаб Dynamic Island");
     private final ColorSetting dynamicIslandBgColor = new ColorSetting("Цвет фона айленда", 0xFF0D0E14);
 
-    // Styling & Theme settings
     private final ModeSetting brand = new ModeSetting("Бренд", "Egg", "Бренд в ватермарке", "Egg", "Egg Visuals", "none");
     private final BooleanSetting showLogo = new BooleanSetting("Иконка", true, "Показывать логотип");
     private final BooleanSetting showNick = new BooleanSetting("Логин в клиенте", false, "Отображать ник игрока");
@@ -100,7 +98,6 @@ public class Interface extends Module {
     private final SliderSetting posY = new SliderSetting("Y", 0.015, 0.0, 1.0, 0.001, "Позиция Y");
     private final SliderSetting hudScale = new SliderSetting("Размер HUD", 1.0, 0.5, 1.5, 0.05, "Масштаб элементов HUD");
 
-    // PvP Combat HUD settings
     private final BooleanSetting combatMode = new BooleanSetting("ПВП режим", false, "Изменять элементы интерфейса во время боя");
     private final ModeSetting combatAction = new ModeSetting("Режим в бою", "Прозрачность", "Что делать с элементами в бою", "Прозрачность", "Размер", "Оба");
     private final ModeSetting combatElements = new ModeSetting("Элементы в бою", "Все", "Какие элементы изменять в бою", "Все", "Только ватермарка", "Ватермарка + Поушены", "Ватермарка + Остров");
@@ -111,13 +108,11 @@ public class Interface extends Module {
     private final Animation combatAnim = new Animation(0.0f, 320L, Easing.EASE_OUT_CUBIC);
     private long lastCombatTime = 0L;
 
-    // Dynamic Island bounding box for hover/scroll
     private float lastIslandX = 0.0f;
     private float lastIslandY = 0.0f;
     private float lastIslandW = 185.0f;
     private float lastIslandH = 30.0f;
 
-    // Dynamic smoothing & digit rolling animators
     private float animatedFps = 60.0f;
     private float animatedPing = 0.0f;
     private double lastPlayerX = 0.0;
@@ -128,7 +123,6 @@ public class Interface extends Module {
     private final RollingNumber fpsRolling = new RollingNumber();
     private final RollingNumber tpsRolling = new RollingNumber();
 
-    // Media Tracker & Dynamic Island state
     private long lastMediaPollTime = 0L;
     private final Artist artistStruct = new Artist();
     private volatile boolean hasActiveMedia = false;
@@ -140,9 +134,8 @@ public class Interface extends Module {
     private String lastTrackKey = "";
     private NativeImageBackedTexture coverTexture = null;
     private boolean hasCoverArt = false;
-    private int dominantAccentColor = 0xFF4A7CC4; // Blue/Cyan tint from screenshot
+    private int dominantAccentColor = 0xFF4A7CC4;
 
-    // Dynamic Island expanded card state
     private boolean islandExpanded = false;
     private float islandExpandAnim = 0.0f;
     private boolean isSeeking = false;
@@ -152,7 +145,6 @@ public class Interface extends Module {
     private float scrollOffset = 0.0f;
     private long lastScrollTime = 0L;
 
-    // Hitbox state for click handling
     private float lastArtX = 0.0f;
     private float lastArtY = 0.0f;
     private float lastArtSize = 22.0f;
@@ -164,7 +156,6 @@ public class Interface extends Module {
     private float lastCloseX = 0.0f;
     private float lastCloseY = 0.0f;
 
-    // Dragging & context menu state (in ChatScreen or ClickGUI)
     private boolean dragging = false;
     private float dragOffsetX = 0.0f;
     private float dragOffsetY = 0.0f;
@@ -172,7 +163,6 @@ public class Interface extends Module {
     private float contextMenuX = 0.0f;
     private float contextMenuY = 0.0f;
 
-    // Bounding box for click/drag detection
     private float lastX = 0.0f;
     private float lastY = 0.0f;
     private float lastW = 100.0f;
@@ -199,18 +189,15 @@ public class Interface extends Module {
         int screenW = mc.getWindow().getScaledWidth();
         int screenH = mc.getWindow().getScaledHeight();
 
-        // 1. Poll media & update textures
         pollMedia();
         updateCoverTexture();
 
-        // Update combat state and animation target early so all HUD elements reflect it
         if (mc.player != null && mc.player.hurtTime > 0) {
             onCombatHit();
         }
         boolean inCombat = isInCombat();
         combatAnim.setTarget(inCombat ? 1.0f : 0.0f);
 
-        // 2. Render Dynamic Island (if enabled and playing or expanding/collapsing)
         boolean islandActive = false;
         float islandBottom = 8.0f;
         if (showDynamicIsland.isEnabled()) {
@@ -224,7 +211,6 @@ public class Interface extends Module {
                 this.islandExpandAnim = targetExpand;
             }
 
-            // Local time interpolation for silky smooth progress bar
             if (hasActiveMedia && isMediaPlaying && currentDurationMs > 0L) {
                 long nowTime = System.currentTimeMillis();
                 if (lastFrameTime != 0L) {
@@ -247,7 +233,6 @@ public class Interface extends Module {
             }
         }
 
-        // 3. Smooth animation stats & rolling digits
         this.animatedFps += (mc.getCurrentFps() - this.animatedFps) * 0.15f;
         fpsRolling.update(mc.getCurrentFps());
 
@@ -275,7 +260,6 @@ public class Interface extends Module {
             this.animatedSpeedBps += (bps - this.animatedSpeedBps) * 0.2f;
         }
 
-        // 4. Build items for Watermark
         boolean hasLogo = showLogo.isEnabled();
         boolean hasBrand = !"none".equalsIgnoreCase(brand.get());
         String brandStr = brand.get();
@@ -294,17 +278,15 @@ public class Interface extends Module {
         float alphaFactor = getCombatAlphaFactor("watermark");
         float opacityVal = baseOpacityVal * alphaFactor;
 
-        // Watermark Capsule Dimensions
-        float pillHeight = 28.0f; // Exact height to fit 2-line columns beautifully
+        float pillHeight = 28.0f;
         float totalW = calculateWatermarkWidth(hasLogo, hasBrand, brandStr, items);
 
-        // 1. Calculate horizontal position first
         float baseX;
         if (sideMode.isEnabled()) {
             baseX = 8.0f;
         } else {
             float pX = posX.getValueFloat();
-            // Strict center snap
+
             if (Math.abs(pX - 0.5f) < 0.02f) {
                 baseX = (float) Math.round((screenW - totalW) / 2.0f);
             } else {
@@ -312,12 +294,10 @@ public class Interface extends Module {
             }
         }
 
-        // Center snapping when dragging near screen center
         if (dragging && Math.abs(baseX - (screenW - totalW) / 2.0f) < 14.0f) {
             baseX = (float) Math.round((screenW - totalW) / 2.0f);
         }
 
-        // 2. Dynamic Island collision detection:
         float curIslandW = MathHelper.lerp(this.islandExpandAnim, 185.0f, 242.0f);
         float islandX = (screenW - curIslandW) / 2.0f;
         boolean horizontalOverlap = (baseX < islandX + curIslandW + 4.0f) && (baseX + totalW > islandX - 4.0f);
@@ -356,12 +336,10 @@ public class Interface extends Module {
         int finalBg = ColorUtil.rgba(ColorUtil.red(baseBg), ColorUtil.green(baseBg), ColorUtil.blue(baseBg), (int) (opacityVal * 255.0f));
         int borderColor = ColorUtil.rgba(255, 255, 255, (int) (22 * alphaFactor));
 
-        // 1. True GPU SDF Background, Soft Glow & Outline
         Draw2DProcessor.INSTANCE.drawGlow(mat, baseX, baseY, totalW, pillHeight, radius, ColorUtil.rgba(0, 0, 0, (int) (opacityVal * 65.0f)), 6.0f);
         Draw2DProcessor.INSTANCE.drawRect(mat, baseX, baseY, totalW, pillHeight, radius, finalBg);
         Draw2DProcessor.INSTANCE.drawOutline(mat, baseX, baseY, totalW, pillHeight, radius, 0.8f, borderColor);
 
-        // Optional HUD theme gradient
         if (hudThemeGradient.isEnabled()) {
             float str = hudGradientStrength.getValueFloat() / 100.0f;
             int gradC = ColorUtil.rgba(168, 85, 247, (int) (str * 45.0f * alphaFactor));
@@ -378,7 +356,6 @@ public class Interface extends Module {
 
         int tintWithAlpha = ColorUtil.rgba(255, 255, 255, (int) (255 * alphaFactor));
 
-        // 2. Circular badge with prominent 3D Egg Logo
         if (hasLogo) {
             float badgeSize = 24.0f;
             float badgeX = cursor;
@@ -396,7 +373,6 @@ public class Interface extends Module {
             }
         }
 
-        // 3. Brand Text (if enabled)
         if (hasBrand && brandStr != null && !brandStr.isEmpty()) {
             float brandFontY = centerY - Fonts.e.a(13.0f) / 2.0f - 0.5f;
             drawBrandGradient(mat, brandStr, cursor, brandFontY, 13.0f, alphaFactor);
@@ -407,7 +383,6 @@ public class Interface extends Module {
             }
         }
 
-        // 4. Columns: High-res Vector Icon + Values (~10% scaled down text for sleek reference look)
         float valFontSize = 10.8f;
         float capFontSize = 7.2f;
 
@@ -418,7 +393,6 @@ public class Interface extends Module {
         for (int i = 0; i < items.size(); i++) {
             WatermarkItem item = items.get(i);
 
-            // Icon: prefer vector MSDF glyph from Fonts.hud, otherwise texture
             if (item.iconGlyph != null) {
                 float glyphSize = 10.5f;
                 float glyphY = centerY - Fonts.hud.a(glyphSize) / 2.0f;
@@ -431,7 +405,6 @@ public class Interface extends Module {
                 cursor += iconSize + 5.5f;
             }
 
-            // If subText is null/empty, vertically center the value text directly
             if (item.subText != null && !item.subText.isEmpty()) {
                 float valY = baseY + 4.0f;
                 float capY = baseY + 15.0f;
@@ -446,7 +419,7 @@ public class Interface extends Module {
                 float colW = Math.max(Fonts.d.a(item.valText, valFontSize), Fonts.b.a(item.subText, capFontSize));
                 cursor += colW + 8.5f;
             } else {
-                // Vertically centered single line (e.g. Server "Local" without "SERVER" caption)
+
                 float textH = Fonts.d.a(valFontSize);
                 float valY = centerY - textH / 2.0f;
                 Fonts.d.a(mat, item.valText, cursor, valY, valFontSize, valColor);
@@ -497,10 +470,6 @@ public class Interface extends Module {
         Draw2DProcessor.INSTANCE.drawRect(mat, cx, lineY, 1.0f, lineH, 0.0f, ColorUtil.rgba(255, 255, 255, (int) (24 * alphaFactor)));
     }
 
-    // =========================================================================
-    // Dynamic Island Renderer (Smooth morph between Pill and Solid OLED Card)
-    // =========================================================================
-
     private void renderDynamicIsland(DrawContext context, int screenW) {
         float collapsedW = 185.0f;
         float collapsedH = 30.0f;
@@ -540,25 +509,21 @@ public class Interface extends Module {
             context.getMatrices().translate(-centerX, -y);
         }
 
-        // 1. Sleek Apple OLED Dark Card Background (solid #141418, non-transparent as requested)
         int baseIslandBg = ColorUtil.withAlphaFloat(0xFF141418, alphaFactor);
         Draw2DProcessor.INSTANCE.drawGlow(mat, x, y, curW, curH, radius, ColorUtil.withAlphaFloat(ColorUtil.rgba(0, 0, 0, 160), alphaFactor), 12.0f);
         Draw2DProcessor.INSTANCE.drawRect(mat, x, y, curW, curH, radius, baseIslandBg);
 
-        // Dynamic fluid ambient gradient glow (derived dynamically from track cover)
         int accent = (dominantAccentColor & 0xFFFFFF) != 0 ? dominantAccentColor : 0xFF30D158;
         float glowA = (0.25f + 0.10f * (float) Math.sin(System.currentTimeMillis() * 0.002)) * alphaFactor;
         int accentGrad = ColorUtil.withAlphaFloat(ColorUtil.rgba(ColorUtil.red(accent), ColorUtil.green(accent), ColorUtil.blue(accent), (int) (110 * (0.3f + 0.7f * this.islandExpandAnim))), glowA);
         Draw2DProcessor.INSTANCE.drawGradient(mat, x, y, curW, curH, radius, 0x00000000, 0x00000000, 0x00000000, accentGrad);
 
-        // Crisp subtle outline
         Draw2DProcessor.INSTANCE.drawOutline(mat, x, y, curW, curH, radius, 0.9f, ColorUtil.withAlphaFloat(ColorUtil.rgba(255, 255, 255, 28), alphaFactor));
         DrawBatcher.flushPending();
         if (alphaFactor > 0.15f) {
             Render2D.drawDiagonalSheen(context, x, y, curW, curH, radius, 2500L);
         }
 
-        // 2. Album Cover (Smooth morph between compact 22px and expanded 46px card art)
         float collapsedArtSize = 22.0f;
         float expandedArtSize = 46.0f;
         float artSize = MathHelper.lerp(this.islandExpandAnim, collapsedArtSize, expandedArtSize);
@@ -580,27 +545,25 @@ public class Interface extends Module {
             context.drawTexture(RenderPipelines.GUI_TEXTURED, noteIcon, (int) (artX + (artSize - 12.0f) / 2.0f), (int) (artY + (artSize - 12.0f) / 2.0f), 0, 0, 12, 12, 12, 12, ColorUtil.withAlphaFloat(0xFFE0E0E0, alphaFactor));
         }
 
-        // 3. Stop / Play Button directly ON the album cover when expanded
         if (this.islandExpandAnim > 0.05f) {
             float expA = this.islandExpandAnim * alphaFactor;
             float cx = artX + artSize * 0.5f;
             float cy = artY + artSize * 0.5f;
             float btnR = 11.0f;
 
-            // Dark circular glass button backing
             Draw2DProcessor.INSTANCE.drawRect(mat, cx - btnR, cy - btnR, btnR * 2.0f, btnR * 2.0f, btnR, ColorUtil.withAlphaFloat(ColorUtil.rgba(0, 0, 0, 150), expA));
             Draw2DProcessor.INSTANCE.drawOutline(mat, cx - btnR, cy - btnR, btnR * 2.0f, btnR * 2.0f, btnR, 0.8f, ColorUtil.withAlphaFloat(ColorUtil.rgba(255, 255, 255, 60), expA));
 
             int iconCol = ColorUtil.withAlphaFloat(0xFFFFFFFF, expA);
             if (isMediaPlaying) {
-                // Stop / Pause icon: two vertical bars
+
                 float pW = 2.4f;
                 float pH = 9.0f;
                 float gap = 2.6f;
                 Draw2DProcessor.INSTANCE.drawRect(mat, cx - pW - gap * 0.5f, cy - pH * 0.5f, pW, pH, 1.0f, iconCol);
                 Draw2DProcessor.INSTANCE.drawRect(mat, cx + gap * 0.5f, cy - pH * 0.5f, pW, pH, 1.0f, iconCol);
             } else {
-                // Play triangle
+
                 drawPlayIconVector(mat, cx + 0.6f, cy, 8.5f, iconCol);
             }
         }
@@ -608,7 +571,6 @@ public class Interface extends Module {
         String displayTitle = hasActiveMedia ? currentMediaTitle : "Unknown Track";
         String displayArtist = hasActiveMedia ? currentMediaArtist : "Unknown Artist";
 
-        // 4. Collapsed Mode
         float collapsedAlpha = (1.0f - this.islandExpandAnim) * alphaFactor;
         if (collapsedAlpha > 0.05f) {
             float sepX = artX + artSize + 6.0f;
@@ -655,10 +617,9 @@ public class Interface extends Module {
             }
         }
 
-        // 5. Expanded Mode
         float expandedAlpha = this.islandExpandAnim * alphaFactor;
         if (expandedAlpha > 0.05f) {
-            // Minimalist Collapse Chevron at top right
+
             float closeX = x + curW - 16.0f;
             float closeY = y + 10.0f;
             this.lastCloseX = closeX;
@@ -666,7 +627,6 @@ public class Interface extends Module {
             int closeCol = ColorUtil.withAlphaFloat(0xFF8E8E93, expandedAlpha);
             drawChevronUpVector(mat, closeX + 2.0f, closeY + 2.0f, closeCol);
 
-            // Title & Artist — bounded strictly within textMaxW using shader fading, no overflow!
             float textStartX = artX + artSize + 10.0f;
             float textMaxW = (closeX - 8.0f) - textStartX;
             float titleY = y + 10.5f;
@@ -675,7 +635,6 @@ public class Interface extends Module {
             Fonts.d.c(mat, displayTitle, textStartX, titleY, 11.5f, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha), textMaxW);
             Fonts.d.c(mat, displayArtist, textStartX, artistY, 9.0f, ColorUtil.withAlphaFloat(0xFF8E8E93, expandedAlpha), textMaxW);
 
-            // Bottom Row: Current Time | Waveform Progress | Remaining Time | Prev | Next
             float rowY = y + 47.0f;
             this.lastRowY = rowY;
 
@@ -694,24 +653,20 @@ public class Interface extends Module {
                 remTimeStr = "-0:00";
             }
 
-            // Timer color synchronized with client theme!
             int timerColor = ColorUtil.withAlphaFloat(Theme.getAccent(), expandedAlpha);
             float curTimeW = Fonts.b.a(curTimeStr, 8.5f);
             Fonts.b.a(mat, curTimeStr, textStartX, rowY + 1.0f, 8.5f, timerColor);
 
-            // Controls anchored from right edge
             float rightEdge = x + curW - 12.0f;
             float btnNextX = rightEdge - 8.0f;
             float btnPrevX = btnNextX - 16.0f;
             this.lastBtnPrevX = btnPrevX;
             this.lastBtnNextX = btnNextX;
 
-            // Remaining Time placed before skip buttons (also in theme color)
             float remW = Fonts.b.a(remTimeStr, 8.5f);
             float remX = btnPrevX - 8.0f - remW;
             Fonts.b.a(mat, remTimeStr, remX, rowY + 1.0f, 8.5f, timerColor);
 
-            // Fluid Waveform Seekbar spanning between curTime and remTime
             float waveX = textStartX + curTimeW + 6.0f;
             float waveW = (remX - 6.0f) - waveX;
             float waveH = 9.0f;
@@ -719,9 +674,9 @@ public class Interface extends Module {
             this.lastWaveX = waveX;
             this.lastWaveW = waveW;
 
-            int playedStart = ColorUtil.withAlphaFloat(0xFF30D158, expandedAlpha); // Apple Music Green
+            int playedStart = ColorUtil.withAlphaFloat(0xFF30D158, expandedAlpha);
             int playedEnd = ColorUtil.withAlphaFloat(ColorUtil.lerp(0xFF30D158, Theme.getAccent(), 0.35f), expandedAlpha);
-            int unplayedColor = ColorUtil.withAlphaFloat(0xFF44444A, expandedAlpha * 0.75f); // Visible gray wave track
+            int unplayedColor = ColorUtil.withAlphaFloat(0xFF44444A, expandedAlpha * 0.75f);
 
             float waveTime = (float) (System.currentTimeMillis() % 1000000L) * 0.0028f;
             float motionFactor = isMediaPlaying ? 1.0f : 0.25f;
@@ -751,12 +706,10 @@ public class Interface extends Module {
                 Draw2DProcessor.INSTANCE.drawRect(mat, sx, sy, Math.max(1.2f, sliceW - 0.8f), sliceH, 0.8f, col);
             }
 
-            // Playhead thumb dot with theme glowing aura
             float headX = waveX + waveW * progress;
             Draw2DProcessor.INSTANCE.drawRect(mat, headX - 4.0f, waveCenterY - 4.0f, 8.0f, 8.0f, 4.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), expandedAlpha * 0.5f));
             Draw2DProcessor.INSTANCE.drawRect(mat, headX - 2.0f, waveCenterY - 2.0f, 4.0f, 4.0f, 2.0f, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha));
 
-            // Prev and Next Skip Controls
             int btnColor = ColorUtil.withAlphaFloat(0xFFB0B0B8, expandedAlpha);
             drawSkipPrevVector(mat, btnPrevX, waveCenterY, btnColor);
             drawSkipNextVector(mat, btnNextX, waveCenterY, btnColor);
@@ -864,10 +817,6 @@ public class Interface extends Module {
         }
     }
 
-    // =========================================================================
-    // Media Polling & Cover Texture
-    // =========================================================================
-
     private void pollMedia() {
         long now = System.currentTimeMillis();
         if (now - lastMediaPollTime < 400L) return;
@@ -941,7 +890,7 @@ public class Interface extends Module {
                             tm.destroyTexture(ALBUM_ART_ID);
                             coverTexture.close();
                         }
-                        // Extract dominant vibrant accent color from cover art pixels
+
                         long sumR = 0, sumG = 0, sumB = 0;
                         int samples = 0;
                         int stepX = Math.max(1, img.getWidth() / 16);
@@ -1000,7 +949,6 @@ public class Interface extends Module {
     private List<WatermarkItem> collectItems(MinecraftClient mc) {
         List<WatermarkItem> list = new ArrayList<>();
 
-        // Nick
         if (showNick.isEnabled()) {
             String username = (mc.player != null && mc.player.getName() != null)
                     ? mc.player.getName().getString()
@@ -1008,7 +956,6 @@ public class Interface extends Module {
             list.add(new WatermarkItem(username, "USER", null, "\uf007", null));
         }
 
-        // Server (User request: no "SERVER" caption under "Local", centered vertically)
         if (showServer.isEnabled()) {
             String serverName;
             Identifier serverIco = null;
@@ -1038,13 +985,11 @@ public class Interface extends Module {
             }
         }
 
-        // FPS (Speedometer vector icon)
         if (showFps.isEnabled()) {
             int fps = Math.round(animatedFps);
             list.add(new WatermarkItem(String.valueOf(fps), "FPS", null, "\uf624", fpsRolling));
         }
 
-        // TPS (Server vector icon)
         if (showTps.isEnabled()) {
             float tpsVal = 20.0f;
             if (mc.world != null && mc.world.getTickManager() != null) {
@@ -1054,19 +999,16 @@ public class Interface extends Module {
             list.add(new WatermarkItem(String.valueOf(tpsInt), "TPS", null, "\uf57d", tpsRolling));
         }
 
-        // Ping (Wifi vector icon)
         if (showPing.isEnabled()) {
             int ping = Math.round(animatedPing);
             list.add(new WatermarkItem(ping + "ms", "PING", null, "\uf1eb", null));
         }
 
-        // Time (Clock vector icon)
         if (showTime.isEnabled()) {
             String timeStr = LocalTime.now().format(TIME_FORMATTER);
             list.add(new WatermarkItem(timeStr, "TIME", null, "\uf017", null));
         }
 
-        // Coords
         if (showCoords.isEnabled() && mc.player != null) {
             int px = (int) Math.floor(mc.player.getX());
             int py = (int) Math.floor(mc.player.getY());
@@ -1074,17 +1016,12 @@ public class Interface extends Module {
             list.add(new WatermarkItem(px + " " + py + " " + pz, "XYZ", null, "\uf68f", null));
         }
 
-        // Speed (Running vector icon)
         if (showSpeed.isEnabled()) {
             list.add(new WatermarkItem(String.format(Locale.ROOT, "%.1f", animatedSpeedBps), "BPS", null, "\uf70c", null));
         }
 
         return list;
     }
-
-    // =========================================================================
-    // ChatScreen & ClickGUI Dragging & Snapping Grid
-    // =========================================================================
 
     public void renderChatOverlay(DrawContext context, int mouseX, int mouseY) {
         MinecraftClient mc = MinecraftClient.getInstance();
@@ -1096,7 +1033,6 @@ public class Interface extends Module {
             onChatMouseDragged(mouseX, mouseY, 0);
         }
 
-        // 1. Grid lines while dragging in chat
         if (dragging) {
             int gridStep = 25;
             int gridColor = ColorUtil.rgba(255, 255, 255, 14);
@@ -1107,14 +1043,12 @@ public class Interface extends Module {
                 Draw2DProcessor.INSTANCE.drawRect(null, 0, gy, screenW, 1.0f, 0.0f, gridColor);
             }
 
-            // Center guideline
             float midX = screenW / 2.0f;
             float midY = screenH / 2.0f;
             int centerColor = ColorUtil.rgba(168, 85, 247, 60);
             Draw2DProcessor.INSTANCE.drawRect(null, midX, 0, 1.0f, screenH, 0.0f, centerColor);
             Draw2DProcessor.INSTANCE.drawRect(null, 0, midY, screenW, 1.0f, 0.0f, centerColor);
 
-            // Label under pill
             String label = "HUD — сетка";
             float lw = Fonts.b.a(label, 11.5f);
             float lx = lastX + (lastW - lw) / 2.0f;
@@ -1122,7 +1056,6 @@ public class Interface extends Module {
             Fonts.b.a(null, label, lx, ly, 11.5f, ColorUtil.rgba(255, 255, 255, 160));
         }
 
-        // 2. Hover highlight & scale badge when mouse is over the watermark in chat
         boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
         if (inside || dragging) {
             float rad = rounding.getValueFloat() * hudScale.getValueFloat() + 2.0f;
@@ -1136,7 +1069,6 @@ public class Interface extends Module {
             Fonts.b.a(null, scaleBadge, bx + 4.0f, by + 2.5f, 9.5f, Theme.getAccentHover());
         }
 
-        // 2b. Hover highlight & scale badge for Dynamic Island
         boolean insideIsland = showDynamicIsland.isEnabled() && hasActiveMedia
                 && mouseX >= lastIslandX - 2.0f && mouseX <= lastIslandX + lastIslandW + 2.0f
                 && mouseY >= lastIslandY - 2.0f && mouseY <= lastIslandY + lastIslandH + 2.0f;
@@ -1152,7 +1084,6 @@ public class Interface extends Module {
             Fonts.b.a(null, islandBadge, ibx + 4.0f, iby + 2.5f, 9.5f, Theme.getAccentHover());
         }
 
-        // Active seek scrubbing while left click is held
         if (isSeeking) {
             long window = MinecraftClient.getInstance().getWindow().getHandle();
             if (org.lwjgl.glfw.GLFW.glfwGetMouseButton(window, org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS) {
@@ -1172,7 +1103,6 @@ public class Interface extends Module {
             }
         }
 
-        // 3. Context Menu
         if (contextMenuOpen) {
             renderContextMenu(context, mouseX, mouseY);
         }
@@ -1233,7 +1163,7 @@ public class Interface extends Module {
 
     public boolean onMouseScrolled(double mouseX, double mouseY, double amount) {
         if (!isEnabled()) return false;
-        // 1. Dynamic Island check
+
         if (showDynamicIsland.isEnabled() && hasActiveMedia) {
             if (mouseX >= lastIslandX - 4.0f && mouseX <= lastIslandX + lastIslandW + 4.0f
                     && mouseY >= lastIslandY - 4.0f && mouseY <= lastIslandY + lastIslandH + 4.0f) {
@@ -1246,7 +1176,6 @@ public class Interface extends Module {
             }
         }
 
-        // 2. Watermark HUD check
         if (mouseX >= lastX - 4.0f && mouseX <= lastX + lastW + 4.0f
                 && mouseY >= lastY - 4.0f && mouseY <= lastY + lastH + 4.0f) {
             double cur = hudScale.getValue();
@@ -1267,7 +1196,6 @@ public class Interface extends Module {
         int screenW = mc.getWindow().getScaledWidth();
         int screenH = mc.getWindow().getScaledHeight();
 
-        // 0. Dynamic Island Click (Collapsed -> Expand, or Expanded Controls)
         if (showDynamicIsland.isEnabled() && hasActiveMedia && button == 0) {
             float collapsedW = 185.0f;
             float expandedW = 242.0f;
@@ -1282,7 +1210,6 @@ public class Interface extends Module {
             float islandS = baseIslandS * combatS;
             boolean customIslandScale = Math.abs(islandS - 1.0f) > 0.001f;
 
-            // Map mouse coordinates to local island coordinate space
             float localMX = (float) mouseX;
             float localMY = (float) mouseY;
             if (customIslandScale && islandS > 0.01f) {
@@ -1296,7 +1223,7 @@ public class Interface extends Module {
                     return true;
                 }
             } else {
-                // 1. Cover Click: toggle play / pause / stop (entire 46x46 cover area)
+
                 if (localMX >= lastArtX - 2.0f && localMX <= lastArtX + lastArtSize + 2.0f
                         && localMY >= lastArtY - 2.0f && localMY <= lastArtY + lastArtSize + 2.0f) {
                     if (OptMedia.init() && OptMedia.INSTANCE != null) {
@@ -1307,14 +1234,12 @@ public class Interface extends Module {
                     return true;
                 }
 
-                // 2. Collapse chevron at top right
                 if (localMX >= lastCloseX - 8.0f && localMX <= x + curW + 4.0f
                         && localMY >= y && localMY <= y + 24.0f) {
                     islandExpanded = false;
                     return true;
                 }
 
-                // 3. Next track button
                 if (lastBtnNextX > 0.0f && localMX >= lastBtnNextX - 4.0f && localMX <= lastBtnNextX + 16.0f
                         && localMY >= lastRowY - 6.0f && localMY <= lastRowY + 18.0f) {
                     if (OptMedia.init() && OptMedia.INSTANCE != null) {
@@ -1325,7 +1250,6 @@ public class Interface extends Module {
                     return true;
                 }
 
-                // 4. Prev track button
                 if (lastBtnPrevX > 0.0f && localMX >= lastBtnPrevX - 6.0f && localMX <= lastBtnPrevX + 10.0f
                         && localMY >= lastRowY - 6.0f && localMY <= lastRowY + 18.0f) {
                     if (OptMedia.init() && OptMedia.INSTANCE != null) {
@@ -1336,7 +1260,6 @@ public class Interface extends Module {
                     return true;
                 }
 
-                // 5. Waveform seek click
                 if (lastWaveX > 0.0f && localMX >= lastWaveX - 4.0f && localMX <= lastWaveX + lastWaveW + 4.0f
                         && localMY >= lastRowY - 6.0f && localMY <= lastRowY + 18.0f) {
                     isSeeking = true;
@@ -1344,14 +1267,12 @@ public class Interface extends Module {
                     return true;
                 }
 
-                // 6. Click anywhere on expanded card consumes click
                 if (localMX >= x && localMX <= x + curW && localMY >= y && localMY <= y + curH) {
                     return true;
                 }
             }
         }
 
-        // 1. Click inside context menu
         if (contextMenuOpen) {
             float mw = 130.0f;
             float mh = 195.0f;
@@ -1383,15 +1304,14 @@ public class Interface extends Module {
             contextMenuOpen = false;
         }
 
-        // 2. Click on Watermark pill
         boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
         if (inside) {
-            if (button == 1) { // Right click -> open popup
+            if (button == 1) {
                 contextMenuOpen = true;
                 contextMenuX = (float) Math.clamp(mouseX, 10.0, screenW - 140.0);
                 contextMenuY = (float) Math.clamp(mouseY, 10.0, screenH - 220.0);
                 return true;
-            } else if (button == 0) { // Left click -> drag
+            } else if (button == 0) {
                 dragging = true;
                 dragOffsetX = (float) mouseX - lastX;
                 dragOffsetY = (float) mouseY - lastY;
@@ -1427,7 +1347,6 @@ public class Interface extends Module {
             float newX = (float) mouseX - dragOffsetX;
             float newY = (float) mouseY - dragOffsetY;
 
-            // Center snap
             float midX = (screenW - lastW) / 2.0f;
             if (Math.abs(newX - midX) < 8.0f) {
                 newX = midX;
@@ -1437,7 +1356,6 @@ public class Interface extends Module {
                 newY = midY;
             }
 
-            // 25px grid snap
             float nearestGridX = Math.round(newX / 25.0f) * 25.0f;
             if (Math.abs(newX - nearestGridX) < 5.0f) {
                 newX = nearestGridX;
@@ -1501,10 +1419,6 @@ public class Interface extends Module {
         Fonts.b.a(null, label, cbX + cbSize + 6.0f, iy + 1.0f, 11.5f, checked ? 0xFFFFFFFF : Theme.TEXT_SUB);
     }
 
-    // =========================================================================
-    // Rolling Number Animator for HUD Digits
-    // =========================================================================
-
     public static class RollingNumber {
         private int currentVal = -1;
         private int prevVal = -1;
@@ -1552,10 +1466,6 @@ public class Interface extends Module {
             }
         }
     }
-
-    // =========================================================================
-    // Data Classes
-    // =========================================================================
 
     public boolean isTestMusic() {
         return false;

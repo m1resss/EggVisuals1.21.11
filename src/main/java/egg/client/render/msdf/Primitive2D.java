@@ -9,9 +9,6 @@ import java.nio.ByteBuffer;
 public final class Primitive2D {
     private Primitive2D() {}
 
-    /**
-     * Draws a solid filled circle using TRIANGLE_FAN on the 2D immediate pipeline.
-     */
     public static void drawCircle(float cx, float cy, float radius, int color) {
         if (radius <= 0.0f) return;
         int a = (color >> 24) & 0xFF;
@@ -24,7 +21,7 @@ public final class Primitive2D {
         int vertexCount = segments + 2;
         ByteBuffer buffer = MemoryUtil.memAlloc(vertexCount * 16);
         try {
-            // Center vertex
+
             ImmediateRenderer.putVertexColor(buffer, cx, cy, 0.0f, r, g, b, a);
             for (int i = 0; i <= segments; i++) {
                 float angle = (float) (i * 2.0 * Math.PI / segments);
@@ -38,9 +35,6 @@ public final class Primitive2D {
         }
     }
 
-    /**
-     * Draws a ring arc (pie slice band) using TRIANGLE_STRIP on the 2D immediate pipeline.
-     */
     public static void drawRingArc(float cx, float cy, float innerRadius, float outerRadius, float startAngleDeg, float sweepAngleDeg, int color) {
         if (sweepAngleDeg <= 0.0f || outerRadius <= innerRadius) return;
         int a = (color >> 24) & 0xFF;
@@ -66,27 +60,20 @@ public final class Primitive2D {
         }
     }
 
-    /**
-     * Draws an elegant circular progress ring with rounded caps at both ends.
-     */
     public static void drawProgressRing(float cx, float cy, float innerRadius, float outerRadius, float progress, int trackColor, int activeColor) {
         float ringR = outerRadius;
         float trackThickness = outerRadius - innerRadius;
         float midR = innerRadius + trackThickness * 0.5f;
         float capR = trackThickness * 0.5f;
 
-        // 1. Background full track
         drawRingArc(cx, cy, innerRadius, outerRadius, 0.0f, 360.0f, trackColor);
 
-        // 2. Active arc
         float sweep = Math.clamp(progress, 0.0f, 1.0f) * 360.0f;
         if (sweep > 0.5f) {
             drawRingArc(cx, cy, innerRadius, outerRadius, -90.0f, sweep, activeColor);
 
-            // Rounded start cap at -90 deg (12 o'clock)
             drawCircle(cx, cy - midR, capR, activeColor);
 
-            // Rounded end cap
             float endRad = (float) Math.toRadians(-90.0f + sweep);
             float endX = cx + (float) Math.cos(endRad) * midR;
             float endY = cy + (float) Math.sin(endRad) * midR;
@@ -94,9 +81,6 @@ public final class Primitive2D {
         }
     }
 
-    /**
-     * Draws an elegant arrow needle for the CS2 speed gauge upgrade wheel.
-     */
     public static void drawNeedle(float cx, float cy, float angleDeg, float length, float baseWidth, int color) {
         float rad = (float) Math.toRadians(angleDeg);
         float cos = (float) Math.cos(rad);

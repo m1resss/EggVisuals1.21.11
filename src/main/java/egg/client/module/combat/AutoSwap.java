@@ -34,7 +34,6 @@ public class AutoSwap extends Module {
 
     private final SwapScreen swapScreen = new SwapScreen(Text.literal("SwapMenu"));
 
-    // По дефолту слоты пустые
     private final ItemStack[] wheelSlots = new ItemStack[]{
             ItemStack.EMPTY,
             ItemStack.EMPTY,
@@ -55,7 +54,7 @@ public class AutoSwap extends Module {
         super("AutoSwap", "Легитно открывает инвентарь, наводится на предмет и меняет его в левую руку", Category.COMBAT);
         instance = this;
         addSettings(this.mode, this.firstItem, this.secondItem, this.delay);
-        setKey(GLFW.GLFW_KEY_V); // Default bind V (86)
+        setKey(GLFW.GLFW_KEY_V);
     }
 
     public SwapScreen getSwapScreen() {
@@ -110,7 +109,6 @@ public class AutoSwap extends Module {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null || targetStack == null || targetStack.isEmpty()) return -1;
 
-        // 1. Сначала проверяем хотбар (слоты 36-44 в playerScreenHandler)
         for (int i = 36; i <= 44; i++) {
             ItemStack stack = mc.player.playerScreenHandler.getSlot(i).getStack();
             if (!stack.isEmpty() && isMatching(stack, targetStack)) {
@@ -118,7 +116,6 @@ public class AutoSwap extends Module {
             }
         }
 
-        // 2. Затем основной инвентарь (слоты 9-35 в playerScreenHandler)
         for (int i = 9; i <= 35; i++) {
             ItemStack stack = mc.player.playerScreenHandler.getSlot(i).getStack();
             if (!stack.isEmpty() && isMatching(stack, targetStack)) {

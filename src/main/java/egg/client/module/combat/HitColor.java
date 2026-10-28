@@ -11,7 +11,7 @@ import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
 
 public class HitColor extends Module {
-    public static final int VANILLA_HURT_COLOR = -1291911168; // 0xB2FF0000
+    public static final int VANILLA_HURT_COLOR = -1291911168;
 
     private final ColorSetting color = new ColorSetting("Цвет", 0xB2FF2A2A, "Цвет вспышки при получении урона");
     private final BooleanSetting colorArmor = new BooleanSetting("Окрашивать броню", true, "Окрашивать броню при получении урона в цвет вспышки");

@@ -25,9 +25,6 @@ import org.joml.Vector2f;
 
 import java.util.Optional;
 
-/**
- * 1:1 Hitmarker port from egg 1.21.4 (delta.module.render.Hitmarker).
- */
 public class Hitmarker extends Module {
     private static final Identifier HITMARKER_TEXTURE = Identifier.of("egg", "textures/hitmarker.png");
 

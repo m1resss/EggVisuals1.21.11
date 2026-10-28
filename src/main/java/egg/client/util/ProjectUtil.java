@@ -11,9 +11,6 @@ import org.joml.Quaternionf;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
 
-/**
- * Screen projection utility with zero per-frame heap allocations.
- */
 public final class ProjectUtil {
     private ProjectUtil() {}
 
@@ -21,7 +18,6 @@ public final class ProjectUtil {
         return MinecraftClient.getInstance();
     }
 
-    // Reusable objects (thread-confined to render thread)
     private static final Vector2f OUT_VEC2 = new Vector2f();
     private static final Vector3f WORK_VEC3 = new Vector3f();
     private static final Quaternionf WORK_QUAT = new Quaternionf();

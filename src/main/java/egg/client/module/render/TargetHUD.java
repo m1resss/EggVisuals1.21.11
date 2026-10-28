@@ -33,10 +33,6 @@ import org.joml.Vector2f;
 
 import java.util.Optional;
 
-/**
- * TargetHUD - Элегантная информационная карточка цели.
- * Поддерживает 2 режима: классический HUD на экране и 3D привязку в центр противника в мире (скрыта через стены).
- */
 public class TargetHUD extends Module {
 
     private static TargetHUD instance;
@@ -49,7 +45,6 @@ public class TargetHUD extends Module {
     private final BooleanSetting showFps = new BooleanSetting("Показывать FPS", true, "Отображать метку FPS на карточке");
     private final BooleanSetting showDistance = new BooleanSetting("Дистанция", true, "Отображать дистанцию до цели");
 
-    // Internal coordinates for mouse dragging (no ugly sliders in GUI)
     private float posX = 0.52f;
     private float posY = 0.68f;
 
@@ -60,12 +55,10 @@ public class TargetHUD extends Module {
     private float visualAbsorption = 0.0f;
     private long lastFrameNanos = 0L;
 
-    // Smooth world tracking to completely eliminate jitter
     private float smoothScreenX = 0.0f;
     private float smoothScreenY = 0.0f;
     private boolean smoothInit = false;
 
-    // Mouse dragging state
     private boolean dragging = false;
     private float dragOffsetX = 0.0f;
     private float dragOffsetY = 0.0f;
@@ -77,7 +70,7 @@ public class TargetHUD extends Module {
     public TargetHUD() {
         super("Target HUD", "Информационная карточка цели на экране или в центре противника", Category.ESP);
         instance = this;
-        // Clean settings: no coordinate sliders!
+
         addSettings(mode, hudScale, targetTimeout);
     }
 
@@ -98,7 +91,6 @@ public class TargetHUD extends Module {
 
         float tickDelta = tickCounter != null ? tickCounter.getTickProgress(true) : 0.0f;
 
-        // 1. Target acquisition
         updateTargetAcquisition(mc, dt);
 
         boolean inGui = mc.currentScreen instanceof ClickGuiScreen || mc.currentScreen instanceof ChatScreen;
@@ -106,13 +98,12 @@ public class TargetHUD extends Module {
 
         if (renderTarget == null || !renderTarget.isAlive()) {
             if (inGui) {
-                renderTarget = mc.player; // Preview in GUI / Chat
+                renderTarget = mc.player;
             }
         }
 
         boolean hasTarget = renderTarget != null && renderTarget.isAlive();
 
-        // 2. Strict line-of-sight check in World Mode: "через стены не видно ее"
         boolean isWorldMode = mode.is("В мире");
         if (hasTarget && isWorldMode && renderTarget != mc.player) {
             if (isOccludedByWall(mc, renderTarget)) {
@@ -120,7 +111,6 @@ public class TargetHUD extends Module {
             }
         }
 
-        // Animate alpha
         if (hasTarget) {
             animAlpha = Math.min(1.0f, animAlpha + dt * 7.0f);
         } else {
@@ -133,7 +123,6 @@ public class TargetHUD extends Module {
             return;
         }
 
-        // Health animations
         float maxHealth = Math.max(1.0f, renderTarget.getMaxHealth());
         float actualHealth = Math.clamp(renderTarget.getHealth(), 0.0f, maxHealth);
         float actualAbsorption = Math.max(0.0f, renderTarget.getAbsorptionAmount());
@@ -150,7 +139,7 @@ public class TargetHUD extends Module {
         float cardY;
 
         if (isWorldMode && renderTarget != mc.player) {
-            // Position exactly in the CENTER of the enemy body with sub-frame interpolation
+
             double wx = MathHelper.lerp(tickDelta, renderTarget.lastRenderX, renderTarget.getX());
             double wy = MathHelper.lerp(tickDelta, renderTarget.lastRenderY, renderTarget.getY()) + renderTarget.getHeight() * 0.5;
             double wz = MathHelper.lerp(tickDelta, renderTarget.lastRenderZ, renderTarget.getZ());
@@ -158,12 +147,10 @@ public class TargetHUD extends Module {
             Vector2f screenPos = ProjectUtil.toScreen(wx, wy, wz, tickDelta);
             if (!ProjectUtil.isOnScreen(screenPos)) return;
 
-            // Distance scaling
             double dist = mc.player.distanceTo(renderTarget);
             float distScale = (float) Math.clamp(1.0 - (dist - 4.0) * 0.015, 0.72, 1.25);
             scale *= distScale;
 
-            // Smooth interpolation to completely eliminate camera/movement jitter
             if (!smoothInit || Math.abs(smoothScreenX - screenPos.x) > 120.0f || Math.abs(smoothScreenY - screenPos.y) > 120.0f) {
                 smoothScreenX = screenPos.x;
                 smoothScreenY = screenPos.y;
@@ -174,11 +161,10 @@ public class TargetHUD extends Module {
                 smoothScreenY = MathHelper.lerp(smoothSpeed, smoothScreenY, screenPos.y);
             }
 
-            // Center card horizontally and vertically on the enemy
             cardX = smoothScreenX - (cardW * scale) / 2.0f;
             cardY = smoothScreenY - (cardH * scale) / 2.0f;
         } else {
-            // Screen HUD Mode
+
             float screenW = mc.getWindow().getScaledWidth();
             float screenH = mc.getWindow().getScaledHeight();
 
@@ -220,18 +206,15 @@ public class TargetHUD extends Module {
         int borderColor = ColorUtil.rgba(255, 255, 255, borderAlpha);
         int shadowColor = ColorUtil.rgba(0, 0, 0, shadowAlpha);
 
-        // 1. Shadow glow & pill card
         Draw2DProcessor.INSTANCE.drawGlow(mat, x, y, w, h, radius, shadowColor, 6.0f);
         Draw2DProcessor.INSTANCE.drawRect(mat, x, y, w, h, radius, bgColor);
         // Draw2DProcessor.INSTANCE.drawOutline(mat, x, y, w, h, radius, 0.8f, borderColor);
 
-        // 2. Avatar / Face on Left with Damage Flash
         float headSize = 30.0f;
         float headX = x + 7.0f;
         float headY = y + 7.0f;
         float headRadius = 7.0f;
 
-        // When receiving damage: head background and border flash red!
         int headBgColor = ColorUtil.rgba(30, 30, 36, (int) (240 * alpha));
         if (target.hurtTime > 0) {
             float hurtFactor = target.hurtTime / 10.0f;
@@ -241,11 +224,10 @@ public class TargetHUD extends Module {
 
         Identifier skinTex = getTargetSkin(target);
         if (skinTex != null) {
-            // Draw skin face (Draw2DProcessor tints it red automatically on damage)
+
             Draw2DProcessor.INSTANCE.a(mat, skinTex, target, headX, headY, headSize, headSize, headRadius, alpha);
         }
 
-        // 3. Name & Info
         float textX = x + 43.0f;
         float nameY = y + 5.5f;
         String name = target.getName().getString();
@@ -257,7 +239,6 @@ public class TargetHUD extends Module {
         int nameColor = ColorUtil.rgba(255, 255, 255, (int) (255 * alpha));
         Fonts.b.a(mat, name, textX, nameY, 11.0f, nameColor);
 
-        // 4. Glowing Heart Icon & HP Value
         float hpY = y + 20.0f;
         float heartSize = 10.0f;
         int heartGlowColor = ColorUtil.rgba(255, 30, 80, (int) (160 * alpha));
@@ -265,7 +246,6 @@ public class TargetHUD extends Module {
         int heartColor = ColorUtil.rgba(255, 255, 255, (int) (255 * alpha));
         Draw2DProcessor.INSTANCE.a(mat, HEART_ICON, textX, hpY + 0.5f, heartSize, heartSize, 0.0f, heartColor);
 
-        // HP value text (e.g. "8" or "14 + 4" with golden hearts)
         float hpTextX = textX + heartSize + 4.0f;
         String hpValueStr = String.format("%.0f", Math.ceil(target.getHealth()));
         int hpTextColor = ColorUtil.rgba(255, 255, 255, (int) (230 * alpha));
@@ -274,22 +254,19 @@ public class TargetHUD extends Module {
         float nextTextX = hpTextX + Fonts.b.a(hpValueStr, 9.5f);
         if (absorption > 0.0f) {
             String absStr = " +" + String.format("%.0f", Math.ceil(absorption));
-            int absTextColor = ColorUtil.rgba(255, 215, 0, (int) (255 * alpha)); // Gold
+            int absTextColor = ColorUtil.rgba(255, 215, 0, (int) (255 * alpha));
             Fonts.b.a(mat, absStr, nextTextX, hpY, 9.5f, absTextColor);
         }
 
-        // 5. Health Bar (Theme Color) + Golden Absorption Bar
         float barX = textX;
         float barY = y + 32.0f;
-        float barW = w - 43.0f - 10.0f; // 99.0f
+        float barW = w - 43.0f - 10.0f;
         float barH = 5.0f;
         float barRadius = 2.5f;
 
-        // Background track
         int trackColor = ColorUtil.rgba(255, 255, 255, (int) (38 * alpha));
         Draw2DProcessor.INSTANCE.drawRect(mat, barX, barY, barW, barH, barRadius, trackColor);
 
-        // Health line depends on Theme Accent color!
         int themeCol1 = Theme.getAccent();
         int themeCol2 = Theme.getAccentHover();
         int themeFill1 = ColorUtil.withAlpha(themeCol1, (int) (255 * alpha));
@@ -303,7 +280,6 @@ public class TargetHUD extends Module {
             Draw2DProcessor.INSTANCE.drawGradient(mat, barX, barY, baseW, barH, barRadius, themeFill1, themeFill2, themeFill1, themeFill2);
         }
 
-        // Golden hearts: Yellow/gold health bar segment!
         if (visualAbsorption > 0.01f) {
             float absRatio = Math.clamp(visualAbsorption / totalMax, 0.0f, 1.0f - baseRatio);
             float absW = Math.max(3.0f, barW * absRatio);
@@ -411,7 +387,6 @@ public class TargetHUD extends Module {
         return false;
     }
 
-    // Chat Screen Overlay & Dragging
     public void renderChatOverlay(DrawContext context, int mouseX, int mouseY) {
         if (!isEnabled() || !mode.is("Экран")) return;
         if (dragging) {

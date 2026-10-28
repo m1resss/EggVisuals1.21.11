@@ -49,7 +49,6 @@ public class Trajectories extends Module {
     private final BooleanSetting glowEffect = new BooleanSetting("Неоновое свечение", true, "Мягкий неоновый ореол и лучи света вокруг круга");
     private final BooleanSetting inFlight = new BooleanSetting("Летящие снаряды", true, "Просчитывать уже выпущенные в мире стрелы и перлы");
 
-    // Smoothed positions map for smooth camera movement
     private final Map<String, Vec3d> smoothedPositions = new HashMap<>();
     private final Map<String, Direction> smoothedSides = new HashMap<>();
     private long lastFrameNanos = 0L;
@@ -80,7 +79,6 @@ public class Trajectories extends Module {
         VertexConsumer quadBuffer = consumers.getBuffer(RenderLayers.debugQuads());
         Set<String> activeKeys = new HashSet<>();
 
-        // Predict ONLY in-flight projectiles in world
         Box viewRange = mc.player.getBoundingBox().expand(80.0);
         for (Entity entity : mc.world.getOtherEntities(mc.player, viewRange)) {
             if (!entity.isAlive() || entity.getVelocity().lengthSquared() < 0.0001) continue;
@@ -89,7 +87,6 @@ public class Trajectories extends Module {
             }
         }
 
-        // Predict held item trajectory
         ItemStack main = mc.player.getMainHandStack();
         ItemStack off = mc.player.getOffHandStack();
         if (isThrowableOrWeapon(main.getItem())) {
@@ -99,7 +96,6 @@ public class Trajectories extends Module {
             renderItemPrediction(mc, off, Hand.OFF_HAND, quadBuffer, camPos, r, g, b, smoothFactor, activeKeys);
         }
 
-        // Clean up stale smoothed positions
         smoothedPositions.keySet().removeIf(k -> !activeKeys.contains(k));
     }
 
@@ -124,7 +120,7 @@ public class Trajectories extends Module {
         if (item instanceof BowItem) {
             float pull = getBowPull(mc.player);
             if (pull <= 0.0f) {
-                // If not drawing, predict at standard full pull when bow is held
+
                 speed = 3.0f;
             } else {
                 speed = pull * 3.0f;
@@ -158,7 +154,6 @@ public class Trajectories extends Module {
 
         if (speed <= 0.0f) return;
 
-        // Multishot calculation for crossbows: shoots 3 projectiles with -10, 0, +10 degree yaw spread!
         boolean isMulti = (item instanceof CrossbowItem) && hasMultishot(stack);
         float[] yawSpreads = isMulti ? new float[]{-10.0f, 0.0f, 10.0f} : new float[]{0.0f};
 
@@ -175,7 +170,6 @@ public class Trajectories extends Module {
                     return old.lerp(targetImpact, smoothFactor);
                 });
 
-                // Render trajectory ribbon / line
                 if (showLine.isEnabled()) {
                     boolean lineAllowed = true;
                     if (pullThreshold.get() > 0.0) {
@@ -192,7 +186,6 @@ public class Trajectories extends Module {
                     }
                 }
 
-                // Render glowing neon landing circle on target surface
                 renderGlowingLandingCircle(quadBuffer, smoothPos, camPos, res.impactSide, r, g, b);
             }
         }
@@ -216,7 +209,6 @@ public class Trajectories extends Module {
                 renderPathRibbon(quadBuffer, res.path, camPos, r, g, b);
             }
 
-            // Render glowing neon landing circle on target surface
             renderGlowingLandingCircle(quadBuffer, smoothPos, camPos, res.impactSide, r, g, b);
         }
     }
@@ -276,7 +268,6 @@ public class Trajectories extends Module {
 
             Vec3d end = hitBlock.getType() != HitResult.Type.MISS ? hitBlock.getPos() : next;
 
-            // Check entity collision
             Entity hitEntity = raycastEntity(mc, pos, end);
             if (hitEntity != null) {
                 impactPoint = hitEntity.getBoundingBox().expand(0.3).raycast(pos, end).orElse(end);
@@ -359,13 +350,9 @@ public class Trajectories extends Module {
         return closest;
     }
 
-    /**
-     * Renders a glowing pulsating landing circle with neon halo and light beam on the hit surface.
-     */
     private void renderGlowingLandingCircle(VertexConsumer buf, Vec3d center, Vec3d camPos, Direction side, int cr, int cg, int cb) {
         if (side == null) side = Direction.UP;
 
-        // Offset 0.02 blocks away from block face to eliminate z-fighting
         Vec3d offset = new Vec3d(side.getOffsetX() * 0.02, side.getOffsetY() * 0.02, side.getOffsetZ() * 0.02);
         Vec3d drawPos = center.add(offset);
 
@@ -373,7 +360,6 @@ public class Trajectories extends Module {
         float cy = (float) (drawPos.y - camPos.y);
         float cz = (float) (drawPos.z - camPos.z);
 
-        // Basis vectors u and v perpendicular to surface normal
         Vector3f normal = new Vector3f(side.getOffsetX(), side.getOffsetY(), side.getOffsetZ());
         Vector3f u;
         if (Math.abs(normal.y) > 0.9f) {
@@ -384,14 +370,13 @@ public class Trajectories extends Module {
         Vector3f v = new Vector3f(normal).cross(u).normalize();
 
         float baseR = (float) circleRadius.get();
-        // Gentle pulsation
+
         long now = System.currentTimeMillis();
         float pulse = (float) Math.sin(now * 0.005) * 0.04f;
         float R = baseR * (1.0f + pulse);
 
         int segments = 24;
 
-        // 1. Soft Outer Glowing Halo (Disc with fading alpha outwards)
         if (glowEffect.isEnabled()) {
             float glowR = R * 1.55f;
             int haloCenterA = 120;
@@ -413,7 +398,6 @@ public class Trajectories extends Module {
                 buf.vertex(cx, cy, cz).color(cr, cg, cb, haloCenterA);
             }
 
-            // Upward glow pillar / beacon
             float pillarH = 0.45f;
             Vector3f pNorm = new Vector3f(normal).mul(pillarH);
             for (int i = 0; i < segments; i++) {
@@ -439,7 +423,6 @@ public class Trajectories extends Module {
             }
         }
 
-        // 2. Crisp Glowing Target Ring (Outer)
         float rOut1 = R * 0.94f;
         float rOut2 = R * 1.04f;
         for (int i = 0; i < segments; i++) {
@@ -462,7 +445,6 @@ public class Trajectories extends Module {
             buf.vertex(p21.x, p21.y, p21.z).color(cr, cg, cb, 230);
         }
 
-        // 3. Inner Concentric Ring
         float rIn1 = R * 0.40f;
         float rIn2 = R * 0.48f;
         for (int i = 0; i < segments; i++) {
@@ -485,7 +467,6 @@ public class Trajectories extends Module {
             buf.vertex(p21.x, p21.y, p21.z).color(cr, cg, cb, 190);
         }
 
-        // 4. White-Hot Center Bullseye Dot
         float dotR = R * 0.12f;
         int wr = Math.min(255, cr + 45);
         int wg = Math.min(255, cg + 45);
@@ -509,9 +490,6 @@ public class Trajectories extends Module {
         }
     }
 
-    /**
-     * Renders trajectory as a smooth camera-facing 3D ribbon with fade-out.
-     */
     private void renderPathRibbon(VertexConsumer buf, List<Vec3d> path, Vec3d camPos, int r, int g, int b) {
         int count = path.size();
         if (count < 2) return;

@@ -107,7 +107,6 @@ public class InventorySorter extends Module {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null || mc.interactionManager == null) return;
 
-        // Если экран инвентаря не открыт — открываем его
         if (!(mc.currentScreen instanceof InventoryScreen)) {
             mc.setScreen(new InventoryScreen(mc.player));
         }
@@ -131,7 +130,6 @@ public class InventorySorter extends Module {
         if (preset == null) return;
         PlayerScreenHandler handler = player.playerScreenHandler;
 
-        // Виртуальное отслеживание занятости слотов в процессе сборки плана
         ItemStack[] virtualSlots = new ItemStack[handler.slots.size()];
         for (int i = 0; i < handler.slots.size(); i++) {
             virtualSlots[i] = handler.slots.get(i).getStack().copy();
@@ -139,7 +137,6 @@ public class InventorySorter extends Module {
 
         boolean[] lockedSlots = new boolean[handler.slots.size()];
 
-        // 1. Сначала отмечаем слоты, которые уже на своих местах
         for (int pSlot = 0; pSlot <= 40; pSlot++) {
             if (!isSlotAllowed(pSlot)) continue;
             int hSlot = playerInvToScreenHandler(pSlot);
@@ -149,12 +146,11 @@ public class InventorySorter extends Module {
             if (rule != null && !rule.isEmpty()) {
                 ItemStack cur = virtualSlots[hSlot];
                 if (rule.matches(cur)) {
-                    lockedSlots[hSlot] = true; // Уже правильно лежит!
+                    lockedSlots[hSlot] = true;
                 }
             }
         }
 
-        // 2. Для каждого целевого слота, который не совпадает, ищем подходящий предмет в инвентаре
         for (int pSlot = 0; pSlot <= 40; pSlot++) {
             if (!isSlotAllowed(pSlot)) continue;
             int dstSlot = playerInvToScreenHandler(pSlot);
@@ -164,16 +160,14 @@ public class InventorySorter extends Module {
             InventorySlotRule rule = preset.getRule(pSlot);
             if (rule == null || rule.isEmpty()) continue;
 
-            // Ищем предмет в доступных слотах инвентаря (слоты 9..44 и 45)
             int srcSlot = findBestMatchSlot(virtualSlots, lockedSlots, rule, dstSlot);
             if (srcSlot != -1) {
-                // Создаем задачу перемещения
+
                 boolean isHotbar = (dstSlot >= 36 && dstSlot <= 44);
                 int hotbarBtn = isHotbar ? (dstSlot - 36) : 0;
 
                 taskQueue.add(new SwapTask(srcSlot, dstSlot, isHotbar, hotbarBtn));
 
-                // Обновляем виртуальные слоты
                 ItemStack tmp = virtualSlots[dstSlot];
                 virtualSlots[dstSlot] = virtualSlots[srcSlot];
                 virtualSlots[srcSlot] = tmp;
@@ -184,7 +178,7 @@ public class InventorySorter extends Module {
     }
 
     private int findBestMatchSlot(ItemStack[] slots, boolean[] locked, InventorySlotRule rule, int targetSlot) {
-        // Проверяем сначала основной инвентарь (9..35), затем хотбар (36..44), затем вторую руку (45)
+
         int[] searchOrder = new int[37];
         int idx = 0;
         for (int i = 9; i <= 35; i++) searchOrder[idx++] = i;
@@ -216,7 +210,6 @@ public class InventorySorter extends Module {
             return;
         }
 
-        // Прекращаем сортировку, если закрыли инвентарь
         if (!(mc.currentScreen instanceof InventoryScreen)) {
             taskQueue.clear();
             sortingActive = false;
@@ -243,10 +236,10 @@ public class InventorySorter extends Module {
 
         try {
             if (task.isHotbarSwap) {
-                // Атомарный свап с хотбаром в один клик
+
                 mc.interactionManager.clickSlot(syncId, task.srcSlot, task.hotbarBtn, SlotActionType.SWAP, mc.player);
             } else {
-                // Универсальный свап через курсор
+
                 mc.interactionManager.clickSlot(syncId, task.srcSlot, 0, SlotActionType.PICKUP, mc.player);
                 mc.interactionManager.clickSlot(syncId, task.dstSlot, 0, SlotActionType.PICKUP, mc.player);
                 if (!mc.player.currentScreenHandler.getCursorStack().isEmpty()) {
@@ -261,13 +254,13 @@ public class InventorySorter extends Module {
     }
 
     public static int playerInvToScreenHandler(int pSlot) {
-        if (pSlot >= 0 && pSlot < 9) return pSlot + 36; // Hotbar
-        if (pSlot >= 9 && pSlot < 36) return pSlot;      // Main inv
-        if (pSlot == 36) return 8;                       // Boots
-        if (pSlot == 37) return 7;                       // Leggings
-        if (pSlot == 38) return 6;                       // Chestplate
-        if (pSlot == 39) return 5;                       // Helmet
-        if (pSlot == 40) return 45;                      // Offhand
+        if (pSlot >= 0 && pSlot < 9) return pSlot + 36;
+        if (pSlot >= 9 && pSlot < 36) return pSlot;
+        if (pSlot == 36) return 8;
+        if (pSlot == 37) return 7;
+        if (pSlot == 38) return 6;
+        if (pSlot == 39) return 5;
+        if (pSlot == 40) return 45;
         return -1;
     }
 

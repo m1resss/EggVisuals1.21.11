@@ -21,13 +21,11 @@ public class AutoEat extends Module {
     private final BooleanSetting includeWeapons = new BooleanSetting("Включать оружие", false, "Считать мечи и булавы инструментами");
     private final SliderSetting hungerThreshold = new SliderSetting("Порог сытости (Авто)", 16.0, 1.0, 19.0, 1.0, "Порог голода для автоматического режима");
 
-    // State for "Умный по ПКМ"
     private boolean swappedForRmb = false;
     private int prevToolSlot = -1;
     private int swappedFoodSlot = -1;
     private int releaseTicks = 0;
 
-    // State for "Автоматический"
     private enum AutoState {
         IDLE,
         EATING_OFFHAND,
@@ -110,14 +108,13 @@ public class AutoEat extends Module {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null) return -1;
 
-        // First priority: Golden Carrot
         for (int i = 0; i < 9; i++) {
             ItemStack stack = mc.player.getInventory().getStack(i);
             if (!stack.isEmpty() && stack.isOf(Items.GOLDEN_CARROT)) {
                 return i;
             }
         }
-        // Fallback to any safe food if enabled
+
         if (this.fallbackFood.get()) {
             return findBestFoodSlot();
         }
@@ -195,10 +192,10 @@ public class AutoEat extends Module {
         boolean usingItem = mc.player.isUsingItem();
 
         if (this.swappedForRmb) {
-            // Player is still holding RMB or still eating
+
             if (rmb || usingItem) {
                 this.releaseTicks = 0;
-                // Keep the food slot selected
+
                 if (this.swappedFoodSlot != -1 && mc.player.getInventory().getSelectedSlot() != this.swappedFoodSlot) {
                     ItemStack current = mc.player.getInventory().getStack(this.swappedFoodSlot);
                     if (isSafeFood(current)) {
@@ -208,7 +205,6 @@ public class AutoEat extends Module {
                 return;
             }
 
-            // Released RMB and not using item
             this.releaseTicks++;
             if (this.releaseTicks >= 2) {
                 if (this.returnToTool.get() && this.prevToolSlot != -1) {
@@ -222,7 +218,6 @@ public class AutoEat extends Module {
             return;
         }
 
-        // Not currently swapped: check if RMB is pressed with tool in hand
         if (rmb) {
             if (this.onlyWithTool.get() && !isHoldingTool()) {
                 return;
@@ -232,10 +227,10 @@ public class AutoEat extends Module {
             int targetSlot;
 
             if (foodLevel < 20) {
-                // Голоден (< 20): выбираем морковку или обычную еду
+
                 targetSlot = findCarrotOrFoodSlot();
             } else {
-                // СЫТ (20): морковку съесть нельзя! Выбираем только золотое яблоко (если есть)
+
                 targetSlot = findGappleSlot();
             }
 

@@ -27,11 +27,6 @@ import org.joml.Vector3f;
 
 import java.util.List;
 
-/**
- * ItemRadius - Отображение радиуса действия особых предметов на серверах Funtime и HolyWorld.
- * Имеет уникальную кибернетическую визуализацию с радарной волной, неоновыми градиентными контурами,
- * объёмной голографической ловушкой и энергетическим щитом пласта.
- */
 public class ItemRadius extends Module {
 
     private final ModeSetting server = new ModeSetting("Сервер", "Funtime", "Выбор сервера", "Funtime", "HolyWorld");
@@ -47,12 +42,10 @@ public class ItemRadius extends Module {
     private final BooleanSetting pulseRing = new BooleanSetting("Пульсация", true, "Расширяющееся эхо-кольцо");
     private final SliderSetting fillOpacity = new SliderSetting("Прозрачность", 40.0, 5.0, 100.0, 5.0, "Прозрачность заливки");
 
-    // Dynamic smoothing and transitions
     private float threatTimer = 0.0f;
     private float animTime = 0.0f;
     private long lastFrameNanos = 0L;
 
-    // Smoothed pose for Plast
     private Vec3d plastSmoothedCenter = Vec3d.ZERO;
     private float plastSmoothedYawDeg = 0.0f;
     private float plastSmoothedPitchDeg = 0.0f;
@@ -108,8 +101,8 @@ public class ItemRadius extends Module {
         Vec3d playerPos = mc.player.getEntityPos();
 
         int accentColor = Theme.getAccent();
-        int alertColor = 0xFFFF2A4B; // Vivid Crimson Red
-        int friendColor = 0xFF2BFF88; // Holy Emerald Green
+        int alertColor = 0xFFFF2A4B;
+        int friendColor = 0xFF2BFF88;
 
         switch (activeType) {
             case "dez":
@@ -269,14 +262,6 @@ public class ItemRadius extends Module {
         return false;
     }
 
-    /**
-     * Unique Cybernetic Circle Rendering:
-     * - Dual glowing neon boundary ribbon
-     * - Subtle gradient floor fill with configurable opacity
-     * - Animated 360° rotating radar sweep sector
-     * - Expanding circular ripple pulse
-     * - Cardinal cyber notches at North/East/South/West
-     */
     private void renderCyberCircle(VertexConsumer buf, Vec3d center, Vec3d camPos, float radius,
                                    int primaryCol, int alertCol, float threat, float time) {
         int color = ColorUtil.interpolate(primaryCol, alertCol, threat);
@@ -296,7 +281,6 @@ public class ItemRadius extends Module {
             baseFillAlpha = MathHelper.lerp(warningPulse, baseFillAlpha, 110.0f);
         }
 
-        // 1. Semi-transparent gradient floor disc (quad pairs forming complete circular disc)
         for (int i = 0; i < segments; i += 2) {
             float a1 = i * angleStep;
             float a2 = (i + 1) * angleStep;
@@ -320,7 +304,6 @@ public class ItemRadius extends Module {
             buf.vertex(x3, cy, z3).color(r, g, b, alphaOuter);
         }
 
-        // 2. Animated Radar Sweep Beam
         if (radarWave.isEnabled()) {
             float sweepAngle = (float) ((time * 2.2f) % (2.0 * Math.PI));
             float sweepArc = (float) Math.toRadians(75.0);
@@ -347,7 +330,6 @@ public class ItemRadius extends Module {
             }
         }
 
-        // 3. Expanding Ripple Pulse
         if (pulseRing.isEnabled()) {
             float pulsePhase = (time * 0.75f) % 1.0f;
             float pulseR = radius * pulsePhase;
@@ -378,7 +360,6 @@ public class ItemRadius extends Module {
             }
         }
 
-        // 4. Dual Glowing Boundary Ribbon (Core Ring + Soft Outer Halo)
         float coreHalfW = 0.06f;
         float haloWidth = 0.22f;
 
@@ -391,7 +372,6 @@ public class ItemRadius extends Module {
             float sin2 = (float) Math.sin(a2);
             float cos2 = (float) Math.cos(a2);
 
-            // Core sharp neon ribbon
             float rIn = radius - coreHalfW;
             float rOut = radius + coreHalfW;
 
@@ -410,7 +390,6 @@ public class ItemRadius extends Module {
             buf.vertex(cOutX2, cy + 0.01f, cOutZ2).color(r, g, b, 255);
             buf.vertex(cInX2, cy + 0.01f, cInZ2).color(r, g, b, 230);
 
-            // Soft outer halo ribbon (fades to 0)
             float hOutX1 = cx + sin1 * (radius + haloWidth);
             float hOutZ1 = cz + cos1 * (radius + haloWidth);
             float hOutX2 = cx + sin2 * (radius + haloWidth);
@@ -422,7 +401,6 @@ public class ItemRadius extends Module {
             buf.vertex(cOutX2, cy + 0.01f, cOutZ2).color(r, g, b, 140);
         }
 
-        // 5. Cardinal Cyber Notches (N, E, S, W pointer tick marks)
         float[] cardinalAngles = {0.0f, (float) (Math.PI * 0.5), (float) Math.PI, (float) (Math.PI * 1.5)};
         for (float ca : cardinalAngles) {
             float forwardX = (float) Math.sin(ca);
@@ -450,13 +428,6 @@ public class ItemRadius extends Module {
         }
     }
 
-    /**
-     * Unique Holographic Trap Cage Rendering:
-     * - 4x4x4 Holographic energy containment field
-     * - Sci-Fi corner targeting brackets on all 8 vertices
-     * - Soft translucent energy barrier faces
-     * - Smooth animated vertical laser scanning plane
-     */
     private void renderHolographicTrap(VertexConsumer buf, Vec3d center, Vec3d camPos, float size,
                                        int primaryCol, int alertCol, float threat, float time) {
         int color = ColorUtil.interpolate(primaryCol, alertCol, threat);
@@ -468,15 +439,13 @@ public class ItemRadius extends Module {
         float cy = (float) (center.y - camPos.y);
         float cz = (float) (center.z - camPos.z);
 
-        float h = size * 0.5f; // 2.0m half-extent
+        float h = size * 0.5f;
         float x1 = cx - h, x2 = cx + h;
         float y1 = cy - h, y2 = cy + h;
         float z1 = cz - h, z2 = cz + h;
 
         int faceAlpha = threat > 0.05f ? 45 : 24;
 
-        // 1. Translucent holographic box faces
-        // Bottom & Top
         buf.vertex(x1, y1, z1).color(r, g, b, faceAlpha);
         buf.vertex(x2, y1, z1).color(r, g, b, faceAlpha);
         buf.vertex(x2, y1, z2).color(r, g, b, faceAlpha);
@@ -487,7 +456,6 @@ public class ItemRadius extends Module {
         buf.vertex(x2, y2, z2).color(r, g, b, faceAlpha);
         buf.vertex(x2, y2, z1).color(r, g, b, faceAlpha);
 
-        // Sides
         buf.vertex(x1, y1, z1).color(r, g, b, faceAlpha);
         buf.vertex(x1, y2, z1).color(r, g, b, faceAlpha);
         buf.vertex(x2, y2, z1).color(r, g, b, faceAlpha);
@@ -508,7 +476,6 @@ public class ItemRadius extends Module {
         buf.vertex(x2, y2, z2).color(r, g, b, faceAlpha);
         buf.vertex(x2, y1, z2).color(r, g, b, faceAlpha);
 
-        // 2. Animated Vertical Laser Scanner Grid Plane
         float laserRelY = (float) Math.sin(time * 3.0f) * (h - 0.15f);
         float ly = cy + laserRelY;
         int laserAlpha = threat > 0.05f ? 110 : 65;
@@ -518,7 +485,6 @@ public class ItemRadius extends Module {
         buf.vertex(x2, ly, z2).color(r, g, b, laserAlpha);
         buf.vertex(x1, ly, z2).color(r, g, b, laserAlpha);
 
-        // 3. Sci-Fi Neon Corner Brackets (8 corners)
         float bLen = 0.65f;
         float bThick = 0.045f;
         int bracketAlpha = 240;
@@ -534,24 +500,16 @@ public class ItemRadius extends Module {
                 for (float kz : zs) {
                     float dz = (kz == z1) ? 1.0f : -1.0f;
 
-                    // Segment along X
                     renderThickLineSegment(buf, kx, ky, kz, kx + dx * bLen, ky, kz, bThick, r, g, b, bracketAlpha);
-                    // Segment along Y
+
                     renderThickLineSegment(buf, kx, ky, kz, kx, ky + dy * bLen, kz, bThick, r, g, b, bracketAlpha);
-                    // Segment along Z
+
                     renderThickLineSegment(buf, kx, ky, kz, kx, ky, kz + dz * bLen, bThick, r, g, b, bracketAlpha);
                 }
             }
         }
     }
 
-    /**
-     * Unique Holographic Plast (Shield Wall) Rendering:
-     * - Raycast-aligned 4x4x1.5m energy barrier
-     * - Dual glowing neon boundary frames
-     * - Translucent holographic energy shield
-     * - Animated energetic scanwave traveling across the wall
-     */
     private void renderHolographicPlast(VertexConsumer buf, PlanePose pose, Vec3d camPos,
                                         float width, float height, float thickness,
                                         int primaryCol, int alertCol, float threat, float time) {
@@ -564,16 +522,15 @@ public class ItemRadius extends Module {
         float hh = height * 0.5f;
         float ht = thickness * 0.5f;
 
-        // Transform 8 local box vertices to rotated world coordinates
         Vec3d[] localVertices = {
-                new Vec3d(-hw, -hh, -ht), // 0: ---
-                new Vec3d(hw, -hh, -ht),  // 1: +--
-                new Vec3d(hw, hh, -ht),   // 2: ++-
-                new Vec3d(-hw, hh, -ht),  // 3: -+-
-                new Vec3d(-hw, -hh, ht),  // 4: --+
-                new Vec3d(hw, -hh, ht),   // 5: +-+
-                new Vec3d(hw, hh, ht),    // 6: +++
-                new Vec3d(-hw, hh, ht)    // 7: -++
+                new Vec3d(-hw, -hh, -ht),
+                new Vec3d(hw, -hh, -ht),
+                new Vec3d(hw, hh, -ht),
+                new Vec3d(-hw, hh, -ht),
+                new Vec3d(-hw, -hh, ht),
+                new Vec3d(hw, -hh, ht),
+                new Vec3d(hw, hh, ht),
+                new Vec3d(-hw, hh, ht)
         };
 
         Vec3d[] worldVertices = new Vec3d[8];
@@ -588,43 +545,36 @@ public class ItemRadius extends Module {
 
         int barrierAlpha = threat > 0.05f ? 75 : 40;
 
-        // 1. Draw 6 semi-transparent barrier shield faces
-        // Front face (0, 1, 2, 3)
         renderQuad(buf, worldVertices[0], worldVertices[1], worldVertices[2], worldVertices[3], r, g, b, barrierAlpha);
-        // Back face (5, 4, 7, 6)
+
         renderQuad(buf, worldVertices[5], worldVertices[4], worldVertices[7], worldVertices[6], r, g, b, barrierAlpha);
-        // Top face (3, 2, 6, 7)
+
         renderQuad(buf, worldVertices[3], worldVertices[2], worldVertices[6], worldVertices[7], r, g, b, barrierAlpha);
-        // Bottom face (4, 5, 1, 0)
+
         renderQuad(buf, worldVertices[4], worldVertices[5], worldVertices[1], worldVertices[0], r, g, b, barrierAlpha);
-        // Left face (4, 0, 3, 7)
+
         renderQuad(buf, worldVertices[4], worldVertices[0], worldVertices[3], worldVertices[7], r, g, b, barrierAlpha);
-        // Right face (1, 5, 6, 2)
+
         renderQuad(buf, worldVertices[1], worldVertices[5], worldVertices[6], worldVertices[2], r, g, b, barrierAlpha);
 
-        // 2. Thick Sci-Fi Neon Edge Frame on Front & Back
         float frameThick = 0.06f;
         int frameAlpha = 245;
 
-        // Front edges: 0-1, 1-2, 2-3, 3-0
         renderThickLineSegment(buf, worldVertices[0], worldVertices[1], frameThick, r, g, b, frameAlpha);
         renderThickLineSegment(buf, worldVertices[1], worldVertices[2], frameThick, r, g, b, frameAlpha);
         renderThickLineSegment(buf, worldVertices[2], worldVertices[3], frameThick, r, g, b, frameAlpha);
         renderThickLineSegment(buf, worldVertices[3], worldVertices[0], frameThick, r, g, b, frameAlpha);
 
-        // Back edges: 4-5, 5-6, 6-7, 7-4
         renderThickLineSegment(buf, worldVertices[4], worldVertices[5], frameThick, r, g, b, frameAlpha);
         renderThickLineSegment(buf, worldVertices[5], worldVertices[6], frameThick, r, g, b, frameAlpha);
         renderThickLineSegment(buf, worldVertices[6], worldVertices[7], frameThick, r, g, b, frameAlpha);
         renderThickLineSegment(buf, worldVertices[7], worldVertices[4], frameThick, r, g, b, frameAlpha);
 
-        // Connecting strut edges: 0-4, 1-5, 2-6, 3-7
         renderThickLineSegment(buf, worldVertices[0], worldVertices[4], frameThick, r, g, b, frameAlpha);
         renderThickLineSegment(buf, worldVertices[1], worldVertices[5], frameThick, r, g, b, frameAlpha);
         renderThickLineSegment(buf, worldVertices[2], worldVertices[6], frameThick, r, g, b, frameAlpha);
         renderThickLineSegment(buf, worldVertices[3], worldVertices[7], frameThick, r, g, b, frameAlpha);
 
-        // 3. Animated Energy Pulse Wave through the barrier
         float waveProgress = (time * 1.5f) % 1.0f;
         float waveY = MathHelper.lerp(waveProgress, -hh, hh);
 
@@ -659,7 +609,6 @@ public class ItemRadius extends Module {
 
         float ht = thickness * 0.5f;
 
-        // Find perpendicular vector
         float px, py, pz;
         if (Math.abs(dy / len) > 0.9f) {
             px = ht; py = 0.0f; pz = 0.0f;
@@ -674,7 +623,7 @@ public class ItemRadius extends Module {
     }
 
     private Vec3d rotatePosePoint(Vec3d pt, float yawDeg, float pitchDeg) {
-        // Rotate around local X axis (pitch)
+
         double radPitch = Math.toRadians(pitchDeg);
         double cosP = Math.cos(radPitch);
         double sinP = Math.sin(radPitch);
@@ -682,7 +631,6 @@ public class ItemRadius extends Module {
         double z1 = pt.y * sinP + pt.z * cosP;
         double x1 = pt.x;
 
-        // Rotate around local Y axis (yaw)
         double radYaw = Math.toRadians(yawDeg);
         double cosY = Math.cos(radYaw);
         double sinY = Math.sin(radYaw);

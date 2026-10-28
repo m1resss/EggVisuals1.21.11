@@ -112,14 +112,13 @@ public class AudioPlayer {
 
     public static synchronized void stopAll() {
         rainPlaying = false;
-        // 1. Immediate termination on calling thread
+
         sendMci("stop " + RAIN_ALIAS);
         sendMci("close " + RAIN_ALIAS);
         sendMci("stop " + THUNDER_ALIAS);
         sendMci("close " + THUNDER_ALIAS);
         sendMci("close all");
 
-        // 2. Synchronous drain on executor thread to kill any queued opens
         try {
             AUDIO_EXECUTOR.submit(() -> {
                 sendMci("stop " + RAIN_ALIAS);

@@ -35,7 +35,6 @@ public class KeyboardMixin {
         if (action == GLFW.GLFW_PRESS) {
             int key = keyInput.key();
 
-            // Right Shift opens/closes ClickGUI
             if (key == GLFW.GLFW_KEY_RIGHT_SHIFT) {
                 if (client.currentScreen == null) {
                     client.setScreen(ClickGuiScreen.getInstance());
@@ -49,8 +48,7 @@ public class KeyboardMixin {
             }
 
             /*
-            // Global module hotkeys
-            if (client.currentScreen == null) {
+                        if (client.currentScreen == null) {
                 if (egg.client.module.cosmetic.MeleeSkins.INSTANCE != null) {
                     egg.client.module.cosmetic.MeleeSkins.INSTANCE.onKeyPressed(key);
                 }
