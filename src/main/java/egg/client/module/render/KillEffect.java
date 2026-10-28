@@ -12,7 +12,7 @@ import net.minecraft.client.render.RenderLayers;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.entity.model.SkeletonEntityModel;
-import net.minecraft.client.render.entity.state.BipedEntityRenderState;
+import net.minecraft.client.render.entity.state.SkeletonEntityRenderState;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
@@ -53,7 +53,7 @@ public class KillEffect extends Module {
     private final List<ActiveKillTarget> activeTargets = new ArrayList<>();
     private final Random random = new Random();
     private SkeletonEntityModel skeletonModel;
-    private BipedEntityRenderState dummyState;
+    private SkeletonEntityRenderState dummyState;
 
     public KillEffect() {
         super("KillEffect", "Мультяшный эффект смерти: замирание врага, удар молнии и мигание скелета", Category.ESP);
@@ -76,7 +76,7 @@ public class KillEffect extends Module {
             try {
                 ModelPart root = SkeletonEntityModel.getTexturedModelData().createModel();
                 skeletonModel = new SkeletonEntityModel(root);
-                dummyState = new BipedEntityRenderState();
+                dummyState = new SkeletonEntityRenderState();
             } catch (Exception e) {
                 // fallback
             }
@@ -176,20 +176,22 @@ public class KillEffect extends Module {
         float strobeRate = (float) flashSpeed.get();
         boolean showBones = cartoonFlash.isEnabled() && ((int) (target.age * strobeRate) % 2 == 0);
 
-        if (showBones) {
-            // Glowing white skeleton bones layer
-            VertexConsumer buffer = immediate.getBuffer(RenderLayers.entityTranslucent(SKELETON_TEXTURE));
-            int boneCol = 0xFFFFFFFF; // Pure white bones
-            skeletonModel.setAngles(dummyState);
-            skeletonModel.render(matrices, buffer, 0x00F000F0, OverlayTexture.DEFAULT_UV, boneCol);
-        } else {
-            // Solid pitch black charred body silhouette (with red/yellow electricity tint)
-            VertexConsumer buffer = immediate.getBuffer(RenderLayers.entityCutoutNoCull(SKELETON_TEXTURE));
-            // Pitch black charred silhouette with electrical flash
-            int charColor = 0xFF141416; // Deep charred black
-            skeletonModel.setAngles(dummyState);
-            skeletonModel.render(matrices, buffer, 0x00F000F0, OverlayTexture.DEFAULT_UV, charColor);
-        }
+        try {
+            if (showBones) {
+                // Glowing white skeleton bones layer
+                VertexConsumer buffer = immediate.getBuffer(RenderLayers.entityTranslucent(SKELETON_TEXTURE));
+                int boneCol = 0xFFFFFFFF; // Pure white bones
+                skeletonModel.setAngles(dummyState);
+                skeletonModel.render(matrices, buffer, 0x00F000F0, OverlayTexture.DEFAULT_UV, boneCol);
+            } else {
+                // Solid pitch black charred body silhouette (with red/yellow electricity tint)
+                VertexConsumer buffer = immediate.getBuffer(RenderLayers.entityCutoutNoCull(SKELETON_TEXTURE));
+                // Pitch black charred silhouette with electrical flash
+                int charColor = 0xFF141416; // Deep charred black
+                skeletonModel.setAngles(dummyState);
+                skeletonModel.render(matrices, buffer, 0x00F000F0, OverlayTexture.DEFAULT_UV, charColor);
+            }
+        } catch (Throwable ignored) {}
 
         matrices.pop();
 

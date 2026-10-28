@@ -16,9 +16,7 @@ public final class IconRenderer {
     private static final Identifier ESP_ICON = Identifier.of("egg", "textures/icons/esp.png");
     private static final Identifier PLAYER_ICON = Identifier.of("egg", "textures/icons/player.png");
     private static final Identifier MISC_ICON = Identifier.of("egg", "textures/icons/misc.png");
-    private static final Identifier COSMETIC_ICON = Identifier.of("egg", "textures/icons/cosmetic.png");
     private static final Identifier MODS_ICON = Identifier.of("egg", "textures/icons/mods.png");
-    private static final Identifier CASES_ICON = Identifier.of("egg", "textures/cases/coin.png");
     private static final Identifier SEARCH_ICON = Identifier.of("egg", "textures/icons/search.png");
     private static final Identifier STAR_ICON = Identifier.of("egg", "textures/icons/star.png");
 
@@ -31,6 +29,7 @@ public final class IconRenderer {
             case INVENTORY -> MODS_ICON;
             case MISC -> MISC_ICON;
             case SETTINGS -> MODS_ICON;
+            default -> MODS_ICON;
         };
         drawTextureIcon(context, id, x, y, size, size, color);
     }
