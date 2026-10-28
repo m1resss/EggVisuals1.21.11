@@ -38,6 +38,9 @@ dependencies {
     modImplementation "software.bernie.geckolib:geckolib-fabric-1.21.11-compat:4.8.5"
     include "software.bernie.geckolib:geckolib-fabric-1.21.11-compat:4.8.5"
 
+    modImplementation "zako.opt:zakoopt:1.1.6+1.21.11"
+    include "zako.opt:zakoopt:1.1.6+1.21.11"
+
     implementation 'com.google.code.findbugs:jsr305:3.0.2'
     implementation 'com.google.code.gson:gson:2.11.0'
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'

@@ -60,11 +60,6 @@ public class ClientPlayNetworkHandlerMixin {
                     if (hitmarker != null) {
                         hitmarker.onPacket(packet);
                     }
-                } else if (packet.getStatus() == 3) { // ENTITY_DEATH
-                    egg.client.module.render.KillEffect killEffect = ModuleManager.getInstance().getModule(egg.client.module.render.KillEffect.class);
-                    if (killEffect != null && killEffect.isEnabled()) {
-                        killEffect.onEntityDeath(entity);
-                    }
                 }
             }
         }

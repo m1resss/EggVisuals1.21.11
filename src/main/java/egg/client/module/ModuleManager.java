@@ -49,7 +49,6 @@ public class ModuleManager {
         register(new Trajectories());
         register(new ItemRadius());
         register(new TargetHUD());
-        register(new KillEffect());
         register(new HitSparks());
 
         // Player
@@ -68,6 +67,7 @@ public class ModuleManager {
         register(new ClientSettings());
         register(new StreamerMode());
         register(new egg.client.module.render.WorldTweaks());
+        register(new egg.client.module.misc.ZakoOptimization());
 
         /*
         // Cosmetic

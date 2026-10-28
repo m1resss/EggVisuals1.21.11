@@ -41,10 +41,5 @@ public class ClientPlayerInteractionManagerMixin {
         if (hitSparks != null && hitSparks.isEnabled()) {
             hitSparks.onAttack(player, target);
         }
-
-        egg.client.module.render.KillEffect killEffect = ModuleManager.getInstance().getModule(egg.client.module.render.KillEffect.class);
-        if (killEffect != null && killEffect.isEnabled()) {
-            killEffect.recordAttack(target);
-        }
     }
 }
