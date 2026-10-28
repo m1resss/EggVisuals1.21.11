@@ -3,7 +3,6 @@ package egg.client.module.render;
 import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
-import egg.client.module.setting.ButtonSetting;
 import egg.client.module.setting.ColorSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.ui.theme.Theme;
@@ -38,17 +37,6 @@ public class HitSparks extends Module {
     private final BooleanSetting syncColor = new BooleanSetting("Синхр. цвета", true, "Использовать акцентный цвет текущей темы клиента");
     private final ColorSetting color = new ColorSetting("Цвет искр", 0xFFFFD700, "Пользовательский цвет искр");
 
-    private final ButtonSetting testBtn = new ButtonSetting("Тест искр", "Запустить сноп искр прямо перед собой", () -> {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.player != null) {
-            Vec3d eye = mc.player.getEyePos();
-            Vec3d look = mc.player.getRotationVec(1.0f);
-            Vec3d origin = eye.add(look.multiply(2.2));
-            Vec3d spray = new Vec3d(-look.x, -look.y * 0.3 + 0.55, -look.z);
-            getInstance().spawnBurst(origin, spray, true, (float) getInstance().amount.get());
-        }
-    });
-
     private final List<SparkParticle> particles = new ArrayList<>();
     private final Random random = new Random();
     private long lastFrameNanos = 0L;
@@ -56,7 +44,7 @@ public class HitSparks extends Module {
     public HitSparks() {
         super("HitSparks", "Искры удара из Deadcode: физика сопротивления воздуха, разлёт конусом и светящиеся иглы", Category.ESP);
         instance = this;
-        addSettings(normalHits, amount, syncColor, color, testBtn);
+        addSettings(normalHits, amount, syncColor, color);
     }
 
     public static HitSparks getInstance() {

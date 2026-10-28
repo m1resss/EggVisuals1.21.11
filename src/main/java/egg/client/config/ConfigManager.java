@@ -22,7 +22,8 @@ import java.util.concurrent.TimeUnit;
 public class ConfigManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final File CONFIG_DIR;
-    private static String currentConfig = "default";
+    private static final File ACTIVE_CONFIG_FILE;
+    private static String currentConfig = "test1";
 
     // 2-minute recurring autosave executor
     private static final ScheduledExecutorService AUTOSAVE_EXECUTOR = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -37,8 +38,9 @@ public class ConfigManager {
         if (!CONFIG_DIR.exists()) {
             CONFIG_DIR.mkdirs();
         }
+        ACTIVE_CONFIG_FILE = new File(CONFIG_DIR, "active_config.txt");
 
-        // Migrate legacy single config if default.json does not exist yet
+        // Migrate legacy single config or bundle if default.json does not exist yet
         File defaultFile = new File(CONFIG_DIR, "default.json");
         if (!defaultFile.exists()) {
             File legacyFile = FabricLoader.getInstance().getConfigDir().resolve("egg_client.json").toFile();
@@ -49,7 +51,31 @@ public class ConfigManager {
                 } catch (Exception e) {
                     EggClient.LOGGER.error("[Egg Visual] Failed to migrate legacy config", e);
                 }
+            } else {
+                try (java.io.InputStream in = ConfigManager.class.getResourceAsStream("/assets/egg/default_config.json")) {
+                    if (in != null) {
+                        java.nio.file.Files.copy(in, defaultFile.toPath());
+                        File test1File = new File(CONFIG_DIR, "test1.json");
+                        if (!test1File.exists()) {
+                            java.nio.file.Files.copy(defaultFile.toPath(), test1File.toPath());
+                        }
+                    }
+                } catch (Exception ignored) {}
             }
+        }
+
+        // Restore active config name from active_config.txt
+        if (ACTIVE_CONFIG_FILE.exists()) {
+            try {
+                String saved = java.nio.file.Files.readString(ACTIVE_CONFIG_FILE.toPath()).trim();
+                if (!saved.isEmpty() && getConfigFile(saved).exists()) {
+                    currentConfig = saved;
+                }
+            } catch (Exception ignored) {}
+        } else if (new File(CONFIG_DIR, "test1.json").exists()) {
+            currentConfig = "test1";
+        } else if (new File(CONFIG_DIR, "default.json").exists()) {
+            currentConfig = "default";
         }
 
         // Schedule autosave every 2 minutes (120 seconds)
@@ -68,6 +94,15 @@ public class ConfigManager {
                 save();
             } catch (Throwable ignored) {}
         }, "Egg-Config-ShutdownSave"));
+    }
+
+    private static void persistActiveConfig(String name) {
+        try {
+            if (!CONFIG_DIR.exists()) {
+                CONFIG_DIR.mkdirs();
+            }
+            java.nio.file.Files.writeString(ACTIVE_CONFIG_FILE.toPath(), name);
+        } catch (Exception ignored) {}
     }
 
     public static File getConfigDir() {
@@ -138,6 +173,7 @@ public class ConfigManager {
             }
 
             currentConfig = cleanName;
+            persistActiveConfig(cleanName);
             return true;
         } catch (Exception e) {
             EggClient.LOGGER.error("[Egg Visual] Failed to save config: " + file.getName(), e);
@@ -205,6 +241,7 @@ public class ConfigManager {
             }
 
             currentConfig = cleanName;
+            persistActiveConfig(cleanName);
             return true;
         } catch (Exception e) {
             EggClient.LOGGER.error("[Egg Visual] Failed to load config: " + file.getName(), e);
@@ -219,7 +256,8 @@ public class ConfigManager {
         if (file.exists()) {
             boolean deleted = file.delete();
             if (deleted && cleanName.equals(currentConfig)) {
-                currentConfig = "default";
+                currentConfig = new File(CONFIG_DIR, "test1.json").exists() ? "test1" : "default";
+                persistActiveConfig(currentConfig);
             }
             return deleted;
         }

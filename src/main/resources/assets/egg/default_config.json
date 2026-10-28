@@ -1,0 +1,431 @@
+{
+  "modules": {
+    "HitColor": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Цвет": -1291864087,
+        "Окрашивать броню": true
+      }
+    },
+    "TapeMouse": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Button": "Правая",
+        "Delay (ms)": 1000.0,
+        "Pause on Eat": true
+      }
+    },
+    "ShiftTAP": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {}
+    },
+    "No Friend Damage": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {}
+    },
+    "AutoSwap": {
+      "enabled": false,
+      "favorite": false,
+      "key": 342,
+      "settings": {
+        "Режим перемещения": "Тройной",
+        "Первый предмет": "Сфера",
+        "Второй предмет": "Тотем",
+        "Задержка (тики)": 2.0
+      }
+    },
+    "Sprint": {
+      "enabled": true,
+      "favorite": true,
+      "key": 0,
+      "settings": {
+        "Keep Sprint": true
+      }
+    },
+    "No Jump Delay": {
+      "enabled": true,
+      "favorite": false,
+      "key": 0,
+      "settings": {}
+    },
+    "Fast Place": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {}
+    },
+    "Interface": {
+      "enabled": true,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Динамик айленд": true,
+        "Тест музыки": false,
+        "Размер острова": 0.7000000000000001,
+        "Бренд": "none",
+        "Иконка": true,
+        "Логин в клиенте": false,
+        "Сервер": false,
+        "Частота кадров": true,
+        "Задержка сервера": true,
+        "Задержка игрока": true,
+        "Текущее время": false,
+        "Координаты": false,
+        "Скорость игрока": false,
+        "Боковое отображение": false,
+        "Цвет фона ватермарки": -1005251307,
+        "Цвет надписи 1": -1,
+        "Цвет надписи 2": -1,
+        "Скругление": 16.0,
+        "Непрозрачность": 255.0,
+        "Градиент HUD": true,
+        "Сила градиента": 5.0,
+        "Размер HUD": 0.7000000000000001,
+        "ПВП режим": false,
+        "Режим в бою": "Прозрачность",
+        "Элементы в бою": "Все",
+        "Размер в бою": 0.6000000000000001,
+        "Прозрачность в бою": 50.0,
+        "Время боя": 15.0
+      }
+    },
+    "Potions": {
+      "enabled": true,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Формат таймера": "Время",
+        "Отображать цифры": true,
+        "Тест эффектов": false,
+        "Размер": 0.75
+      }
+    },
+    "FullBright": {
+      "enabled": true,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Режим": "Ночное зрение"
+      }
+    },
+    "No Render": {
+      "enabled": true,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Огонь": true,
+        "Тыква": true,
+        "Тотем": true,
+        "Слепота": true,
+        "Туман": false,
+        "Тряска камеры": false
+      }
+    },
+    "Crosshair": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Расстояние от центра": 3.5,
+        "Длина сегментов": 2.5,
+        "Толщина": 1.0,
+        "Адаптивность": true,
+        "Контур": false,
+        "Центральная метка": false,
+        "Цвет прицела": -1
+      }
+    },
+    "Hitmarker": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Режим": "В мире",
+        "Размер": 16.0,
+        "Длительность": 800.0,
+        "Цвет": "Белый",
+        "Свой цвет": -1,
+        "Анимация отдачи": true,
+        "Звук": false,
+        "Тип звука": "Стрела"
+      }
+    },
+    "ItemPhysic": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Small Items": true
+      }
+    },
+    "Target ESP": {
+      "enabled": false,
+      "favorite": true,
+      "key": 0,
+      "settings": {
+        "Визуализация цели": "Кубы",
+        "Радиус": 0.6000000000000001,
+        "Скорость": 0.8,
+        "Размер частиц": 0.9500000000000001,
+        "Длина хвоста": 6.0,
+        "Ядро свечения": true,
+        "Окрас при уроне": true,
+        "Дистанция наводки": 15.0,
+        "Только игроки": false
+      }
+    },
+    "View Model": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Режим": "Через чат",
+        "Основная рука X": -0.05,
+        "Основная рука Y": 0.0,
+        "Основная рука Z": 0.0,
+        "Основная рука Размер": 1.0,
+        "Вторая рука X": 0.05,
+        "Вторая рука Y": 0.0,
+        "Вторая рука Z": 0.0,
+        "Вторая рука Размер": 0.6000000000000001
+      }
+    },
+    "Aspect Ratio": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Соотношение сторон": "16:10",
+        "Соотношение": 1.9000000000000001
+      }
+    },
+    "Break Block": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Режим цвета": "Тема",
+        "Свой цвет": -7643914,
+        "Проценты": true
+      }
+    },
+    "Smooth Eat": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Сила тряски": 0.0
+      }
+    },
+    "TotemPopConfetti": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Количество": 100.0,
+        "Сила выстрела": 0.6000000089406967,
+        "Гравитация": 2.0000000298023224,
+        "Парение (флаттер)": 1.700000025331974,
+        "Время жизни (сек)": 8.0,
+        "Свечение кружков": false,
+        "Скрыть дефолт частицы": true
+      }
+    },
+    "Trajectories": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Радиус круга": 0.45,
+        "Плавность": 18.0,
+        "Линия полета": false,
+        "При натяжении": 0.0,
+        "Неоновое свечение": true,
+        "Летящие снаряды": true
+      }
+    },
+    "ItemRadius": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Сервер": "Funtime",
+        "Дезка": true,
+        "Явка": true,
+        "Огненный заряд": true,
+        "Божья Аура": true,
+        "Трапка": true,
+        "Пласт": true,
+        "Радарная волна": true,
+        "Пульсация": true,
+        "Прозрачность": 40.0
+      }
+    },
+    "Target HUD": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Режим": "В мире",
+        "Масштаб": 0.55,
+        "Таймаут цели": 7.5
+      }
+    },
+    "HitSparks": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Обычные удары": false,
+        "Количество": 2.2000000327825546,
+        "Синхр. цвета": false,
+        "Цвет искр": -33049
+      }
+    },
+    "InvSorter": {
+      "enabled": true,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Активный КФГ": "1",
+        "Авто-сортировка при открытии": false,
+        "Задержка (тики)": 2.0,
+        "Сортировать хотбар": true,
+        "Сортировать основной инвентарь": true,
+        "Сортировать броню": true,
+        "Сортировать вторую руку": true
+      }
+    },
+    "AutoRespawn": {
+      "enabled": true,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Instant": true
+      }
+    },
+    "NoChatBackground": {
+      "enabled": true,
+      "favorite": false,
+      "key": 0,
+      "settings": {}
+    },
+    "FastEXP": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {}
+    },
+    "AutoEat": {
+      "enabled": true,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Режим": "Умный по ПКМ",
+        "Только с инструментом": true,
+        "Возвращать инструмент": true,
+        "Запасная еда": true,
+        "Включать оружие": false,
+        "Порог сытости (Авто)": 16.0
+      }
+    },
+    "AutoAccept": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Teleport": true,
+        "Clan": true
+      }
+    },
+    "ItemScroller": {
+      "enabled": true,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Delay (ms)": 40.0
+      }
+    },
+    "SoundReducer": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Mode": "Приглушение",
+        "Volume": 0.30000000000000004,
+        "EXP / Potions": true,
+        "Explosions": true,
+        "Anvil": true,
+        "Nether Portal": true,
+        "Wither": true,
+        "Totem": false
+      }
+    },
+    "ThirdPerson": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Mode": "По нажатию"
+      }
+    },
+    "Auto Auth": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Пароль авторизации": "",
+        "Пароль регистрации": ""
+      }
+    },
+    "ClientSettings": {
+      "enabled": true,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Accent Color": -24349,
+        "Анимация открытия": "Lens",
+        "Центр линзы": "Центр окна",
+        "Smooth Animations": true,
+        "Anim Speed": 1.6,
+        "Background Blur": false,
+        "Window Shadow": true
+      }
+    },
+    "StreamerMode": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Hide Name": true,
+        "Hide Anarchy #": true
+      }
+    },
+    "World Tweaks": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Время суток": "Кастом",
+        "Час дня": 9500.0,
+        "Время года": "Весна",
+        "Погода": "Дождь",
+        "Партиклы": true,
+        "Кол-во частиц": 180.0,
+        "Кастомный туман": false,
+        "Цвет тумана": "Кастом",
+        "Цвет": -6306328,
+        "Звуки дождя/грозы": true,
+        "Громкость звука": 0.1
+      }
+    }
+  }
+}

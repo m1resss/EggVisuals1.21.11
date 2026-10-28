@@ -49,7 +49,7 @@ public class ModuleManager {
         register(new Trajectories());
         register(new ItemRadius());
         register(new TargetHUD());
-        // register(new KillEffect());
+        register(new KillEffect());
         register(new HitSparks());
 
         // Player

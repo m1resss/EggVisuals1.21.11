@@ -9,7 +9,7 @@ import net.minecraft.util.math.Vec3d;
 
 public class ConfettiCommand extends Command {
     public ConfettiCommand() {
-        super("confetti", "Запускает тестовый взрыв 3D конфетти", ".confetti", "totem");
+        super("confetti", "Запускает взрыв 3D конфетти", ".confetti", "totem");
     }
 
     @Override

@@ -56,19 +56,6 @@ public final class MediaTracker {
 
         while (!Thread.currentThread().isInterrupted()) {
             try {
-                // If interface module has testMusic enabled, skip scanning
-                egg.client.module.render.Interface iface = egg.client.module.ModuleManager.getInstance() != null
-                        ? egg.client.module.ModuleManager.getInstance().getModule(egg.client.module.render.Interface.class)
-                        : null;
-
-                if (iface != null && iface.isTestMusic()) {
-                    this.playing = true;
-                    this.trackTitle = "Midnight City";
-                    this.trackArtist = "M83";
-                    Thread.sleep(1000);
-                    continue;
-                }
-
                 final boolean[] found = new boolean[]{false};
                 final String[] foundTitle = new String[]{""};
                 final String[] foundArtist = new String[]{""};
@@ -140,7 +127,7 @@ public final class MediaTracker {
                     this.playing = true;
                     this.trackTitle = foundTitle[0];
                     this.trackArtist = foundArtist[0];
-                } else if (iface == null || !iface.isTestMusic()) {
+                } else {
                     this.playing = false;
                 }
 

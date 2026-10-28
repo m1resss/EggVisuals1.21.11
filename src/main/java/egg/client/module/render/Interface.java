@@ -72,7 +72,6 @@ public class Interface extends Module {
 
     // Dynamic Island settings
     private final BooleanSetting showDynamicIsland = new BooleanSetting("Динамик айленд", true, "Отображать Dynamic Island при воспроизведении музыки");
-    private final BooleanSetting testMusic = new BooleanSetting("Тест музыки", false, "Принудительно показать трек ETERNITYФX+Я+7");
     private final SliderSetting islandScale = new SliderSetting("Размер острова", 1.0, 0.5, 1.5, 0.05, "Масштаб Dynamic Island");
     private final ColorSetting dynamicIslandBgColor = new ColorSetting("Цвет фона айленда", 0xFF0D0E14);
 
@@ -161,7 +160,7 @@ public class Interface extends Module {
         super("Interface", "Отображает выбранные элементы интерфейса на экране", Category.ESP);
         instance = this;
         addSettings(
-                showDynamicIsland, testMusic, islandScale,
+                showDynamicIsland, islandScale,
                 brand, showLogo, showNick, showServer, showFps, showTps, showPing, showTime, showCoords, showSpeed, sideMode,
                 watermarkBgColor, titleColor1, titleColor2, rounding, opacity, hudThemeGradient, hudGradientStrength,
                 hudScale,
@@ -189,15 +188,14 @@ public class Interface extends Module {
         boolean inCombat = isInCombat();
         combatAnim.setTarget(inCombat ? 1.0f : 0.0f);
 
-        // 2. Render Dynamic Island (if enabled and playing / test mode)
+        // 2. Render Dynamic Island (if enabled and playing)
         boolean islandActive = false;
         float islandBottom = 8.0f;
         if (showDynamicIsland.isEnabled()) {
-            boolean isTest = testMusic.isEnabled();
-            boolean playing = isTest || (hasActiveMedia && isMediaPlaying);
+            boolean playing = (hasActiveMedia && isMediaPlaying);
             if (playing) {
                 islandActive = true;
-                renderDynamicIsland(context, screenW, isTest);
+                renderDynamicIsland(context, screenW);
                 islandBottom = 8.0f + 30.0f + 6.0f;
             }
         }
@@ -456,7 +454,7 @@ public class Interface extends Module {
     // Dynamic Island Renderer (Photo 2: Pill with Album Art & Equalizer Bars)
     // =========================================================================
 
-    private void renderDynamicIsland(DrawContext context, int screenW, boolean isTest) {
+    private void renderDynamicIsland(DrawContext context, int screenW) {
         float curW = 185.0f;
         float curH = 30.0f;
         float baseIslandS = islandScale.getValueFloat();
@@ -512,7 +510,7 @@ public class Interface extends Module {
         float artY = y + (curH - artSize) / 2.0f;
         float artRadius = 5.0f;
 
-        if (hasCoverArt && !isTest) {
+        if (hasCoverArt) {
             Draw2DProcessor.INSTANCE.a(mat, ALBUM_ART_ID, artX, artY, artSize, artSize, artRadius, ColorUtil.withAlphaFloat(0xFFFFFFFF, alphaFactor));
             Draw2DProcessor.INSTANCE.drawOutline(mat, artX, artY, artSize, artSize, artRadius, 0.8f, ColorUtil.withAlphaFloat(ColorUtil.rgba(255, 255, 255, 30), alphaFactor));
         } else {
@@ -549,8 +547,8 @@ public class Interface extends Module {
         }
 
         // 6. Two-line track display: Title on top, Artist below
-        String displayTitle = isTest ? "Midnight City" : (hasActiveMedia ? currentMediaTitle : "Midnight City");
-        String displayArtist = isTest ? "M83" : (hasActiveMedia ? currentMediaArtist : "M83");
+        String displayTitle = hasActiveMedia ? currentMediaTitle : "Unknown Track";
+        String displayArtist = hasActiveMedia ? currentMediaArtist : "Unknown Artist";
 
         float textStartX = sepX + 7.0f;
         float maxTextW = barsStartX - 6.0f - textStartX;
@@ -849,7 +847,7 @@ public class Interface extends Module {
         }
 
         // 2b. Hover highlight & scale badge for Dynamic Island
-        boolean insideIsland = showDynamicIsland.isEnabled() && (hasActiveMedia || testMusic.isEnabled())
+        boolean insideIsland = showDynamicIsland.isEnabled() && hasActiveMedia
                 && mouseX >= lastIslandX - 2.0f && mouseX <= lastIslandX + lastIslandW + 2.0f
                 && mouseY >= lastIslandY - 2.0f && mouseY <= lastIslandY + lastIslandH + 2.0f;
         if (insideIsland) {
@@ -926,7 +924,7 @@ public class Interface extends Module {
     public boolean onMouseScrolled(double mouseX, double mouseY, double amount) {
         if (!isEnabled()) return false;
         // 1. Dynamic Island check
-        if (showDynamicIsland.isEnabled() && (hasActiveMedia || testMusic.isEnabled())) {
+        if (showDynamicIsland.isEnabled() && hasActiveMedia) {
             if (mouseX >= lastIslandX - 4.0f && mouseX <= lastIslandX + lastIslandW + 4.0f
                     && mouseY >= lastIslandY - 4.0f && mouseY <= lastIslandY + lastIslandH + 4.0f) {
                 double cur = islandScale.getValue();
@@ -962,12 +960,10 @@ public class Interface extends Module {
         // 1. Click inside context menu
         if (contextMenuOpen) {
             float mw = 130.0f;
-            float mh = 210.0f;
+            float mh = 195.0f;
             if (mouseX >= contextMenuX && mouseX <= contextMenuX + mw && mouseY >= contextMenuY && mouseY <= contextMenuY + mh) {
                 float iy = contextMenuY + 22.0f;
                 if (mouseY >= iy && mouseY <= iy + 14.0f) { showDynamicIsland.toggle(); ConfigManager.save(); return true; }
-                iy += 15.0f;
-                if (mouseY >= iy && mouseY <= iy + 14.0f) { testMusic.toggle(); ConfigManager.save(); return true; }
                 iy += 15.0f;
                 if (mouseY >= iy && mouseY <= iy + 14.0f) { showLogo.toggle(); ConfigManager.save(); return true; }
                 iy += 15.0f;
@@ -1063,7 +1059,7 @@ public class Interface extends Module {
 
     private void renderContextMenu(DrawContext context, float mouseX, float mouseY) {
         float mw = 130.0f;
-        float mh = 210.0f;
+        float mh = 195.0f;
         float mx = contextMenuX;
         float my = contextMenuY;
 
@@ -1076,7 +1072,6 @@ public class Interface extends Module {
 
         float itemY = my + 22.0f;
         renderContextItem(context, mx, itemY, mw, "Айленд", showDynamicIsland.isEnabled(), mouseX, mouseY); itemY += 15.0f;
-        renderContextItem(context, mx, itemY, mw, "Тест музыки", testMusic.isEnabled(), mouseX, mouseY); itemY += 15.0f;
         renderContextItem(context, mx, itemY, mw, "Иконка", showLogo.isEnabled(), mouseX, mouseY); itemY += 15.0f;
         renderContextItem(context, mx, itemY, mw, "Логин", showNick.isEnabled(), mouseX, mouseY); itemY += 15.0f;
         renderContextItem(context, mx, itemY, mw, "Сервер", showServer.isEnabled(), mouseX, mouseY); itemY += 15.0f;
@@ -1163,7 +1158,7 @@ public class Interface extends Module {
     // =========================================================================
 
     public boolean isTestMusic() {
-        return testMusic.isEnabled();
+        return false;
     }
 
     private static class WatermarkItem {

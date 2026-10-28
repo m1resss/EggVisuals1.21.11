@@ -3,7 +3,6 @@ package egg.client.module.render;
 import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
-import egg.client.module.setting.ButtonSetting;
 import egg.client.module.setting.SliderSetting;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
@@ -32,14 +31,6 @@ public class TotemPopConfetti extends Module {
     private final BooleanSetting glow = new BooleanSetting("Свечение кружков", true, "Неоновое свечение желтых круглых конфетти");
     private final BooleanSetting cancelVanilla = new BooleanSetting("Скрыть дефолт частицы", true, "Отключает стандартные 2D частицы тотема");
 
-    private final ButtonSetting testBtn = new ButtonSetting("Тест конфетти", "Произвести взрыв 3D конфетти прямо сейчас", () -> {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.player != null) {
-            Vec3d origin = new Vec3d(mc.player.getX(), mc.player.getY() + mc.player.getStandingEyeHeight() * 0.7, mc.player.getZ());
-            spawnBurst(origin);
-        }
-    });
-
     private final List<ConfettiParticle> particles = new ArrayList<>();
     private final Random random = new Random();
     private long lastFrameNanos = 0L;
@@ -65,7 +56,7 @@ public class TotemPopConfetti extends Module {
 
     public TotemPopConfetti() {
         super("TotemPopConfetti", "3D конфетти с физикой падения при попе тотема", Category.ESP);
-        addSettings(count, speed, gravity, flutter, lifetime, glow, cancelVanilla, testBtn);
+        addSettings(count, speed, gravity, flutter, lifetime, glow, cancelVanilla);
     }
 
     public boolean shouldCancelVanilla() {

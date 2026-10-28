@@ -43,12 +43,10 @@ public class WorldRendererMixin {
             itemRadius.render(immediate, camPos);
         }
 
-        /*
         egg.client.module.render.KillEffect killEffect = ModuleManager.getInstance().getModule(egg.client.module.render.KillEffect.class);
         if (killEffect != null && killEffect.isEnabled()) {
             killEffect.render(immediate, camPos);
         }
-        */
 
         egg.client.module.render.HitSparks hitSparks = ModuleManager.getInstance().getModule(egg.client.module.render.HitSparks.class);
         if (hitSparks != null && hitSparks.isEnabled()) {

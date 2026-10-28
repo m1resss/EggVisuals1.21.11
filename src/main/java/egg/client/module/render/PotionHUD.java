@@ -38,7 +38,6 @@ public class PotionHUD extends Module {
 
     private final ModeSetting timerFormat = new ModeSetting("Формат таймера", "Проценты", "Тип отображения оставшегося времени", "Проценты", "Время");
     private final BooleanSetting showDigits = new BooleanSetting("Отображать цифры", true, "Отображать значение под иконкой");
-    private final BooleanSetting testEffects = new BooleanSetting("Тест эффектов", false, "Принудительный предпросмотр эффектов");
     private final SliderSetting posX = new SliderSetting("X", 0.01, 0.0, 1.0, 0.001, "Позиция X");
     private final SliderSetting posY = new SliderSetting("Y", 0.35, 0.0, 1.0, 0.001, "Позиция Y");
     private final SliderSetting scale = new SliderSetting("Размер", 1.0, 0.5, 1.5, 0.05, "Масштаб зелий");
@@ -60,7 +59,7 @@ public class PotionHUD extends Module {
     public PotionHUD() {
         super("Potions", "Боковой капсульный док активных эффектов зелий", Category.ESP);
         instance = this;
-        addSettings(timerFormat, showDigits, testEffects, scale);
+        addSettings(timerFormat, showDigits, scale);
         setEnabled(true);
     }
 
@@ -73,7 +72,7 @@ public class PotionHUD extends Module {
         int screenH = mc.getWindow().getScaledHeight();
 
         List<StatusEffectInstance> effects = collectEffects(mc);
-        if (effects.isEmpty() && !testEffects.isEnabled()) return;
+        if (effects.isEmpty()) return;
 
         Interface iface = Interface.getInstance();
         float combatAlpha = iface != null ? iface.getCombatAlphaFactor("potions") : 1.0f;
@@ -173,21 +172,6 @@ public class PotionHUD extends Module {
 
     private List<StatusEffectInstance> collectEffects(MinecraftClient mc) {
         List<StatusEffectInstance> list = new ArrayList<>();
-        if (testEffects.isEnabled()) {
-            StatusEffectInstance s1 = new StatusEffectInstance(StatusEffects.SPEED, 900, 1);
-            if (s1 instanceof IStatusEffectInstance inst) inst.setInitialDuration(1200);
-            StatusEffectInstance s2 = new StatusEffectInstance(StatusEffects.STRENGTH, 560, 1);
-            if (s2 instanceof IStatusEffectInstance inst) inst.setInitialDuration(800);
-            StatusEffectInstance s3 = new StatusEffectInstance(StatusEffects.FIRE_RESISTANCE, 2100, 0);
-            if (s3 instanceof IStatusEffectInstance inst) inst.setInitialDuration(2400);
-            StatusEffectInstance s4 = new StatusEffectInstance(StatusEffects.REGENERATION, 150, 0);
-            if (s4 instanceof IStatusEffectInstance inst) inst.setInitialDuration(400);
-            list.add(s1);
-            list.add(s2);
-            list.add(s3);
-            list.add(s4);
-            return list;
-        }
         if (mc.player != null) {
             Collection<StatusEffectInstance> playerEffects = mc.player.getStatusEffects();
             if (playerEffects != null) {
@@ -264,7 +248,7 @@ public class PotionHUD extends Module {
         // 1. Inside context menu
         if (contextMenuOpen) {
             float mw = 130.0f;
-            float mh = 95.0f;
+            float mh = 62.0f;
             if (mouseX >= contextMenuX && mouseX <= contextMenuX + mw && mouseY >= contextMenuY && mouseY <= contextMenuY + mh) {
                 float iy = contextMenuY + 22.0f;
                 if (mouseY >= iy && mouseY <= iy + 14.0f) {
@@ -275,12 +259,6 @@ public class PotionHUD extends Module {
                 iy += 16.0f;
                 if (mouseY >= iy && mouseY <= iy + 14.0f) {
                     showDigits.toggle();
-                    ConfigManager.save();
-                    return true;
-                }
-                iy += 16.0f;
-                if (mouseY >= iy && mouseY <= iy + 14.0f) {
-                    testEffects.toggle();
                     ConfigManager.save();
                     return true;
                 }
@@ -339,7 +317,7 @@ public class PotionHUD extends Module {
 
     private void renderContextMenu(DrawContext context, float mouseX, float mouseY) {
         float mw = 130.0f;
-        float mh = 85.0f;
+        float mh = 62.0f;
         float mx = contextMenuX;
         float my = contextMenuY;
 
@@ -352,8 +330,7 @@ public class PotionHUD extends Module {
 
         float itemY = my + 22.0f;
         renderContextItem(context, mx, itemY, mw, "Формат: " + timerFormat.get(), true, mouseX, mouseY); itemY += 16.0f;
-        renderContextItem(context, mx, itemY, mw, "Цифры", showDigits.isEnabled(), mouseX, mouseY); itemY += 16.0f;
-        renderContextItem(context, mx, itemY, mw, "Тест зелий", testEffects.isEnabled(), mouseX, mouseY);
+        renderContextItem(context, mx, itemY, mw, "Цифры", showDigits.isEnabled(), mouseX, mouseY);
     }
 
     private void renderContextItem(DrawContext context, float mx, float iy, float mw, String label, boolean checked, float mouseX, float mouseY) {
