@@ -1,9 +1,0 @@
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$path = "C:\Users\admin\.gradle\caches\fabric-loom\minecraftMaven\net\minecraft\minecraft-merged\1.21.11-net.fabricmc.yarn.1_21_11.1.21.11+build.6-v2\minecraft-merged-1.21.11-net.fabricmc.yarn.1_21_11.1.21.11+build.6-v2.jar"
-$archive = [System.IO.Compression.ZipFile]::OpenRead($path)
-foreach ($e in $archive.Entries) {
-    if ($e.FullName -like "*screen*" -and ($e.Name -like "*Terrain*" -or $e.Name -like "*Download*" -or $e.Name -like "*Loading*")) {
-        [Console]::WriteLine($e.FullName)
-    }
-}
-$archive.Dispose()
