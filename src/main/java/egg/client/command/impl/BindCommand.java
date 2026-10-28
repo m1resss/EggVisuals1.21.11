@@ -32,7 +32,7 @@ public class BindCommand extends Command {
             }
         }
 
-        if (target == null) {
+        if (target == null || target.isBlocked()) {
             CommandManager.sendClientMessage("Модуль §d" + modName + " §fне найден.", false);
             return;
         }

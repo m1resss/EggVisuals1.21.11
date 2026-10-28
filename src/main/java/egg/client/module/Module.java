@@ -18,6 +18,7 @@ public abstract class Module {
     private boolean enabled;
     private boolean expanded;
     private boolean favorite;
+    private boolean blocked;
 
     private final List<Setting> settings = new ArrayList<>();
 
@@ -47,6 +48,9 @@ public abstract class Module {
     }
 
     public void setEnabled(boolean enabled) {
+        if (enabled && this.blocked) {
+            return;
+        }
         if (this.enabled != enabled) {
             this.enabled = enabled;
             this.switchAnimation.setTarget(enabled ? 1.0f : 0.0f);
@@ -59,7 +63,20 @@ public abstract class Module {
     }
 
     public void toggle() {
-        setEnabled(!enabled);
+        if (!blocked) {
+            setEnabled(!enabled);
+        }
+    }
+
+    public boolean isBlocked() {
+        return blocked;
+    }
+
+    public void setBlocked(boolean blocked) {
+        this.blocked = blocked;
+        if (blocked && this.enabled) {
+            setEnabled(false);
+        }
     }
 
     public void onEnable() {}

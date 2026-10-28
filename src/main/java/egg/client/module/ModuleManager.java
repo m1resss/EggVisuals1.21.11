@@ -134,6 +134,7 @@ public class ModuleManager {
     public void onKey(int key, int action) {
         if (action != 1) return; // GLFW_PRESS only
         for (Module m : modules) {
+            if (m.isBlocked()) continue;
             if (m.getKey() != 0 && m.getKey() == key) {
                 if (m instanceof egg.client.module.combat.AutoSwap as) {
                     if (as.isEnabled()) {

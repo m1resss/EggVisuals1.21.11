@@ -738,7 +738,7 @@ public class ClickGuiScreen extends Screen {
         String qEn = LayoutHelper.toEn(q).toLowerCase().trim();
         String qRu = LayoutHelper.toRu(q).toLowerCase().trim();
         for (Module m : all) {
-            if (matchesModule(m, q, qEn, qRu)) {
+            if (!m.isBlocked() && matchesModule(m, q, qEn, qRu)) {
                 result.add(m);
             }
         }
@@ -1594,7 +1594,9 @@ public class ClickGuiScreen extends Screen {
         }
         cachedFilteredModules.clear();
         if (selectedSearchModule != null) {
-            cachedFilteredModules.add(selectedSearchModule);
+            if (!selectedSearchModule.isBlocked()) {
+                cachedFilteredModules.add(selectedSearchModule);
+            }
             modulesDirty = false;
             return cachedFilteredModules;
         }
@@ -1604,13 +1606,13 @@ public class ClickGuiScreen extends Screen {
             String qEn = LayoutHelper.toEn(q).toLowerCase().trim();
             String qRu = LayoutHelper.toRu(q).toLowerCase().trim();
             for (Module m : all) {
-                if (matchesModule(m, q, qEn, qRu)) {
+                if (!m.isBlocked() && matchesModule(m, q, qEn, qRu)) {
                     cachedFilteredModules.add(m);
                 }
             }
         } else {
             for (Module m : all) {
-                if (m.getCategory() == selectedCategory) {
+                if (!m.isBlocked() && m.getCategory() == selectedCategory) {
                     cachedFilteredModules.add(m);
                 }
             }
