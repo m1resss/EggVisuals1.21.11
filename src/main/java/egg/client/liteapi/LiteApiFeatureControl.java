@@ -173,7 +173,6 @@ public final class LiteApiFeatureControl {
 
         switch (compact) {
             case "fullbright" -> { list.add("gamma"); list.add("brightness"); }
-            case "targetesp" -> { list.add("esp"); }
             case "inventorysorter" -> { list.add("invsorter"); }
             case "thirdperson" -> { list.add("freelook"); }
         }
