@@ -1,0 +1,116 @@
+plugins {
+    id 'fabric-loom' version '1.17-SNAPSHOT'
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    maven { url = uri("${projectDir}/repo") }
+    mavenCentral()
+    maven { url = "https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/" }
+}
+
+loom {
+    mods {
+        "Egg-Client" {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+configurations {
+    shade
+    implementation.extendsFrom shade
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    modImplementation "software.bernie.geckolib:geckolib-fabric-1.21.11-compat:4.8.5"
+    include "software.bernie.geckolib:geckolib-fabric-1.21.11-compat:4.8.5"
+
+    implementation 'com.google.code.findbugs:jsr305:3.0.2'
+    implementation 'com.google.code.gson:gson:2.11.0'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
+    implementation 'com.google.errorprone:error_prone_annotations:2.27.0'
+    implementation 'org.apache.commons:commons-lang3:3.18.0'
+    implementation 'org.apache.logging.log4j:log4j-api:2.24.1'
+    shade 'org.java-websocket:Java-WebSocket:1.5.6'
+    shade 'org.javassist:javassist:3.28.0-GA'
+    shade 'org.json:json:20250107'
+    shade 'org.jsoup:jsoup:1.18.3'
+    shade 'org.reflections:reflections:0.10.2'
+    implementation 'org.slf4j:slf4j-api:2.0.6'
+
+    compileOnly 'org.projectlombok:lombok:1.18.36'
+    annotationProcessor 'org.projectlombok:lombok:1.18.36'
+    compileOnly 'org.osgi:osgi.core:8.0.0'
+    compileOnly 'biz.aQute.bnd:biz.aQute.bnd.annotation:6.4.0'
+    compileOnly 'org.osgi:osgi.annotation:8.0.0'
+}
+
+processResources {
+    def version = project.version
+    inputs.property "version", version
+
+    filesMatching("fabric.mod.json") {
+        expand "version": version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = "UTF-8"
+    it.options.release = 21
+    it.options.compilerArgs << "-Xmaxerrs" << "9999999"
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+jar {
+    def projectName = project.name
+    inputs.property "projectName", projectName
+
+    from("LICENSE") {
+        rename { "${it}_$projectName" }
+    }
+
+    from {
+        configurations.shade.collect { it.isDirectory() ? it : zipTree(it) }
+    } {
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        exclude "META-INF/*.SF"
+        exclude "META-INF/*.DSA"
+        exclude "META-INF/*.RSA"
+        exclude "META-INF/MANIFEST.MF"
+    }
+}
+
+publishing {
+    publications {
+        create("mavenJava", MavenPublication) {
+            from components.java
+        }
+    }
+}
+
+tasks.register('copyToLunar', Copy) {
+    dependsOn 'remapJar'
+    from remapJar.archiveFile
+    into file("C:/Users/admin/.lunarclient/profiles/1.21/mods/fabric-1.21.11")
+}
+
+build.finalizedBy(copyToLunar)
+

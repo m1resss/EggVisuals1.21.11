@@ -1,0 +1,26 @@
+{
+  "frag_effect_echo_main": {
+    "sounds": [
+      "delta:charmsfxpack/echocharmmain"
+    ]
+  },
+  "frag_effect_knock_main": {
+    "sounds": [
+      "delta:charmsfxpack/knockcharmmain"
+    ]
+  },
+  "frag_effect_pulse": {
+    "sounds": [
+      "delta:charmsfxpack/pulsecharmdistant0",
+      "delta:charmsfxpack/pulsecharmdistant1",
+      "delta:charmsfxpack/pulsecharmdistant2",
+      "delta:charmsfxpack/pulsecharmdistant3",
+      "delta:charmsfxpack/pulsecharmdistant4"
+    ]
+  },
+  "frag_effect_sparks_collision": {
+    "sounds": [
+      "delta:charmsfxpack/sparkscollisionneared"
+    ]
+  }
+}

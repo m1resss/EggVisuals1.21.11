@@ -1,0 +1,19 @@
+{
+  "type": "COSMETIC",
+  "category": "МАСКИ",
+  "name": "shades",
+  "optionId": 304,
+  "price": 49.0,
+  "scale": 0.75,
+  "x": -0.5,
+  "y": -2.0,
+  "z": -0.6,
+  "owned": false,
+  "worn": false,
+  "display_name": "Очки",
+  "preview_scale": 1.7,
+  "preview_yaw": 192,
+  "preview_pitch": 5,
+  "display_name_ru": "Очки",
+  "display_name_en": "Glasses"
+}

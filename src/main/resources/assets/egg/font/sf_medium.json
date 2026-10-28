@@ -1,0 +1,11 @@
+{
+  "providers": [
+    {
+      "type": "ttf",
+      "file": "egg:sf_medium.ttf",
+      "size": 11.0,
+      "oversample": 2.0,
+      "shift": [0.0, 0.0]
+    }
+  ]
+}

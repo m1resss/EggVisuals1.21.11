@@ -1,0 +1,7 @@
+{
+  "vertex": "delta:core/motion_blur/fullscreen",
+  "fragment": "delta:core/motion_blur/blit",
+  "samplers": [
+    { "name": "Sampler0" }
+  ]
+}

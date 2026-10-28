@@ -1,0 +1,18 @@
+{
+  "name": "pulse_pet_93_Питомец_-_Bee",
+  "display_name": "Пчела",
+  "category": "ПИТОМЦЫ",
+  "price": 199,
+  "scale": 0.55,
+  "x": -0.95,
+  "y": 0.75,
+  "z": 0.12,
+  "preview_scale": 1.4,
+  "preview_yaw": 202,
+  "preview_y": 0.0,
+  "preview_pitch": 8,
+  "display_name_ru": "Пчела",
+  "display_name_en": "Bee",
+  "placement": "orbit",
+  "raw_offset": true
+}

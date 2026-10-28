@@ -1,0 +1,19 @@
+{
+  "type": "COSMETIC",
+  "category": "МАСКИ",
+  "name": "clown",
+  "optionId": 305,
+  "price": 39.0,
+  "scale": 0.75,
+  "x": -0.5,
+  "y": -2.0,
+  "z": -0.6,
+  "owned": false,
+  "worn": false,
+  "display_name": "Клоун",
+  "preview_scale": 1.45,
+  "preview_yaw": 192,
+  "preview_pitch": 5,
+  "display_name_ru": "Клоун",
+  "display_name_en": "Clown"
+}

@@ -1,0 +1,19 @@
+{
+  "type": "COSMETIC",
+  "category": "ПИТОМЦЫ",
+  "name": "capybara",
+  "optionId": 2,
+  "price": 99.0,
+  "scale": 0.5,
+  "x": -1.5,
+  "y": -0.5,
+  "z": -0.5,
+  "owned": false,
+  "worn": false,
+  "display_name": "Капибара",
+  "preview_scale": 1.15,
+  "preview_yaw": 202,
+  "display_name_ru": "Капибара",
+  "display_name_en": "Capybara",
+  "placement": "orbit"
+}

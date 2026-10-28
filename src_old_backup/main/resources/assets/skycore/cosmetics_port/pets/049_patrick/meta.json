@@ -1,0 +1,19 @@
+{
+  "type": "COSMETIC",
+  "category": "ПИТОМЦЫ",
+  "name": "patrick",
+  "optionId": 5,
+  "price": 89.0,
+  "scale": 0.5,
+  "x": -1.5,
+  "y": -0.5,
+  "z": -0.5,
+  "owned": false,
+  "worn": false,
+  "display_name": "Патрик",
+  "preview_scale": 1.15,
+  "preview_yaw": 202,
+  "display_name_ru": "Патрик",
+  "display_name_en": "Patrick",
+  "placement": "orbit"
+}

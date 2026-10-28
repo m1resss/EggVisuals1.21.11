@@ -1,0 +1,18 @@
+{
+  "type": "COSMETIC",
+  "category": "ГОЛОВНЫЕ_УБОРЫ",
+  "name": "angel_halo_white",
+  "optionId": 201,
+  "price": 99.0,
+  "scale": 0.75,
+  "x": -0.5,
+  "y": -1.9,
+  "z": -0.6,
+  "owned": false,
+  "worn": false,
+  "display_name": "Белый нимб",
+  "preview_scale": 1.25,
+  "preview_yaw": 192,
+  "display_name_ru": "Белый нимб",
+  "display_name_en": "White Halo"
+}

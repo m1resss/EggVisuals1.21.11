@@ -1,0 +1,14 @@
+{
+  "name": "pulse_vulcano_wings",
+  "display_name": "Вулканические крылья",
+  "display_name_ru": "Вулканические крылья",
+  "display_name_en": "Vulcano Wings",
+  "category": "КРЫЛЬЯ",
+  "scale": 1.0,
+  "x": 0.0,
+  "y": -1.2,
+  "z": 0.25,
+  "preview_scale": 1.15,
+  "preview_yaw": 198,
+  "raw_offset": true
+}

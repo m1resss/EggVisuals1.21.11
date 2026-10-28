@@ -1,0 +1,17 @@
+{
+  "name": "pulse_hat_50_Шапка_-_Chicken",
+  "display_name": "Курица",
+  "category": "ГОЛОВНЫЕ_УБОРЫ",
+  "price": 29,
+  "scale": 1.0,
+  "x": 0,
+  "y": 0.28,
+  "z": 0,
+  "preview_scale": 1.15,
+  "preview_yaw": 192,
+  "preview_y": 0.0,
+  "preview_pitch": 6,
+  "display_name_ru": "Курица",
+  "display_name_en": "Chicken",
+  "raw_offset": true
+}

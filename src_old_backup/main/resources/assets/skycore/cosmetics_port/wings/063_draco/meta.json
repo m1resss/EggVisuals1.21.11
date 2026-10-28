@@ -1,0 +1,18 @@
+{
+  "type": "COSMETIC",
+  "category": "КРЫЛЬЯ",
+  "name": "draco",
+  "optionId": 102,
+  "price": 149.0,
+  "scale": 1.0,
+  "x": -0.5,
+  "y": -2.0,
+  "z": -0.5,
+  "owned": false,
+  "worn": false,
+  "display_name": "Драко",
+  "preview_scale": 1.2,
+  "preview_yaw": 198,
+  "display_name_ru": "Драко",
+  "display_name_en": "Draco"
+}

@@ -1,0 +1,17 @@
+{
+  "name": "pulse_wings_65_Крылья_-_Easter",
+  "display_name": "Пасхальные",
+  "category": "КРЫЛЬЯ",
+  "price": 399,
+  "scale": 1.4,
+  "x": 0,
+  "y": -1.02,
+  "z": 0.12,
+  "preview_scale": 1.05,
+  "preview_yaw": 198,
+  "preview_y": -0.05,
+  "preview_pitch": 8,
+  "display_name_ru": "Пасхальные",
+  "display_name_en": "Easter",
+  "raw_offset": true
+}

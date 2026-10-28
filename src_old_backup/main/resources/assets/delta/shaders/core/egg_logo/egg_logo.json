@@ -1,0 +1,65 @@
+{
+  "vertex": "delta:core/egg_logo/egg_logo",
+  "fragment": "delta:core/egg_logo/egg_logo",
+  "samplers": [
+    {
+      "name": "Sampler0"
+    }
+  ],
+  "uniforms": [
+    {
+      "name": "ModelViewMat",
+      "type": "matrix4x4",
+      "count": 16,
+      "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ]
+    },
+    {
+      "name": "ProjMat",
+      "type": "matrix4x4",
+      "count": 16,
+      "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ]
+    },
+    {
+      "name": "uResolution",
+      "type": "float",
+      "count": 2,
+      "values": [ 1920.0, 1080.0 ]
+    },
+    {
+      "name": "uTime",
+      "type": "float",
+      "count": 1,
+      "values": [ 0.0 ]
+    },
+    {
+      "name": "uMouse",
+      "type": "float",
+      "count": 2,
+      "values": [ 0.0, 0.0 ]
+    },
+    {
+      "name": "uIntroPlayed",
+      "type": "float",
+      "count": 1,
+      "values": [ 0.0 ]
+    },
+    {
+      "name": "uAlpha",
+      "type": "float",
+      "count": 1,
+      "values": [ 1.0 ]
+    },
+    {
+      "name": "uThemeMode",
+      "type": "float",
+      "count": 1,
+      "values": [ 0.0 ]
+    },
+    {
+      "name": "uBurstTime",
+      "type": "float",
+      "count": 1,
+      "values": [ -1.0 ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "type": "COSMETIC",
+  "category": "КРЫЛЬЯ",
+  "name": "blackhole",
+  "optionId": 106,
+  "price": 149.0,
+  "scale": 1.0,
+  "x": -0.5,
+  "y": -2.0,
+  "z": -0.5,
+  "owned": false,
+  "worn": false,
+  "display_name": "Чёрная дыра",
+  "preview_scale": 1.1,
+  "preview_yaw": 198,
+  "display_name_ru": "Чёрная дыра",
+  "display_name_en": "Black Hole"
+}

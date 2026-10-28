@@ -1,0 +1,19 @@
+{
+  "type": "COSMETIC",
+  "category": "РЮКЗАКИ",
+  "name": "nike",
+  "optionId": 403,
+  "price": 99.0,
+  "scale": 1.0,
+  "x": -0.5,
+  "y": -2.0,
+  "z": -0.5,
+  "owned": false,
+  "worn": false,
+  "display_name": "Nike",
+  "preview_scale": 1.35,
+  "preview_yaw": 195,
+  "preview_pitch": 8,
+  "display_name_ru": "Nike",
+  "display_name_en": "Nike"
+}

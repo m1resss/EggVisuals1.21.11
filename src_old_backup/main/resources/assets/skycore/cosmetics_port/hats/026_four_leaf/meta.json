@@ -1,0 +1,14 @@
+{
+  "name": "pulse_four_leaf_hat",
+  "display_name": "Четырёхлистник",
+  "display_name_ru": "Четырёхлистник",
+  "display_name_en": "Four Leaf",
+  "category": "ГОЛОВНЫЕ_УБОРЫ",
+  "scale": 1.0,
+  "x": 0.0,
+  "y": -0.45,
+  "z": 0.0,
+  "preview_scale": 1.15,
+  "preview_yaw": 192,
+  "raw_offset": true
+}

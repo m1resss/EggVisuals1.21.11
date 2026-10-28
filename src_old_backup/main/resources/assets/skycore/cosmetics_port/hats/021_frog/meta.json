@@ -1,0 +1,18 @@
+{
+  "type": "COSMETIC",
+  "category": "ГОЛОВНЫЕ_УБОРЫ",
+  "name": "frog",
+  "optionId": 202,
+  "price": 79.0,
+  "scale": 1.0,
+  "x": -0.5,
+  "y": -1.88,
+  "z": -0.5,
+  "owned": false,
+  "worn": false,
+  "display_name": "Лягушка",
+  "preview_scale": 1.35,
+  "preview_yaw": 192,
+  "display_name_ru": "Лягушка",
+  "display_name_en": "Frog"
+}

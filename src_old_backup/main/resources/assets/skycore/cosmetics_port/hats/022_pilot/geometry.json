@@ -1,0 +1,31 @@
+{
+	"format_version": "1.12.0",
+	"minecraft:geometry": [
+		{
+			"description": {
+				"identifier": "geometry.pilot_hat",
+				"texture_width": 64,
+				"texture_height": 64,
+				"visible_bounds_width": 5,
+				"visible_bounds_height": 4.5,
+				"visible_bounds_offset": [0, 1.75, 0]
+			},
+			"bones": [
+				{
+					"name": "hat",
+					"pivot": [0, 24, 0],
+					"cubes": [
+						{"origin": [-4, 24, -4], "size": [8, 8, 8], "inflate": 0.4, "uv": [0, 0]},
+						{"origin": [-4, 32, -5], "size": [8, 1, 0], "inflate": 0.01, "pivot": [0, 32.5, -5], "rotation": [-27.5, 0, 0], "uv": [0, 28]},
+						{"origin": [1, 31, -5.25], "size": [3, 3, 2], "pivot": [2.5, 32.5, -4.25], "rotation": [-40, -22.5, 0], "uv": [0, 17]},
+						{"origin": [1.5, 31.5, -5.5], "size": [2, 2, 2], "inflate": 0.05, "pivot": [2.5, 32.5, -4.25], "rotation": [-40, -22.5, 0], "uv": [0, 24]},
+						{"origin": [-4, 31, -5.25], "size": [3, 3, 2], "pivot": [-2.5, 32.5, -4.25], "rotation": [-40, 22.5, 0], "uv": [0, 17], "mirror": true},
+						{"origin": [-3.5, 31.5, -5.5], "size": [2, 2, 2], "inflate": 0.05, "pivot": [-2.5, 32.5, -4.25], "rotation": [-40, 22.5, 0], "uv": [0, 24]},
+						{"origin": [4.25, 18, -5.5], "size": [0, 14, 8], "inflate": 0.01, "uv": [0, 42], "mirror": true},
+						{"origin": [-4.25, 18, -5.5], "size": [0, 14, 8], "inflate": 0.01, "uv": [0, 42]}
+					]
+				}
+			]
+		}
+	]
+}

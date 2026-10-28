@@ -1,0 +1,25 @@
+{
+  "vertex": "delta:core/water_blobs/fullscreen",
+  "fragment": "delta:core/water_blobs/water_blobs",
+  "samplers": [
+    { "name": "Sampler0" },
+    { "name": "Sampler1" }
+  ],
+  "uniforms": [
+    { "name": "InvViewProj", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "Blob0", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+    { "name": "Blob1", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+    { "name": "Blob2", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+    { "name": "Blob3", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+    { "name": "Blob4", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+    { "name": "Blob5", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+    { "name": "Blob6", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+    { "name": "Blob7", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 0.0 ] },
+    { "name": "Count", "type": "float", "count": 1, "values": [ 5.0 ] },
+    { "name": "Smooth", "type": "float", "count": 1, "values": [ 0.7 ] },
+    { "name": "Refract", "type": "float", "count": 1, "values": [ 1.0 ] },
+    { "name": "Density", "type": "float", "count": 1, "values": [ 1.0 ] },
+    { "name": "Steps", "type": "float", "count": 1, "values": [ 56.0 ] },
+    { "name": "Tint", "type": "float", "count": 3, "values": [ 0.235, 0.588, 0.863 ] }
+  ]
+}

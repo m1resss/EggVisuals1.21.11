@@ -1,0 +1,17 @@
+{
+  "name": "pulse_bodywear_137_Катана_-_ila_studio",
+  "display_name": "Катана",
+  "category": "РЮКЗАКИ",
+  "price": 299,
+  "scale": 1,
+  "x": 0,
+  "y": -1.55,
+  "z": 0.05,
+  "preview_scale": 1.15,
+  "preview_yaw": 195,
+  "preview_y": 0.15,
+  "preview_pitch": 8,
+  "display_name_ru": "Катана",
+  "display_name_en": "Katana",
+  "raw_offset": true
+}

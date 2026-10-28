@@ -1,0 +1,17 @@
+{
+  "name": "pulse_wings_62_Крылья_-_Dragon",
+  "display_name": "Дракон",
+  "category": "КРЫЛЬЯ",
+  "price": 199,
+  "scale": 1,
+  "x": 0,
+  "y": -1.05,
+  "z": 0,
+  "preview_scale": 1.35,
+  "preview_yaw": 198,
+  "preview_y": 0.0,
+  "preview_pitch": 8,
+  "display_name_ru": "Дракон",
+  "display_name_en": "Dragon",
+  "raw_offset": true
+}

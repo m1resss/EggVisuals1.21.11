@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "egg",
+  "version": "1.0.0",
+  "name": "Egg Visual",
+  "description": "Custom visual client for Minecraft",
+  "authors": [
+    "Egg Team"
+  ],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/egg/textures/egg_logo.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "egg.client.EggClient"
+    ]
+  },
+  "mixins": [
+    "egg.mixins.json"
+  ],
+  "accessWidener": "egg.accesswidener",
+  "depends": {
+    "fabricloader": ">=0.16.5",
+    "minecraft": ">=1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

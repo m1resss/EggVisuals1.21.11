@@ -1,0 +1,17 @@
+{
+  "name": "pulse_wings_136_Крылья_-_Ягуар",
+  "display_name": "Ягуар",
+  "category": "КРЫЛЬЯ",
+  "price": 349,
+  "scale": 1,
+  "x": 0,
+  "y": -1.35,
+  "z": 0.22,
+  "preview_scale": 1.1,
+  "preview_yaw": 198,
+  "preview_y": 0.0,
+  "preview_pitch": 8,
+  "display_name_ru": "Ягуар",
+  "display_name_en": "Jaguar",
+  "raw_offset": true
+}

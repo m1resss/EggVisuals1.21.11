@@ -1,0 +1,19 @@
+{
+  "type": "COSMETIC",
+  "category": "РЮКЗАКИ",
+  "name": "hermes",
+  "optionId": 400,
+  "price": 119.0,
+  "scale": 1.0,
+  "x": -0.5,
+  "y": -2.0,
+  "z": -0.5,
+  "owned": false,
+  "worn": false,
+  "display_name": "Hermes",
+  "preview_scale": 1.35,
+  "preview_yaw": 195,
+  "preview_pitch": 8,
+  "display_name_ru": "Hermes",
+  "display_name_en": "Hermes"
+}

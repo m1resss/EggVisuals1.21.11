@@ -1,0 +1,14 @@
+{
+  "name": "pulse_armadillo_hat",
+  "display_name": "Броненосец",
+  "display_name_ru": "Броненосец",
+  "display_name_en": "Armadillo",
+  "category": "ГОЛОВНЫЕ_УБОРЫ",
+  "scale": 1.0,
+  "x": 0.0,
+  "y": 0.46,
+  "z": 0.0,
+  "preview_scale": 1.15,
+  "preview_yaw": 192,
+  "raw_offset": true
+}

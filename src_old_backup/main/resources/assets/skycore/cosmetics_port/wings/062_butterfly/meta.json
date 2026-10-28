@@ -1,0 +1,18 @@
+{
+  "type": "COSMETIC",
+  "category": "КРЫЛЬЯ",
+  "name": "butterfly",
+  "optionId": 109,
+  "price": 129.0,
+  "scale": 1.0,
+  "x": -0.5,
+  "y": -2.0,
+  "z": -0.5,
+  "owned": false,
+  "worn": false,
+  "display_name": "Бабочка",
+  "preview_scale": 1.2,
+  "preview_yaw": 198,
+  "display_name_ru": "Бабочка",
+  "display_name_en": "Butterfly"
+}

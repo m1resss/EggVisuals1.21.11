@@ -1,0 +1,19 @@
+{
+  "type": "COSMETIC",
+  "category": "ПИТОМЦЫ",
+  "name": "axolotl",
+  "optionId": 8,
+  "price": 69.0,
+  "scale": 0.5,
+  "x": -1.5,
+  "y": -0.5,
+  "z": -0.5,
+  "owned": false,
+  "worn": false,
+  "display_name": "Аксолотль",
+  "preview_scale": 1.15,
+  "preview_yaw": 202,
+  "display_name_ru": "Аксолотль",
+  "display_name_en": "Axolotl",
+  "placement": "orbit"
+}

@@ -1,0 +1,17 @@
+{
+  "name": "pulse_hat_57_Шапка_-_Sheep",
+  "display_name": "Овца",
+  "category": "ГОЛОВНЫЕ_УБОРЫ",
+  "price": 29,
+  "scale": 1.0,
+  "x": 0,
+  "y": 0.28,
+  "z": 0,
+  "preview_scale": 1.2,
+  "preview_yaw": 192,
+  "preview_y": 0.0,
+  "preview_pitch": 6,
+  "display_name_ru": "Овца",
+  "display_name_en": "Sheep",
+  "raw_offset": true
+}

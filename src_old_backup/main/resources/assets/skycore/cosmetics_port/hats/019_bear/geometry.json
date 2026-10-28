@@ -1,0 +1,69 @@
+{
+	"format_version": "1.12.0",
+	"minecraft:geometry": [
+		{
+			"description": {
+				"identifier": "geometry.bear_hat",
+				"texture_width": 64,
+				"texture_height": 64,
+				"visible_bounds_width": 5,
+				"visible_bounds_height": 4.5,
+				"visible_bounds_offset": [0, 1.75, 0]
+			},
+			"bones": [
+				{
+					"name": "hat",
+					"pivot": [0, 27, 0],
+					"cubes": [
+						{
+							"origin": [-4, 34.75, -4],
+							"size": [8, 1, 8],
+							"inflate": 0.7,
+							"uv": {
+								"north": {"uv": [8, 20], "uv_size": [8, 2]},
+								"east": {"uv": [0, 20], "uv_size": [8, 2]},
+								"south": {"uv": [24, 20], "uv_size": [8, 2]},
+								"west": {"uv": [16, 20], "uv_size": [8, 2]},
+								"up": {"uv": [8, 12], "uv_size": [8, 8]},
+								"down": {"uv": [16, 20], "uv_size": [8, -8]}
+							}
+						},
+						{
+							"origin": [-4, 29, -4],
+							"size": [8, 4.35, 8],
+							"inflate": 0.69,
+							"uv": {
+								"north": {"uv": [8, 50], "uv_size": [8, 4]},
+								"east": {"uv": [0, 50], "uv_size": [8, 4]},
+								"south": {"uv": [24, 50], "uv_size": [8, 4]},
+								"west": {"uv": [16, 50], "uv_size": [8, 4]},
+								"up": {"uv": [8, 42], "uv_size": [8, 8]},
+								"down": {"uv": [16, 50], "uv_size": [8, -8]}
+							}
+						},
+						{"origin": [-4, 36.40115, -4.22429], "size": [8, 4, 8], "uv": [0, 0]},
+						{"origin": [-3, 40.40115, -3.22429], "size": [6, 1, 6], "uv": [0, 32]},
+						{"origin": [-1.5, 35.13582, -6.32071], "size": [3, 3, 2], "pivot": [0, 38.6227, -2.83513], "rotation": [5, 0, 0], "uv": [0, 22]},
+						{"origin": [-1, 36.63582, -6.82071], "size": [2, 2, 2], "pivot": [0, 38.6227, -2.83513], "rotation": [5, 0, 0], "uv": [0, 28]}
+					]
+				},
+				{
+					"name": "ear_left",
+					"parent": "hat",
+					"pivot": [0.25, 37.5, 0],
+					"cubes": [
+						{"origin": [2.89799, 38.62393, -0.20651], "size": [3, 3, 1], "pivot": [4.39799, 40.12393, 0.29349], "rotation": [-15.22074, -9.65594, 30.11298], "uv": [10, 22]}
+					]
+				},
+				{
+					"name": "ear_right",
+					"parent": "hat",
+					"pivot": [-0.25, 37.5, 0],
+					"cubes": [
+						{"origin": [-5.89799, 38.62393, -0.20651], "size": [3, 3, 1], "pivot": [-4.39799, 40.12393, 0.29349], "rotation": [-15.22074, 9.65594, -30.11298], "uv": [10, 22], "mirror": true}
+					]
+				}
+			]
+		}
+	]
+}

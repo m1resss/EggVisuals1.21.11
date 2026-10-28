@@ -1,0 +1,14 @@
+{
+  "name": "pulse_dark_hat",
+  "display_name": "Тёмная шапка",
+  "display_name_ru": "Тёмная шапка",
+  "display_name_en": "Dark Hat",
+  "category": "ГОЛОВНЫЕ_УБОРЫ",
+  "scale": 1.0,
+  "x": 0.0,
+  "y": 0.48,
+  "z": 0.0,
+  "preview_scale": 1.15,
+  "preview_yaw": 192,
+  "raw_offset": true
+}

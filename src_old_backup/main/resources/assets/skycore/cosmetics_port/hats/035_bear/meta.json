@@ -1,0 +1,17 @@
+{
+  "name": "pulse_hat_92_Шапка_-_Bear",
+  "display_name": "Медведь",
+  "category": "ГОЛОВНЫЕ_УБОРЫ",
+  "price": 149,
+  "scale": 1.35,
+  "x": 0,
+  "y": 0.26,
+  "z": 0.02,
+  "preview_scale": 1.35,
+  "preview_yaw": 192,
+  "preview_y": 0.0,
+  "preview_pitch": 6,
+  "display_name_ru": "Медведь",
+  "display_name_en": "Bear",
+  "raw_offset": true
+}
