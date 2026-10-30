@@ -8,8 +8,41 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
 
 import java.lang.reflect.Constructor;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 public class ZakoOptimization extends Module {
+
+    private int tickCounter = 0;
+
+    private static final String[] UNSAFE_FEATURE_NAMES = new String[]{
+            "FAST_BLIT",
+            "FBO_SHARE",
+            "LAZY_CLEAR",
+            "HUD_CACHE",
+            "GUI_ANIMATED_ITEMS",
+            "RENDER_SCALE",
+            "IMMEDIATE_RING",
+            "RING_ZERO_COPY",
+            "LUNAR_MULTIDRAW",
+            "FRAME_FENCE"
+    };
+
+    private static final String[] UNSAFE_CONFIG_KEYS = new String[]{
+            "hudCache",
+            "guiAnimatedItems",
+            "fboShare",
+            "fastBlit",
+            "lazyClear",
+            "renderScale",
+            "immediateRing",
+            "immediateRingForce",
+            "ringZeroCopy",
+            "lunarMultiDraw",
+            "frameFence"
+    };
 
     private final ButtonSetting settingsBtn = new ButtonSetting("Настроить", "Открыть панель настроек Zako Optimization", () -> {
         MinecraftClient mc = MinecraftClient.getInstance();
@@ -51,21 +84,28 @@ public class ZakoOptimization extends Module {
         setZakoOptEnabled(false);
     }
 
+    @Override
+    public void onTick(MinecraftClient mc) {
+        tickCounter++;
+        if (tickCounter >= 40) {
+            tickCounter = 0;
+            sanitizeUnsafeFeatures();
+        }
+    }
+
     private void sanitizeUnsafeFeatures() {
         try {
             Class<?> featuresClass = Class.forName("zako.opt.feature.Features");
-            for (String featName : new String[]{"FAST_BLIT", "FBO_SHARE", "LAZY_CLEAR", "HUD_CACHE", "GUI_ANIMATED_ITEMS", "RENDER_SCALE"}) {
+            for (String featName : UNSAFE_FEATURE_NAMES) {
                 try {
                     var fField = featuresClass.getField(featName);
                     Object feat = fField.get(null);
                     if (feat != null) {
                         feat.getClass().getField("value").setBoolean(feat, false);
                         feat.getClass().getField("on").setBoolean(feat, false);
-                        if ("HUD_CACHE".equals(featName) || "GUI_ANIMATED_ITEMS".equals(featName)) {
-                            try {
-                                feat.getClass().getField("broken").setBoolean(feat, true);
-                            } catch (Throwable ignored) {}
-                        }
+                        try {
+                            feat.getClass().getField("broken").setBoolean(feat, true);
+                        } catch (Throwable ignored) {}
                     }
                 } catch (Throwable ignored) {}
             }
@@ -87,32 +127,35 @@ public class ZakoOptimization extends Module {
     }
 
     private void sanitizeConfigFile() {
-        java.util.List<java.nio.file.Path> paths = new java.util.ArrayList<>();
+        List<Path> paths = new ArrayList<>();
         try {
             paths.add(net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("zakoopt.json"));
         } catch (Throwable ignored) {}
-        try {
-            String home = System.getProperty("user.home");
-            if (home != null) {
-                paths.add(java.nio.file.Path.of(home, "AppData", "Roaming", ".minecraft", "config", "zakoopt.json"));
-            }
-        } catch (Throwable ignored) {}
-        paths.add(java.nio.file.Path.of("run", "config", "zakoopt.json"));
-        paths.add(java.nio.file.Path.of("config", "zakoopt.json"));
 
-        for (java.nio.file.Path p : paths) {
+        String appdata = System.getenv("APPDATA");
+        if (appdata != null) {
+            paths.add(Path.of(appdata, ".minecraft", "config", "zakoopt.json"));
+            paths.add(Path.of(appdata, "PrismLauncher", "instances", "Fabulously Optimized", "minecraft", "config", "zakoopt.json"));
+        }
+
+        String home = System.getProperty("user.home");
+        if (home != null) {
+            paths.add(Path.of(home, "AppData", "Roaming", ".minecraft", "config", "zakoopt.json"));
+        }
+
+        paths.add(Path.of("run", "config", "zakoopt.json"));
+        paths.add(Path.of("config", "zakoopt.json"));
+
+        for (Path p : paths) {
             try {
-                if (java.nio.file.Files.exists(p)) {
-                    String content = java.nio.file.Files.readString(p);
-                    String updated = content
-                            .replaceAll("\"hudCache\"\\s*:\\s*true", "\"hudCache\": false")
-                            .replaceAll("\"guiAnimatedItems\"\\s*:\\s*true", "\"guiAnimatedItems\": false")
-                            .replaceAll("\"fboShare\"\\s*:\\s*true", "\"fboShare\": false")
-                            .replaceAll("\"fastBlit\"\\s*:\\s*true", "\"fastBlit\": false")
-                            .replaceAll("\"lazyClear\"\\s*:\\s*true", "\"lazyClear\": false")
-                            .replaceAll("\"renderScale\"\\s*:\\s*true", "\"renderScale\": false");
+                if (Files.exists(p)) {
+                    String content = Files.readString(p);
+                    String updated = content;
+                    for (String key : UNSAFE_CONFIG_KEYS) {
+                        updated = updated.replaceAll("\"" + key + "\"\\s*:\\s*true", "\"" + key + "\": false");
+                    }
                     if (!updated.equals(content)) {
-                        java.nio.file.Files.writeString(p, updated);
+                        Files.writeString(p, updated);
                     }
                 }
             } catch (Throwable ignored) {}
