@@ -54,6 +54,12 @@ public class TargetESP extends Module {
     public TargetESP() {
         super("Target ESP", "Созвездие нейросети и астральные проекции вокруг цели", Category.ESP);
         instance = this;
+
+        lineThickness.setVisible(() -> "Созвездие".equals(mode.get()));
+        tailLength.setVisible(() -> "Души".equals(mode.get()));
+        coreGlow.setVisible(() -> "Души".equals(mode.get()));
+        radius.setVisible(() -> !"Созвездие".equals(mode.get()));
+
         addSettings(mode, radius, speed, particleSize, lineThickness, tailLength, coreGlow, hurtColor, maxDistance, onlyPlayers);
     }
 

@@ -628,6 +628,10 @@ public class WorldTweaks extends Module {
         return this.season;
     }
 
+    public String getSeason() {
+        return this.season.get();
+    }
+
     public ModeSetting getWeatherSetting() {
         return this.weather;
     }
@@ -729,38 +733,33 @@ public class WorldTweaks extends Module {
             }
             double u = x - bx;
             double v = z - bz;
-            float c00 = getSnowCornerHeight(mc, bx, bz, groundY, 0, 0);
-            float c10 = getSnowCornerHeight(mc, bx, bz, groundY, 1, 0);
-            float c11 = getSnowCornerHeight(mc, bx, bz, groundY, 1, 1);
-            float c01 = getSnowCornerHeight(mc, bx, bz, groundY, 0, 1);
-            double cornerH = (1.0 - u) * (1.0 - v) * c00 + u * (1.0 - v) * c10 + u * v * c11 + (1.0 - u) * v * c01;
-            double dome = Math.sin(u * Math.PI) * Math.sin(v * Math.PI) * 0.04;
-            return groundY + 1.002 + cornerH + dome;
+            double dome = Math.sin(u * Math.PI) * Math.sin(v * Math.PI) * (0.16 + getSnowNoise(bx + 0.5, bz + 0.5) * 0.16);
+            return groundY + 1.002 + 0.05 + dome;
         } catch (Throwable ignored) {
             return 64.0;
         }
     }
 
-    private float getSnowNoise(int x, int z) {
-        double nx = x * 0.16;
-        double nz = z * 0.16;
+    private float getSnowNoise(double x, double z) {
+        double nx = x * 0.18;
+        double nz = z * 0.18;
         double v1 = Math.sin(nx) * Math.cos(nz);
-        double v2 = Math.sin((x + z) * 0.32) * 0.45;
-        double v3 = Math.cos(x * 0.38 - z * 0.42) * 0.25;
-        return (float) ((v1 + v2 + v3) * 0.5);
+        double v2 = Math.sin((x + z) * 0.35) * 0.5;
+        double v3 = Math.cos(x * 0.42 - z * 0.38) * 0.3;
+        return (float) Math.max(0.0, Math.min(1.0, (v1 + v2 + v3 + 1.8) / 3.6));
     }
 
     private boolean isTerrainGroundBlock(BlockState state) {
         if (state.isAir()) return false;
         Block b = state.getBlock();
-        // Skip tree leaves and tree logs completely
-        if (b instanceof LeavesBlock) return false;
+        // Skip tree trunks, fences, walls, stairs, slabs
         if (b instanceof net.minecraft.block.PillarBlock) return false;
         if (b instanceof PlantBlock) return false;
         if (b instanceof net.minecraft.block.FenceBlock || b instanceof net.minecraft.block.WallBlock) return false;
         if (b instanceof net.minecraft.block.StairsBlock || b instanceof net.minecraft.block.SlabBlock) return false;
         if (!state.getFluidState().isEmpty()) return false;
-        return state.blocksMovement();
+        // Tree leaves and solid movement-blocking terrain are valid ground surfaces
+        return b instanceof LeavesBlock || state.blocksMovement();
     }
 
     private int findGroundY(MinecraftClient mc, int bx, int bz, int camBy) {
@@ -772,12 +771,12 @@ public class WorldTweaks extends Module {
         BlockPos pos = new BlockPos(bx, topY, bz);
         BlockState state = mc.world.getBlockState(pos);
 
-        // If top is tree leaves or flowers, scan down to find the ground beneath the tree
-        if (state.getBlock() instanceof LeavesBlock || state.getBlock() instanceof PlantBlock) {
-            for (int y = topY - 1; y >= Math.max(mc.world.getBottomY(), topY - 14); y--) {
+        // If top is flowers / small plants / snow layer, scan down to find the ground beneath it
+        if (state.getBlock() instanceof PlantBlock || state.getBlock() == Blocks.SNOW) {
+            for (int y = topY - 1; y >= Math.max(mc.world.getBottomY(), topY - 4); y--) {
                 BlockPos p = new BlockPos(bx, y, bz);
                 BlockState s = mc.world.getBlockState(p);
-                if (s.getBlock() instanceof LeavesBlock || s.getBlock() instanceof PlantBlock || s.isAir() || s.getBlock() == Blocks.SNOW) {
+                if (s.getBlock() instanceof PlantBlock || s.isAir() || s.getBlock() == Blocks.SNOW) {
                     continue;
                 }
                 if (isTerrainGroundBlock(s)) {
@@ -788,7 +787,6 @@ public class WorldTweaks extends Module {
             return Integer.MIN_VALUE;
         }
 
-        // If top block is tree trunk or non-terrain, do not place snow
         if (!isTerrainGroundBlock(state)) {
             return Integer.MIN_VALUE;
         }
@@ -796,54 +794,136 @@ public class WorldTweaks extends Module {
         return topY;
     }
 
-    private float getSnowCornerHeight(MinecraftClient mc, int bx, int bz, int baseTopY, int cx, int cz) {
-        int neighborX = bx + (cx == 1 ? 1 : -1);
-        int neighborZ = bz + (cz == 1 ? 1 : -1);
-
-        float sum = 0.0f;
-        int count = 0;
-
-        int[][] coords = new int[][]{
-                {bx, bz},
-                {neighborX, bz},
-                {bx, neighborZ},
-                {neighborX, neighborZ}
-        };
-
-        boolean hasCliffUp = false;
-        boolean hasCliffDown = false;
-
-        for (int[] c : coords) {
-            int colX = c[0];
-            int colZ = c[1];
-            if (!mc.world.isChunkLoaded(colX >> 4, colZ >> 4)) continue;
-            int colTopY = findGroundY(mc, colX, colZ, baseTopY);
-            if (colTopY == Integer.MIN_VALUE) continue;
-
-            if (colTopY > baseTopY) {
-                hasCliffUp = true;
-            } else if (colTopY < baseTopY) {
-                hasCliffDown = true;
-            } else {
-                sum += 0.05f + getSnowNoise(colX, colZ) * 0.02f;
-                count++;
-            }
-        }
-
-        if (hasCliffUp) {
-            return 0.07f;
-        }
-        if (hasCliffDown && count == 1) {
-            return 0.02f;
-        }
-
-        return count > 0 ? (sum / count) : 0.05f;
+    private boolean isSameElevation(MinecraftClient mc, int x, int z, int baseTopY) {
+        if (!mc.world.isChunkLoaded(x >> 4, z >> 4)) return true;
+        int nTopY = findGroundY(mc, x, z, baseTopY);
+        return nTopY == baseTopY;
     }
 
-    private boolean isDifferentElevation(MinecraftClient mc, int x, int z, int baseY) {
-        if (!mc.world.isChunkLoaded(x >> 4, z >> 4)) return false;
-        int nTopY = findGroundY(mc, x, z, baseY);
-        return nTopY != baseY;
+    private boolean allAtElevation(MinecraftClient mc, int[][] coords, int baseTopY) {
+        for (int[] c : coords) {
+            if (!mc.world.isChunkLoaded(c[0] >> 4, c[1] >> 4)) continue;
+            int nTopY = findGroundY(mc, c[0], c[1], baseTopY);
+            if (nTopY != baseTopY) return false;
+        }
+        return true;
+    }
+
+    private void buildSnowBlock(MinecraftClient mc, int bx, int topY, int bz, int distSq, int lod0RadSq) {
+        BlockPos pos = new BlockPos(bx, topY, bz);
+        BlockPos posAbove = pos.up();
+        int light = WorldRenderer.getLightmapCoordinates(mc.world, posAbove);
+
+        float baseY = topY + 1.001f;
+        boolean isLod0 = distSq <= lod0RadSq;
+
+        boolean hasNorthSame = isSameElevation(mc, bx, bz - 1, topY);
+        boolean hasSouthSame = isSameElevation(mc, bx, bz + 1, topY);
+        boolean hasWestSame  = isSameElevation(mc, bx - 1, bz, topY);
+        boolean hasEastSame  = isSameElevation(mc, bx + 1, bz, topY);
+
+        if (isLod0) {
+            // High volumetric pillow mound (16 to 32 cm tall)
+            float cy = baseY + 0.16f + getSnowNoise(bx + 0.5, bz + 0.5) * 0.16f;
+
+            // Midpoints
+            float mNy = baseY + (hasNorthSame ? (0.11f + getSnowNoise(bx + 0.5, bz) * 0.10f) : 0.05f);
+            float mSy = baseY + (hasSouthSame ? (0.11f + getSnowNoise(bx + 0.5, bz + 1.0) * 0.10f) : 0.05f);
+            float mWy = baseY + (hasWestSame  ? (0.11f + getSnowNoise(bx, bz + 0.5) * 0.10f) : 0.05f);
+            float mEy = baseY + (hasEastSame  ? (0.11f + getSnowNoise(bx + 1.0, bz + 0.5) * 0.10f) : 0.05f);
+
+            // 4 Corners: seamless if all adjacent blocks are at same elevation, otherwise tapers down to cliff edge
+            int[][] c00Coords = {{bx, bz}, {bx - 1, bz}, {bx, bz - 1}, {bx - 1, bz - 1}};
+            int[][] c10Coords = {{bx, bz}, {bx + 1, bz}, {bx, bz - 1}, {bx + 1, bz - 1}};
+            int[][] c11Coords = {{bx, bz}, {bx + 1, bz}, {bx, bz + 1}, {bx + 1, bz + 1}};
+            int[][] c01Coords = {{bx, bz}, {bx - 1, bz}, {bx, bz + 1}, {bx - 1, bz + 1}};
+
+            float c00 = baseY + (allAtElevation(mc, c00Coords, topY) ? (0.09f + getSnowNoise(bx, bz) * 0.08f) : 0.04f);
+            float c10 = baseY + (allAtElevation(mc, c10Coords, topY) ? (0.09f + getSnowNoise(bx + 1.0, bz) * 0.08f) : 0.04f);
+            float c11 = baseY + (allAtElevation(mc, c11Coords, topY) ? (0.09f + getSnowNoise(bx + 1.0, bz + 1.0) * 0.08f) : 0.04f);
+            float c01 = baseY + (allAtElevation(mc, c01Coords, topY) ? (0.09f + getSnowNoise(bx, bz + 1.0) * 0.08f) : 0.04f);
+
+            SnowVertex pCenter = new SnowVertex(bx + 0.5f, cy, bz + 0.5f, 0.5f, 0.5f, 255, 255, 255, 255, light);
+            SnowVertex p00     = new SnowVertex(bx, c00, bz, 0.0f, 0.0f, 240, 246, 252, 255, light);
+            SnowVertex p10     = new SnowVertex(bx + 1.0f, c10, bz, 1.0f, 0.0f, 240, 246, 252, 255, light);
+            SnowVertex p11     = new SnowVertex(bx + 1.0f, c11, bz + 1.0f, 1.0f, 1.0f, 240, 246, 252, 255, light);
+            SnowVertex p01     = new SnowVertex(bx, c01, bz + 1.0f, 0.0f, 1.0f, 240, 246, 252, 255, light);
+
+            SnowVertex mN = new SnowVertex(bx + 0.5f, mNy, bz, 0.5f, 0.0f, 248, 252, 255, 255, light);
+            SnowVertex mS = new SnowVertex(bx + 0.5f, mSy, bz + 1.0f, 0.5f, 1.0f, 248, 252, 255, 255, light);
+            SnowVertex mW = new SnowVertex(bx, mWy, bz + 0.5f, 0.0f, 0.5f, 248, 252, 255, 255, light);
+            SnowVertex mE = new SnowVertex(bx + 1.0f, mEy, bz + 0.5f, 1.0f, 0.5f, 248, 252, 255, 255, light);
+
+            // 4 top quads forming the volumetric snow mound
+            this.cachedSnowMesh.add(new SnowQuad(p00, mN, pCenter, mW));
+            this.cachedSnowMesh.add(new SnowQuad(mN, p10, mE, pCenter));
+            this.cachedSnowMesh.add(new SnowQuad(pCenter, mE, p11, mS));
+            this.cachedSnowMesh.add(new SnowQuad(mW, pCenter, mS, p01));
+
+            // Drop-down skirts on open cliff/drop-off edges (drops down 0.22 blocks, fully wrapping over block lip)
+            int sr = 220, sg = 228, sb = 240;
+            float skirtBottom = topY + 1.0f - 0.22f;
+
+            if (!hasNorthSame) {
+                SnowVertex b0 = new SnowVertex(bx, skirtBottom, bz, 0.0f, 0.15f, sr, sg, sb, 255, light);
+                SnowVertex b1 = new SnowVertex(bx + 0.5f, skirtBottom, bz, 0.5f, 0.15f, sr, sg, sb, 255, light);
+                SnowVertex b2 = new SnowVertex(bx + 1.0f, skirtBottom, bz, 1.0f, 0.15f, sr, sg, sb, 255, light);
+                this.cachedSnowMesh.add(new SnowQuad(p00, mN, b1, b0));
+                this.cachedSnowMesh.add(new SnowQuad(mN, p10, b2, b1));
+            }
+            if (!hasSouthSame) {
+                SnowVertex b0 = new SnowVertex(bx, skirtBottom, bz + 1.0f, 0.0f, 0.15f, sr, sg, sb, 255, light);
+                SnowVertex b1 = new SnowVertex(bx + 0.5f, skirtBottom, bz + 1.0f, 0.5f, 0.15f, sr, sg, sb, 255, light);
+                SnowVertex b2 = new SnowVertex(bx + 1.0f, skirtBottom, bz + 1.0f, 1.0f, 0.15f, sr, sg, sb, 255, light);
+                this.cachedSnowMesh.add(new SnowQuad(mS, p01, b0, b1));
+                this.cachedSnowMesh.add(new SnowQuad(p11, mS, b1, b2));
+            }
+            if (!hasWestSame) {
+                SnowVertex b0 = new SnowVertex(bx, skirtBottom, bz, 0.0f, 0.15f, sr, sg, sb, 255, light);
+                SnowVertex b1 = new SnowVertex(bx, skirtBottom, bz + 0.5f, 0.5f, 0.15f, sr, sg, sb, 255, light);
+                SnowVertex b2 = new SnowVertex(bx, skirtBottom, bz + 1.0f, 1.0f, 0.15f, sr, sg, sb, 255, light);
+                this.cachedSnowMesh.add(new SnowQuad(mW, p00, b0, b1));
+                this.cachedSnowMesh.add(new SnowQuad(p01, mW, b1, b2));
+            }
+            if (!hasEastSame) {
+                SnowVertex b0 = new SnowVertex(bx + 1.0f, skirtBottom, bz, 0.0f, 0.15f, sr, sg, sb, 255, light);
+                SnowVertex b1 = new SnowVertex(bx + 1.0f, skirtBottom, bz + 0.5f, 0.5f, 0.15f, sr, sg, sb, 255, light);
+                SnowVertex b2 = new SnowVertex(bx + 1.0f, skirtBottom, bz + 1.0f, 1.0f, 0.15f, sr, sg, sb, 255, light);
+                this.cachedSnowMesh.add(new SnowQuad(p10, mE, b1, b0));
+                this.cachedSnowMesh.add(new SnowQuad(mE, p11, b2, b1));
+            }
+        } else {
+            // LOD 1: Smooth flat snow top on block
+            float flatY = baseY + 0.10f;
+            SnowVertex v0 = new SnowVertex(bx, flatY, bz, 0.0f, 0.0f, 245, 250, 255, 255, light);
+            SnowVertex v1 = new SnowVertex(bx + 1.0f, flatY, bz, 1.0f, 0.0f, 245, 250, 255, 255, light);
+            SnowVertex v2 = new SnowVertex(bx + 1.0f, flatY, bz + 1.0f, 1.0f, 1.0f, 245, 250, 255, 255, light);
+            SnowVertex v3 = new SnowVertex(bx, flatY, bz + 1.0f, 0.0f, 1.0f, 245, 250, 255, 255, light);
+            this.cachedSnowMesh.add(new SnowQuad(v0, v1, v2, v3));
+
+            int sr = 220, sg = 228, sb = 240;
+            float skirtBottom = topY + 1.0f - 0.18f;
+            if (!hasNorthSame) {
+                SnowVertex b0 = new SnowVertex(bx, skirtBottom, bz, 0.0f, 0.15f, sr, sg, sb, 255, light);
+                SnowVertex b2 = new SnowVertex(bx + 1.0f, skirtBottom, bz, 1.0f, 0.15f, sr, sg, sb, 255, light);
+                this.cachedSnowMesh.add(new SnowQuad(v0, v1, b2, b0));
+            }
+            if (!hasSouthSame) {
+                SnowVertex b0 = new SnowVertex(bx, skirtBottom, bz + 1.0f, 0.0f, 0.15f, sr, sg, sb, 255, light);
+                SnowVertex b2 = new SnowVertex(bx + 1.0f, skirtBottom, bz + 1.0f, 1.0f, 0.15f, sr, sg, sb, 255, light);
+                this.cachedSnowMesh.add(new SnowQuad(v2, v3, b0, b2));
+            }
+            if (!hasWestSame) {
+                SnowVertex b0 = new SnowVertex(bx, skirtBottom, bz, 0.0f, 0.15f, sr, sg, sb, 255, light);
+                SnowVertex b2 = new SnowVertex(bx, skirtBottom, bz + 1.0f, 1.0f, 0.15f, sr, sg, sb, 255, light);
+                this.cachedSnowMesh.add(new SnowQuad(v3, v0, b0, b2));
+            }
+            if (!hasEastSame) {
+                SnowVertex b0 = new SnowVertex(bx + 1.0f, skirtBottom, bz, 0.0f, 0.15f, sr, sg, sb, 255, light);
+                SnowVertex b2 = new SnowVertex(bx + 1.0f, skirtBottom, bz + 1.0f, 1.0f, 0.15f, sr, sg, sb, 255, light);
+                this.cachedSnowMesh.add(new SnowQuad(v1, v2, b2, b0));
+            }
+        }
     }
 
     private void rebuildSnowMesh(MinecraftClient mc, int camBx, int camBy, int camBz) {
@@ -865,92 +945,24 @@ public class WorldTweaks extends Module {
                 int topY = findGroundY(mc, bx, bz, camBy);
                 if (topY == Integer.MIN_VALUE) continue;
 
-                BlockPos pos = new BlockPos(bx, topY, bz);
-                BlockPos posAbove = pos.up();
+                buildSnowBlock(mc, bx, topY, bz, distSq, lod0RadSq);
 
-                int light = WorldRenderer.getLightmapCoordinates(mc.world, posAbove);
-
-                // Snug grounded snow cap sitting directly on block top
-                float baseThickness = 0.045f + getSnowNoise(bx, bz) * 0.020f;
-                float baseY = topY + 1.0015f;
-
-                boolean isLod0 = distSq <= lod0RadSq;
-
-                if (isLod0) {
-                    float cy = baseY + baseThickness + 0.025f;
-
-                    float c00 = getSnowCornerHeight(mc, bx, bz, topY, 0, 0);
-                    float c10 = getSnowCornerHeight(mc, bx, bz, topY, 1, 0);
-                    float c11 = getSnowCornerHeight(mc, bx, bz, topY, 1, 1);
-                    float c01 = getSnowCornerHeight(mc, bx, bz, topY, 0, 1);
-
-                    float mNy = baseY + (c00 + c10) * 0.5f + 0.015f;
-                    float mSy = baseY + (c01 + c11) * 0.5f + 0.015f;
-                    float mWy = baseY + (c00 + c01) * 0.5f + 0.015f;
-                    float mEy = baseY + (c10 + c11) * 0.5f + 0.015f;
-
-                    SnowVertex pCenter = new SnowVertex(bx + 0.5f, cy, bz + 0.5f, 0.5f, 0.5f, 255, 255, 255, 255, light);
-                    SnowVertex p00     = new SnowVertex(bx, baseY + c00, bz, 0.0f, 0.0f, 240, 246, 252, 255, light);
-                    SnowVertex p10     = new SnowVertex(bx + 1.0f, baseY + c10, bz, 1.0f, 0.0f, 240, 246, 252, 255, light);
-                    SnowVertex p11     = new SnowVertex(bx + 1.0f, baseY + c11, bz + 1.0f, 1.0f, 1.0f, 240, 246, 252, 255, light);
-                    SnowVertex p01     = new SnowVertex(bx, baseY + c01, bz + 1.0f, 0.0f, 1.0f, 240, 246, 252, 255, light);
-
-                    SnowVertex mN = new SnowVertex(bx + 0.5f, mNy, bz, 0.5f, 0.0f, 248, 252, 255, 255, light);
-                    SnowVertex mS = new SnowVertex(bx + 0.5f, mSy, bz + 1.0f, 0.5f, 1.0f, 248, 252, 255, 255, light);
-                    SnowVertex mW = new SnowVertex((float) bx, mWy, bz + 0.5f, 0.0f, 0.5f, 248, 252, 255, 255, light);
-                    SnowVertex mE = new SnowVertex(bx + 1.0f, mEy, bz + 0.5f, 1.0f, 0.5f, 248, 252, 255, 255, light);
-
-                    // 4 quads forming smooth pillow mound
-                    this.cachedSnowMesh.add(new SnowQuad(p00, mN, pCenter, mW));
-                    this.cachedSnowMesh.add(new SnowQuad(mN, p10, mE, pCenter));
-                    this.cachedSnowMesh.add(new SnowQuad(pCenter, mE, p11, mS));
-                    this.cachedSnowMesh.add(new SnowQuad(mW, pCenter, mS, p01));
-
-                    // Seal any edge where neighbor elevation is different (drops down to baseY, sealing the snow block completely)
-                    int sr = 215, sg = 225, sb = 238;
-                    float sealY = baseY;
-
-                    if (isDifferentElevation(mc, bx, bz - 1, topY)) {
-                        SnowVertex b0 = new SnowVertex(bx, sealY, bz, 0.0f, 0.05f, sr, sg, sb, 255, light);
-                        SnowVertex b1 = new SnowVertex(bx + 0.5f, sealY, bz, 0.5f, 0.05f, sr, sg, sb, 255, light);
-                        SnowVertex b2 = new SnowVertex(bx + 1.0f, sealY, bz, 1.0f, 0.05f, sr, sg, sb, 255, light);
-                        this.cachedSnowMesh.add(new SnowQuad(p00, mN, b1, b0));
-                        this.cachedSnowMesh.add(new SnowQuad(mN, p10, b2, b1));
+                // If the top block is tree leaves, also build snow on the forest floor beneath the tree
+                BlockState topState = mc.world.getBlockState(new BlockPos(bx, topY, bz));
+                if (topState.getBlock() instanceof LeavesBlock) {
+                    for (int y = topY - 1; y >= Math.max(mc.world.getBottomY(), topY - 16); y--) {
+                        BlockPos p = new BlockPos(bx, y, bz);
+                        BlockState s = mc.world.getBlockState(p);
+                        if (s.getBlock() instanceof LeavesBlock || s.getBlock() instanceof PlantBlock || s.isAir()) continue;
+                        if (isTerrainGroundBlock(s) && !(s.getBlock() instanceof LeavesBlock)) {
+                            buildSnowBlock(mc, bx, y, bz, distSq, lod0RadSq);
+                        }
+                        break;
                     }
-                    if (isDifferentElevation(mc, bx, bz + 1, topY)) {
-                        SnowVertex b0 = new SnowVertex(bx, sealY, bz + 1.0f, 0.0f, 0.05f, sr, sg, sb, 255, light);
-                        SnowVertex b1 = new SnowVertex(bx + 0.5f, sealY, bz + 1.0f, 0.5f, 0.05f, sr, sg, sb, 255, light);
-                        SnowVertex b2 = new SnowVertex(bx + 1.0f, sealY, bz + 1.0f, 1.0f, 0.05f, sr, sg, sb, 255, light);
-                        this.cachedSnowMesh.add(new SnowQuad(p01, b0, b1, mS));
-                        this.cachedSnowMesh.add(new SnowQuad(mS, b1, b2, p11));
-                    }
-                    if (isDifferentElevation(mc, bx - 1, bz, topY)) {
-                        SnowVertex b0 = new SnowVertex(bx, sealY, bz, 0.0f, 0.05f, sr, sg, sb, 255, light);
-                        SnowVertex b1 = new SnowVertex(bx, sealY, bz + 0.5f, 0.5f, 0.05f, sr, sg, sb, 255, light);
-                        SnowVertex b2 = new SnowVertex(bx, sealY, bz + 1.0f, 1.0f, 0.05f, sr, sg, sb, 255, light);
-                        this.cachedSnowMesh.add(new SnowQuad(p00, b0, b1, mW));
-                        this.cachedSnowMesh.add(new SnowQuad(mW, b1, b2, p01));
-                    }
-                    if (isDifferentElevation(mc, bx + 1, bz, topY)) {
-                        SnowVertex b0 = new SnowVertex(bx + 1.0f, sealY, bz, 0.0f, 0.05f, sr, sg, sb, 255, light);
-                        SnowVertex b1 = new SnowVertex(bx + 1.0f, sealY, bz + 0.5f, 0.5f, 0.05f, sr, sg, sb, 255, light);
-                        SnowVertex b2 = new SnowVertex(bx + 1.0f, sealY, bz + 1.0f, 1.0f, 0.05f, sr, sg, sb, 255, light);
-                        this.cachedSnowMesh.add(new SnowQuad(p10, mE, b1, b0));
-                        this.cachedSnowMesh.add(new SnowQuad(mE, p11, b2, b1));
-                    }
-                } else {
-                    // LOD 1: Flat snow top on block
-                    float flatY = baseY + baseThickness;
-                    SnowVertex v0 = new SnowVertex(bx, flatY, bz, 0.0f, 0.0f, 245, 250, 255, 255, light);
-                    SnowVertex v1 = new SnowVertex(bx + 1.0f, flatY, bz, 1.0f, 0.0f, 245, 250, 255, 255, light);
-                    SnowVertex v2 = new SnowVertex(bx + 1.0f, flatY, bz + 1.0f, 1.0f, 1.0f, 245, 250, 255, 255, light);
-                    SnowVertex v3 = new SnowVertex(bx, flatY, bz + 1.0f, 0.0f, 1.0f, 245, 250, 255, 255, light);
-                    this.cachedSnowMesh.add(new SnowQuad(v0, v1, v2, v3));
                 }
             }
         }
     }
-
     private void updateGroundLeaves(MinecraftClient mc, int camBx, int camBy, int camBz) {
         if (!this.groundLeavesDirty &&
                 Math.abs(camBx - this.lastLeafCamX) < 2 &&

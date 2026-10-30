@@ -35,6 +35,7 @@
     "WeatherRenderingMixin",
     "WorldRendererMixin",
     "BlockColorsMixin",
+    "ChunkRendererRegionMixin",
     "FogRendererMixin"
   ],
   "client": [],
