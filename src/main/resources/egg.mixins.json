@@ -37,7 +37,8 @@
     "BlockColorsMixin",
     "ChunkRendererRegionMixin",
     "PlayerEntityRendererMixin",
-    "FogRendererMixin"
+    "FogRendererMixin",
+    "ItemModelManagerMixin"
   ],
   "client": [],
   "injectors": {

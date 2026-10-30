@@ -36,8 +36,8 @@ import net.minecraft.client.gui.DrawContext;
 import egg.client.render.IconRenderer;
 import net.minecraft.util.math.Direction;
 import org.joml.Quaternionf;
-public final class SkycoreCosmeticsManager  {
-    private static final SkycoreCosmeticsManager INSTANCE = new SkycoreCosmeticsManager();
+public final class CosmeticsManager  {
+    private static final CosmeticsManager INSTANCE = new CosmeticsManager();
 
     private final Map<String, Mesh> meshes = new HashMap<>();
     private final Map<String, AnimatedMeshEntry> animatedMeshes = new HashMap<>();
@@ -48,9 +48,9 @@ public final class SkycoreCosmeticsManager  {
     private final Map<String, JsonObject> animationJson = new HashMap<>();
     private boolean indexed = false;
 
-    private SkycoreCosmeticsManager() {}
+    private CosmeticsManager() {}
 
-    public static SkycoreCosmeticsManager getInstance() {
+    public static CosmeticsManager getInstance() {
         return INSTANCE;
     }
 
@@ -61,7 +61,7 @@ public final class SkycoreCosmeticsManager  {
         if (mc == null || mc.getResourceManager() == null) return;
 
         // 1. Load Cosmetics Catalog
-        Identifier catId = Identifier.of("skycore", "cosmetics_port/catalog.json");
+        Identifier catId = Identifier.of("egg", "cosmetics/catalog.json");
         try {
             Optional<Resource> res = mc.getResourceManager().getResource(catId);
             if (res.isPresent()) {
@@ -78,10 +78,10 @@ public final class SkycoreCosmeticsManager  {
 
                         if (id.isEmpty() || path.isEmpty()) continue;
 
-                        Identifier geoId = Identifier.of("skycore", "cosmetics_port/" + path + "/geometry.json");
-                        Identifier animId = Identifier.of("skycore", "cosmetics_port/" + path + "/animation.json");
-                        Identifier texId = Identifier.of("skycore", "cosmetics_port/" + path + "/texture.png");
-                        Identifier metaId = Identifier.of("skycore", "cosmetics_port/" + path + "/meta.json");
+                        Identifier geoId = Identifier.of("egg", "cosmetics/" + path + "/geometry.json");
+                        Identifier animId = Identifier.of("egg", "cosmetics/" + path + "/animation.json");
+                        Identifier texId = Identifier.of("egg", "cosmetics/" + path + "/texture.png");
+                        Identifier metaId = Identifier.of("egg", "cosmetics/" + path + "/meta.json");
 
                         Asset asset = new Asset(id, cat, path, displayName, geoId, animId, texId, loadMetadata(metaId));
                         this.assets.put(id.toLowerCase(Locale.ROOT), asset);
@@ -92,7 +92,7 @@ public final class SkycoreCosmeticsManager  {
         } catch (Exception ignored) {}
 
         // 2. Load Swords Catalog
-        Identifier swordCatId = Identifier.of("skycore", "item_replacer/sword/catalog.json");
+        Identifier swordCatId = Identifier.of("egg", "item_replacer/sword/catalog.json");
         try {
             Optional<Resource> res = mc.getResourceManager().getResource(swordCatId);
             if (res.isPresent()) {
@@ -108,7 +108,7 @@ public final class SkycoreCosmeticsManager  {
                             tex = tex.substring(5);
                         }
                         if (!name.isEmpty() && !tex.isEmpty()) {
-                            Identifier texRes = Identifier.of("skycore", "textures/item_replacer/sword/" + tex + ".png");
+                            Identifier texRes = Identifier.of("egg", "textures/item_replacer/sword/" + tex + ".png");
                             this.swords.add(new SwordEntry(name, model, texRes));
                         }
                     }
@@ -178,7 +178,7 @@ public final class SkycoreCosmeticsManager  {
         ParsedSwordModel cached = this.swordModelCache.get(sword.model());
         if (cached != null) return cached;
 
-        Identifier modelId = Identifier.of("skycore", "item_replacer/sword/models/" + sword.model() + ".json");
+        Identifier modelId = Identifier.of("egg", "item_replacer/sword/models/" + sword.model() + ".json");
         try {
             MinecraftClient mc = MinecraftClient.getInstance();
             if (mc == null || mc.getResourceManager() == null) return null;
@@ -195,7 +195,7 @@ public final class SkycoreCosmeticsManager  {
                             if (v.startsWith("item/")) {
                                 v = v.substring(5);
                             }
-                            Identifier texRes = Identifier.of("skycore", "textures/item_replacer/sword/" + v + ".png");
+                            Identifier texRes = Identifier.of("egg", "textures/item_replacer/sword/" + v + ".png");
                             texMap.put(k, texRes);
                             texMap.put("#" + k, texRes);
                         }
@@ -222,14 +222,12 @@ public final class SkycoreCosmeticsManager  {
         if (mc == null) return false;
 
         SwordEntry sword = null;
-        if (entity != null && entity == mc.player) {
+        if (entity == null || entity == mc.player) {
             CosmeticsModule mod = CosmeticsModule.getInstance();
             if (mod == null || !mod.isEnabled()) {
                 return false;
             }
             sword = getSelectedSwordEntry();
-        } else if (entity instanceof net.minecraft.entity.player.PlayerEntity player) {
-
         }
 
         if (sword == null) {
@@ -240,6 +238,7 @@ public final class SkycoreCosmeticsManager  {
             return false;
         }
 
+        renderState.clear();
         ItemRenderState.LayerRenderState layer = renderState.newLayer();
         layer.setSpecialModel(SwordSpecialModelRenderer.INSTANCE, sword);
         if (stack.hasGlint()) {
@@ -251,6 +250,14 @@ public final class SkycoreCosmeticsManager  {
     public void renderSwordModel(SwordEntry sword, ItemDisplayContext mode, MatrixStack matrices, OrderedRenderCommandQueue queue, int light, int overlay, boolean glint) {
         ParsedSwordModel parsed = getSwordModel(sword);
         if (parsed == null || parsed.elements.isEmpty()) return;
+
+        matrices.push();
+        if (parsed.transformation != null) {
+            Transformation tf = parsed.transformation.getTransformation(mode);
+            if (tf != null && tf != Transformation.IDENTITY) {
+                tf.apply(mode == ItemDisplayContext.FIRST_PERSON_LEFT_HAND || mode == ItemDisplayContext.THIRD_PERSON_LEFT_HAND, matrices.peek());
+            }
+        }
 
         for (ModelElement el : parsed.elements) {
             if (el.from() == null || el.to() == null || el.faces() == null || el.faces().isEmpty()) continue;
@@ -313,6 +320,7 @@ public final class SkycoreCosmeticsManager  {
 
             matrices.pop();
         }
+        matrices.pop();
     }
 
     // --- In-Game Attached Player Rendering ---

@@ -25,7 +25,7 @@ public class CosmeticsRenderer extends FeatureRenderer<PlayerEntityRenderState, 
             }
         }
         if (isLocal || state.id <= 0 || (mc.player != null && state.id == mc.player.getId())) {
-            SkycoreCosmeticsManager.getInstance().renderAttached(matrices, queue, getContextModel(), light);
+            CosmeticsManager.getInstance().renderAttached(matrices, queue, getContextModel(), light);
         }
     }
 }

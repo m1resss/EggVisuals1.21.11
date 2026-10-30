@@ -70,24 +70,39 @@ public class CosmeticsModule extends Module {
     public String selected(String category) {
         if (category == null) return "";
         return switch (category.toLowerCase(Locale.ROOT)) {
-            case "wings" -> !selectedWings.isEmpty() ? selectedWings : getSelectedWingId();
-            case "backpacks" -> !selectedBackpacks.isEmpty() ? selectedBackpacks : getSelectedBackpackId();
-            case "hats" -> !selectedHats.isEmpty() ? selectedHats : getSelectedHatId();
-            case "masks" -> !selectedMasks.isEmpty() ? selectedMasks : getSelectedMaskId();
-            case "pets" -> !selectedPets.isEmpty() ? selectedPets : getSelectedPetId();
+            case "wings" -> selectedWings;
+            case "backpacks" -> selectedBackpacks;
+            case "hats" -> selectedHats;
+            case "masks" -> selectedMasks;
+            case "pets" -> selectedPets;
             default -> "";
         };
     }
 
     public void select(String category, String id) {
         if (category == null) return;
-        String val = id == null ? "" : id;
+        String val = (id == null || "None".equalsIgnoreCase(id)) ? "" : id;
         switch (category.toLowerCase(Locale.ROOT)) {
-            case "wings" -> selectedWings = val;
-            case "backpacks" -> selectedBackpacks = val;
-            case "hats" -> selectedHats = val;
-            case "masks" -> selectedMasks = val;
-            case "pets" -> selectedPets = val;
+            case "wings" -> {
+                selectedWings = val;
+                if (val.isEmpty()) wings.set("None");
+            }
+            case "backpacks" -> {
+                selectedBackpacks = val;
+                if (val.isEmpty()) backpacks.set("None");
+            }
+            case "hats" -> {
+                selectedHats = val;
+                if (val.isEmpty()) hats.set("None");
+            }
+            case "masks" -> {
+                selectedMasks = val;
+                if (val.isEmpty()) masks.set("None");
+            }
+            case "pets" -> {
+                selectedPets = val;
+                if (val.isEmpty()) pets.set("None");
+            }
         }
         CosmeticsConfigManager.getInstance().saveConfig();
     }
@@ -123,117 +138,22 @@ public class CosmeticsModule extends Module {
     }
 
     public String getSelectedWingId() {
-        if (!this.selectedWings.isEmpty()) return this.selectedWings;
-        String val = this.wings.get();
-        if ("None".equals(val)) return "";
-        return switch (val) {
-            case "Angel" -> "058_angel";
-            case "Archangel" -> "059_archangel";
-            case "Balloons" -> "060_balloons";
-            case "Black Hole" -> "061_black_hole";
-            case "Butterfly" -> "062_butterfly";
-            case "Draco" -> "063_draco";
-            case "Frost" -> "064_frost";
-            case "Baby Dragon" -> "065_baby_dragon_wings";
-            case "Blue Dragon" -> "066_blue_dragon_wings";
-            case "Rocker" -> "067_rocker_wings";
-            case "Spider" -> "068_spider_wings";
-            case "Vulcano" -> "069_vulcano_wings";
-            case "Ghoul" -> "070_ghoul";
-            case "Jaguar" -> "071_jaguar";
-            case "Aurum" -> "072_aurum";
-            case "Dragon" -> "073_dragon";
-            case "Diamond" -> "074_diamond";
-            case "Easter" -> "075_easter";
-            case "Fluger" -> "076_fluger";
-            case "Trident" -> "077_trident";
-            case "Dark" -> "078_dark";
-            case "Wota" -> "079_wota_wings";
-            case "Rocket" -> "080_rocket";
-            case "Steampunk" -> "081_steampunk";
-            case "Techno" -> "082_techno";
-            default -> "";
-        };
+        return this.selectedWings;
     }
 
     public String getSelectedBackpackId() {
-        if (!this.selectedBackpacks.isEmpty()) return this.selectedBackpacks;
-        String val = this.backpacks.get();
-        if ("None".equals(val)) return "";
-        return switch (val) {
-            case "Adidas" -> "001_adidas";
-            case "Gucci" -> "002_gucci";
-            case "Hermes" -> "003_hermes";
-            case "Louis Vuitton" -> "004_louis_vuitton";
-            case "Nike" -> "005_nike";
-            case "Katana" -> "006_katana";
-            case "Supreme" -> "011_supreme";
-            case "Vlone" -> "012_vlone";
-            case "Bape" -> "013_bape";
-            case "Balenciaga" -> "014_balenciaga";
-            case "Chrome Hearts" -> "015_chrome_hearts";
-            case "Pepe" -> "016_pepe";
-            default -> "";
-        };
+        return this.selectedBackpacks;
     }
 
     public String getSelectedHatId() {
-        if (!this.selectedHats.isEmpty()) return this.selectedHats;
-        String val = this.hats.get();
-        if ("None".equals(val)) return "";
-        return switch (val) {
-            case "Halo" -> "017_halo";
-            case "White Halo" -> "018_white_halo";
-            case "Bear" -> "019_bear";
-            case "Black Hole Halo" -> "020_black_hole_halo";
-            case "Frog" -> "021_frog";
-            case "Pilot" -> "022_pilot";
-            case "Armadillo" -> "023_armadillo";
-            case "Camel" -> "024_camel";
-            case "Dark Hat" -> "025_dark_hat";
-            case "Four Leaf" -> "026_four_leaf";
-            case "Classic Frog" -> "027_classic_frog";
-            case "Capybara" -> "029_capybara";
-            case "Chicken" -> "030_chicken";
-            case "Penguin" -> "034_penguin";
-            case "Happy" -> "037_happy";
-            default -> "";
-        };
+        return this.selectedHats;
     }
 
     public String getSelectedMaskId() {
-        if (!this.selectedMasks.isEmpty()) return this.selectedMasks;
-        String val = this.masks.get();
-        if ("None".equals(val)) return "";
-        return switch (val) {
-            case "Angry" -> "039_angry";
-            case "Clown" -> "040_clown";
-            case "Glasses" -> "041_glasses";
-            case "Wink" -> "042_wink";
-            default -> "";
-        };
+        return this.selectedMasks;
     }
 
     public String getSelectedPetId() {
-        if (!this.selectedPets.isEmpty()) return this.selectedPets;
-        String val = this.pets.get();
-        if ("None".equals(val)) return "";
-        return switch (val) {
-            case "Axolotl" -> "043_axolotl";
-            case "Big Cat" -> "044_big_cat";
-            case "Capybara" -> "045_capybara";
-            case "Dragon" -> "046_dragon";
-            case "Guinea Pig" -> "047_guinea_pig";
-            case "Panda" -> "048_panda";
-            case "Patrick" -> "049_patrick";
-            case "Perch" -> "050_perch";
-            case "Pig" -> "051_pig";
-            case "Jaguar" -> "052_jaguar";
-            case "Creeper" -> "053_creeper";
-            case "Penguin" -> "055_penguin";
-            case "Bee" -> "056_bee";
-            case "Spongebob" -> "057_spongebob";
-            default -> "";
-        };
+        return this.selectedPets;
     }
 }

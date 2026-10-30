@@ -2045,6 +2045,11 @@ public class ClickGuiScreen extends Screen {
                 return true;
             }
         }
+        if (selectedCategory == Category.COSMETICS) {
+            if (egg.client.ui.section.CosmeticsPanel.mouseDragged(click.x(), click.y())) {
+                return true;
+            }
+        }
         return super.mouseDragged(click, dx, dy);
     }
 
@@ -2058,8 +2063,14 @@ public class ClickGuiScreen extends Screen {
             return true;
         } else if (selectedCategory == Category.COSMETICS) {
             float guiW = Math.clamp(width * 0.58f, 520.0f, 580.0f);
+            float guiH = Math.clamp(height * 0.62f, 360.0f, 420.0f);
+            float guiX = (float) Math.round((width - guiW) / 2.0f);
+            float guiY = (float) Math.round((height - guiH) / 2.0f);
+            float contentX = guiX + 114.0f + 12.0f;
+            float contentY = guiY + 38.0f;
             float contentW = guiW - 114.0f - 24.0f;
-            egg.client.ui.section.CosmeticsPanel.mouseScrolled(mouseX, mouseY, verticalAmount, contentW);
+            float contentH = guiH - 38.0f - 12.0f;
+            egg.client.ui.section.CosmeticsPanel.mouseScrolled(mouseX, mouseY, verticalAmount, contentX, contentY, contentW, contentH);
             return true;
         }
         if (this.openDropdownSetting != null && this.openDropdownMaxScroll > 0.0f) {

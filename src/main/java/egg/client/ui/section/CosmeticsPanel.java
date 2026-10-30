@@ -1,10 +1,9 @@
 package egg.client.ui.section;
 
-import egg.client.render.IconRenderer;
-
-import egg.client.cosmetic.SkycoreCosmeticsManager;
+import egg.client.cosmetic.CosmeticsManager;
 import egg.client.module.ModuleManager;
 import egg.client.module.cosmetic.CosmeticsModule;
+import egg.client.render.IconRenderer;
 import egg.client.render.Render2D;
 import egg.client.render.font.ClientFont;
 import egg.client.ui.theme.Theme;
@@ -12,14 +11,7 @@ import egg.client.util.ColorUtil;
 import egg.client.util.GuiSoundManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.render.entity.EntityRenderManager;
-import net.minecraft.client.render.entity.EntityRenderer;
-import net.minecraft.client.render.entity.state.EntityRenderState;
-import net.minecraft.client.render.entity.state.LivingEntityRenderState;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.util.math.RotationAxis;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
 
 import java.util.*;
 
@@ -42,15 +34,20 @@ public class CosmeticsPanel {
     private static float lastDragMouseX = 0.0f;
     private static float lastDragMouseY = 0.0f;
 
-    // Animation progress for cards and toggles
     private static final Map<String, Float> toggleAnims = new HashMap<>();
+
+    public static void setSearchQuery(String q) {
+        searchQuery = q == null ? "" : q.trim();
+        targetScroll = 0.0f;
+        scrollOffset = 0.0f;
+    }
 
     public static void render(DrawContext context, float x, float y, float w, float h, float mouseX, float mouseY, float alpha) {
         MinecraftClient mc = MinecraftClient.getInstance();
         CosmeticsModule mod = ModuleManager.getInstance().getModule(CosmeticsModule.class);
         if (mod == null) return;
 
-        SkycoreCosmeticsManager mgr = SkycoreCosmeticsManager.getInstance();
+        CosmeticsManager mgr = CosmeticsManager.getInstance();
         mgr.ensureIndex();
 
         scrollOffset += (targetScroll - scrollOffset) * 0.25f;
@@ -67,81 +64,62 @@ public class CosmeticsPanel {
         context.enableScissor((int) x, (int) y, (int) (x + mainW), (int) (y + h));
 
         float curY = y - scrollOffset;
-        float heroH = 46.0f;
-        float heroX = x;
-        float heroW = mainW;
 
-        // A. HERO STUDIO BANNER CARD
-        Render2D.drawRoundedRect(context, heroX, curY, heroW, heroH, 6.0f, Theme.CARD_BG);
-        Render2D.drawRoundedOutline(context, heroX, curY, heroW, heroH, 6.0f, 0.6f, Theme.CARD_BORDER);
-
-        // Subtle primary glow gradient inside banner
-        int glowL = ColorUtil.withAlpha(Theme.ACCENT, Math.round(35 * alpha));
-        int glowR = ColorUtil.withAlpha(Theme.ACCENT, Math.round(10 * alpha));
-        Render2D.drawGradientRect(context, heroX, curY, heroW, heroH, 6.0f, glowL, glowR, glowR, glowL);
-
-        // Icon badge
-        float icSz = 26.0f;
-        float icX = heroX + 10.0f;
-        float icY = curY + (heroH - icSz) * 0.5f;
-        Render2D.drawRoundedRect(context, icX, icY, icSz, icSz, 5.0f, ColorUtil.withAlpha(Theme.ACCENT, Math.round(55 * alpha)));
-        Render2D.drawRoundedOutline(context, icX, icY, icSz, icSz, 5.0f, 0.6f, ColorUtil.withAlpha(Theme.ACCENT, Math.round(180 * alpha)));
-        ClientFont.drawCentered(context, "C", icX + icSz * 0.5f, icY + 6.0f, ClientFont.SF_BOLD, Theme.ACCENT);
-
-        // Master toggle slider & "Снять все"
-        float masterTogW = 24.0f, masterTogH = 13.0f;
-        float masterTogX = heroX + heroW - masterTogW - 10.0f;
-        float masterTogY = curY + (heroH - masterTogH) * 0.5f;
-
-        float clrW = 54.0f, clrH = 15.0f;
-        float clrX = masterTogX - clrW - 8.0f;
-        float clrY = curY + (heroH - clrH) * 0.5f;
-
-        // Banner titles
-        float textX = icX + icSz + 10.0f;
-        ClientFont.draw(context, "Cosmetics Studio", textX, curY + 9.5f, ClientFont.SF_BOLD, 0xFFFFFFFF);
-        ClientFont.draw(context, "Кастомные 3D крылья, рюкзаки, шляпы, питомцы и мечи", textX, curY + 23.5f, ClientFont.SF_REGULAR, 0xFFA0A8B8);
-
-        // Master toggle switch
-        boolean isModEnabled = mod.isEnabled();
-        float mAnim = getAnim("__master__", isModEnabled);
-        int pillBg = ColorUtil.lerp(0xFF232838, Theme.ACCENT, mAnim);
-        Render2D.drawRoundedRect(context, masterTogX, masterTogY, masterTogW, masterTogH, 6.5f, pillBg);
-        Render2D.drawRoundedOutline(context, masterTogX, masterTogY, masterTogW, masterTogH, 6.5f, 0.5f, Theme.CARD_BORDER);
-
-        float mDotSz = 9.0f;
-        float mDotX = masterTogX + 2.0f + mAnim * 11.0f;
-        float mDotY = masterTogY + 2.0f;
-        Render2D.drawRoundedRect(context, mDotX, mDotY, mDotSz, mDotSz, 4.5f, 0xFFFFFFFF);
-
-        // "Снять все" button
-        boolean hovClr = mouseX >= clrX && mouseX <= clrX + clrW && mouseY >= clrY && mouseY <= clrY + clrH;
-        Render2D.drawRoundedRect(context, clrX, clrY, clrW, clrH, 4.0f, hovClr ? 0xDDFF4444 : 0x22FFFFFF);
-        Render2D.drawRoundedOutline(context, clrX, clrY, clrW, clrH, 4.0f, 0.5f, hovClr ? 0xFFFF6B6B : Theme.CARD_BORDER);
-        ClientFont.drawCentered(context, "Снять все", clrX + clrW * 0.5f, clrY + 3.5f, ClientFont.SF_REGULAR, hovClr ? 0xFFFFFFFF : 0xFFA0A8B8);
-
-        // B. CATEGORY FILTER PILLS
-        float navY = curY + heroH + 8.0f;
+        // A. CATEGORY FILTER PILLS (Компактные 2 ряда или аккуратные табы с автошириной)
+        float navY = curY + 2.0f;
+        float navH = 18.0f;
         float pillGap = 4.0f;
-        float pillW = (heroW - (CAT_NAMES.length - 1) * pillGap) / CAT_NAMES.length;
-        float navH = 19.0f;
 
-        for (int i = 0; i < CAT_NAMES.length; i++) {
-            float pX = heroX + i * (pillW + pillGap);
-            boolean isSel = (activeFilter == i);
-            boolean hov = mouseX >= pX && mouseX <= pX + pillW && mouseY >= navY && mouseY <= navY + navH;
+        // Ряд 1: Все, Шляпы, Крылья, Рюкзаки
+        // Ряд 2: Маски, Питомцы, Мечи + Кнопка "Снять все"
+        int[] row1 = new int[] { 0, 1, 2, 3 };
+        int[] row2 = new int[] { 4, 5, 6 };
+
+        float row1W = (mainW - (row1.length - 1) * pillGap) / row1.length;
+        for (int i = 0; i < row1.length; i++) {
+            int idx = row1[i];
+            float pX = x + i * (row1W + pillGap);
+            boolean isSel = (activeFilter == idx);
+            boolean hov = mouseX >= pX && mouseX <= pX + row1W && mouseY >= navY && mouseY <= navY + navH;
 
             int pBg = isSel ? Theme.ACCENT : (hov ? 0x28FFFFFF : 0x16FFFFFF);
-            Render2D.drawRoundedRect(context, pX, navY, pillW, navH, 4.0f, pBg);
+            Render2D.drawRoundedRect(context, pX, navY, row1W, navH, 4.0f, pBg);
             if (isSel) {
-                Render2D.drawRoundedOutline(context, pX, navY, pillW, navH, 4.0f, 0.6f, Theme.ACCENT);
+                Render2D.drawRoundedOutline(context, pX, navY, row1W, navH, 4.0f, 0.6f, Theme.ACCENT);
             }
             int txtCol = isSel ? 0xFFFFFFFF : (hov ? 0xFFE0E6F0 : 0xFFA0A8B8);
-            ClientFont.drawCentered(context, CAT_NAMES[i], pX + pillW * 0.5f, navY + 4.5f, ClientFont.SF_MEDIUM, txtCol);
+            ClientFont.drawCentered(context, CAT_NAMES[idx], pX + row1W * 0.5f, navY + 4.0f, ClientFont.SF_MEDIUM, txtCol);
         }
 
-        // C. COSMETICS CARDS GRID
-        float currentCatY = navY + navH + 10.0f;
+        float navY2 = navY + navH + 4.0f;
+        float clrAllW = 58.0f;
+        float row2AvailableW = mainW - clrAllW - pillGap;
+        float row2W = (row2AvailableW - (row2.length - 1) * pillGap) / row2.length;
+
+        for (int i = 0; i < row2.length; i++) {
+            int idx = row2[i];
+            float pX = x + i * (row2W + pillGap);
+            boolean isSel = (activeFilter == idx);
+            boolean hov = mouseX >= pX && mouseX <= pX + row2W && mouseY >= navY2 && mouseY <= navY2 + navH;
+
+            int pBg = isSel ? Theme.ACCENT : (hov ? 0x28FFFFFF : 0x16FFFFFF);
+            Render2D.drawRoundedRect(context, pX, navY2, row2W, navH, 4.0f, pBg);
+            if (isSel) {
+                Render2D.drawRoundedOutline(context, pX, navY2, row2W, navH, 4.0f, 0.6f, Theme.ACCENT);
+            }
+            int txtCol = isSel ? 0xFFFFFFFF : (hov ? 0xFFE0E6F0 : 0xFFA0A8B8);
+            ClientFont.drawCentered(context, CAT_NAMES[idx], pX + row2W * 0.5f, navY2 + 4.0f, ClientFont.SF_MEDIUM, txtCol);
+        }
+
+        // Кнопка "Снять все" справа от второго ряда табов
+        float clrAllX = x + mainW - clrAllW;
+        boolean hovClrAll = mouseX >= clrAllX && mouseX <= clrAllX + clrAllW && mouseY >= navY2 && mouseY <= navY2 + navH;
+        Render2D.drawRoundedRect(context, clrAllX, navY2, clrAllW, navH, 4.0f, hovClrAll ? 0xDDFF4444 : 0x1EFFFFFF);
+        Render2D.drawRoundedOutline(context, clrAllX, navY2, clrAllW, navH, 4.0f, 0.5f, hovClrAll ? 0xFFFF6B6B : Theme.CARD_BORDER);
+        ClientFont.drawCentered(context, "Снять все", clrAllX + clrAllW * 0.5f, navY2 + 4.0f, ClientFont.SF_REGULAR, hovClrAll ? 0xFFFFFFFF : 0xFFA0A8B8);
+
+        // B. COSMETICS CARDS GRID
+        float currentCatY = navY2 + navH + 10.0f;
         List<String> activeCats = new ArrayList<>();
         if (activeFilter == 0) {
             activeCats.add("hats");
@@ -157,11 +135,9 @@ public class CosmeticsPanel {
         int cols = 3;
         float colGap = 6.0f;
         float rowGap = 7.0f;
-        float cardW = (heroW - (cols - 1) * colGap) / cols;
-        float cardH = 132.0f;
-        float previewSize = 72.0f;
-
-        float measuredTotalH = (currentCatY - (y - scrollOffset));
+        float cardW = (mainW - (cols - 1) * colGap) / cols;
+        float cardH = 126.0f;
+        float previewSize = 64.0f;
 
         for (String catKey : activeCats) {
             boolean isSwords = "swords".equals(catKey);
@@ -175,20 +151,20 @@ public class CosmeticsPanel {
                 default -> catKey;
             };
 
-            List<SkycoreCosmeticsManager.Asset> assetsList = isSwords ? Collections.emptyList() : mgr.getCategoryAssets(catKey, searchQuery);
-            List<SkycoreCosmeticsManager.SwordEntry> swordsList = isSwords ? mgr.getSwords(searchQuery) : Collections.emptyList();
+            List<CosmeticsManager.Asset> assetsList = isSwords ? Collections.emptyList() : mgr.getCategoryAssets(catKey, searchQuery);
+            List<CosmeticsManager.SwordEntry> swordsList = isSwords ? mgr.getSwords(searchQuery) : Collections.emptyList();
             int itemCount = isSwords ? swordsList.size() : assetsList.size();
 
             // Category Header
             float catHeaderH = 20.0f;
-            ClientFont.draw(context, catTitle, heroX + 2.0f, currentCatY + 3.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
+            ClientFont.draw(context, catTitle, x + 2.0f, currentCatY + 3.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
 
-            // "Снять" (clear category) button if something in category is equipped
+            // Кнопка "Снять" (для конкретной категории)
             String selectedId = isSwords ? mod.selectedSword() : mod.selected(catKey);
             boolean hasEquipped = selectedId != null && !selectedId.isEmpty() && !"None".equalsIgnoreCase(selectedId);
             if (hasEquipped) {
                 float badgeW = 44.0f;
-                float badgeX = heroX + heroW - badgeW;
+                float badgeX = x + mainW - badgeW;
                 float badgeY = currentCatY + 1.0f;
                 boolean hovRst = mouseX >= badgeX && mouseX <= badgeX + badgeW && mouseY >= badgeY && mouseY <= badgeY + 14.0f;
                 Render2D.drawRoundedRect(context, badgeX, badgeY, badgeW, 14.0f, 3.0f, hovRst ? 0xDDFF4444 : 0x22FFFFFF);
@@ -203,15 +179,15 @@ public class CosmeticsPanel {
             for (int i = 0; i < itemCount; i++) {
                 int row = i / cols;
                 int col = i % cols;
-                float cardX = heroX + col * (cardW + colGap);
+                float cardX = x + col * (cardW + colGap);
                 float cardY = currentCatY + row * (cardH + rowGap);
 
                 if (cardY + cardH < y - 5.0f || cardY > y + h + 5.0f) {
                     continue;
                 }
 
-                SkycoreCosmeticsManager.Asset asset = isSwords ? null : assetsList.get(i);
-                SkycoreCosmeticsManager.SwordEntry sword = isSwords ? swordsList.get(i) : null;
+                CosmeticsManager.Asset asset = isSwords ? null : assetsList.get(i);
+                CosmeticsManager.SwordEntry sword = isSwords ? swordsList.get(i) : null;
                 String displayName = isSwords ? sword.name() : asset.displayName();
 
                 boolean isSelected = isSwords
@@ -237,23 +213,12 @@ public class CosmeticsPanel {
                 }
 
                 // Divider line
-                Render2D.drawRect(context, cardX + 6.0f, cardY + 94.0f, cardW - 12.0f, 1.0f, 0x15FFFFFF);
-
-                // Cosmetic title
-                String title = displayName;
-                float maxTitleW = cardW - 36.0f;
-                if (ClientFont.getWidth(title, ClientFont.SF_MEDIUM) > maxTitleW) {
-                    while (title.length() > 3 && ClientFont.getWidth(title + "..", ClientFont.SF_MEDIUM) > maxTitleW) {
-                        title = title.substring(0, title.length() - 1);
-                    }
-                    title += "..";
-                }
-                ClientFont.draw(context, title, cardX + 7.0f, cardY + 106.0f, ClientFont.SF_MEDIUM, isSelected ? Theme.ACCENT : 0xFFFFFFFF);
+                Render2D.drawRect(context, cardX + 6.0f, cardY + 90.0f, cardW - 12.0f, 1.0f, 0x15FFFFFF);
 
                 // Toggle switch pill
                 float swW = 20.0f, swH = 11.0f;
                 float swX = cardX + cardW - swW - 7.0f;
-                float swY = cardY + 105.0f;
+                float swY = cardY + 101.0f;
 
                 String animKey = isSwords ? "sw_" + sword.name() : "cs_" + asset.id();
                 float swAnim = getAnim(animKey, isSelected);
@@ -264,12 +229,23 @@ public class CosmeticsPanel {
                 float swDotX = swX + 2.0f + swAnim * 9.0f;
                 float swDotY = swY + 2.0f;
                 Render2D.drawRoundedRect(context, swDotX, swDotY, swDotSz, swDotSz, 3.5f, 0xFFFFFFFF);
+
+                // Cosmetic title
+                String title = displayName;
+                float maxTitleW = cardW - swW - 18.0f;
+                if (ClientFont.getWidth(title, ClientFont.SF_MEDIUM) > maxTitleW) {
+                    while (title.length() > 3 && ClientFont.getWidth(title + "..", ClientFont.SF_MEDIUM) > maxTitleW) {
+                        title = title.substring(0, title.length() - 1);
+                    }
+                    title += "..";
+                }
+                ClientFont.draw(context, title, cardX + 7.0f, cardY + 101.5f, ClientFont.SF_MEDIUM, isSelected ? Theme.ACCENT : 0xFFFFFFFF);
             }
 
             currentCatY += rows * (cardH + rowGap) + 12.0f;
         }
 
-        measuredTotalH = currentCatY - (y - scrollOffset);
+        float measuredTotalH = currentCatY - (y - scrollOffset);
         maxScroll = Math.max(0.0f, measuredTotalH - h);
 
         context.disableScissor();
@@ -334,7 +310,7 @@ public class CosmeticsPanel {
         CosmeticsModule mod = ModuleManager.getInstance().getModule(CosmeticsModule.class);
         if (mod == null) return false;
 
-        SkycoreCosmeticsManager mgr = SkycoreCosmeticsManager.getInstance();
+        CosmeticsManager mgr = CosmeticsManager.getInstance();
         mgr.ensureIndex();
 
         float rightPaneW = 158.0f;
@@ -370,41 +346,19 @@ public class CosmeticsPanel {
         }
 
         float curY = y - scrollOffset;
-        float heroH = 46.0f;
-        float heroX = x;
-        float heroW = mainW;
 
-        // Master toggle switch click
-        float masterTogW = 24.0f, masterTogH = 13.0f;
-        float masterTogX = heroX + heroW - masterTogW - 10.0f;
-        float masterTogY = curY + (heroH - masterTogH) * 0.5f;
-        if (mouseX >= masterTogX && mouseX <= masterTogX + masterTogW && mouseY >= masterTogY && mouseY <= masterTogY + masterTogH) {
-            mod.setEnabled(!mod.isEnabled());
-            GuiSoundManager.playClick();
-            return true;
-        }
-
-        // "Снять все" click
-        float clrW = 54.0f, clrH = 15.0f;
-        float clrX = masterTogX - clrW - 8.0f;
-        float clrY = curY + (heroH - clrH) * 0.5f;
-        if (mouseX >= clrX && mouseX <= clrX + clrW && mouseY >= clrY && mouseY <= clrY + clrH) {
-            mod.clearAll();
-            GuiSoundManager.playClick();
-            return true;
-        }
-
-        // Filter pills click
-        float navY = curY + heroH + 8.0f;
+        // Row 1 tabs click
+        float navY = curY + 2.0f;
+        float navH = 18.0f;
         float pillGap = 4.0f;
-        float pillW = (heroW - (CAT_NAMES.length - 1) * pillGap) / CAT_NAMES.length;
-        float navH = 19.0f;
+        int[] row1 = new int[] { 0, 1, 2, 3 };
+        float row1W = (mainW - (row1.length - 1) * pillGap) / row1.length;
 
         if (mouseY >= navY && mouseY <= navY + navH) {
-            for (int i = 0; i < CAT_NAMES.length; i++) {
-                float pX = heroX + i * (pillW + pillGap);
-                if (mouseX >= pX && mouseX <= pX + pillW) {
-                    activeFilter = i;
+            for (int i = 0; i < row1.length; i++) {
+                float pX = x + i * (row1W + pillGap);
+                if (mouseX >= pX && mouseX <= pX + row1W) {
+                    activeFilter = row1[i];
                     targetScroll = 0.0f;
                     scrollOffset = 0.0f;
                     GuiSoundManager.playClick();
@@ -413,8 +367,34 @@ public class CosmeticsPanel {
             }
         }
 
+        // Row 2 tabs click & "Снять все"
+        float navY2 = navY + navH + 4.0f;
+        float clrAllW = 58.0f;
+        float row2AvailableW = mainW - clrAllW - pillGap;
+        int[] row2 = new int[] { 4, 5, 6 };
+        float row2W = (row2AvailableW - (row2.length - 1) * pillGap) / row2.length;
+
+        if (mouseY >= navY2 && mouseY <= navY2 + navH) {
+            for (int i = 0; i < row2.length; i++) {
+                float pX = x + i * (row2W + pillGap);
+                if (mouseX >= pX && mouseX <= pX + row2W) {
+                    activeFilter = row2[i];
+                    targetScroll = 0.0f;
+                    scrollOffset = 0.0f;
+                    GuiSoundManager.playClick();
+                    return true;
+                }
+            }
+            float clrAllX = x + mainW - clrAllW;
+            if (mouseX >= clrAllX && mouseX <= clrAllX + clrAllW) {
+                mod.clearAll();
+                GuiSoundManager.playClick();
+                return true;
+            }
+        }
+
         // Cards and Category Reset clicks
-        float currentCatY = navY + navH + 10.0f;
+        float currentCatY = navY2 + navH + 10.0f;
         List<String> activeCats = new ArrayList<>();
         if (activeFilter == 0) {
             activeCats.add("hats");
@@ -430,18 +410,18 @@ public class CosmeticsPanel {
         int cols = 3;
         float colGap = 6.0f;
         float rowGap = 7.0f;
-        float cardW = (heroW - (cols - 1) * colGap) / cols;
-        float cardH = 132.0f;
+        float cardW = (mainW - (cols - 1) * colGap) / cols;
+        float cardH = 126.0f;
 
         for (String catKey : activeCats) {
             boolean isSwords = "swords".equals(catKey);
-            List<SkycoreCosmeticsManager.Asset> assetsList = isSwords ? Collections.emptyList() : mgr.getCategoryAssets(catKey, searchQuery);
-            List<SkycoreCosmeticsManager.SwordEntry> swordsList = isSwords ? mgr.getSwords(searchQuery) : Collections.emptyList();
+            List<CosmeticsManager.Asset> assetsList = isSwords ? Collections.emptyList() : mgr.getCategoryAssets(catKey, searchQuery);
+            List<CosmeticsManager.SwordEntry> swordsList = isSwords ? mgr.getSwords(searchQuery) : Collections.emptyList();
             int itemCount = isSwords ? swordsList.size() : assetsList.size();
 
             // Check "Снять" category click
             float badgeW = 44.0f;
-            float badgeX = heroX + heroW - badgeW;
+            float badgeX = x + mainW - badgeW;
             float badgeY = currentCatY + 1.0f;
             if (mouseX >= badgeX && mouseX <= badgeX + badgeW && mouseY >= badgeY && mouseY <= badgeY + 14.0f) {
                 if (isSwords) {
@@ -460,12 +440,12 @@ public class CosmeticsPanel {
             for (int i = 0; i < itemCount; i++) {
                 int row = i / cols;
                 int col = i % cols;
-                float cardX = heroX + col * (cardW + colGap);
+                float cardX = x + col * (cardW + colGap);
                 float cardY = currentCatY + row * (cardH + rowGap);
 
                 if (mouseX >= cardX && mouseX <= cardX + cardW && mouseY >= cardY && mouseY <= cardY + cardH) {
                     if (isSwords) {
-                        SkycoreCosmeticsManager.SwordEntry sword = swordsList.get(i);
+                        CosmeticsManager.SwordEntry sword = swordsList.get(i);
                         boolean isSelected = sword.name().equalsIgnoreCase(mod.selectedSword());
                         if (isSelected) {
                             mod.selectSword("", "");
@@ -473,7 +453,7 @@ public class CosmeticsPanel {
                             mod.selectSword(sword.name(), sword.model());
                         }
                     } else {
-                        SkycoreCosmeticsManager.Asset asset = assetsList.get(i);
+                        CosmeticsManager.Asset asset = assetsList.get(i);
                         boolean isSelected = asset.id().equalsIgnoreCase(mod.selected(catKey));
                         if (isSelected) {
                             mod.select(catKey, "");
@@ -509,17 +489,17 @@ public class CosmeticsPanel {
         isDraggingPlayer = false;
     }
 
-    public static boolean mouseScrolled(double mouseX, double mouseY, double amount, float w) {
+    public static boolean mouseScrolled(double mouseX, double mouseY, double amount, float contentX, float contentY, float contentW, float contentH) {
         float rightPaneW = 158.0f;
-        float mainW = w - rightPaneW - 10.0f;
+        float rightPaneX = contentX + contentW - rightPaneW;
 
-        // If cursor is over right preview pane -> Zoom player model
-        if (mouseX >= rightPaneW) {
+        // Если курсор находится строго над правой панелью 3D превью -> Зум модельки игрока
+        if (mouseX >= rightPaneX && mouseX <= rightPaneX + rightPaneW && mouseY >= contentY && mouseY <= contentY + contentH) {
             playerScale = Math.clamp(playerScale + (float) amount * 0.12f, 0.5f, 2.8f);
             return true;
         }
 
-        // If cursor is over catalog -> scroll catalog
+        // В противном случае скроллится список косметики слева
         targetScroll -= (float) (amount * 34.0f);
         targetScroll = Math.clamp(targetScroll, 0.0f, maxScroll);
         return true;

@@ -10,15 +10,15 @@ import org.joml.Vector3fc;
 
 import java.util.function.Consumer;
 
-public class SwordSpecialModelRenderer implements SpecialModelRenderer<SkycoreCosmeticsManager.SwordEntry> {
+public class SwordSpecialModelRenderer implements SpecialModelRenderer<CosmeticsManager.SwordEntry> {
     public static final SwordSpecialModelRenderer INSTANCE = new SwordSpecialModelRenderer();
 
     private SwordSpecialModelRenderer() {}
 
     @Override
-    public void render(@Nullable SkycoreCosmeticsManager.SwordEntry sword, ItemDisplayContext mode, MatrixStack matrices, OrderedRenderCommandQueue queue, int light, int overlay, boolean glint, int seed) {
+    public void render(@Nullable CosmeticsManager.SwordEntry sword, ItemDisplayContext mode, MatrixStack matrices, OrderedRenderCommandQueue queue, int light, int overlay, boolean glint, int seed) {
         if (sword == null) return;
-        SkycoreCosmeticsManager.getInstance().renderSwordModel(sword, mode, matrices, queue, light, overlay, glint);
+        CosmeticsManager.getInstance().renderSwordModel(sword, mode, matrices, queue, light, overlay, glint);
     }
 
     @Override
@@ -26,7 +26,7 @@ public class SwordSpecialModelRenderer implements SpecialModelRenderer<SkycoreCo
 
     @Override
     @Nullable
-    public SkycoreCosmeticsManager.SwordEntry getData(ItemStack stack) {
-        return SkycoreCosmeticsManager.getInstance().getSelectedSwordEntry();
+    public CosmeticsManager.SwordEntry getData(ItemStack stack) {
+        return CosmeticsManager.getInstance().getSelectedSwordEntry();
     }
 }
