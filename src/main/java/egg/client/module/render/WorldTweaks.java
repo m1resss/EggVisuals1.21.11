@@ -208,7 +208,15 @@ public class WorldTweaks extends Module {
         int bz = MathHelper.floor(z);
         if (!mc.world.isChunkLoaded(bx >> 4, bz >> 4)) return -64;
         try {
-            return mc.world.getTopY(Heightmap.Type.MOTION_BLOCKING, bx, bz);
+            int topY = mc.world.getTopY(Heightmap.Type.MOTION_BLOCKING, bx, bz);
+            BlockPos.Mutable mut = new BlockPos.Mutable(bx, topY, bz);
+            for (int y = topY; y >= mc.world.getBottomY(); y--) {
+                mut.set(bx, y, bz);
+                BlockState s = mc.world.getBlockState(mut);
+                if (isBarrierOrIgnored(s)) continue;
+                return y + 1;
+            }
+            return topY;
         } catch (Throwable ignored) {
             return -64;
         }
@@ -750,8 +758,18 @@ public class WorldTweaks extends Module {
         return (float) (Math.pow(combined, 1.35) * 0.24 + 0.03);
     }
 
+    private boolean isBarrierOrIgnored(BlockState s) {
+        if (s == null || s.isAir()) return true;
+        Block b = s.getBlock();
+        return b instanceof net.minecraft.block.BarrierBlock
+                || s.isOf(Blocks.BARRIER)
+                || s.isOf(Blocks.STRUCTURE_VOID)
+                || s.isOf(Blocks.LIGHT);
+    }
+
     private boolean isTerrainGroundBlock(BlockState state) {
-        if (state.isAir()) return false;
+        if (state == null || state.isAir()) return false;
+        if (isBarrierOrIgnored(state)) return false;
         Block b = state.getBlock();
         if (b instanceof net.minecraft.block.PillarBlock) return false;
         if (b instanceof PlantBlock) return false;
@@ -768,30 +786,28 @@ public class WorldTweaks extends Module {
         int topY = mc.world.getTopY(Heightmap.Type.MOTION_BLOCKING, bx, bz) - 1;
         if (topY < mc.world.getBottomY()) return Integer.MIN_VALUE;
 
-        BlockPos pos = new BlockPos(bx, topY, bz);
-        BlockState state = mc.world.getBlockState(pos);
+        // Scan downwards starting from topY, skipping server barrier ceilings, foliage, plants and thin snow
+        int minY = Math.max(mc.world.getBottomY(), camBy - 36);
+        BlockPos.Mutable mut = new BlockPos.Mutable(bx, topY, bz);
 
-        // If top block is tree leaves, tree wood/log, plant, or vanilla snow, scan DOWN past tree foliage and logs to find real terrain ground
-        if (state.getBlock() instanceof LeavesBlock || state.getBlock() instanceof net.minecraft.block.PillarBlock || state.getBlock() instanceof PlantBlock || state.getBlock() == Blocks.SNOW) {
-            for (int y = topY; y >= Math.max(mc.world.getBottomY(), topY - 32); y--) {
-                BlockPos p = new BlockPos(bx, y, bz);
-                BlockState s = mc.world.getBlockState(p);
-                if (s.getBlock() instanceof LeavesBlock || s.getBlock() instanceof net.minecraft.block.PillarBlock || s.getBlock() instanceof PlantBlock || s.isAir() || s.getBlock() == Blocks.SNOW) {
-                    continue;
-                }
-                if (isTerrainGroundBlock(s)) {
-                    return y;
-                }
-                break;
+        for (int y = topY; y >= minY; y--) {
+            mut.set(bx, y, bz);
+            BlockState s = mc.world.getBlockState(mut);
+
+            if (isBarrierOrIgnored(s)) {
+                continue;
             }
-            return Integer.MIN_VALUE;
+            if (s.getBlock() instanceof LeavesBlock || s.getBlock() instanceof net.minecraft.block.PillarBlock || s.getBlock() instanceof PlantBlock || s.getBlock() == Blocks.SNOW) {
+                continue;
+            }
+
+            if (isTerrainGroundBlock(s)) {
+                return y;
+            }
+            break;
         }
 
-        if (!isTerrainGroundBlock(state)) {
-            return Integer.MIN_VALUE;
-        }
-
-        return topY;
+        return Integer.MIN_VALUE;
     }
 
     private int getElevationDiff(MinecraftClient mc, int x, int z, int baseTopY) {
@@ -800,7 +816,7 @@ public class WorldTweaks extends Module {
         // Check if there is a solid block (tree trunk log, stone wall, pillar, etc.) right above the ground level
         BlockPos wallPos = new BlockPos(x, baseTopY + 1, z);
         BlockState wallState = mc.world.getBlockState(wallPos);
-        if (wallState.blocksMovement() && !(wallState.getBlock() instanceof PlantBlock) && !(wallState.getBlock() instanceof LeavesBlock)) {
+        if (wallState.blocksMovement() && !isBarrierOrIgnored(wallState) && !(wallState.getBlock() instanceof PlantBlock) && !(wallState.getBlock() instanceof LeavesBlock)) {
             return 1; // It's a tree trunk or wall standing on the block!
         }
 
@@ -952,14 +968,16 @@ public class WorldTweaks extends Module {
                     buildSnowBlock(mc, bx, groundY, bz, distSq, lod0RadSq);
                 }
 
-                // Check for tree leaves canopy above
-                int topMotionY = mc.world.getTopY(Heightmap.Type.MOTION_BLOCKING, bx, bz) - 1;
-                if (topMotionY > groundY && topMotionY >= mc.world.getBottomY()) {
-                    BlockPos leafPos = new BlockPos(bx, topMotionY, bz);
-                    BlockState leafState = mc.world.getBlockState(leafPos);
-                    if (leafState.getBlock() instanceof LeavesBlock && mc.world.getBlockState(leafPos.up()).isAir()) {
-                        buildLeavesSnowBlock(mc, bx, topMotionY, bz);
+                // Check for tree leaves canopy above (skipping server barrier ceilings)
+                int searchLeafY = Math.min(mc.world.getTopY(Heightmap.Type.MOTION_BLOCKING, bx, bz) - 1, groundY + 36);
+                for (int y = searchLeafY; y > groundY; y--) {
+                    BlockPos lp = new BlockPos(bx, y, bz);
+                    BlockState ls = mc.world.getBlockState(lp);
+                    if (isBarrierOrIgnored(ls)) continue;
+                    if (ls.getBlock() instanceof LeavesBlock && (mc.world.getBlockState(lp.up()).isAir() || isBarrierOrIgnored(mc.world.getBlockState(lp.up())))) {
+                        buildLeavesSnowBlock(mc, bx, y, bz);
                     }
+                    break;
                 }
             }
         }
