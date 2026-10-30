@@ -131,13 +131,13 @@ public class FontPipeline implements egg.client.render.msdf.pipeline.DrawBatcher
     private int getFixedScaledWidth() {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null || client.getWindow() == null) return 960;
-        return (int) Math.ceil((double) client.getWindow().getFramebufferWidth() / FIXED_GUI_SCALE);
+        return client.getWindow().getScaledWidth();
     }
 
     private int getFixedScaledHeight() {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null || client.getWindow() == null) return 540;
-        return (int) Math.ceil((double) client.getWindow().getFramebufferHeight() / FIXED_GUI_SCALE);
+        return client.getWindow().getScaledHeight();
     }
 
     private void ensureInitialized() {
@@ -710,10 +710,12 @@ public class FontPipeline implements egg.client.render.msdf.pipeline.DrawBatcher
         int count = batchedChars;
         int endPosition = dataBuffer.position();
 
+        float guiScale = (float) (client.getWindow() != null ? client.getWindow().getScaleFactor() : 2.0);
+
         dataBuffer.position(0);
         dataBuffer.putFloat(getFixedScaledWidth());
         dataBuffer.putFloat(getFixedScaledHeight());
-        dataBuffer.putFloat(FIXED_GUI_SCALE);
+        dataBuffer.putFloat(guiScale);
         dataBuffer.putFloat(currentOutlineWidth);
 
         dataBuffer.putFloat(((currentOutlineColor >> 16) & 0xFF) / 255.0f);

@@ -164,11 +164,12 @@ public class TexturePipeline implements DrawBatcher.Batched {
 
         ensureInitialized();
 
-        float fixedScreenWidth = client.getWindow().getFramebufferWidth() / FIXED_GUI_SCALE;
-        float fixedScreenHeight = client.getWindow().getFramebufferHeight() / FIXED_GUI_SCALE;
+        float guiScale = (float) (client.getWindow() != null ? client.getWindow().getScaleFactor() : 2.0);
+        float screenWidth = client.getWindow() != null ? (float) client.getWindow().getScaledWidth() : 960f;
+        float screenHeight = client.getWindow() != null ? (float) client.getWindow().getScaledHeight() : 540f;
 
         prepareUniformData(x, y, width, height, u0, v0, u1, v1,
-                fixedScreenWidth, fixedScreenHeight, FIXED_GUI_SCALE,
+                screenWidth, screenHeight, guiScale,
                 colors, radii, smoothness, rotation);
 
         GpuBuffer uniformBuffer = nextUniformBuffer();
@@ -199,10 +200,11 @@ public class TexturePipeline implements DrawBatcher.Batched {
         float fbHeight = client.getWindow().getFramebufferHeight();
         if (fbWidth <= 0 || fbHeight <= 0) return;
 
-        float u0 = (x * FIXED_GUI_SCALE) / fbWidth;
-        float u1 = ((x + width) * FIXED_GUI_SCALE) / fbWidth;
-        float v0 = 1.0f - (y * FIXED_GUI_SCALE) / fbHeight;
-        float v1 = 1.0f - ((y + height) * FIXED_GUI_SCALE) / fbHeight;
+        float guiScale = (float) (client.getWindow() != null ? client.getWindow().getScaleFactor() : 2.0);
+        float u0 = (x * guiScale) / fbWidth;
+        float u1 = ((x + width) * guiScale) / fbWidth;
+        float v0 = 1.0f - (y * guiScale) / fbHeight;
+        float v1 = 1.0f - ((y + height) * guiScale) / fbHeight;
 
         int alphaByte = (int) (Math.min(1.0f, Math.max(0.0f, alpha)) * 255.0f);
         queueDraw(blurView, x, y, width, height, u0, v0, u1, v1,

@@ -119,6 +119,12 @@ tasks.register('copyToLunar', Copy) {
     dependsOn 'remapJar'
     from remapJar.archiveFile
     into file("C:/Users/admin/.lunarclient/profiles/1.21/mods/fabric-1.21.11")
+    doLast {
+        copy {
+            from remapJar.archiveFile
+            into file("C:/Users/admin/AppData/Roaming/.minecraft/mods")
+        }
+    }
 }
 
 build.finalizedBy(copyToLunar)

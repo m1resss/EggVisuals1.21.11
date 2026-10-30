@@ -110,14 +110,15 @@ public abstract class UniformArrayPipeline implements DrawBatcher.Batched {
         if (batchedItems == 0) return;
 
         MinecraftClient client = MinecraftClient.getInstance();
-        float fixedScreenWidth = client.getWindow().getFramebufferWidth() / FIXED_GUI_SCALE;
-        float fixedScreenHeight = client.getWindow().getFramebufferHeight() / FIXED_GUI_SCALE;
+        float guiScale = (float) (client != null && client.getWindow() != null ? client.getWindow().getScaleFactor() : 2.0);
+        float screenWidth = client != null && client.getWindow() != null ? (float) client.getWindow().getScaledWidth() : 960f;
+        float screenHeight = client != null && client.getWindow() != null ? (float) client.getWindow().getScaledHeight() : 540f;
 
         int endPosition = dataBuffer.position();
         dataBuffer.position(0);
-        dataBuffer.putFloat(fixedScreenWidth);
-        dataBuffer.putFloat(fixedScreenHeight);
-        dataBuffer.putFloat(FIXED_GUI_SCALE);
+        dataBuffer.putFloat(screenWidth);
+        dataBuffer.putFloat(screenHeight);
+        dataBuffer.putFloat(guiScale);
         dataBuffer.putFloat(0f);
         dataBuffer.position(0);
         dataBuffer.limit(endPosition);
