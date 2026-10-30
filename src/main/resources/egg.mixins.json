@@ -38,7 +38,8 @@
     "ChunkRendererRegionMixin",
     "PlayerEntityRendererMixin",
     "FogRendererMixin",
-    "ItemModelManagerMixin"
+    "ItemModelManagerMixin",
+    "DrawContextAccessor"
   ],
   "client": [],
   "injectors": {

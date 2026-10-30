@@ -34,6 +34,8 @@ import net.minecraft.item.ItemDisplayContext;
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
 import net.minecraft.client.gui.DrawContext;
 import egg.client.render.IconRenderer;
+import egg.client.mixin.DrawContextAccessor;
+import org.joml.Matrix3x2f;
 import net.minecraft.util.math.Direction;
 import org.joml.Quaternionf;
 public final class CosmeticsManager  {
@@ -359,6 +361,33 @@ public final class CosmeticsManager  {
         renderItemQueue(matrices, queue, model, light, hatId, "hats");
         renderItemQueue(matrices, queue, model, light, maskId, "masks");
         renderItemQueue(matrices, queue, model, light, petId, "pets");
+
+        SwordEntry sword = getSelectedSwordEntry();
+        if (sword != null) {
+            MinecraftClient mc = MinecraftClient.getInstance();
+            boolean isHoldingSword = mc.player != null && !mc.player.getMainHandStack().isEmpty() && isSword(mc.player.getMainHandStack());
+            if (!isHoldingSword) {
+                renderSwordInHand(matrices, queue, model, light, sword);
+            }
+        }
+    }
+
+    public static boolean isSword(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return false;
+        if (stack.isIn(net.minecraft.registry.tag.ItemTags.SWORDS)) return true;
+        String path = net.minecraft.registry.Registries.ITEM.getId(stack.getItem()).getPath();
+        return path.endsWith("_sword") || path.contains("sword");
+    }
+
+    public void renderSwordInHand(MatrixStack matrices, OrderedRenderCommandQueue queue, PlayerEntityModel model, int light, SwordEntry sword) {
+        if (sword == null) return;
+        matrices.push();
+        model.rightArm.applyTransform(matrices);
+        matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(-90.0f));
+        matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(180.0f));
+        matrices.translate(0.0f, 0.125f, -0.625f);
+        renderSwordModel(sword, ItemDisplayContext.THIRD_PERSON_RIGHT_HAND, matrices, queue, light, net.minecraft.client.render.OverlayTexture.DEFAULT_UV, false);
+        matrices.pop();
     }
 
     private void renderItemQueue(MatrixStack matrices, OrderedRenderCommandQueue queue, PlayerEntityModel model, int light, String itemId, String cat) {
@@ -549,9 +578,70 @@ public final class CosmeticsManager  {
         Asset asset = this.assets.get(itemId.toLowerCase(Locale.ROOT));
         if (asset == null || asset.texture == null) return;
 
+        Mesh mesh = getAnimatedMesh(asset);
+        if (mesh == null || mesh.vertices.isEmpty()) return;
+
+        float yawRad = (float) Math.toRadians(asset.metadata.previewYaw);
+        float pitchRad = (float) Math.toRadians(asset.metadata.previewPitch);
+        float cosYaw = (float) Math.cos(yawRad);
+        float sinYaw = (float) Math.sin(yawRad);
+        float cosPitch = (float) Math.cos(pitchRad);
+        float sinPitch = (float) Math.sin(pitchRad);
+
+        float pScale = Math.max(0.78f, Math.min(1.18f, asset.metadata.previewScale));
+        float renderSize = size * 0.78f * pScale;
+        float centerX = x + size * 0.5f;
+        float centerY = y + size * (0.52f - asset.metadata.previewY);
+
+        int vCount = mesh.vertices.size();
+        List<PreviewFace> faces = new ArrayList<>(vCount / 6);
+        for (int i = 0; i + 5 < vCount; i += 6) {
+            PreviewVertex a = previewVertex(mesh.vertices.get(i), mesh, centerX, centerY, renderSize, cosYaw, sinYaw, cosPitch, sinPitch);
+            PreviewVertex b = previewVertex(mesh.vertices.get(i + 1), mesh, centerX, centerY, renderSize, cosYaw, sinYaw, cosPitch, sinPitch);
+            PreviewVertex c = previewVertex(mesh.vertices.get(i + 2), mesh, centerX, centerY, renderSize, cosYaw, sinYaw, cosPitch, sinPitch);
+            PreviewVertex d = previewVertex(mesh.vertices.get(i + 5), mesh, centerX, centerY, renderSize, cosYaw, sinYaw, cosPitch, sinPitch);
+            float avgDepth = (a.depth + b.depth + c.depth + d.depth) * 0.25f;
+            faces.add(new PreviewFace(a, b, c, d, avgDepth));
+        }
+
+        faces.sort(Comparator.comparingDouble(f -> f.depth));
+
+        float[] quadVertices = new float[faces.size() * 16];
+        int idx = 0;
+        for (PreviewFace f : faces) {
+            quadVertices[idx++] = f.a.x; quadVertices[idx++] = f.a.y; quadVertices[idx++] = f.a.u; quadVertices[idx++] = f.a.v;
+            quadVertices[idx++] = f.b.x; quadVertices[idx++] = f.b.y; quadVertices[idx++] = f.b.u; quadVertices[idx++] = f.b.v;
+            quadVertices[idx++] = f.c.x; quadVertices[idx++] = f.c.y; quadVertices[idx++] = f.c.u; quadVertices[idx++] = f.c.v;
+            quadVertices[idx++] = f.d.x; quadVertices[idx++] = f.d.y; quadVertices[idx++] = f.d.u; quadVertices[idx++] = f.d.v;
+        }
+
         int a = Math.max(0, Math.min(255, Math.round(alpha * 255.0f)));
-        int color = ColorUtil.withAlpha(0xFFFFFF, a);
-        IconRenderer.drawTextureScaled(context, asset.texture, x, y, size, size, 64, 64, color);
+        int color = (a << 24) | 0x00FFFFFF;
+
+        Matrix3x2f pose = new Matrix3x2f(context.getMatrices());
+        CosmeticMeshGuiRenderState guiState = new CosmeticMeshGuiRenderState(
+                asset.texture, pose, quadVertices, color, x, y, size, size, null
+        );
+
+        ((DrawContextAccessor) context).getState().addSimpleElement(guiState);
+    }
+
+    private static PreviewVertex previewVertex(V v, Mesh mesh, float cx, float cy, float renderSize,
+                                                float cosYaw, float sinYaw, float cosPitch, float sinPitch) {
+        float nx = (v.x - mesh.cx) / mesh.span;
+        float ny = (v.y - mesh.cy) / mesh.span;
+        float nz = (v.z - mesh.cz) / mesh.span;
+
+        float rotX = nx * cosYaw + nz * sinYaw;
+        float rotZ1 = -nx * sinYaw + nz * cosYaw;
+
+        float rotY = ny * cosPitch - rotZ1 * sinPitch;
+        float depth = ny * sinPitch + rotZ1 * cosPitch;
+
+        float sx = cx + rotX * renderSize;
+        float sy = cy - rotY * renderSize;
+
+        return new PreviewVertex(sx, sy, v.u, v.v, depth);
     }
 
     // --- Bedrock Animation & Mesh Engine ---

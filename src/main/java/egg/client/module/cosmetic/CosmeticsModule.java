@@ -121,6 +121,18 @@ public class CosmeticsModule extends Module {
         CosmeticsConfigManager.getInstance().saveConfig();
     }
 
+    public void selectSword(String name) {
+        selectSword(name, name);
+    }
+
+    public void clearSlot(String category) {
+        if ("swords".equalsIgnoreCase(category)) {
+            selectSword("", "");
+        } else {
+            select(category, "");
+        }
+    }
+
     public void clearAll() {
         this.selectedWings = "";
         this.selectedBackpacks = "";

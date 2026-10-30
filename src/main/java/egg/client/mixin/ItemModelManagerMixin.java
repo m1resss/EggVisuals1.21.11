@@ -7,8 +7,6 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.item.ItemDisplayContext;
 import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.tag.ItemTags;
 import net.minecraft.util.HeldItemContext;
 import net.minecraft.world.World;
 import org.spongepowered.asm.mixin.Mixin;
@@ -18,13 +16,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(ItemModelManager.class)
 public class ItemModelManagerMixin {
-
-    private static boolean isSword(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) return false;
-        if (stack.isIn(ItemTags.SWORDS)) return true;
-        String path = Registries.ITEM.getId(stack.getItem()).getPath();
-        return path.endsWith("_sword") || path.contains("sword");
-    }
 
     @Inject(
             method = "clearAndUpdate",
@@ -39,7 +30,7 @@ public class ItemModelManagerMixin {
             int seed,
             CallbackInfo ci
     ) {
-        if (isSword(stack)) {
+        if (CosmeticsManager.isSword(stack)) {
             LivingEntity entity = (heldItemContext instanceof LivingEntity le) ? le : null;
             CosmeticsManager.getInstance().applySwordRenderState(renderState, stack, entity);
         }
@@ -56,7 +47,7 @@ public class ItemModelManagerMixin {
             LivingEntity entity,
             CallbackInfo ci
     ) {
-        if (isSword(stack)) {
+        if (CosmeticsManager.isSword(stack)) {
             CosmeticsManager.getInstance().applySwordRenderState(renderState, stack, entity);
         }
     }
@@ -72,7 +63,7 @@ public class ItemModelManagerMixin {
             Entity entity,
             CallbackInfo ci
     ) {
-        if (isSword(stack)) {
+        if (CosmeticsManager.isSword(stack)) {
             CosmeticsManager.getInstance().applySwordRenderState(renderState, stack, null);
         }
     }
