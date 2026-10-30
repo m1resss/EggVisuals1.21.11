@@ -378,23 +378,34 @@ public class TargetESP extends Module {
                     float headSz = 0.35f * sizeMult;
                     float alpha = this.animProgress * 0.95f;
 
-                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, headSz * 1.9f, ColorUtil.withAlphaFloat(color, alpha * 0.70f));
-                    drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, headSz, ColorUtil.withAlphaFloat(color, alpha * 0.95f));
+                    // 90%+ ethereal glow and atmospheric bloom (no hard opaque plastic)
+                    float outerBloomSz = headSz * 4.6f;
+                    float midBloomSz   = headSz * 2.8f;
+                    float innerGlowSz  = headSz * 1.6f;
+
+                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, outerBloomSz, ColorUtil.withAlphaFloat(color, alpha * 0.45f));
+                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, midBloomSz, ColorUtil.withAlphaFloat(color, alpha * 0.70f));
+                    drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, innerGlowSz, ColorUtil.withAlphaFloat(color, alpha * 0.85f));
+                    drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, headSz * 0.80f, ColorUtil.withAlphaFloat(color, alpha * 0.50f));
 
                     if (this.coreGlow.get()) {
-                        drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, headSz * 0.45f, ColorUtil.withAlphaFloat(0xFFFFFFFF, this.animProgress * 0.98f));
+                        drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, headSz * 0.28f, ColorUtil.withAlphaFloat(0xFFFFFFFF, this.animProgress * 0.95f));
                     }
                 } else {
                     float tailSz = 0.22f * sizeMult * (0.25f + 0.75f * trailFactor);
                     float alpha = this.animProgress * (0.08f + 0.65f * trailFactor * trailFactor);
 
-                    if (i <= 2) {
-                        drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, tailSz * 1.4f, ColorUtil.withAlphaFloat(color, alpha * 0.45f));
-                    }
-                    drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, tailSz, ColorUtil.withAlphaFloat(color, alpha));
+                    // Continuous volumetric bloom across the entire spirit tail
+                    float tailBloomSz = tailSz * 2.8f;
+                    float tailGlowSz  = tailSz * 1.5f;
 
-                    if (i < steps / 3) {
-                        drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, tailSz * 0.35f, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha * 0.60f));
+                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, tailBloomSz, ColorUtil.withAlphaFloat(color, alpha * 0.60f * trailFactor));
+                    drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, tailGlowSz, ColorUtil.withAlphaFloat(color, alpha * 0.75f * trailFactor));
+                    drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, tailSz * 0.70f, ColorUtil.withAlphaFloat(color, alpha * 0.45f));
+
+                    if (i < steps / 2) {
+                        float coreFactor = 1.0f - ((float) i / (steps * 0.5f));
+                        drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, tailSz * 0.26f, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha * 0.75f * coreFactor));
                     }
                 }
             }
