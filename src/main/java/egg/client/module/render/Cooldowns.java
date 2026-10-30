@@ -187,8 +187,6 @@ public class Cooldowns extends Module {
         // 2. Pill background (customizable, default #C4151515)
         Draw2DProcessor.INSTANCE.drawRect(null, px, py, pillW, pillH, pillRadius, ColorUtil.withAlphaFloat(bgColor.get(), combatAlpha));
 
-        // 3. Crisp subtle border outline
-        Draw2DProcessor.INSTANCE.drawOutline(null, px, py, pillW, pillH, pillRadius, 0.8f, ColorUtil.withAlphaFloat(ColorUtil.rgba(255, 255, 255, 20), combatAlpha));
 
         // Render slots
         for (int i = 0; i < count; i++) {
