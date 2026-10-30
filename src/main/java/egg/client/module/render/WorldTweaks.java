@@ -731,22 +731,26 @@ public class WorldTweaks extends Module {
             if (!this.smoothSnow.get() || !"Зима".equals(this.season.get())) {
                 return groundY + 1.002;
             }
-            double u = x - bx;
-            double v = z - bz;
-            double dome = Math.sin(u * Math.PI) * Math.sin(v * Math.PI) * (0.14 + getSnowNoise(bx + 0.5, bz + 0.5) * 0.12);
-            return groundY + 1.002 + dome;
+            return groundY + 1.002 + getSnowDepthAt(x, z);
         } catch (Throwable ignored) {
             return 64.0;
         }
     }
 
-    private float getSnowNoise(double x, double z) {
-        double nx = x * 0.18;
-        double nz = z * 0.18;
-        double v1 = Math.sin(nx) * Math.cos(nz);
-        double v2 = Math.sin((x + z) * 0.35) * 0.5;
-        double v3 = Math.cos(x * 0.42 - z * 0.38) * 0.3;
-        return (float) Math.max(0.0, Math.min(1.0, (v1 + v2 + v3 + 1.8) / 3.6));
+    public float getSnowDepthAt(double worldX, double worldZ) {
+        // Multi-frequency smooth, natural snowdrifts across world coordinates
+        double d1 = Math.sin(worldX * 0.15 + 1.3) * Math.cos(worldZ * 0.15 + 0.7);
+        double d2 = Math.sin((worldX * 0.65 + worldZ * 0.75) * 0.22) * 0.55 + Math.cos((worldX * 0.75 - worldZ * 0.65) * 0.20) * 0.45;
+        double d3 = Math.sin(worldX * 0.48 + 0.2) * Math.cos(worldZ * 0.48 + 0.9) * 0.30;
+
+        double combined = (d1 * 0.48 + d2 * 0.36 + d3 * 0.24 + 1.08) / 2.16;
+        combined = Math.max(0.0, Math.min(1.0, combined));
+
+        // Non-linear depth shaping:
+        // ~35% gentle flat snow blanket (2 to 5 cm)
+        // ~45% medium rolling snowdrifts (6 to 14 cm)
+        // ~20% deep puffy snowdrifts (up to 24 cm)
+        return (float) (Math.pow(combined, 1.4) * 0.22 + 0.02);
     }
 
     private boolean isTerrainGroundBlock(BlockState state) {
@@ -770,12 +774,12 @@ public class WorldTweaks extends Module {
         BlockPos pos = new BlockPos(bx, topY, bz);
         BlockState state = mc.world.getBlockState(pos);
 
-        // If top is tree leaves or small plants or vanilla snow layer, scan down to find solid terrain ground
-        if (state.getBlock() instanceof LeavesBlock || state.getBlock() instanceof PlantBlock || state.getBlock() == Blocks.SNOW) {
-            for (int y = topY - 1; y >= Math.max(mc.world.getBottomY(), topY - 24); y--) {
+        // If top block is tree leaves, tree wood/log, plant, or vanilla snow, scan DOWN past tree foliage and logs to find real terrain ground
+        if (state.getBlock() instanceof LeavesBlock || state.getBlock() instanceof net.minecraft.block.PillarBlock || state.getBlock() instanceof PlantBlock || state.getBlock() == Blocks.SNOW) {
+            for (int y = topY; y >= Math.max(mc.world.getBottomY(), topY - 32); y--) {
                 BlockPos p = new BlockPos(bx, y, bz);
                 BlockState s = mc.world.getBlockState(p);
-                if (s.getBlock() instanceof LeavesBlock || s.getBlock() instanceof PlantBlock || s.isAir() || s.getBlock() == Blocks.SNOW) {
+                if (s.getBlock() instanceof LeavesBlock || s.getBlock() instanceof net.minecraft.block.PillarBlock || s.getBlock() instanceof PlantBlock || s.isAir() || s.getBlock() == Blocks.SNOW) {
                     continue;
                 }
                 if (isTerrainGroundBlock(s)) {
@@ -795,8 +799,24 @@ public class WorldTweaks extends Module {
 
     private int getElevationDiff(MinecraftClient mc, int x, int z, int baseTopY) {
         if (!mc.world.isChunkLoaded(x >> 4, z >> 4)) return 0;
+
+        // Check if there is a solid block (tree trunk log, stone wall, pillar, etc.) right above the ground level
+        BlockPos wallPos = new BlockPos(x, baseTopY + 1, z);
+        BlockState wallState = mc.world.getBlockState(wallPos);
+        if (wallState.blocksMovement() && !(wallState.getBlock() instanceof PlantBlock) && !(wallState.getBlock() instanceof LeavesBlock)) {
+            return 1; // It's a tree trunk or wall standing on the block!
+        }
+
+        // Check if the block directly at baseTopY is solid ground
+        BlockState atBase = mc.world.getBlockState(new BlockPos(x, baseTopY, z));
+        if (atBase.blocksMovement() && !(atBase.getBlock() instanceof LeavesBlock)) {
+            return 0; // Same elevation!
+        }
+
         int nTopY = findGroundY(mc, x, z, baseTopY);
-        if (nTopY == Integer.MIN_VALUE) return -999;
+        if (nTopY == Integer.MIN_VALUE) {
+            return -999;
+        }
         return nTopY - baseTopY;
     }
 
@@ -814,149 +834,74 @@ public class WorldTweaks extends Module {
         int diffE = getElevationDiff(mc, bx + 1, bz, topY);
 
         if (isLod0) {
-            // High volumetric pillow mound (14 to 26 cm tall)
-            float noise = getSnowNoise(bx + 0.5, bz + 0.5);
-            float cy = baseY + 0.14f + noise * 0.12f;
+            // Sample continuous snow depth at vertices
+            float dCenter = getSnowDepthAt(bx + 0.5, bz + 0.5);
+            float dN      = getSnowDepthAt(bx + 0.5, bz);
+            float dS      = getSnowDepthAt(bx + 0.5, bz + 1.0);
+            float dW      = getSnowDepthAt(bx, bz + 0.5);
+            float dE      = getSnowDepthAt(bx + 1.0, bz + 0.5);
 
-            // Midpoints along 4 edges (curve down to touch the block top at drop-offs)
-            float mNy = (diffN == 0) ? (baseY + 0.10f + getSnowNoise(bx + 0.5, bz) * 0.08f) : ((diffN > 0) ? (baseY + 0.14f) : baseY);
-            float mSy = (diffS == 0) ? (baseY + 0.10f + getSnowNoise(bx + 0.5, bz + 1.0) * 0.08f) : ((diffS > 0) ? (baseY + 0.14f) : baseY);
-            float mWy = (diffW == 0) ? (baseY + 0.10f + getSnowNoise(bx, bz + 0.5) * 0.08f) : ((diffW > 0) ? (baseY + 0.14f) : baseY);
-            float mEy = (diffE == 0) ? (baseY + 0.10f + getSnowNoise(bx + 1.0, bz + 0.5) * 0.08f) : ((diffE > 0) ? (baseY + 0.14f) : baseY);
+            float d00     = getSnowDepthAt(bx, bz);
+            float d10     = getSnowDepthAt(bx + 1.0, bz);
+            float d11     = getSnowDepthAt(bx + 1.0, bz + 1.0);
+            float d01     = getSnowDepthAt(bx, bz + 1.0);
 
-            // 4 Corners: if any adjacent edge is drop-off, corner touches block top directly
-            float c00 = (diffN < 0 || diffW < 0) ? baseY : ((diffN > 0 || diffW > 0) ? (baseY + 0.12f) : (baseY + 0.07f + getSnowNoise(bx, bz) * 0.06f));
-            float c10 = (diffN < 0 || diffE < 0) ? baseY : ((diffN > 0 || diffE > 0) ? (baseY + 0.12f) : (baseY + 0.07f + getSnowNoise(bx + 1.0, bz) * 0.06f));
-            float c11 = (diffS < 0 || diffE < 0) ? baseY : ((diffS > 0 || diffE > 0) ? (baseY + 0.12f) : (baseY + 0.07f + getSnowNoise(bx + 1.0, bz + 1.0) * 0.06f));
-            float c01 = (diffS < 0 || diffW < 0) ? baseY : ((diffS > 0 || diffW > 0) ? (baseY + 0.12f) : (baseY + 0.07f + getSnowNoise(bx, bz + 1.0) * 0.06f));
+            // If an edge is next to a drop-off/cliff (diff < 0), taper smoothly to block rim (0.010f)
+            // If an edge is next to a wall or tree trunk (diff > 0), drift smoothly up against it (+0.05f)
+            float mNy = (diffN < 0) ? (baseY + 0.010f) : ((diffN > 0) ? (baseY + Math.max(0.08f, dN + 0.05f)) : (baseY + dN));
+            float mSy = (diffS < 0) ? (baseY + 0.010f) : ((diffS > 0) ? (baseY + Math.max(0.08f, dS + 0.05f)) : (baseY + dS));
+            float mWy = (diffW < 0) ? (baseY + 0.010f) : ((diffW > 0) ? (baseY + Math.max(0.08f, dW + 0.05f)) : (baseY + dW));
+            float mEy = (diffE < 0) ? (baseY + 0.010f) : ((diffE > 0) ? (baseY + Math.max(0.08f, dE + 0.05f)) : (baseY + dE));
 
-            // Soft realistic ambient occlusion & volumetric shading
-            int cr = 252, cg = 254, cb = 255;
-            int mr = 232, mg = 240, mb = 248;
-            int ccr = 216, ccg = 226, ccb = 238;
+            float cy = baseY + dCenter;
+
+            // 4 Corners: if any adjacent edge is drop-off, meet block rim
+            float c00 = (diffN < 0 || diffW < 0) ? (baseY + 0.008f) : ((diffN > 0 || diffW > 0) ? (baseY + Math.max(0.08f, d00 + 0.04f)) : (baseY + d00));
+            float c10 = (diffN < 0 || diffE < 0) ? (baseY + 0.008f) : ((diffN > 0 || diffE > 0) ? (baseY + Math.max(0.08f, d10 + 0.04f)) : (baseY + d10));
+            float c11 = (diffS < 0 || diffE < 0) ? (baseY + 0.008f) : ((diffS > 0 || diffE > 0) ? (baseY + Math.max(0.08f, d11 + 0.04f)) : (baseY + d11));
+            float c01 = (diffS < 0 || diffW < 0) ? (baseY + 0.008f) : ((diffS > 0 || diffW > 0) ? (baseY + Math.max(0.08f, d01 + 0.04f)) : (baseY + d01));
+
+            // Realistic lighting based on height: higher points are brighter, valleys have soft blue-gray shading
+            int cr = Math.min(255, (int) (240 + dCenter * 70));
+            int cg = Math.min(255, (int) (246 + dCenter * 40));
+            int cb = 255;
+
+            int mrN = Math.min(255, (int) (232 + dN * 70));
+            int mgN = Math.min(255, (int) (240 + dN * 50));
+
+            int mrS = Math.min(255, (int) (232 + dS * 70));
+            int mgS = Math.min(255, (int) (240 + dS * 50));
+
+            int mrW = Math.min(255, (int) (232 + dW * 70));
+            int mgW = Math.min(255, (int) (240 + dW * 50));
+
+            int mrE = Math.min(255, (int) (232 + dE * 70));
+            int mgE = Math.min(255, (int) (240 + dE * 50));
 
             SnowVertex pCenter = new SnowVertex(bx + 0.5f, cy, bz + 0.5f, 0.5f, 0.5f, cr, cg, cb, 255, light);
-            SnowVertex p00     = new SnowVertex(bx, c00, bz, 0.0f, 0.0f, ccr, ccg, ccb, 255, light);
-            SnowVertex p10     = new SnowVertex(bx + 1.0f, c10, bz, 1.0f, 0.0f, ccr, ccg, ccb, 255, light);
-            SnowVertex p11     = new SnowVertex(bx + 1.0f, c11, bz + 1.0f, 1.0f, 1.0f, ccr, ccg, ccb, 255, light);
-            SnowVertex p01     = new SnowVertex(bx, c01, bz + 1.0f, 0.0f, 1.0f, ccr, ccg, ccb, 255, light);
+            SnowVertex p00     = new SnowVertex(bx, c00, bz, 0.0f, 0.0f, 226, 235, 246, 255, light);
+            SnowVertex p10     = new SnowVertex(bx + 1.0f, c10, bz, 1.0f, 0.0f, 226, 235, 246, 255, light);
+            SnowVertex p11     = new SnowVertex(bx + 1.0f, c11, bz + 1.0f, 1.0f, 1.0f, 226, 235, 246, 255, light);
+            SnowVertex p01     = new SnowVertex(bx, c01, bz + 1.0f, 0.0f, 1.0f, 226, 235, 246, 255, light);
 
-            SnowVertex mN = new SnowVertex(bx + 0.5f, mNy, bz, 0.5f, 0.0f, mr, mg, mb, 255, light);
-            SnowVertex mS = new SnowVertex(bx + 0.5f, mSy, bz + 1.0f, 0.5f, 1.0f, mr, mg, mb, 255, light);
-            SnowVertex mW = new SnowVertex(bx, mWy, bz + 0.5f, 0.0f, 0.5f, mr, mg, mb, 255, light);
-            SnowVertex mE = new SnowVertex(bx + 1.0f, mEy, bz + 0.5f, 1.0f, 0.5f, mr, mg, mb, 255, light);
+            SnowVertex mN = new SnowVertex(bx + 0.5f, mNy, bz, 0.5f, 0.0f, mrN, mgN, 250, 255, light);
+            SnowVertex mS = new SnowVertex(bx + 0.5f, mSy, bz + 1.0f, 0.5f, 1.0f, mrS, mgS, 250, 255, light);
+            SnowVertex mW = new SnowVertex(bx, mWy, bz + 0.5f, 0.0f, 0.5f, mrW, mgW, 250, 255, light);
+            SnowVertex mE = new SnowVertex(bx + 1.0f, mEy, bz + 0.5f, 1.0f, 0.5f, mrE, mgE, 250, 255, light);
 
+            // 4 quads forming seamless organic snow blanket (no overlapping vertical skirts = 0% flickering)
             this.cachedSnowMesh.add(new SnowQuad(p00, mN, pCenter, mW));
             this.cachedSnowMesh.add(new SnowQuad(mN, p10, mE, pCenter));
             this.cachedSnowMesh.add(new SnowQuad(pCenter, mE, p11, mS));
             this.cachedSnowMesh.add(new SnowQuad(mW, pCenter, mS, p01));
-
-            // Drop-down skirts at cliff edges (drops down 0.25 blocks, offset outward by 0.0025f to prevent z-fighting)
-            float skirtBottom = topY + 1.0f - 0.25f;
-            float eps = 0.0025f;
-            int sr = 200, sg = 212, sb = 228;
-
-            if (diffN < 0) {
-                float x0 = (diffW < 0) ? (bx - eps) : bx;
-                float x2 = (diffE < 0) ? (bx + 1.0f + eps) : (bx + 1.0f);
-                float z = bz - eps;
-                SnowVertex t0 = new SnowVertex(x0, c00, z, 0.0f, 0.0f, mr, mg, mb, 255, light);
-                SnowVertex t1 = new SnowVertex(bx + 0.5f, mNy, z, 0.5f, 0.0f, mr, mg, mb, 255, light);
-                SnowVertex t2 = new SnowVertex(x2, c10, z, 1.0f, 0.0f, mr, mg, mb, 255, light);
-
-                SnowVertex b0 = new SnowVertex(x0, skirtBottom, z, 0.0f, 0.25f, sr, sg, sb, 255, light);
-                SnowVertex b1 = new SnowVertex(bx + 0.5f, skirtBottom, z, 0.5f, 0.25f, sr, sg, sb, 255, light);
-                SnowVertex b2 = new SnowVertex(x2, skirtBottom, z, 1.0f, 0.25f, sr, sg, sb, 255, light);
-
-                this.cachedSnowMesh.add(new SnowQuad(t0, t1, b1, b0));
-                this.cachedSnowMesh.add(new SnowQuad(t1, t2, b2, b1));
-            }
-            if (diffS < 0) {
-                float x0 = (diffW < 0) ? (bx - eps) : bx;
-                float x2 = (diffE < 0) ? (bx + 1.0f + eps) : (bx + 1.0f);
-                float z = bz + 1.0f + eps;
-                SnowVertex t0 = new SnowVertex(x0, c01, z, 0.0f, 0.0f, mr, mg, mb, 255, light);
-                SnowVertex t1 = new SnowVertex(bx + 0.5f, mSy, z, 0.5f, 0.0f, mr, mg, mb, 255, light);
-                SnowVertex t2 = new SnowVertex(x2, c11, z, 1.0f, 0.0f, mr, mg, mb, 255, light);
-
-                SnowVertex b0 = new SnowVertex(x0, skirtBottom, z, 0.0f, 0.25f, sr, sg, sb, 255, light);
-                SnowVertex b1 = new SnowVertex(bx + 0.5f, skirtBottom, z, 0.5f, 0.25f, sr, sg, sb, 255, light);
-                SnowVertex b2 = new SnowVertex(x2, skirtBottom, z, 1.0f, 0.25f, sr, sg, sb, 255, light);
-
-                this.cachedSnowMesh.add(new SnowQuad(t1, t0, b0, b1));
-                this.cachedSnowMesh.add(new SnowQuad(t2, t1, b1, b2));
-            }
-            if (diffW < 0) {
-                float z0 = (diffN < 0) ? (bz - eps) : bz;
-                float z2 = (diffS < 0) ? (bz + 1.0f + eps) : (bz + 1.0f);
-                float x = bx - eps;
-                SnowVertex t0 = new SnowVertex(x, c00, z0, 0.0f, 0.0f, mr, mg, mb, 255, light);
-                SnowVertex t1 = new SnowVertex(x, mWy, bz + 0.5f, 0.5f, 0.0f, mr, mg, mb, 255, light);
-                SnowVertex t2 = new SnowVertex(x, c01, z2, 1.0f, 0.0f, mr, mg, mb, 255, light);
-
-                SnowVertex b0 = new SnowVertex(x, skirtBottom, z0, 0.0f, 0.25f, sr, sg, sb, 255, light);
-                SnowVertex b1 = new SnowVertex(x, skirtBottom, bz + 0.5f, 0.5f, 0.25f, sr, sg, sb, 255, light);
-                SnowVertex b2 = new SnowVertex(x, skirtBottom, z2, 1.0f, 0.25f, sr, sg, sb, 255, light);
-
-                this.cachedSnowMesh.add(new SnowQuad(t1, t0, b0, b1));
-                this.cachedSnowMesh.add(new SnowQuad(t2, t1, b1, b2));
-            }
-            if (diffE < 0) {
-                float z0 = (diffN < 0) ? (bz - eps) : bz;
-                float z2 = (diffS < 0) ? (bz + 1.0f + eps) : (bz + 1.0f);
-                float x = bx + 1.0f + eps;
-                SnowVertex t0 = new SnowVertex(x, c10, z0, 0.0f, 0.0f, mr, mg, mb, 255, light);
-                SnowVertex t1 = new SnowVertex(x, mEy, bz + 0.5f, 0.5f, 0.0f, mr, mg, mb, 255, light);
-                SnowVertex t2 = new SnowVertex(x, c11, z2, 1.0f, 0.0f, mr, mg, mb, 255, light);
-
-                SnowVertex b0 = new SnowVertex(x, skirtBottom, z0, 0.0f, 0.25f, sr, sg, sb, 255, light);
-                SnowVertex b1 = new SnowVertex(x, skirtBottom, bz + 0.5f, 0.5f, 0.25f, sr, sg, sb, 255, light);
-                SnowVertex b2 = new SnowVertex(x, skirtBottom, z2, 1.0f, 0.25f, sr, sg, sb, 255, light);
-
-                this.cachedSnowMesh.add(new SnowQuad(t0, t1, b1, b0));
-                this.cachedSnowMesh.add(new SnowQuad(t1, t2, b2, b1));
-            }
         } else {
             // LOD 1: Smooth flat snow top resting on the block
-            float flatY = baseY;
+            float flatY = baseY + Math.min(0.04f, getSnowDepthAt(bx + 0.5, bz + 0.5) * 0.4f);
             SnowVertex v0 = new SnowVertex(bx, flatY, bz, 0.0f, 0.0f, 246, 250, 255, 255, light);
             SnowVertex v1 = new SnowVertex(bx + 1.0f, flatY, bz, 1.0f, 0.0f, 246, 250, 255, 255, light);
             SnowVertex v2 = new SnowVertex(bx + 1.0f, flatY, bz + 1.0f, 1.0f, 1.0f, 246, 250, 255, 255, light);
             SnowVertex v3 = new SnowVertex(bx, flatY, bz + 1.0f, 0.0f, 1.0f, 246, 250, 255, 255, light);
             this.cachedSnowMesh.add(new SnowQuad(v0, v1, v2, v3));
-
-            float skirtBottom = topY + 1.0f - 0.20f;
-            float eps = 0.0025f;
-            int sr = 205, sg = 216, sb = 230;
-
-            if (diffN < 0) {
-                SnowVertex b0 = new SnowVertex(bx - eps, skirtBottom, bz - eps, 0.0f, 0.20f, sr, sg, sb, 255, light);
-                SnowVertex b1 = new SnowVertex(bx + 1.0f + eps, skirtBottom, bz - eps, 1.0f, 0.20f, sr, sg, sb, 255, light);
-                SnowVertex t0 = new SnowVertex(bx - eps, flatY, bz - eps, 0.0f, 0.0f, 235, 242, 250, 255, light);
-                SnowVertex t1 = new SnowVertex(bx + 1.0f + eps, flatY, bz - eps, 1.0f, 0.0f, 235, 242, 250, 255, light);
-                this.cachedSnowMesh.add(new SnowQuad(t0, t1, b1, b0));
-            }
-            if (diffS < 0) {
-                SnowVertex b0 = new SnowVertex(bx - eps, skirtBottom, bz + 1.0f + eps, 0.0f, 0.20f, sr, sg, sb, 255, light);
-                SnowVertex b1 = new SnowVertex(bx + 1.0f + eps, skirtBottom, bz + 1.0f + eps, 1.0f, 0.20f, sr, sg, sb, 255, light);
-                SnowVertex t0 = new SnowVertex(bx - eps, flatY, bz + 1.0f + eps, 0.0f, 0.0f, 235, 242, 250, 255, light);
-                SnowVertex t1 = new SnowVertex(bx + 1.0f + eps, flatY, bz + 1.0f + eps, 1.0f, 0.0f, 235, 242, 250, 255, light);
-                this.cachedSnowMesh.add(new SnowQuad(t1, t0, b0, b1));
-            }
-            if (diffW < 0) {
-                SnowVertex b0 = new SnowVertex(bx - eps, skirtBottom, bz - eps, 0.0f, 0.20f, sr, sg, sb, 255, light);
-                SnowVertex b1 = new SnowVertex(bx - eps, skirtBottom, bz + 1.0f + eps, 1.0f, 0.20f, sr, sg, sb, 255, light);
-                SnowVertex t0 = new SnowVertex(bx - eps, flatY, bz - eps, 0.0f, 0.0f, 235, 242, 250, 255, light);
-                SnowVertex t1 = new SnowVertex(bx - eps, flatY, bz + 1.0f + eps, 1.0f, 0.0f, 235, 242, 250, 255, light);
-                this.cachedSnowMesh.add(new SnowQuad(t1, t0, b0, b1));
-            }
-            if (diffE < 0) {
-                SnowVertex b0 = new SnowVertex(bx + 1.0f + eps, skirtBottom, bz - eps, 0.0f, 0.20f, sr, sg, sb, 255, light);
-                SnowVertex b1 = new SnowVertex(bx + 1.0f + eps, skirtBottom, bz + 1.0f + eps, 1.0f, 0.20f, sr, sg, sb, 255, light);
-                SnowVertex t0 = new SnowVertex(bx + 1.0f + eps, flatY, bz - eps, 0.0f, 0.0f, 235, 242, 250, 255, light);
-                SnowVertex t1 = new SnowVertex(bx + 1.0f + eps, flatY, bz + 1.0f + eps, 1.0f, 0.0f, 235, 242, 250, 255, light);
-                this.cachedSnowMesh.add(new SnowQuad(t0, t1, b1, b0));
-            }
         }
     }
 
@@ -967,19 +912,19 @@ public class WorldTweaks extends Module {
         int light = WorldRenderer.getLightmapCoordinates(mc.world, pos.up());
         float baseY = topY + 1.002f;
 
-        float fluff = 0.035f + getSnowNoise(bx + 0.5, bz + 0.5) * 0.025f;
-        float cy = baseY + fluff;
+        float depth = getSnowDepthAt(bx + 0.5, bz + 0.5) * 0.35f + 0.015f;
+        float cy = baseY + depth;
 
-        SnowVertex p00 = new SnowVertex(bx, baseY + 0.01f, bz, 0.0f, 0.0f, 242, 248, 255, 255, light);
-        SnowVertex p10 = new SnowVertex(bx + 1.0f, baseY + 0.01f, bz, 1.0f, 0.0f, 242, 248, 255, 255, light);
-        SnowVertex p11 = new SnowVertex(bx + 1.0f, baseY + 0.01f, bz + 1.0f, 1.0f, 1.0f, 242, 248, 255, 255, light);
-        SnowVertex p01 = new SnowVertex(bx, baseY + 0.01f, bz + 1.0f, 0.0f, 1.0f, 242, 248, 255, 255, light);
+        SnowVertex p00 = new SnowVertex(bx, baseY + 0.008f, bz, 0.0f, 0.0f, 242, 248, 255, 255, light);
+        SnowVertex p10 = new SnowVertex(bx + 1.0f, baseY + 0.008f, bz, 1.0f, 0.0f, 242, 248, 255, 255, light);
+        SnowVertex p11 = new SnowVertex(bx + 1.0f, baseY + 0.008f, bz + 1.0f, 1.0f, 1.0f, 242, 248, 255, 255, light);
+        SnowVertex p01 = new SnowVertex(bx, baseY + 0.008f, bz + 1.0f, 0.0f, 1.0f, 242, 248, 255, 255, light);
         SnowVertex pCenter = new SnowVertex(bx + 0.5f, cy, bz + 0.5f, 0.5f, 0.5f, 255, 255, 255, 255, light);
 
-        SnowVertex mN = new SnowVertex(bx + 0.5f, baseY + 0.02f, bz, 0.5f, 0.0f, 246, 250, 255, 255, light);
-        SnowVertex mS = new SnowVertex(bx + 0.5f, baseY + 0.02f, bz + 1.0f, 0.5f, 1.0f, 246, 250, 255, 255, light);
-        SnowVertex mW = new SnowVertex(bx, baseY + 0.02f, bz + 0.5f, 0.0f, 0.5f, 246, 250, 255, 255, light);
-        SnowVertex mE = new SnowVertex(bx + 1.0f, baseY + 0.02f, bz + 0.5f, 1.0f, 0.5f, 246, 250, 255, 255, light);
+        SnowVertex mN = new SnowVertex(bx + 0.5f, baseY + depth * 0.5f, bz, 0.5f, 0.0f, 246, 250, 255, 255, light);
+        SnowVertex mS = new SnowVertex(bx + 0.5f, baseY + depth * 0.5f, bz + 1.0f, 0.5f, 1.0f, 246, 250, 255, 255, light);
+        SnowVertex mW = new SnowVertex(bx, baseY + depth * 0.5f, bz + 0.5f, 0.0f, 0.5f, 246, 250, 255, 255, light);
+        SnowVertex mE = new SnowVertex(bx + 1.0f, baseY + depth * 0.5f, bz + 0.5f, 1.0f, 0.5f, 246, 250, 255, 255, light);
 
         this.cachedSnowMesh.add(new SnowQuad(p00, mN, pCenter, mW));
         this.cachedSnowMesh.add(new SnowQuad(mN, p10, mE, pCenter));
