@@ -5,10 +5,10 @@ import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
-import egg.client.render.Render2D;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
 import egg.client.util.ProjectUtil;
+import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
@@ -20,13 +20,18 @@ import net.minecraft.util.Identifier;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.world.RaycastContext;
 import org.joml.Vector2f;
 
-import java.util.Optional;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
 
 public class TargetESP extends Module {
     private static TargetESP instance;
@@ -34,33 +39,55 @@ public class TargetESP extends Module {
     private static final Identifier GLOWING_TEXTURE = Identifier.of("egg", "textures/glowing.png");
     private static final Identifier BLOOM_TEXTURE = Identifier.of("egg", "textures/target/bloom.png");
 
-    private final ModeSetting mode = new ModeSetting("Визуализация цели", "Созвездие", "Стиль Target ESP",
-            "Созвездие", "Души", "Кубы");
+    private static final Identifier[] SNOWFLAKES = new Identifier[10];
+    static {
+        for (int i = 0; i < 10; i++) {
+            SNOWFLAKES[i] = Identifier.of("egg", "textures/world/snowflake_" + (i + 1) + ".png");
+        }
+    }
+    private static final Identifier SNOW_CRYSTAL = Identifier.of("egg", "textures/world/snow.png");
 
-    private final SliderSetting radius = new SliderSetting("Радиус", 0.85, 0.4, 2.5, 0.05, "Радиус охвата цели");
-    private final SliderSetting speed = new SliderSetting("Скорость", 2.5, 0.5, 8.0, 0.1, "Скорость движения точек и нитей");
-    private final SliderSetting particleSize = new SliderSetting("Размер частиц", 1.0, 0.3, 2.5, 0.05, "Масштаб точек созвездия");
-    private final SliderSetting lineThickness = new SliderSetting("Толщина нитей", 1.0, 0.5, 2.5, 0.1, "Толщина линий паутинки созвездия");
+    // Snowflake vortex physics constants from sfamelov.txt
+    private static final int ORBIT_FLAKES = 42;
+    private static final int ORBIT_CRYSTALS = 5;
+    private static final float GRAVITY = 2.6F;
+    private static final float DRAG = 1.4F;
+    private static final float TERMINAL_FALL = 1.15F;
+    private static final float GROUND_LIFE = 2.6F;
+    private static final float FREE_LIFE = 7.0F;
+
+    private final ModeSetting mode = new ModeSetting("Визуализация цели", "Снежинки", "Стиль Target ESP",
+            "Снежинки", "Души", "Кубы");
+
+    private final SliderSetting radius = new SliderSetting("Радиус", 0.95, 0.4, 2.5, 0.05, "Радиус охвата цели");
+    private final SliderSetting speed = new SliderSetting("Скорость", 1.8, 0.5, 8.0, 0.1, "Скорость движения частиц");
+    private final SliderSetting particleSize = new SliderSetting("Размер частиц", 1.1, 0.3, 2.5, 0.05, "Масштаб частиц");
     private final SliderSetting tailLength = new SliderSetting("Длина хвоста", 16.0, 4.0, 30.0, 1.0, "Длина следа частиц (режим Души)");
     private final BooleanSetting coreGlow = new BooleanSetting("Ядро свечения", true, "Яркое белое ядро частиц");
-    private final BooleanSetting hurtColor = new BooleanSetting("Окрас при уроне", true, "Окрашивание в красный цвет и натяжение нитей при ударе");
+    private final BooleanSetting hurtColor = new BooleanSetting("Окрас при уроне", true, "Окрашивание в красный цвет при ударе");
     private final SliderSetting maxDistance = new SliderSetting("Дистанция наводки", 30.0, 5.0, 64.0, 1.0, "Максимальная дистанция захвата цели");
     private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", true, "Захватывать только игроков");
 
     private LivingEntity target;
+    private LivingEntity attachedTarget;
     private int loseTargetTicks = 0;
     private float animProgress = 0.0f;
 
+    // Snowflake vortex particles state
+    private final List<SnowflakeParticle> snowflakeParticles = new ArrayList<>();
+    private final Random random = new Random();
+    private long lastFrameTime = 0L;
+    private float snowSimTime = 0.0f;
+
     public TargetESP() {
-        super("Target ESP", "Созвездие нейросети и астральные проекции вокруг цели", Category.ESP);
+        super("Target ESP", "Снежный вихрь и астральные проекции вокруг цели", Category.ESP);
         instance = this;
 
-        lineThickness.setVisible(() -> "Созвездие".equals(mode.get()));
         tailLength.setVisible(() -> "Души".equals(mode.get()));
         coreGlow.setVisible(() -> "Души".equals(mode.get()));
-        radius.setVisible(() -> !"Созвездие".equals(mode.get()));
+        radius.setVisible(() -> true);
 
-        addSettings(mode, radius, speed, particleSize, lineThickness, tailLength, coreGlow, hurtColor, maxDistance, onlyPlayers);
+        addSettings(mode, radius, speed, particleSize, tailLength, coreGlow, hurtColor, maxDistance, onlyPlayers);
     }
 
     public static TargetESP getInstance() {
@@ -75,8 +102,10 @@ public class TargetESP extends Module {
     public void onDisable() {
         super.onDisable();
         this.target = null;
+        this.attachedTarget = null;
         this.loseTargetTicks = 0;
         this.animProgress = 0.0f;
+        this.snowflakeParticles.clear();
     }
 
     public void onTick() {
@@ -139,22 +168,23 @@ public class TargetESP extends Module {
         for (Entity entity : mc.world.getOtherEntities(mc.player, searchBox)) {
             if (entity instanceof LivingEntity living && isValidTarget(living)) {
                 Box box = living.getBoundingBox().expand(0.35);
-                Optional<Vec3d> hit = box.raycast(eyePos, endPos);
-                if (hit.isPresent()) {
-                    double dSq = eyePos.squaredDistanceTo(hit.get());
-                    if (dSq < closestDistSq) {
-                        closestDistSq = dSq;
+                var opt = box.raycast(eyePos, endPos);
+                if (opt.isPresent()) {
+                    double distSq = eyePos.squaredDistanceTo(opt.get());
+                    if (distSq < closestDistSq) {
+                        closestDistSq = distSq;
                         closest = living;
                     }
                 }
             }
         }
+
         return closest;
     }
 
     private boolean isValidTarget(LivingEntity entity) {
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (entity == null || entity == mc.player || !entity.isAlive() || entity.isInvisible() || entity.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.INVISIBILITY)) {
+        if (entity == null || entity == mc.player || !entity.isAlive()) {
             return false;
         }
         if (this.onlyPlayers.get() && !(entity instanceof PlayerEntity)) {
@@ -168,20 +198,21 @@ public class TargetESP extends Module {
     }
 
     public void render2D(DrawContext context, RenderTickCounter tickCounter) {
-        if (!isEnabled() || this.target == null || this.animProgress <= 0.01f) return;
+        if (!isEnabled()) return;
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc == null || mc.player == null || !mc.player.canSee(this.target)) return;
+        if (mc == null || mc.player == null) return;
 
         float delta = tickCounter != null ? tickCounter.getTickProgress(true) : 0.0f;
-        Vec3d center = this.target.getLerpedPos(delta);
-        double entityHeight = this.target.getHeight();
-        double centerY = center.y + entityHeight * 0.5;
+        String curMode = this.mode.get();
 
         int themeColor = Theme.getAccent();
         int hurtCol = 0xFFFF2525;
-        float hurtTimer = Math.max(0.0F, this.target.hurtTime - delta);
-        float hurtFactor = this.hurtColor.get() ? (float) Math.sin(hurtTimer * (Math.PI / 10.0)) * 0.95F : 0.0f;
-        hurtFactor = MathHelper.clamp(hurtFactor, 0.0f, 1.0f);
+        float hurtFactor = 0.0f;
+        if (this.target != null) {
+            float hurtTimer = Math.max(0.0F, this.target.hurtTime - delta);
+            hurtFactor = this.hurtColor.get() ? (float) Math.sin(hurtTimer * (Math.PI / 10.0)) * 0.95F : 0.0f;
+            hurtFactor = MathHelper.clamp(hurtFactor, 0.0f, 1.0f);
+        }
         int activeColor = hurtFactor > 0.01f ? ColorUtil.interpolate(themeColor, hurtCol, hurtFactor) : themeColor;
 
         float baseRadius = (float) this.radius.get();
@@ -191,166 +222,221 @@ public class TargetESP extends Module {
         long now = System.currentTimeMillis();
         float timeSec = (float) (now % 10000000L) / 1000.0f;
 
-        String curMode = this.mode.get();
-        if ("Созвездие".equals(curMode)) {
-            renderConstellation(context, center.x, center.y, center.z, entityHeight, timeSec, baseRadius, spd, sizeMult, activeColor, hurtFactor, delta);
-        } else if ("Кубы".equals(curMode)) {
+        if ("Снежинки".equals(curMode)) {
+            renderSnowflakesVortex(context, delta, spd, baseRadius, sizeMult, activeColor);
+            return;
+        }
+
+        if (this.target == null || this.animProgress <= 0.01f || !mc.player.canSee(this.target)) return;
+
+        Vec3d center = this.target.getLerpedPos(delta);
+        double entityHeight = this.target.getHeight();
+        double centerY = center.y + entityHeight * 0.5;
+
+        if ("Кубы".equals(curMode)) {
             renderCubes(context, center.x, centerY, center.z, entityHeight, timeSec, baseRadius, spd, sizeMult, activeColor);
         } else {
             renderSouls(context, center.x, centerY, center.z, entityHeight, timeSec, baseRadius, spd, sizeMult, steps, activeColor);
         }
     }
 
-    private void renderConstellation(DrawContext context, double posX, double posY, double posZ,
-                                     double height, float timeSec, float baseR, float spd,
-                                     float sizeMult, int activeColor, float hurtFactor, float delta) {
-        float bodyYaw = MathHelper.lerp(delta, this.target.lastBodyYaw, this.target.bodyYaw);
-        float yawRad = (float) Math.toRadians(-bodyYaw);
-        float cosYaw = (float) Math.cos(yawRad);
-        float sinYaw = (float) Math.sin(yawRad);
+    // -----------------------------------------------------------------------------------------
+    // SFAMELOV SAKURA/SNOWFLAKE VORTEX ENGINE
+    // -----------------------------------------------------------------------------------------
 
-        float tensionMult = 1.0f - 0.22f * hurtFactor;
+    private void renderSnowflakesVortex(DrawContext context, float tickDelta, float spd, float baseR, float sizeMult, int activeColor) {
+        long nowNanos = System.nanoTime();
+        float dt = lastFrameTime == 0L ? 0.016F : MathHelper.clamp((nowNanos - lastFrameTime) / 1.0E9F, 0.001F, 0.05F);
+        lastFrameTime = nowNanos;
+        snowSimTime += dt;
 
-        int nodeCount = 10;
-        Vec3d[] nodePos = new Vec3d[nodeCount];
-
-        for (int i = 0; i < nodeCount; i++) {
-            float phase = i * 1.6180339f;
-            float t = timeSec * 0.95f * spd + phase;
-
-            float lx, ly, lz;
-            switch (i) {
-                case 0 -> {
-                    float headY = (float) (height * 0.88);
-                    float orbitR = (0.24f + 0.04f * (float) Math.sin(t * 1.7f)) * baseR * tensionMult;
-                    float angle = t * 1.4f;
-                    lx = (float) Math.cos(angle) * orbitR;
-                    lz = (float) Math.sin(angle) * orbitR;
-                    ly = headY + (float) Math.sin(angle * 2.2f) * 0.07f;
-                }
-                case 1 -> {
-                    float shY = (float) (height * 0.72);
-                    lx = (-0.28f * baseR + (float) Math.sin(t * 2.1f) * 0.05f) * tensionMult;
-                    lz = (float) Math.cos(t * 1.6f) * 0.09f * baseR;
-                    ly = shY + (float) Math.sin(t * 1.3f) * 0.04f;
-                }
-                case 2 -> {
-                    float shY = (float) (height * 0.72);
-                    lx = (0.28f * baseR + (float) Math.cos(t * 2.0f) * 0.05f) * tensionMult;
-                    lz = (float) Math.sin(t * 1.8f) * 0.09f * baseR;
-                    ly = shY + (float) Math.cos(t * 1.4f) * 0.04f;
-                }
-                case 3 -> {
-                    float chY = (float) (height * 0.60);
-                    lx = (float) Math.sin(t * 2.3f) * 0.14f * baseR * tensionMult;
-                    lz = (0.16f + 0.03f * (float) Math.sin(t * 2.8f)) * baseR * tensionMult;
-                    ly = chY + (float) Math.cos(t * 1.5f) * 0.06f;
-                }
-                case 4 -> {
-                    float chY = (float) (height * 0.60);
-                    lx = (float) Math.cos(t * 2.2f) * 0.14f * baseR * tensionMult;
-                    lz = (-0.16f - 0.03f * (float) Math.cos(t * 2.6f)) * baseR * tensionMult;
-                    ly = chY + (float) Math.sin(t * 1.6f) * 0.06f;
-                }
-                case 5 -> {
-                    float wY = (float) (height * 0.42);
-                    lx = (-0.20f * baseR + (float) Math.cos(t * 1.8f) * 0.04f) * tensionMult;
-                    lz = (float) Math.sin(t * 2.2f) * 0.11f * baseR;
-                    ly = wY + (float) Math.sin(t * 1.2f) * 0.05f;
-                }
-                case 6 -> {
-                    float wY = (float) (height * 0.42);
-                    lx = (0.20f * baseR + (float) Math.sin(t * 1.7f) * 0.04f) * tensionMult;
-                    lz = (float) Math.cos(t * 2.1f) * 0.11f * baseR;
-                    ly = wY + (float) Math.cos(t * 1.1f) * 0.05f;
-                }
-                case 7 -> {
-                    float kY = (float) (height * 0.22);
-                    lx = (-0.14f * baseR + (float) Math.sin(t * 1.9f) * 0.03f) * tensionMult;
-                    lz = (0.07f + 0.05f * (float) Math.sin(t * 1.5f)) * baseR * tensionMult;
-                    ly = kY + (float) Math.cos(t * 1.4f) * 0.05f;
-                }
-                case 8 -> {
-                    float kY = (float) (height * 0.22);
-                    lx = (0.14f * baseR + (float) Math.cos(t * 1.8f) * 0.03f) * tensionMult;
-                    lz = (0.07f + 0.05f * (float) Math.cos(t * 1.6f)) * baseR * tensionMult;
-                    ly = kY + (float) Math.sin(t * 1.3f) * 0.05f;
-                }
-                default -> {
-                    float satAngle = t * 2.4f;
-                    float satR = 0.36f * baseR * tensionMult;
-                    lx = (float) Math.cos(satAngle) * satR;
-                    lz = (float) Math.sin(satAngle) * satR;
-                    ly = (float) (height * 0.52 + Math.sin(satAngle * 2.0f) * 0.18);
-                }
+        LivingEntity currentTarget = (this.target != null && this.target.isAlive()) ? this.target : null;
+        if (currentTarget != this.attachedTarget) {
+            if (this.attachedTarget != null) {
+                releaseSnow();
             }
-
-            if (hurtFactor > 0.01f) {
-                float vib = (float) Math.sin(timeSec * 70.0f + i * 3.14f) * hurtFactor * 0.015f;
-                lx += vib;
-                ly += vib * 0.6f;
-                lz += vib;
-            }
-
-            double wx = posX + (lx * cosYaw - lz * sinYaw);
-            double wy = posY + ly;
-            double wz = posZ + (lx * sinYaw + lz * cosYaw);
-
-            nodePos[i] = new Vec3d(wx, wy, wz);
-        }
-
-        Vector2f[] screenPos = new Vector2f[nodeCount];
-        boolean[] onScreen = new boolean[nodeCount];
-        for (int i = 0; i < nodeCount; i++) {
-            screenPos[i] = ProjectUtil.toScreen(nodePos[i].x, nodePos[i].y, nodePos[i].z);
-            onScreen[i] = ProjectUtil.isOnScreen(screenPos[i]);
-        }
-
-        double maxConnectDist = 0.72 * baseR;
-        float lineThick = (float) this.lineThickness.get();
-
-        for (int i = 0; i < nodeCount; i++) {
-            if (!onScreen[i]) continue;
-            for (int j = i + 1; j < nodeCount; j++) {
-                if (!onScreen[j]) continue;
-
-                double d3d = nodePos[i].distanceTo(nodePos[j]);
-                if (d3d >= maxConnectDist) continue;
-
-                float ratio = 1.0f - (float) (d3d / maxConnectDist);
-                float factor = ratio * ratio * (3.0f - 2.0f * ratio);
-
-                float lineAlpha = this.animProgress * factor * (0.50f + 0.45f * hurtFactor);
-                int lineCol = ColorUtil.withAlphaFloat(activeColor, lineAlpha);
-
-                if (lineThick > 0.6f) {
-                    int glowCol = ColorUtil.withAlphaFloat(activeColor, lineAlpha * 0.32f);
-                    Render2D.drawLineRotated(context, screenPos[i].x, screenPos[i].y, screenPos[j].x, screenPos[j].y, glowCol, lineThick * 2.2f);
-                }
-
-                Render2D.drawLineRotated(context, screenPos[i].x, screenPos[i].y, screenPos[j].x, screenPos[j].y, lineCol, lineThick);
+            this.attachedTarget = currentTarget;
+            if (currentTarget != null) {
+                spawnSnowOrbit(currentTarget);
             }
         }
 
-        for (int i = 0; i < nodeCount; i++) {
-            if (!onScreen[i]) continue;
+        Vec3d center = null;
+        float height = 1.8F;
+        float width = 0.6F;
+        if (this.attachedTarget != null) {
+            center = new Vec3d(
+                    MathHelper.lerp(tickDelta, this.attachedTarget.lastRenderX, this.attachedTarget.getX()),
+                    MathHelper.lerp(tickDelta, this.attachedTarget.lastRenderY, this.attachedTarget.getY()),
+                    MathHelper.lerp(tickDelta, this.attachedTarget.lastRenderZ, this.attachedTarget.getZ())
+            );
+            height = this.attachedTarget.getHeight();
+            width = this.attachedTarget.getWidth();
+        }
 
-            float pulse = 1.0f + 0.20f * (float) Math.sin(timeSec * 4.0f + i * 1.5f);
-            float baseDotSize = 0.055f * sizeMult * pulse;
-            float alpha = this.animProgress * (0.85f + 0.15f * hurtFactor);
-
-            drawParticle(context, BLOOM_TEXTURE, nodePos[i].x, nodePos[i].y, nodePos[i].z,
-                    baseDotSize * 2.4f, ColorUtil.withAlphaFloat(activeColor, alpha * 0.35f));
-
-            drawParticle(context, GLOWING_TEXTURE, nodePos[i].x, nodePos[i].y, nodePos[i].z,
-                    baseDotSize, ColorUtil.withAlphaFloat(activeColor, alpha * 0.95f));
-
-            if (this.coreGlow.get()) {
-                drawParticle(context, GLOWING_TEXTURE, nodePos[i].x, nodePos[i].y, nodePos[i].z,
-                        baseDotSize * 0.40f, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha * 0.98f));
+        for (int i = this.snowflakeParticles.size() - 1; i >= 0; i--) {
+            SnowflakeParticle p = this.snowflakeParticles.get(i);
+            if (p.orbiting && center != null) {
+                orbitSnow(p, center, height, width, dt, spd, baseR);
+            } else {
+                p.orbiting = false;
+                fallSnow(p, dt);
             }
+            if (p.dead) {
+                this.snowflakeParticles.remove(i);
+            }
+        }
+
+        if (this.snowflakeParticles.isEmpty()) return;
+
+        // Render snowflake particles
+        for (SnowflakeParticle p : this.snowflakeParticles) {
+            float alpha = p.alpha * p.fade;
+            if (alpha <= 0.01F) continue;
+
+            // 1. Soft glowing bloom backdrop
+            float glowAlpha = alpha * (p.flower ? 0.38F : 0.18F);
+            float glowSize = p.size * 2.8F * sizeMult;
+            drawParticle(context, BLOOM_TEXTURE, p.x, p.y, p.z, glowSize, ColorUtil.withAlphaFloat(activeColor, glowAlpha));
+
+            // 2. Crisp snowflake crystal
+            Identifier flakeTex = p.flower ? SNOW_CRYSTAL : SNOWFLAKES[p.textureIdx];
+            float flakeSize = p.size * 1.05F * sizeMult;
+            int flakeColor = p.flower ? 0xFFFFFFFF : ColorUtil.interpolate(0xFFFFFFFF, activeColor, 0.30F);
+            drawParticle(context, flakeTex, p.x, p.y, p.z, flakeSize, ColorUtil.withAlphaFloat(flakeColor, alpha * 0.95F));
         }
     }
+
+    private void spawnSnowOrbit(LivingEntity target) {
+        this.snowflakeParticles.removeIf(p -> p.orbiting);
+        Random rnd = this.random;
+        int total = ORBIT_FLAKES + ORBIT_CRYSTALS;
+        for (int i = 0; i < total; i++) {
+            SnowflakeParticle p = new SnowflakeParticle();
+            p.flower = (i >= ORBIT_FLAKES);
+            p.textureIdx = rnd.nextInt(10);
+            p.orbiting = true;
+            p.angle = rnd.nextFloat() * MathHelper.TAU;
+            p.level = i / (float) total + rnd.nextFloat() * 0.05F;
+            p.angularSpeed = (1.1F + rnd.nextFloat() * 0.9F) * (p.flower ? 0.65F : 1.0F);
+            p.sink = 0.07F + rnd.nextFloat() * 0.06F;
+            p.radiusScale = p.flower ? 1.25F + rnd.nextFloat() * 0.15F : 0.95F + rnd.nextFloat() * 0.3F;
+            p.phase = rnd.nextFloat() * MathHelper.TAU;
+            p.size = p.flower ? 0.22F + rnd.nextFloat() * 0.06F : 0.11F + rnd.nextFloat() * 0.05F;
+            p.spinA = rnd.nextFloat() * 360.0F;
+            p.spinB = rnd.nextFloat() * 360.0F;
+            p.spinSpeedA = (rnd.nextFloat() - 0.5F) * (p.flower ? 90.0F : 420.0F);
+            p.spinSpeedB = (rnd.nextFloat() - 0.5F) * (p.flower ? 60.0F : 360.0F);
+            p.tint = rnd.nextFloat();
+            p.alpha = 0.0F;
+            this.snowflakeParticles.add(p);
+        }
+    }
+
+    private void orbitSnow(SnowflakeParticle p, Vec3d center, float height, float width, float dt, float spd, float baseR) {
+        p.angle += p.angularSpeed * dt * spd;
+        p.level -= p.sink * dt * spd;
+        p.fade = 1.0F;
+        if (p.level < 0.0F) {
+            p.level += 1.0F;
+            p.alpha = 0.0F;
+        }
+        p.alpha = Math.min(1.0F, p.alpha + dt * 2.2F);
+        float edge = Math.min(1.0F, Math.min(p.level / 0.08F, (1.0F - p.level) / 0.08F));
+        p.fade = MathHelper.clamp(edge, 0.0F, 1.0F);
+        double radius = width * 0.85F * baseR * p.radiusScale * (1.0F + 0.1F * MathHelper.sin(snowSimTime * 1.7F + p.phase));
+        double prevX = p.x;
+        double prevY = p.y;
+        double prevZ = p.z;
+        p.x = center.x + Math.cos(p.angle) * radius;
+        p.z = center.z + Math.sin(p.angle) * radius;
+        p.y = center.y + 0.08 + p.level * height * 1.05 + MathHelper.sin(snowSimTime * 2.3F + p.phase) * 0.05;
+        if (p.placed) {
+            p.vx = (p.x - prevX) / Math.max(0.001f, dt);
+            p.vy = (p.y - prevY) / Math.max(0.001f, dt);
+            p.vz = (p.z - prevZ) / Math.max(0.001f, dt);
+        }
+        p.placed = true;
+        p.spinA += p.spinSpeedA * dt;
+        p.spinB += p.spinSpeedB * dt;
+    }
+
+    private void fallSnow(SnowflakeParticle p, float dt) {
+        p.age += dt;
+        if (p.grounded) {
+            p.groundTime += dt;
+            p.fade = 1.0F - MathHelper.clamp((p.groundTime - GROUND_LIFE) / 0.8F, 0.0F, 1.0F);
+            if (p.fade <= 0.0F) p.dead = true;
+            return;
+        }
+        float drag = (float) Math.exp(-DRAG * dt);
+        p.vx *= drag;
+        p.vz *= drag;
+        p.vy = Math.max(-TERMINAL_FALL, p.vy * drag - GRAVITY * dt);
+        double sway = MathHelper.sin(snowSimTime * 3.1F + p.phase) * 0.55;
+        p.x += (p.vx + Math.cos(p.phase) * sway) * dt;
+        p.y += p.vy * dt;
+        p.z += (p.vz + Math.sin(p.phase) * sway) * dt;
+        p.spinA += p.spinSpeedA * dt;
+        p.spinB += p.spinSpeedB * dt;
+        p.alpha = Math.min(1.0F, p.alpha + dt * 3.0F);
+        if (p.y <= p.groundY) {
+            p.y = p.groundY;
+            p.grounded = true;
+            p.spinB = 0.0F;
+        }
+        p.fade = 1.0F - MathHelper.clamp((p.age - FREE_LIFE) / 1.0F, 0.0F, 1.0F);
+        if (p.fade <= 0.0F) p.dead = true;
+    }
+
+    private void releaseSnow() {
+        double sumX = 0.0;
+        double sumZ = 0.0;
+        double minY = Double.MAX_VALUE;
+        int count = 0;
+        for (SnowflakeParticle p : this.snowflakeParticles) {
+            if (!p.orbiting) continue;
+            sumX += p.x;
+            sumZ += p.z;
+            minY = Math.min(minY, p.y);
+            count++;
+        }
+        if (count == 0) return;
+        double ground = findGround(sumX / count, minY + 0.5, sumZ / count);
+        Random rnd = this.random;
+        for (SnowflakeParticle p : this.snowflakeParticles) {
+            if (!p.orbiting) continue;
+            p.orbiting = false;
+            p.vx = p.vx * 0.55 + (rnd.nextDouble() - 0.5) * 0.6;
+            p.vz = p.vz * 0.55 + (rnd.nextDouble() - 0.5) * 0.6;
+            p.vy = 0.3 + rnd.nextDouble() * 0.6;
+            p.groundY = ground;
+            p.age = 0.0F;
+            p.alpha = Math.max(p.alpha * p.fade, 0.4F);
+            p.fade = 1.0F;
+        }
+    }
+
+    private double findGround(double gx, double fromY, double gz) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc.world == null) return fromY - 1.0;
+        BlockPos.Mutable pos = new BlockPos.Mutable();
+        int startY = MathHelper.floor(fromY);
+        for (int by = startY; by > startY - 10; by--) {
+            pos.set(MathHelper.floor(gx), by, MathHelper.floor(gz));
+            BlockState state = mc.world.getBlockState(pos);
+            VoxelShape shape = state.getCollisionShape(mc.world, pos);
+            if (!shape.isEmpty()) {
+                double top = by + shape.getMax(Direction.Axis.Y);
+                if (top <= fromY + 0.05) return top + 0.015;
+            }
+        }
+        return fromY - 1.0;
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // SOULS & CUBES MODES
+    // -----------------------------------------------------------------------------------------
 
     private void renderSouls(DrawContext context, double cx, double cy, double cz, double height,
                              float timeSec, float baseR, float spd, float sizeMult, int steps, int color) {
@@ -446,5 +532,16 @@ public class TargetESP extends Module {
                 isize, isize,
                 color
         );
+    }
+
+    private static final class SnowflakeParticle {
+        double x, y, z;
+        double vx, vy, vz;
+        double groundY;
+        float angle, level, angularSpeed, sink, radiusScale, phase;
+        float size, spinA, spinB, spinSpeedA, spinSpeedB, tint;
+        float alpha, fade = 1.0F, age, groundTime;
+        boolean flower, orbiting, grounded, dead, placed;
+        int textureIdx;
     }
 }

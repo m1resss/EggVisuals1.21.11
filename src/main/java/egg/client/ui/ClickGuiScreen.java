@@ -637,7 +637,7 @@ public class ClickGuiScreen extends Screen {
         MODULE_KEYWORDS.put("Crosshair", new String[]{"прицел", "крестик", "точка", "кастом прицел", "crosshair"});
         MODULE_KEYWORDS.put("Hitmarker", new String[]{"хитмаркер", "маркер удара", "звук удара", "колокольчик", "hitmarker"});
         MODULE_KEYWORDS.put("ItemPhysic", new String[]{"физика", "дроп", "вещи", "предметы", "реалистичный дроп", "item physic"});
-        MODULE_KEYWORDS.put("TargetESP", new String[]{"таргет", "есп", "созвездие", "нейросеть", "нити", "паутинка", "симбиот", "вх", "бокс", "души", "кубы", "таргет есп", "target esp", "esp"});
+        MODULE_KEYWORDS.put("TargetESP", new String[]{"таргет", "есп", "снежинки", "созвездие", "нейросеть", "нити", "паутинка", "симбиот", "вх", "бокс", "души", "кубы", "таргет есп", "target esp", "esp"});
         MODULE_KEYWORDS.put("ViewModel", new String[]{"вьюмодель", "руки", "положение", "оружие", "вид рук", "рука", "view model"});
         MODULE_KEYWORDS.put("AspectRatio", new String[]{"аспект", "соотношение", "растяг", "экран", "4:3", "разрешение", "aspect ratio"});
         MODULE_KEYWORDS.put("BreakBlock", new String[]{"брейк", "ломание", "прогресс", "анимация ломания", "break block"});

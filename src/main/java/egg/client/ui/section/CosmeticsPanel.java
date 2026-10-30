@@ -62,28 +62,45 @@ public class CosmeticsPanel {
         // 1. LEFT CATALOG PANEL
         // ----------------------------------------------------
 
-        // A. CATEGORY FILTER PILLS (В одну строку)
+        // A. CATEGORY FILTER PILLS (Две сбалансированные строки без вылезания текста)
         float navY = y + 2.0f;
-        float navH = 19.0f;
+        float navH = 17.0f;
         float pillGap = 3.5f;
-        float pillW = (mainW - (CAT_NAMES.length - 1) * pillGap) / CAT_NAMES.length;
+        float navRowGap = 3.5f;
+        int pillsPerRow = 4;
+        float pillW = (mainW - (pillsPerRow - 1) * pillGap) / (float) pillsPerRow;
 
-        for (int i = 0; i < CAT_NAMES.length; i++) {
-            float pX = x + i * (pillW + pillGap);
-            boolean isSel = (activeFilter == i);
-            boolean hov = mouseX >= pX && mouseX <= pX + pillW && mouseY >= navY && mouseY <= navY + navH;
+        for (int i = 0; i < 8; i++) {
+            int row = i / pillsPerRow;
+            int col = i % pillsPerRow;
+            float pX = x + col * (pillW + pillGap);
+            float pY = navY + row * (navH + navRowGap);
 
-            int pBg = isSel ? Theme.ACCENT : (hov ? 0x28FFFFFF : 0x16FFFFFF);
-            Render2D.drawRoundedRect(context, pX, navY, pillW, navH, 4.0f, pBg);
-            if (isSel) {
-                Render2D.drawRoundedOutline(context, pX, navY, pillW, navH, 4.0f, 0.6f, Theme.ACCENT);
+            String label = (i < CAT_NAMES.length) ? CAT_NAMES[i] : "Снять все";
+            boolean isAction = (i == 7);
+            boolean isSel = !isAction && (activeFilter == i);
+            boolean hov = mouseX >= pX && mouseX <= pX + pillW && mouseY >= pY && mouseY <= pY + navH;
+
+            int pBg;
+            if (isAction) {
+                pBg = hov ? 0xDDFF4444 : 0x18FFFFFF;
+            } else {
+                pBg = isSel ? Theme.ACCENT : (hov ? 0x28FFFFFF : 0x16FFFFFF);
             }
-            int txtCol = isSel ? 0xFFFFFFFF : (hov ? 0xFFE0E6F0 : 0xFFA0A8B8);
-            ClientFont.drawCentered(context, CAT_NAMES[i], pX + pillW * 0.5f, navY + navH * 0.5f, ClientFont.SF_MEDIUM, txtCol);
+
+            Render2D.drawRoundedRect(context, pX, pY, pillW, navH, 4.0f, pBg);
+            if (isSel) {
+                Render2D.drawRoundedOutline(context, pX, pY, pillW, navH, 4.0f, 0.6f, Theme.ACCENT);
+            } else if (isAction && hov) {
+                Render2D.drawRoundedOutline(context, pX, pY, pillW, navH, 4.0f, 0.6f, 0xFFFF6B6B);
+            }
+
+            int txtCol = isSel ? 0xFFFFFFFF : (hov ? 0xFFFFFFFF : (isAction ? 0xFFC0C8D8 : 0xFFA0A8B8));
+            ClientFont.drawCentered(context, label, pX + pillW * 0.5f, pY + navH * 0.5f, ClientFont.SF_MEDIUM, txtCol);
         }
 
         // Divider under navigation tabs
-        float gridTop = navY + navH + 6.0f;
+                float gridTop = navY + navH * 2.0f + navRowGap + 5.0f;
         Render2D.drawRect(context, x, gridTop - 2.0f, mainW, 1.0f, 0x12FFFFFF);
 
         // B. SCROLLABLE COSMETICS CARDS GRID
@@ -152,7 +169,7 @@ public class CosmeticsPanel {
                 float cardX = x + col * (cardW + colGap);
                 float cardY = currentCatY + row * (cardH + rowGap);
 
-                if (cardY + cardH < gridTop - 5.0f || cardY > y + h + 5.0f) {
+                if (cardY + cardH < gridTop || cardY > y + h) {
                     continue;
                 }
 
@@ -182,7 +199,7 @@ public class CosmeticsPanel {
                     float pSize = cardW - 20.0f;
                     float pX = cardX + 10.0f;
                     float pY = cardY + 6.0f;
-                    mgr.renderGuiPreview(context, asset.id(), pX, pY, pSize, 1.0f);
+                    net.minecraft.client.gui.ScreenRect cardsScissor = new net.minecraft.client.gui.ScreenRect((int) x, (int) gridTop, Math.max(1, (int) mainW), Math.max(1, (int) (y + h - gridTop))); mgr.renderGuiPreview(context, asset.id(), pX, pY, pSize, 1.0f, cardsScissor);
                 }
 
                 // Нижняя панель карточки: название и тумблер
@@ -315,16 +332,27 @@ public class CosmeticsPanel {
             return false;
         }
 
-        // Tabs click
+        // Tabs click (2 строки)
         float navY = y + 2.0f;
-        float navH = 19.0f;
+        float navH = 17.0f;
         float pillGap = 3.5f;
-        float pillW = (mainW - (CAT_NAMES.length - 1) * pillGap) / CAT_NAMES.length;
+        float navRowGap = 3.5f;
+        int pillsPerRow = 4;
+        float pillW = (mainW - (pillsPerRow - 1) * pillGap) / (float) pillsPerRow;
 
-        if (mouseY >= navY && mouseY <= navY + navH) {
-            for (int i = 0; i < CAT_NAMES.length; i++) {
-                float pX = x + i * (pillW + pillGap);
-                if (mouseX >= pX && mouseX <= pX + pillW) {
+        for (int i = 0; i < 8; i++) {
+            int row = i / pillsPerRow;
+            int col = i % pillsPerRow;
+            float pX = x + col * (pillW + pillGap);
+            float pY = navY + row * (navH + navRowGap);
+
+            if (mouseX >= pX && mouseX <= pX + pillW && mouseY >= pY && mouseY <= pY + navH) {
+                if (i == 7) {
+                    mod.clearAll();
+                    GuiSoundManager.playClick();
+                    return true;
+                }
+                if (i < CAT_NAMES.length) {
                     activeFilter = i;
                     targetScroll = 0.0f;
                     scrollOffset = 0.0f;
@@ -334,7 +362,7 @@ public class CosmeticsPanel {
             }
         }
 
-        float gridTop = navY + navH + 6.0f;
+                float gridTop = navY + navH * 2.0f + navRowGap + 5.0f;
         if (mouseY < gridTop) return false;
 
         float currentCatY = gridTop + 4.0f - scrollOffset;
@@ -393,7 +421,7 @@ public class CosmeticsPanel {
                         if (sword.name().equalsIgnoreCase(mod.selectedSword())) {
                             mod.clearSlot("swords");
                         } else {
-                            mod.selectSword(sword.name());
+                            mod.selectSword(sword.name(), sword.model());
                         }
                     } else {
                         CosmeticsManager.Asset asset = assetsList.get(i);

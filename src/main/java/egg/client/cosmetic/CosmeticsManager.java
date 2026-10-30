@@ -292,7 +292,7 @@ public final class CosmeticsManager  {
 
                 String texKey = face.textureId();
                 Identifier faceTex = parsed.textures.getOrDefault(texKey, sword.texture());
-                RenderLayer renderLayer = RenderLayers.itemEntityTranslucentCull(faceTex);
+                RenderLayer renderLayer = RenderLayers.entityCutoutNoCull(faceTex);
 
                 float nx = dir.getOffsetX();
                 float ny = dir.getOffsetY();
@@ -572,6 +572,10 @@ public final class CosmeticsManager  {
     // --- GUI Preview Rendering ---
 
     public void renderGuiPreview(DrawContext context, String itemId, float x, float y, float size, float alpha) {
+        renderGuiPreview(context, itemId, x, y, size, alpha, null);
+    }
+
+    public void renderGuiPreview(DrawContext context, String itemId, float x, float y, float size, float alpha, net.minecraft.client.gui.ScreenRect scissorArea) {
         if (itemId == null || itemId.isBlank() || size <= 0.0f || alpha <= 0.0f) return;
         ensureIndex();
 
@@ -620,7 +624,7 @@ public final class CosmeticsManager  {
 
         Matrix3x2f pose = new Matrix3x2f(context.getMatrices());
         CosmeticMeshGuiRenderState guiState = new CosmeticMeshGuiRenderState(
-                asset.texture, pose, quadVertices, color, x, y, size, size, null
+                asset.texture, pose, quadVertices, color, x, y, size, size, scissorArea
         );
 
         ((DrawContextAccessor) context).getState().addSimpleElement(guiState);

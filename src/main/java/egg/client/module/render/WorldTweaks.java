@@ -738,19 +738,16 @@ public class WorldTweaks extends Module {
     }
 
     public float getSnowDepthAt(double worldX, double worldZ) {
-        // Multi-frequency smooth, natural snowdrifts across world coordinates
-        double d1 = Math.sin(worldX * 0.15 + 1.3) * Math.cos(worldZ * 0.15 + 0.7);
-        double d2 = Math.sin((worldX * 0.65 + worldZ * 0.75) * 0.22) * 0.55 + Math.cos((worldX * 0.75 - worldZ * 0.65) * 0.20) * 0.45;
-        double d3 = Math.sin(worldX * 0.48 + 0.2) * Math.cos(worldZ * 0.48 + 0.9) * 0.30;
+        // Broad, natural rolling snowdrifts across terrain (spans 10-22 blocks, eliminating repetitive per-block bumps)
+        double n1 = Math.sin(worldX * 0.075 + 1.4) * Math.cos(worldZ * 0.075 + 0.8);
+        double n2 = Math.sin((worldX * 0.045 + worldZ * 0.055) + 2.8) * 0.45 + Math.cos((worldX * 0.055 - worldZ * 0.045) + 1.2) * 0.35;
+        double n3 = Math.sin(worldX * 0.14 + 0.3) * Math.cos(worldZ * 0.14 + 1.1) * 0.20;
 
-        double combined = (d1 * 0.48 + d2 * 0.36 + d3 * 0.24 + 1.08) / 2.16;
+        double combined = (n1 * 0.52 + n2 * 0.34 + n3 * 0.14 + 1.0) * 0.5;
         combined = Math.max(0.0, Math.min(1.0, combined));
 
-        // Non-linear depth shaping:
-        // ~35% gentle flat snow blanket (2 to 5 cm)
-        // ~45% medium rolling snowdrifts (6 to 14 cm)
-        // ~20% deep puffy snowdrifts (up to 24 cm)
-        return (float) (Math.pow(combined, 1.4) * 0.22 + 0.02);
+        // Randomized height across terrain: varying gently between 3cm up to 25cm
+        return (float) (Math.pow(combined, 1.35) * 0.24 + 0.03);
     }
 
     private boolean isTerrainGroundBlock(BlockState state) {
@@ -823,8 +820,12 @@ public class WorldTweaks extends Module {
     private void buildSnowBlock(MinecraftClient mc, int bx, int topY, int bz, int distSq, int lod0RadSq) {
         BlockPos pos = new BlockPos(bx, topY, bz);
         BlockPos posAbove = pos.up();
-        int light = WorldRenderer.getLightmapCoordinates(mc.world, posAbove);
+        BlockState aboveState = mc.world.getBlockState(posAbove);
+        if (aboveState.blocksMovement() && !(aboveState.getBlock() instanceof PlantBlock)) {
+            return; // Never generate snow inside tree trunks or solid pillars
+        }
 
+        int light = WorldRenderer.getLightmapCoordinates(mc.world, posAbove);
         float baseY = topY + 1.002f;
         boolean isLod0 = distSq <= lod0RadSq;
 
@@ -846,20 +847,18 @@ public class WorldTweaks extends Module {
             float d11     = getSnowDepthAt(bx + 1.0, bz + 1.0);
             float d01     = getSnowDepthAt(bx, bz + 1.0);
 
-            // If an edge is next to a drop-off/cliff (diff < 0), taper smoothly to block rim (0.010f)
-            // If an edge is next to a wall or tree trunk (diff > 0), drift smoothly up against it (+0.05f)
-            float mNy = (diffN < 0) ? (baseY + 0.010f) : ((diffN > 0) ? (baseY + Math.max(0.08f, dN + 0.05f)) : (baseY + dN));
-            float mSy = (diffS < 0) ? (baseY + 0.010f) : ((diffS > 0) ? (baseY + Math.max(0.08f, dS + 0.05f)) : (baseY + dS));
-            float mWy = (diffW < 0) ? (baseY + 0.010f) : ((diffW > 0) ? (baseY + Math.max(0.08f, dW + 0.05f)) : (baseY + dW));
-            float mEy = (diffE < 0) ? (baseY + 0.010f) : ((diffE > 0) ? (baseY + Math.max(0.08f, dE + 0.05f)) : (baseY + dE));
+            // Connect smoothly against tree trunks/walls (no gap), and taper gently on cliff drops (no pyramid spikes)
+            float mNy = (diffN < 0) ? (baseY + dN * 0.45f) : (baseY + dN);
+            float mSy = (diffS < 0) ? (baseY + dS * 0.45f) : (baseY + dS);
+            float mWy = (diffW < 0) ? (baseY + dW * 0.45f) : (baseY + dW);
+            float mEy = (diffE < 0) ? (baseY + dE * 0.45f) : (baseY + dE);
 
             float cy = baseY + dCenter;
 
-            // 4 Corners: if any adjacent edge is drop-off, meet block rim
-            float c00 = (diffN < 0 || diffW < 0) ? (baseY + 0.008f) : ((diffN > 0 || diffW > 0) ? (baseY + Math.max(0.08f, d00 + 0.04f)) : (baseY + d00));
-            float c10 = (diffN < 0 || diffE < 0) ? (baseY + 0.008f) : ((diffN > 0 || diffE > 0) ? (baseY + Math.max(0.08f, d10 + 0.04f)) : (baseY + d10));
-            float c11 = (diffS < 0 || diffE < 0) ? (baseY + 0.008f) : ((diffS > 0 || diffE > 0) ? (baseY + Math.max(0.08f, d11 + 0.04f)) : (baseY + d11));
-            float c01 = (diffS < 0 || diffW < 0) ? (baseY + 0.008f) : ((diffS > 0 || diffW > 0) ? (baseY + Math.max(0.08f, d01 + 0.04f)) : (baseY + d01));
+            float c00 = (diffN < 0 || diffW < 0) ? (baseY + d00 * 0.45f) : (baseY + d00);
+            float c10 = (diffN < 0 || diffE < 0) ? (baseY + d10 * 0.45f) : (baseY + d10);
+            float c11 = (diffS < 0 || diffE < 0) ? (baseY + d11 * 0.45f) : (baseY + d11);
+            float c01 = (diffS < 0 || diffW < 0) ? (baseY + d01 * 0.45f) : (baseY + d01);
 
             // Realistic lighting based on height: higher points are brighter, valleys have soft blue-gray shading
             int cr = Math.min(255, (int) (240 + dCenter * 70));
