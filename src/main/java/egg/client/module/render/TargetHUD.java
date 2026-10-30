@@ -42,6 +42,7 @@ public class TargetHUD extends Module {
     private final ModeSetting mode = new ModeSetting("Режим", "Экран", "Расположение Target HUD", "Экран", "В мире");
     private final SliderSetting hudScale = new SliderSetting("Масштаб", 1.0, 0.5, 2.0, 0.05, "Масштаб Target HUD");
     private final SliderSetting targetTimeout = new SliderSetting("Таймаут цели", 3.0, 0.5, 8.0, 0.5, "Сколько секунд держать цель после отвода прицела");
+    private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", true, "Отображать карточку только для игроков");
     private final BooleanSetting showFps = new BooleanSetting("Показывать FPS", true, "Отображать метку FPS на карточке");
     private final BooleanSetting showDistance = new BooleanSetting("Дистанция", true, "Отображать дистанцию до цели");
 
@@ -71,7 +72,7 @@ public class TargetHUD extends Module {
         super("Target HUD", "Информационная карточка цели на экране или в центре противника", Category.ESP);
         instance = this;
 
-        addSettings(mode, hudScale, targetTimeout);
+        addSettings(mode, hudScale, targetTimeout, onlyPlayers);
     }
 
     public static TargetHUD getInstance() {
@@ -327,11 +328,15 @@ public class TargetHUD extends Module {
                 this.currentTarget = null;
             }
         }
+        if (this.currentTarget != null && onlyPlayers.get() && !(this.currentTarget instanceof PlayerEntity)) {
+            this.currentTarget = null;
+            this.targetTimer = 0.0f;
+        }
     }
 
     private LivingEntity findHoveredTarget(MinecraftClient mc) {
         if (mc.crosshairTarget instanceof EntityHitResult hit && hit.getEntity() instanceof LivingEntity living) {
-            if (living != mc.player && living.isAlive()) {
+            if (living != mc.player && living.isAlive() && (!onlyPlayers.get() || living instanceof PlayerEntity)) {
                 return living;
             }
         }
@@ -356,6 +361,9 @@ public class TargetHUD extends Module {
 
         for (Entity e : mc.world.getOtherEntities(mc.player, box)) {
             if (e instanceof LivingEntity living && e != mc.player && living.isAlive()) {
+                if (onlyPlayers.get() && !(living instanceof PlayerEntity)) {
+                    continue;
+                }
                 Box eb = living.getBoundingBox().expand(0.3);
                 Optional<Vec3d> hit = eb.raycast(eye, end);
                 if (hit.isPresent()) {

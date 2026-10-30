@@ -47,13 +47,13 @@ public class TargetESP extends Module {
     }
 
     // Snowflake vortex physics constants from sfamelov.txt
-    private static final int ORBIT_FLAKES = 42;
-    private static final int ORBIT_CRYSTALS = 5;
+    private static final int ORBIT_FLAKES = 28;
+    private static final int ORBIT_CRYSTALS = 4;
     private static final float GRAVITY = 2.6F;
     private static final float DRAG = 1.4F;
     private static final float TERMINAL_FALL = 1.15F;
-    private static final float GROUND_LIFE = 2.6F;
-    private static final float FREE_LIFE = 7.0F;
+    private static final float GROUND_LIFE = 0.8F;
+    private static final float FREE_LIFE = 1.1F;
 
     private final ModeSetting mode = new ModeSetting("Визуализация цели", "Снежинки", "Стиль Target ESP",
             "Снежинки", "Души", "Кубы");
@@ -66,10 +66,13 @@ public class TargetESP extends Module {
     private final BooleanSetting hurtColor = new BooleanSetting("Окрас при уроне", true, "Окрашивание в красный цвет при ударе");
     private final SliderSetting maxDistance = new SliderSetting("Дистанция наводки", 30.0, 5.0, 64.0, 1.0, "Максимальная дистанция захвата цели");
     private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", true, "Захватывать только игроков");
+    private final SliderSetting retainTime = new SliderSetting("Удержание цели", 1.8, 0.2, 5.0, 0.1, "Сколько секунд цель держится при отводе прицела");
+    private final BooleanSetting focusSystem = new BooleanSetting("Фокус система", true, "Не переключать цель при случайном сдвиге прицела");
 
     private LivingEntity target;
     private LivingEntity attachedTarget;
-    private int loseTargetTicks = 0;
+    private float targetRetainTimer = 0.0f;
+    private int newTargetHoverTicks = 0;
     private float animProgress = 0.0f;
     private Vec3d lastTargetPos = null;
     private double lastTargetHeight = 1.8;
@@ -88,7 +91,7 @@ public class TargetESP extends Module {
         coreGlow.setVisible(() -> "Души".equals(mode.get()));
         radius.setVisible(() -> true);
 
-        addSettings(mode, radius, speed, particleSize, tailLength, coreGlow, hurtColor, maxDistance, onlyPlayers);
+        addSettings(mode, radius, speed, particleSize, tailLength, coreGlow, hurtColor, maxDistance, onlyPlayers, retainTime, focusSystem);
     }
 
     public static TargetESP getInstance() {
@@ -104,7 +107,8 @@ public class TargetESP extends Module {
         super.onDisable();
         this.target = null;
         this.attachedTarget = null;
-        this.loseTargetTicks = 0;
+        this.targetRetainTimer = 0.0f;
+        this.newTargetHoverTicks = 0;
         this.animProgress = 0.0f;
         this.snowflakeParticles.clear();
     }
@@ -112,23 +116,59 @@ public class TargetESP extends Module {
     public void onTick() {
         if (!isEnabled()) {
             this.target = null;
+            this.targetRetainTimer = 0.0f;
+            this.newTargetHoverTicks = 0;
             return;
         }
 
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null || mc.world == null) {
             this.target = null;
+            this.targetRetainTimer = 0.0f;
+            this.newTargetHoverTicks = 0;
             return;
         }
 
-        LivingEntity found = findCrosshairTarget();
-        if (found != null) {
-            this.target = found;
-            this.loseTargetTicks = 0;
+        LivingEntity hovered = findCrosshairTarget();
+
+        if (this.target != null) {
+            boolean targetValid = this.target.isAlive() && !this.target.isRemoved()
+                    && mc.player.distanceTo(this.target) <= (float) this.maxDistance.get();
+
+            if (!targetValid) {
+                this.target = hovered;
+                this.targetRetainTimer = (hovered != null) ? (float) this.retainTime.get() : 0.0f;
+                this.newTargetHoverTicks = 0;
+            } else if (hovered == this.target) {
+                this.targetRetainTimer = (float) this.retainTime.get();
+                this.newTargetHoverTicks = 0;
+            } else if (hovered != null && hovered != this.target) {
+                if (!this.focusSystem.get()) {
+                    this.target = hovered;
+                    this.targetRetainTimer = (float) this.retainTime.get();
+                    this.newTargetHoverTicks = 0;
+                } else {
+                    this.newTargetHoverTicks++;
+                    if (this.newTargetHoverTicks >= 6 || this.targetRetainTimer <= 0.0f) {
+                        this.target = hovered;
+                        this.targetRetainTimer = (float) this.retainTime.get();
+                        this.newTargetHoverTicks = 0;
+                    }
+                }
+            } else {
+                this.newTargetHoverTicks = 0;
+                if (this.targetRetainTimer > 0.0f) {
+                    this.targetRetainTimer -= 0.05f;
+                }
+                if (this.targetRetainTimer <= 0.0f) {
+                    this.target = null;
+                }
+            }
         } else {
-            this.loseTargetTicks++;
-            if (this.loseTargetTicks > 6 || (this.target != null && !mc.player.canSee(this.target))) {
-                this.target = null;
+            if (hovered != null) {
+                this.target = hovered;
+                this.targetRetainTimer = (float) this.retainTime.get();
+                this.newTargetHoverTicks = 0;
             }
         }
 
@@ -389,11 +429,19 @@ public class TargetESP extends Module {
             p.grounded = true;
             p.spinB = 0.0F;
         }
-        p.fade = 1.0F - MathHelper.clamp((p.age - FREE_LIFE) / 1.0F, 0.0F, 1.0F);
+        p.fade = 1.0F - MathHelper.clamp((p.age - FREE_LIFE) / 0.6F, 0.0F, 1.0F);
         if (p.fade <= 0.0F) p.dead = true;
     }
 
     private void releaseSnow() {
+        // Accelerate existing free flakes so switching targets does not create particle bloat
+        for (SnowflakeParticle p : this.snowflakeParticles) {
+            if (!p.orbiting) {
+                p.fade *= 0.35F;
+                p.age = Math.max(p.age, FREE_LIFE * 0.8F);
+            }
+        }
+
         double sumX = 0.0;
         double sumZ = 0.0;
         double minY = Double.MAX_VALUE;
@@ -411,9 +459,9 @@ public class TargetESP extends Module {
         for (SnowflakeParticle p : this.snowflakeParticles) {
             if (!p.orbiting) continue;
             p.orbiting = false;
-            p.vx = p.vx * 0.55 + (rnd.nextDouble() - 0.5) * 0.6;
-            p.vz = p.vz * 0.55 + (rnd.nextDouble() - 0.5) * 0.6;
-            p.vy = 0.3 + rnd.nextDouble() * 0.6;
+            p.vx = p.vx * 0.45 + (rnd.nextDouble() - 0.5) * 0.4;
+            p.vz = p.vz * 0.45 + (rnd.nextDouble() - 0.5) * 0.4;
+            p.vy = 0.18 + rnd.nextDouble() * 0.35;
             p.groundY = ground;
             p.age = 0.0F;
             p.alpha = Math.max(p.alpha * p.fade, 0.4F);
