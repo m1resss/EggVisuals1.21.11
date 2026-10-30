@@ -40,7 +40,9 @@
     "FogRendererMixin",
     "ItemModelManagerMixin",
     "DrawContextAccessor",
-    "ItemRenderStateAccessor"
+    "ItemRenderStateAccessor",
+    "ItemCooldownManagerAccessor",
+    "ItemCooldownEntryAccessor"
   ],
   "client": [],
   "injectors": {

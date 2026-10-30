@@ -3,6 +3,7 @@ package egg.client.mixin;
 import egg.client.module.ModuleManager;
 import egg.client.module.render.Interface;
 import egg.client.module.render.PotionHUD;
+import egg.client.module.render.Cooldowns;
 import egg.client.module.render.TargetHUD;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
@@ -26,6 +27,10 @@ public class ChatScreenMixin {
         if (potionHUD != null && potionHUD.isEnabled()) {
             potionHUD.renderChatOverlay(context, mouseX, mouseY);
         }
+        Cooldowns cooldowns = ModuleManager.getInstance().getModule(Cooldowns.class);
+        if (cooldowns != null && cooldowns.isEnabled()) {
+            cooldowns.renderChatOverlay(context, mouseX, mouseY);
+        }
         TargetHUD targetHUD = ModuleManager.getInstance().getModule(TargetHUD.class);
         if (targetHUD != null && targetHUD.isEnabled()) {
             targetHUD.renderChatOverlay(context, mouseX, mouseY);
@@ -37,6 +42,13 @@ public class ChatScreenMixin {
         TargetHUD targetHUD = ModuleManager.getInstance().getModule(TargetHUD.class);
         if (targetHUD != null && targetHUD.isEnabled()) {
             if (targetHUD.onChatMouseClicked(click.x(), click.y(), click.button())) {
+                cir.setReturnValue(true);
+                return;
+            }
+        }
+        Cooldowns cooldowns = ModuleManager.getInstance().getModule(Cooldowns.class);
+        if (cooldowns != null && cooldowns.isEnabled()) {
+            if (cooldowns.onChatMouseClicked(click.x(), click.y(), click.button())) {
                 cir.setReturnValue(true);
                 return;
             }
@@ -61,6 +73,13 @@ public class ChatScreenMixin {
         Interface iface = ModuleManager.getInstance().getModule(Interface.class);
         if (iface != null && iface.isEnabled()) {
             if (iface.onMouseScrolled(mouseX, mouseY, verticalAmount)) {
+                cir.setReturnValue(true);
+                return;
+            }
+        }
+        Cooldowns cooldowns = ModuleManager.getInstance().getModule(Cooldowns.class);
+        if (cooldowns != null && cooldowns.isEnabled()) {
+            if (cooldowns.onMouseScrolled(mouseX, mouseY, verticalAmount)) {
                 cir.setReturnValue(true);
                 return;
             }

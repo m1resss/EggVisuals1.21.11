@@ -94,6 +94,11 @@ public class MouseMixin {
                     targetHUD.onChatMouseReleased(mouseX, mouseY, button);
                 }
 
+                egg.client.module.render.Cooldowns cooldowns = ModuleManager.getInstance().getModule(egg.client.module.render.Cooldowns.class);
+                if (cooldowns != null && cooldowns.isEnabled()) {
+                    cooldowns.onChatMouseReleased(mouseX, mouseY, button);
+                }
+
                 egg.client.module.render.PotionHUD potionHUD = ModuleManager.getInstance().getModule(egg.client.module.render.PotionHUD.class);
                 if (potionHUD != null && potionHUD.isEnabled()) {
                     potionHUD.onChatMouseReleased(mouseX, mouseY, button);
@@ -127,6 +132,14 @@ public class MouseMixin {
             egg.client.module.render.Interface iface = ModuleManager.getInstance().getModule(egg.client.module.render.Interface.class);
             if (iface != null && iface.isEnabled()) {
                 if (iface.onMouseScrolled(mouseX, mouseY, vertical)) {
+                    ci.cancel();
+                    return;
+                }
+            }
+
+            egg.client.module.render.Cooldowns cooldowns = ModuleManager.getInstance().getModule(egg.client.module.render.Cooldowns.class);
+            if (cooldowns != null && cooldowns.isEnabled()) {
+                if (cooldowns.onMouseScrolled(mouseX, mouseY, vertical)) {
                     ci.cancel();
                     return;
                 }
