@@ -41,9 +41,15 @@ public class NoRender extends Module {
             "Отключает тряску камеры при получении урона"
     );
 
+    private final BooleanSetting vignette = new BooleanSetting(
+            "Виньетка",
+            true,
+            "Отключает затемнение экрана по краям (виньетку)"
+    );
+
     public NoRender() {
         super("No Render", "Отключение визуальных оверлеев и мешающих эффектов", Category.ESP);
-        addSettings(fire, pumpkin, totem, blindness, fog, hurtCam);
+        addSettings(fire, pumpkin, totem, blindness, fog, hurtCam, vignette);
     }
 
     public BooleanSetting getFire() {
@@ -68,5 +74,9 @@ public class NoRender extends Module {
 
     public BooleanSetting getHurtCam() {
         return hurtCam;
+    }
+
+    public BooleanSetting getVignette() {
+        return vignette;
     }
 }

@@ -6,6 +6,7 @@ import egg.client.module.render.NoRender;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.hud.InGameHud;
 import net.minecraft.client.render.RenderTickCounter;
+import net.minecraft.entity.Entity;
 import net.minecraft.util.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -22,6 +23,14 @@ public class InGameHudMixin {
             if (texture != null && texture.getPath().contains("pumpkin") && noRender.getPumpkin().isEnabled()) {
                 ci.cancel();
             }
+        }
+    }
+
+    @Inject(method = "renderVignetteOverlay", at = @At("HEAD"), cancellable = true)
+    private void onRenderVignetteOverlay(DrawContext context, Entity entity, CallbackInfo ci) {
+        NoRender noRender = ModuleManager.getInstance().getModule(NoRender.class);
+        if (noRender != null && noRender.isEnabled() && noRender.getVignette().isEnabled()) {
+            ci.cancel();
         }
     }
 
