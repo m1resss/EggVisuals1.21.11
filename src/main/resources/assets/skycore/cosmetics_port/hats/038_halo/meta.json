@@ -1,0 +1,17 @@
+{
+  "name": "pulse_hat_98_Нимб",
+  "display_name": "Нимб",
+  "category": "ГОЛОВНЫЕ_УБОРЫ",
+  "price": 329,
+  "scale": 1.0,
+  "x": 0,
+  "y": 0.95,
+  "z": 0,
+  "preview_scale": 1.4,
+  "preview_yaw": 192,
+  "preview_y": 0.0,
+  "preview_pitch": 6,
+  "display_name_ru": "Нимб",
+  "display_name_en": "Halo",
+  "raw_offset": true
+}

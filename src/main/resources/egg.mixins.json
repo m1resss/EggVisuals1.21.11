@@ -36,6 +36,7 @@
     "WorldRendererMixin",
     "BlockColorsMixin",
     "ChunkRendererRegionMixin",
+    "PlayerEntityRendererMixin",
     "FogRendererMixin"
   ],
   "client": [],

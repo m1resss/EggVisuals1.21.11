@@ -1,0 +1,17 @@
+{
+  "name": "pulse_wings_25_Крылья_-_Aurum",
+  "display_name": "Аурум",
+  "category": "КРЫЛЬЯ",
+  "price": 149,
+  "scale": 1,
+  "x": 0,
+  "y": -1.05,
+  "z": 0,
+  "preview_scale": 1.15,
+  "preview_yaw": 198,
+  "preview_y": 0.0,
+  "preview_pitch": 8,
+  "display_name_ru": "Аурум",
+  "display_name_en": "Aurum",
+  "raw_offset": true
+}

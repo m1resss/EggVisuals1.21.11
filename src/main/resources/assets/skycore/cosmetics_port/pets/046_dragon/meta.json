@@ -1,0 +1,19 @@
+{
+  "type": "COSMETIC",
+  "category": "ПИТОМЦЫ",
+  "name": "dragon",
+  "optionId": 1,
+  "price": 99.0,
+  "scale": 0.75,
+  "x": -1.5,
+  "y": -0.5,
+  "z": -0.5,
+  "owned": false,
+  "worn": false,
+  "display_name": "Дракон",
+  "preview_scale": 1.1,
+  "preview_yaw": 202,
+  "display_name_ru": "Дракон",
+  "display_name_en": "Dragon",
+  "placement": "orbit"
+}

@@ -1,0 +1,14 @@
+{
+  "name": "pulse_frog_hat_classic",
+  "display_name": "Классическая лягушка",
+  "display_name_ru": "Классическая лягушка",
+  "display_name_en": "Classic Frog",
+  "category": "ГОЛОВНЫЕ_УБОРЫ",
+  "scale": 1.0,
+  "x": 0.0,
+  "y": 0.22,
+  "z": 0.0,
+  "preview_scale": 1.15,
+  "preview_yaw": 192,
+  "raw_offset": true
+}

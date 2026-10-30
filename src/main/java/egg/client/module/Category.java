@@ -10,6 +10,7 @@ public enum Category {
     PLAYER("Player", "Игрок", "L", "Other"),
     INVENTORY("Inventory", "Инвентарь", "H", "Other"),
     MISC("Misc", "Разное", "D", "Other"),
+    COSMETICS("Cosmetics", "Косметика", "C", "Other"),
 
     SETTINGS("Settings", "Настройки", "*", "Addons");
 

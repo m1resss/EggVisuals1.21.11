@@ -1,9 +1,6 @@
 package egg.client.mixin;
 
 import egg.client.module.ModuleManager;
-import egg.client.module.render.ItemRadius;
-import egg.client.module.render.TotemPopConfetti;
-import egg.client.module.render.Trajectories;
 import egg.client.module.render.WorldTweaks;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.VertexConsumerProvider;
@@ -23,12 +20,8 @@ public class WeatherRenderingMixin {
     @Inject(method = "renderPrecipitation", at = @At("HEAD"), cancellable = true)
     private void onRenderPrecipitation(VertexConsumerProvider vertexConsumers, Vec3d cameraPos, WeatherRenderState state, CallbackInfo ci) {
         WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
-        if (wt != null && wt.isEnabled()) {
-            wt.renderWorld3D(vertexConsumers, cameraPos);
-            boolean cancelVanilla = wt.renderWeatherPass(vertexConsumers, cameraPos);
-            if (cancelVanilla) {
-                ci.cancel();
-            }
+        if (wt != null && wt.isEnabled() && (wt.isCustomWeather() || wt.isCustomSeason())) {
+            ci.cancel();
         }
     }
 

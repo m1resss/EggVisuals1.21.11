@@ -1,0 +1,19 @@
+{
+  "type": "COSMETIC",
+  "category": "ПИТОМЦЫ",
+  "name": "bigcat",
+  "optionId": 3,
+  "price": 99.0,
+  "scale": 0.5,
+  "x": -1.5,
+  "y": -0.5,
+  "z": -0.5,
+  "owned": false,
+  "worn": false,
+  "display_name": "Большой кот",
+  "preview_scale": 1.2,
+  "preview_yaw": 202,
+  "display_name_ru": "Большой кот",
+  "display_name_en": "Big Cat",
+  "placement": "orbit"
+}

@@ -1,0 +1,17 @@
+{
+  "name": "pulse_bodywear_39_Рюкзак_-_Nike",
+  "display_name": "Nike",
+  "category": "РЮКЗАКИ",
+  "price": 99,
+  "scale": 1,
+  "x": 0,
+  "y": -0.85,
+  "z": 0.08,
+  "preview_scale": 1.35,
+  "preview_yaw": 195,
+  "preview_y": 0.0,
+  "preview_pitch": 8,
+  "display_name_ru": "Nike",
+  "display_name_en": "Nike",
+  "raw_offset": true
+}

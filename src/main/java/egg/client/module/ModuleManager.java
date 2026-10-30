@@ -64,6 +64,7 @@ public class ModuleManager {
         register(new StreamerMode());
         register(new egg.client.module.render.WorldTweaks());
         register(new egg.client.module.misc.ZakoOptimization());
+        register(new egg.client.module.cosmetic.CosmeticsModule());
 
         /*
                 register(new egg.client.module.cosmetic.MeleeSkins());

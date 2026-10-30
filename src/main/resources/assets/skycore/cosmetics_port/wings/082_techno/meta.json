@@ -1,0 +1,17 @@
+{
+  "type": "COSMETIC",
+  "category": "КРЫЛЬЯ",
+  "name": "techno",
+  "optionId": 103,
+  "price": 149.0,
+  "scale": 1.0,
+  "x": -0.5,
+  "y": -2.0,
+  "z": -0.5,
+  "owned": false,
+  "worn": false,
+  "display_name": "Техно",
+  "preview_yaw": 198,
+  "display_name_ru": "Техно",
+  "display_name_en": "Techno"
+}

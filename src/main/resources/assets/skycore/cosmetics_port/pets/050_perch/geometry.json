@@ -1,0 +1,68 @@
+{
+  "format_version": "1.12.0",
+  "minecraft:geometry": [
+    {
+      "description": {
+        "identifier": "geometry.perch",
+        "texture_width": 64,
+        "texture_height": 64,
+        "visible_bounds_width": 2,
+        "visible_bounds_height": 1.5,
+        "visible_bounds_offset": [0, 0.5, 0]
+      },
+      "bones": [
+        {
+          "name": "fish",
+          "pivot": [0, 7, 0],
+          "cubes": [
+            {"origin": [-5, 4, -2], "size": [10, 6, 4], "inflate": 0.15, "uv": [0, 0]},
+            {"origin": [-7, 5, -1.75], "size": [3, 4, 3.5], "uv": [24, 0]},
+            {"origin": [-7.3, 7.1, -2.05], "size": [0.7, 0.7, 0.35], "uv": [38, 0]},
+            {"origin": [-7.3, 7.1, 1.7], "size": [0.7, 0.7, 0.35], "uv": [40, 0]}
+          ]
+        },
+        {
+          "name": "tail",
+          "parent": "fish",
+          "pivot": [5, 7, 0],
+          "cubes": [
+            {"origin": [4.5, 5, -0.75], "size": [3, 4, 1.5], "uv": [0, 18]},
+            {"origin": [7, 3, -0.25], "size": [0, 8, 0.5], "inflate": 0.12, "uv": [18, 18]}
+          ]
+        },
+        {
+          "name": "tail_tip",
+          "parent": "tail",
+          "pivot": [7, 7, 0],
+          "cubes": [
+            {"origin": [7, 2, -0.2], "size": [4, 10, 0.4], "inflate": 0.08, "pivot": [7, 7, 0], "rotation": [0, 0, 0], "uv": [26, 18]}
+          ]
+        },
+        {
+          "name": "dorsal",
+          "parent": "fish",
+          "pivot": [0, 10, 0],
+          "cubes": [
+            {"origin": [-3, 10, -0.15], "size": [7, 4, 0.3], "inflate": 0.06, "uv": [0, 34]}
+          ]
+        },
+        {
+          "name": "fin_left",
+          "parent": "fish",
+          "pivot": [-1, 6, -2],
+          "cubes": [
+            {"origin": [-2, 3, -2.3], "size": [5, 4, 0.3], "inflate": 0.05, "pivot": [-1, 6, -2], "rotation": [0, 0, -22], "uv": [18, 34]}
+          ]
+        },
+        {
+          "name": "fin_right",
+          "parent": "fish",
+          "pivot": [-1, 6, 2],
+          "cubes": [
+            {"origin": [-2, 3, 2], "size": [5, 4, 0.3], "inflate": 0.05, "pivot": [-1, 6, 2], "rotation": [0, 0, -22], "uv": [30, 34]}
+          ]
+        }
+      ]
+    }
+  ]
+}

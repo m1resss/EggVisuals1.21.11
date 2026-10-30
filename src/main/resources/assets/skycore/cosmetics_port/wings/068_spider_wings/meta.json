@@ -1,0 +1,14 @@
+{
+  "name": "pulse_spider_wings",
+  "display_name": "Паучьи крылья",
+  "display_name_ru": "Паучьи крылья",
+  "display_name_en": "Spider Wings",
+  "category": "КРЫЛЬЯ",
+  "scale": 1.0,
+  "x": 0.0,
+  "y": 0.0,
+  "z": 0.12,
+  "preview_scale": 1.15,
+  "preview_yaw": 198,
+  "raw_offset": true
+}

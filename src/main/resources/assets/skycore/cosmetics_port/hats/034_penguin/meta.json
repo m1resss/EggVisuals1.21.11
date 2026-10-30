@@ -1,0 +1,17 @@
+{
+  "name": "pulse_hat_88_Шапка_-_Аквыч",
+  "display_name": "Пингвин",
+  "category": "ГОЛОВНЫЕ_УБОРЫ",
+  "price": 249,
+  "scale": 1.0,
+  "x": 0,
+  "y": 0.52,
+  "z": 0,
+  "preview_scale": 1.4,
+  "preview_yaw": 192,
+  "preview_y": 0.0,
+  "preview_pitch": 6,
+  "display_name_ru": "Пингвин",
+  "display_name_en": "Penguin",
+  "raw_offset": true
+}

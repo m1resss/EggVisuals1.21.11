@@ -1,0 +1,17 @@
+{
+  "type": "COSMETIC",
+  "category": "КРЫЛЬЯ",
+  "name": "rocket",
+  "optionId": 105,
+  "price": 149.0,
+  "scale": 1.0,
+  "x": -0.5,
+  "y": -2.0,
+  "z": -0.5,
+  "owned": false,
+  "worn": false,
+  "display_name": "Ракета",
+  "preview_yaw": 198,
+  "display_name_ru": "Ракета",
+  "display_name_en": "Rocket"
+}

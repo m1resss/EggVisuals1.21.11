@@ -462,6 +462,8 @@ public class ClickGuiScreen extends Screen {
 
         if (selectedCategory == Category.INVENTORY) {
             egg.client.ui.section.InventoryConfigPanel.render(context, contentX, contentY, contentW, contentH, mouseX, mouseY, alpha);
+        } else if (selectedCategory == Category.COSMETICS) {
+            egg.client.ui.section.CosmeticsPanel.render(context, contentX, contentY, contentW, contentH, mouseX, mouseY, alpha);
         } else {
             renderModules(context, contentX, contentY, contentW, contentH, mouseX, mouseY, alpha);
         }
@@ -1781,6 +1783,11 @@ public class ClickGuiScreen extends Screen {
                 return true;
             }
             return true;
+        } else if (selectedCategory == Category.COSMETICS) {
+            if (egg.client.ui.section.CosmeticsPanel.mouseClicked(contentX, contentY, contentW, contentH, mouseX, mouseY, button)) {
+                return true;
+            }
+            return true;
         }
 
         if (mouseX >= contentX && mouseX <= (contentX + contentW) && mouseY >= contentY && mouseY <= (contentY + contentH)) {
@@ -1976,6 +1983,8 @@ public class ClickGuiScreen extends Screen {
         WorldTweaksUI.mouseReleased();
         if (selectedCategory == Category.INVENTORY) {
             egg.client.ui.section.InventoryConfigPanel.mouseReleased();
+        } else if (selectedCategory == Category.COSMETICS) {
+            egg.client.ui.section.CosmeticsPanel.mouseReleased();
         }
         TargetHUD targetHUD = ModuleManager.getInstance().getModule(TargetHUD.class);
         if (targetHUD != null) targetHUD.mouseReleased(click.x(), click.y(), click.button());
@@ -2046,6 +2055,11 @@ public class ClickGuiScreen extends Screen {
         }
         if (selectedCategory == Category.INVENTORY) {
             egg.client.ui.section.InventoryConfigPanel.mouseScrolled(verticalAmount);
+            return true;
+        } else if (selectedCategory == Category.COSMETICS) {
+            float guiW = Math.clamp(width * 0.58f, 520.0f, 580.0f);
+            float contentW = guiW - 114.0f - 24.0f;
+            egg.client.ui.section.CosmeticsPanel.mouseScrolled(mouseX, mouseY, verticalAmount, contentW);
             return true;
         }
         if (this.openDropdownSetting != null && this.openDropdownMaxScroll > 0.0f) {

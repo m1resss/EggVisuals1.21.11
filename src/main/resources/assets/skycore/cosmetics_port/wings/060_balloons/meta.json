@@ -1,0 +1,19 @@
+{
+  "type": "COSMETIC",
+  "category": "КРЫЛЬЯ",
+  "name": "balloon",
+  "optionId": 108,
+  "price": 139.0,
+  "scale": 1.0,
+  "x": -0.5,
+  "y": -2.0,
+  "z": -0.5,
+  "owned": false,
+  "worn": false,
+  "display_name": "Шарики",
+  "preview_scale": 1.05,
+  "preview_yaw": 198,
+  "preview_y": 0.05,
+  "display_name_ru": "Шарики",
+  "display_name_en": "Balloons"
+}

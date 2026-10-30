@@ -1,0 +1,19 @@
+{
+  "type": "COSMETIC",
+  "category": "МАСКИ",
+  "name": "wink",
+  "optionId": 302,
+  "price": 49.0,
+  "scale": 0.75,
+  "x": -0.5,
+  "y": -2.0,
+  "z": -0.6,
+  "owned": false,
+  "worn": false,
+  "display_name": "Wink",
+  "preview_scale": 1.7,
+  "preview_yaw": 192,
+  "preview_pitch": 5,
+  "display_name_ru": "Wink",
+  "display_name_en": "Wink"
+}

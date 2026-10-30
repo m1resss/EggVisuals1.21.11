@@ -1,0 +1,18 @@
+{
+  "type": "COSMETIC",
+  "category": "ГОЛОВНЫЕ_УБОРЫ",
+  "name": "blackhole_halo",
+  "optionId": 201,
+  "price": 89.0,
+  "scale": 0.75,
+  "x": -0.5,
+  "y": -1.9,
+  "z": -0.6,
+  "owned": false,
+  "worn": false,
+  "display_name": "Нимб чёрной дыры",
+  "preview_scale": 1.2,
+  "preview_yaw": 192,
+  "display_name_ru": "Нимб чёрной дыры",
+  "display_name_en": "Black Hole Halo"
+}

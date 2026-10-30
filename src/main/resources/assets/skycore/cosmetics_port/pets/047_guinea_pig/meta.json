@@ -1,0 +1,19 @@
+{
+  "type": "COSMETIC",
+  "category": "ПИТОМЦЫ",
+  "name": "guinea_pig",
+  "optionId": 9,
+  "price": 59.0,
+  "scale": 0.55,
+  "x": -1.5,
+  "y": -0.5,
+  "z": -0.5,
+  "owned": false,
+  "worn": false,
+  "display_name": "Морская свинка",
+  "preview_scale": 1.35,
+  "preview_yaw": 202,
+  "display_name_ru": "Морская свинка",
+  "display_name_en": "Guinea Pig",
+  "placement": "orbit"
+}

@@ -1,0 +1,18 @@
+{
+  "name": "pulse_pet_135_Питомец_-_Creeper",
+  "display_name": "Крипер",
+  "category": "ПИТОМЦЫ",
+  "price": 299,
+  "scale": 0.5,
+  "x": 1.5,
+  "y": -0.5,
+  "z": -0.5,
+  "preview_scale": 1.35,
+  "preview_yaw": 202,
+  "preview_y": 0.0,
+  "preview_pitch": 6,
+  "display_name_ru": "Крипер",
+  "display_name_en": "Creeper",
+  "placement": "orbit",
+  "raw_offset": false
+}

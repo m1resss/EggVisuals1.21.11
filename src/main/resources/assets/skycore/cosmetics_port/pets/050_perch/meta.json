@@ -1,0 +1,15 @@
+{
+  "type": "COSMETIC",
+  "category": "ПИТОМЦЫ",
+  "name": "perch",
+  "scale": 0.5,
+  "x": -1.5,
+  "y": -0.5,
+  "z": -0.5,
+  "display_name": "Окунь",
+  "display_name_ru": "Окунь",
+  "display_name_en": "Perch",
+  "preview_scale": 1.15,
+  "preview_yaw": 202,
+  "placement": "orbit"
+}

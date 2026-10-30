@@ -26,7 +26,7 @@ public final class IconRenderer {
             case MOVEMENT -> MOVEMENT_ICON;
             case ESP -> ESP_ICON;
             case PLAYER -> PLAYER_ICON;
-            case INVENTORY -> MODS_ICON;
+            case INVENTORY, COSMETICS -> MODS_ICON;
             case MISC -> MISC_ICON;
             case SETTINGS -> MODS_ICON;
             default -> MODS_ICON;

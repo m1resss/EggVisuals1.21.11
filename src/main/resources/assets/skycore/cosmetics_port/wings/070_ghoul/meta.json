@@ -1,0 +1,17 @@
+{
+  "name": "pulse_wings_124_Крылья_-_Ghoul",
+  "display_name": "Вурдалак",
+  "category": "КРЫЛЬЯ",
+  "price": 249,
+  "scale": 0.6,
+  "x": 0,
+  "y": -1.28,
+  "z": 0.22,
+  "preview_scale": 0.75,
+  "preview_yaw": 198,
+  "preview_y": -0.05,
+  "preview_pitch": 8,
+  "display_name_ru": "Вурдалак",
+  "display_name_en": "Ghoul",
+  "raw_offset": true
+}

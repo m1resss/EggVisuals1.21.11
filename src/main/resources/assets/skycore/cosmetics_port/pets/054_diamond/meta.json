@@ -1,0 +1,18 @@
+{
+  "name": "pulse_pet_84_Питомец_-_Diamond",
+  "display_name": "Алмазный",
+  "category": "ПИТОМЦЫ",
+  "price": 299,
+  "scale": 0.55,
+  "x": -1.15,
+  "y": -0.15,
+  "z": -0.45,
+  "preview_scale": 1.35,
+  "preview_yaw": 202,
+  "preview_y": 0.0,
+  "preview_pitch": 6,
+  "display_name_ru": "Алмазный",
+  "display_name_en": "Diamond",
+  "placement": "orbit",
+  "raw_offset": true
+}

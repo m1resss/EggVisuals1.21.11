@@ -1,0 +1,19 @@
+{
+  "type": "COSMETIC",
+  "category": "ПИТОМЦЫ",
+  "name": "pig",
+  "optionId": 7,
+  "price": 79.0,
+  "scale": 0.55,
+  "x": -1.5,
+  "y": -0.5,
+  "z": -0.5,
+  "owned": false,
+  "worn": false,
+  "display_name": "Свинья",
+  "preview_scale": 1.15,
+  "preview_yaw": 202,
+  "display_name_ru": "Свинья",
+  "display_name_en": "Pig",
+  "placement": "orbit"
+}

@@ -1,0 +1,19 @@
+{
+  "type": "COSMETIC",
+  "category": "МАСКИ",
+  "name": "angry",
+  "optionId": 303,
+  "price": 49.0,
+  "scale": 0.75,
+  "x": -0.5,
+  "y": -2.0,
+  "z": -0.6,
+  "owned": false,
+  "worn": false,
+  "display_name": "Angry",
+  "preview_scale": 1.55,
+  "preview_yaw": 192,
+  "preview_pitch": 5,
+  "display_name_ru": "Angry",
+  "display_name_en": "Angry"
+}
