@@ -10,15 +10,18 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.entity.player.PlayerInventory;
 
 import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
+import java.io.Reader;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
 public class InventoryLayoutManager {
     private static final InventoryLayoutManager INSTANCE = new InventoryLayoutManager();
-    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
     private final List<InventoryPreset> presets = new ArrayList<>();
     private int activeIndex = 0;
@@ -40,8 +43,27 @@ public class InventoryLayoutManager {
 
     public synchronized void load() {
         presets.clear();
-        if (configFile.exists()) {
-            try (FileReader reader = new FileReader(configFile)) {
+
+        File fileToRead = configFile;
+
+        // If local instance file is missing or empty, check global .minecraft fallback
+        if (!fileToRead.exists() || fileToRead.length() < 100) {
+            String appdata = System.getenv("APPDATA");
+            if (appdata != null) {
+                File fallback = new File(appdata, ".minecraft/egg/inventory_layouts.json");
+                if (fallback.exists() && fallback.length() >= 100) {
+                    try {
+                        Files.copy(fallback.toPath(), configFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                        EggClient.LOGGER.info("[InventoryLayoutManager] Restored presets from global fallback: " + fallback.getAbsolutePath());
+                    } catch (Throwable ignored) {
+                        fileToRead = fallback;
+                    }
+                }
+            }
+        }
+
+        if (fileToRead.exists() && fileToRead.length() > 0) {
+            try (Reader reader = Files.newBufferedReader(fileToRead.toPath(), StandardCharsets.UTF_8)) {
                 JsonObject root = GSON.fromJson(reader, JsonObject.class);
                 if (root != null && root.has("presets") && root.get("presets").isJsonArray()) {
                     for (JsonElement el : root.getAsJsonArray("presets")) {
@@ -60,21 +82,32 @@ public class InventoryLayoutManager {
                     }
                 }
             } catch (Exception e) {
-                EggClient.LOGGER.error("[InventoryLayoutManager] Failed to load inventory presets", e);
+                EggClient.LOGGER.error("[InventoryLayoutManager] Failed to load inventory presets from " + fileToRead.getAbsolutePath(), e);
+                // Create backup of corrupted file instead of silently wiping it
+                try {
+                    File bak = new File(fileToRead.getParentFile(), fileToRead.getName() + ".corrupted");
+                    Files.copy(fileToRead.toPath(), bak.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                } catch (Throwable ignored) {}
             }
         }
+
         if (presets.isEmpty()) {
             presets.add(new InventoryPreset("1"));
             activeIndex = 0;
             save();
         }
+
         if (activeIndex < 0 || activeIndex >= presets.size()) {
             activeIndex = 0;
         }
     }
 
     public synchronized void save() {
-        try (FileWriter writer = new FileWriter(configFile)) {
+        try {
+            if (configFile.getParentFile() != null && !configFile.getParentFile().exists()) {
+                configFile.getParentFile().mkdirs();
+            }
+
             JsonObject root = new JsonObject();
             if (!presets.isEmpty() && activeIndex >= 0 && activeIndex < presets.size()) {
                 root.addProperty("active", presets.get(activeIndex).getName());
@@ -84,7 +117,24 @@ public class InventoryLayoutManager {
                 arr.add(p.toJson());
             }
             root.add("presets", arr);
-            GSON.toJson(root, writer);
+
+            try (Writer writer = Files.newBufferedWriter(configFile.toPath(), StandardCharsets.UTF_8)) {
+                GSON.toJson(root, writer);
+            }
+
+            // Sync copy to global .minecraft/egg/inventory_layouts.json so Prism and other launchers share presets
+            String appdata = System.getenv("APPDATA");
+            if (appdata != null) {
+                File fallbackDir = new File(appdata, ".minecraft/egg");
+                if (fallbackDir.exists() || fallbackDir.mkdirs()) {
+                    File fallbackFile = new File(fallbackDir, "inventory_layouts.json");
+                    if (!fallbackFile.getAbsolutePath().equalsIgnoreCase(configFile.getAbsolutePath())) {
+                        try (Writer fallbackWriter = Files.newBufferedWriter(fallbackFile.toPath(), StandardCharsets.UTF_8)) {
+                            GSON.toJson(root, fallbackWriter);
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            }
         } catch (Exception e) {
             EggClient.LOGGER.error("[InventoryLayoutManager] Failed to save inventory presets", e);
         }

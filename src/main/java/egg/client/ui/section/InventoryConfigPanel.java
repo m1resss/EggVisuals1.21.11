@@ -388,7 +388,7 @@ public class InventoryConfigPanel {
     }
 
     public static boolean mouseClicked(float x, float y, float w, float h, double mouseX, double mouseY, int button) {
-        if (button != 0) return false;
+        if (button != 0 && button != 1) return false;
 
         InventoryLayoutManager lm = InventoryLayoutManager.getInstance();
         MinecraftClient mc = MinecraftClient.getInstance();
@@ -434,8 +434,84 @@ public class InventoryConfigPanel {
                 return true;
             }
 
+            // Click on individual slots to set or clear them
+            float containerX = x + 4.0f;
+            float containerY = curY + 32.0f;
+            float slotSize = 21.0f;
+            float slotStep = 23.0f;
+            float gridStartX = containerX + 16.0f;
+            float gridStartY = containerY + 14.0f;
+
+            int clickedSlot = -1;
+
+            int[] armorSlots = {39, 38, 37, 36};
+            for (int i = 0; i < 4; i++) {
+                float sx = gridStartX;
+                float sy = gridStartY + i * slotStep;
+                if (mouseX >= sx && mouseX <= sx + slotSize && mouseY >= sy && mouseY <= sy + slotSize) {
+                    clickedSlot = armorSlots[i];
+                    break;
+                }
+            }
+
+            float offhandX = gridStartX + 28.0f;
+            float offhandY = gridStartY + 3 * slotStep;
+            if (clickedSlot == -1 && mouseX >= offhandX && mouseX <= offhandX + slotSize && mouseY >= offhandY && mouseY <= offhandY + slotSize) {
+                clickedSlot = 40;
+            }
+
+            float divX = offhandX + slotSize + 8.0f;
+            float mainX = divX + 9.0f;
+            float mainY = gridStartY;
+            if (clickedSlot == -1) {
+                for (int row = 0; row < 3; row++) {
+                    for (int col = 0; col < 9; col++) {
+                        int slotId = 9 + row * 9 + col;
+                        float sx = mainX + col * slotStep;
+                        float sy = mainY + row * slotStep;
+                        if (mouseX >= sx && mouseX <= sx + slotSize && mouseY >= sy && mouseY <= sy + slotSize) {
+                            clickedSlot = slotId;
+                            break;
+                        }
+                    }
+                    if (clickedSlot != -1) break;
+                }
+            }
+
+            float hotbarDivY = mainY + 3 * slotStep + 3.0f;
+            float hotbarY = hotbarDivY + 5.0f;
+            if (clickedSlot == -1) {
+                for (int col = 0; col < 9; col++) {
+                    float sx = mainX + col * slotStep;
+                    if (mouseX >= sx && mouseX <= sx + slotSize && mouseY >= hotbarY && mouseY <= hotbarY + slotSize) {
+                        clickedSlot = col;
+                        break;
+                    }
+                }
+            }
+
+            if (clickedSlot != -1) {
+                if (button == 1) { // Right click -> clear slot
+                    detailedPreset.clearSlot(clickedSlot);
+                    lm.save();
+                    GuiSoundManager.playSelect();
+                    return true;
+                } else if (button == 0 && mc.player != null) { // Left click -> set to item in hand/cursor
+                    ItemStack cursor = mc.player.currentScreenHandler != null ? mc.player.currentScreenHandler.getCursorStack() : ItemStack.EMPTY;
+                    ItemStack toSet = !cursor.isEmpty() ? cursor : mc.player.getMainHandStack();
+                    if (!toSet.isEmpty()) {
+                        detailedPreset.setRule(clickedSlot, InventorySlotRule.fromStack(clickedSlot, toSet));
+                        lm.save();
+                        GuiSoundManager.playSelect();
+                        return true;
+                    }
+                }
+            }
+
             return false;
         }
+
+        if (button != 0) return false;
 
         float curY = y + 4.0f - scrollOffset;
 

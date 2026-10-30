@@ -16,7 +16,7 @@ public class InventoryPreset {
     public InventoryPreset(String name) {
         this.name = name;
         for (int i = 0; i <= 40; i++) {
-            rules.put(i, new InventorySlotRule(i, "", null, 0));
+            rules.put(i, new InventorySlotRule(i, "", null, null, 0));
         }
     }
 
@@ -29,7 +29,7 @@ public class InventoryPreset {
     }
 
     public InventorySlotRule getRule(int slot) {
-        return rules.computeIfAbsent(slot, s -> new InventorySlotRule(s, "", null, 0));
+        return rules.computeIfAbsent(slot, s -> new InventorySlotRule(s, "", null, null, 0));
     }
 
     public void setRule(int slot, InventorySlotRule rule) {
@@ -37,11 +37,15 @@ public class InventoryPreset {
     }
 
     public void setSlotItem(int slot, String itemId, String customName, int count) {
-        getRule(slot).setItem(itemId, customName, count);
+        setSlotItem(slot, itemId, customName, null, count);
+    }
+
+    public void setSlotItem(int slot, String itemId, String customName, String potionId, int count) {
+        getRule(slot).setItem(itemId, customName, potionId, count);
     }
 
     public void clearSlot(int slot) {
-        getRule(slot).setItem("", null, 0);
+        getRule(slot).setItem("", null, null, 0);
     }
 
     public Map<Integer, InventorySlotRule> getRules() {
@@ -83,6 +87,9 @@ public class InventoryPreset {
                 if (r.getCustomName() != null) {
                     rObj.addProperty("customName", r.getCustomName());
                 }
+                if (r.getPotionId() != null) {
+                    rObj.addProperty("potionId", r.getPotionId());
+                }
                 rObj.addProperty("count", r.getCount());
                 arr.add(rObj);
             }
@@ -102,8 +109,9 @@ public class InventoryPreset {
                     if (slot >= 0 && slot <= 40) {
                         String itemId = sObj.has("itemId") ? sObj.get("itemId").getAsString() : "";
                         String customName = sObj.has("customName") ? sObj.get("customName").getAsString() : null;
+                        String potionId = sObj.has("potionId") ? sObj.get("potionId").getAsString() : null;
                         int count = sObj.has("count") ? sObj.get("count").getAsInt() : 1;
-                        preset.setSlotItem(slot, itemId, customName, count);
+                        preset.setSlotItem(slot, itemId, customName, potionId, count);
                     }
                 }
             }

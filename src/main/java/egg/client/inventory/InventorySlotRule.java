@@ -1,37 +1,73 @@
 package egg.client.inventory;
 
 import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.PotionContentsComponent;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.potion.Potion;
 import net.minecraft.registry.Registries;
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
+
+import java.util.Locale;
 
 public class InventorySlotRule {
     private final int slotIndex;
     private String itemId;
     private String customName;
+    private String potionId;
     private int count = 1;
     private transient ItemStack cachedIcon;
 
     public InventorySlotRule(int slotIndex, String itemId, String customName, int count) {
+        this(slotIndex, itemId, customName, null, count);
+    }
+
+    public InventorySlotRule(int slotIndex, String itemId, String customName, String potionId, int count) {
         this.slotIndex = slotIndex;
         this.itemId = (itemId != null) ? itemId : "";
         this.customName = (customName != null && !customName.trim().isEmpty()) ? customName.trim() : null;
+        this.potionId = (potionId != null && !potionId.trim().isEmpty()) ? potionId.trim() : null;
         this.count = Math.max(1, count);
     }
 
     public static InventorySlotRule fromStack(int slotIndex, ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
-            return new InventorySlotRule(slotIndex, "", null, 0);
+            return new InventorySlotRule(slotIndex, "", null, null, 0);
         }
         String id = Registries.ITEM.getId(stack.getItem()).toString();
         String cName = null;
-        if (stack.contains(DataComponentTypes.CUSTOM_NAME)) {
+        if (stack.contains(DataComponentTypes.CUSTOM_NAME) || stack.contains(DataComponentTypes.ITEM_NAME)) {
             cName = stack.getName().getString();
         }
-        return new InventorySlotRule(slotIndex, id, cName, stack.getCount());
+        String pId = extractPotionId(stack);
+        return new InventorySlotRule(slotIndex, id, cName, pId, stack.getCount());
+    }
+
+    public static String extractPotionId(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return null;
+        try {
+            PotionContentsComponent contents = stack.get(DataComponentTypes.POTION_CONTENTS);
+            if (contents != null && contents.potion().isPresent()) {
+                RegistryEntry<Potion> entry = contents.potion().get();
+                if (entry.getKey().isPresent()) {
+                    return entry.getKey().get().getValue().toString();
+                }
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    public static boolean isPotionItem(Item item) {
+        return item == Items.POTION || item == Items.SPLASH_POTION || item == Items.LINGERING_POTION || item == Items.TIPPED_ARROW;
+    }
+
+    public static String cleanName(String name) {
+        if (name == null) return "";
+        return name.replaceAll("§[0-9a-fk-orA-FK-OR]", "").trim().toLowerCase(Locale.ROOT);
     }
 
     public boolean isEmpty() {
@@ -45,14 +81,44 @@ public class InventorySlotRule {
         Item ruleItem = getItem();
         Item currentItem = stack.getItem();
 
+        // Distinct apples
         if ((ruleItem == Items.GOLDEN_APPLE && currentItem == Items.ENCHANTED_GOLDEN_APPLE) ||
             (ruleItem == Items.ENCHANTED_GOLDEN_APPLE && currentItem == Items.GOLDEN_APPLE)) {
             return false;
         }
 
+        // Potion matching
+        if (isPotionItem(ruleItem) || isPotionItem(currentItem)) {
+            if (ruleItem != currentItem) return false;
+
+            // 1. If customName was specified (e.g. server custom potion like "Зелье (3 в 1)")
+            if (customName != null && !customName.isEmpty()) {
+                String sClean = cleanName(stack.getName().getString());
+                String rClean = cleanName(customName);
+                if (sClean.contains(rClean) || rClean.contains(sClean)) {
+                    return true;
+                }
+            }
+
+            // 2. If potionId was specified (vanilla potion effect like swiftness, healing, strength)
+            if (potionId != null && !potionId.isEmpty()) {
+                String stackPId = extractPotionId(stack);
+                return potionId.equalsIgnoreCase(stackPId);
+            }
+
+            // 3. If neither custom name nor potionId is specified, match empty/water potion
+            if (customName == null || customName.isEmpty()) {
+                String stackPId = extractPotionId(stack);
+                return (stackPId == null || stackPId.isEmpty() || stackPId.equals("minecraft:water"));
+            }
+            return false;
+        }
+
+        // Regular item matching with customName
         if (customName != null && !customName.isEmpty()) {
-            String stackName = stack.getName().getString().toLowerCase();
-            if (stackName.contains(customName.toLowerCase())) {
+            String stackName = cleanName(stack.getName().getString());
+            String ruleName = cleanName(customName);
+            if (stackName.contains(ruleName) || ruleName.contains(stackName)) {
                 return true;
             }
         }
@@ -71,11 +137,8 @@ public class InventorySlotRule {
         Item currentItem = stack.getItem();
 
         if (isSword(ruleItem) && isSword(currentItem)) return true;
-
         if (isPickaxe(ruleItem) && isPickaxe(currentItem)) return true;
-
         if (isAxe(ruleItem) && isAxe(currentItem)) return true;
-
         if (isShovel(ruleItem) && isShovel(currentItem)) return true;
 
         if ((ruleItem == Items.BOW || ruleItem == Items.CROSSBOW) &&
@@ -147,6 +210,14 @@ public class InventorySlotRule {
         Item item = getItem();
         if (item == Items.AIR) return ItemStack.EMPTY;
         ItemStack stack = new ItemStack(item, Math.max(1, count));
+        if (potionId != null && !potionId.isEmpty()) {
+            try {
+                RegistryEntry<Potion> pEntry = Registries.POTION.getEntry(Identifier.of(potionId)).orElse(null);
+                if (pEntry != null) {
+                    stack.set(DataComponentTypes.POTION_CONTENTS, new PotionContentsComponent(pEntry));
+                }
+            } catch (Throwable ignored) {}
+        }
         if (customName != null && !customName.isEmpty()) {
             stack.set(DataComponentTypes.CUSTOM_NAME, Text.literal(customName));
         }
@@ -161,11 +232,17 @@ public class InventorySlotRule {
     public int getSlotIndex() { return slotIndex; }
     public String getItemId() { return itemId; }
     public String getCustomName() { return customName; }
+    public String getPotionId() { return potionId; }
     public int getCount() { return count; }
 
     public void setItem(String itemId, String customName, int count) {
+        setItem(itemId, customName, null, count);
+    }
+
+    public void setItem(String itemId, String customName, String potionId, int count) {
         this.itemId = (itemId != null) ? itemId : "";
         this.customName = (customName != null && !customName.trim().isEmpty()) ? customName.trim() : null;
+        this.potionId = (potionId != null && !potionId.trim().isEmpty()) ? potionId.trim() : null;
         this.count = Math.max(1, count);
         this.cachedIcon = null;
     }
