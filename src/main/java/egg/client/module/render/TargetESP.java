@@ -5,6 +5,7 @@ import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
+import egg.client.render.Render2D;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
 import egg.client.util.ProjectUtil;
@@ -33,15 +34,16 @@ public class TargetESP extends Module {
     private static final Identifier GLOWING_TEXTURE = Identifier.of("egg", "textures/glowing.png");
     private static final Identifier BLOOM_TEXTURE = Identifier.of("egg", "textures/target/bloom.png");
 
-    private final ModeSetting mode = new ModeSetting("Визуализация цели", "Души", "Стиль Target ESP",
-            "Души", "Кубы");
+    private final ModeSetting mode = new ModeSetting("Визуализация цели", "Созвездие", "Стиль Target ESP",
+            "Созвездие", "Души", "Кубы");
 
     private final SliderSetting radius = new SliderSetting("Радиус", 0.85, 0.4, 2.5, 0.05, "Радиус охвата цели");
-    private final SliderSetting speed = new SliderSetting("Скорость", 3.0, 0.5, 8.0, 0.1, "Скорость движения частиц");
-    private final SliderSetting particleSize = new SliderSetting("Размер частиц", 1.0, 0.3, 2.5, 0.05, "Масштаб частиц");
-    private final SliderSetting tailLength = new SliderSetting("Длина хвоста", 16.0, 4.0, 30.0, 1.0, "Длина следа частиц");
+    private final SliderSetting speed = new SliderSetting("Скорость", 2.5, 0.5, 8.0, 0.1, "Скорость движения точек и нитей");
+    private final SliderSetting particleSize = new SliderSetting("Размер частиц", 1.0, 0.3, 2.5, 0.05, "Масштаб точек созвездия");
+    private final SliderSetting lineThickness = new SliderSetting("Толщина нитей", 1.0, 0.5, 2.5, 0.1, "Толщина линий паутинки созвездия");
+    private final SliderSetting tailLength = new SliderSetting("Длина хвоста", 16.0, 4.0, 30.0, 1.0, "Длина следа частиц (режим Души)");
     private final BooleanSetting coreGlow = new BooleanSetting("Ядро свечения", true, "Яркое белое ядро частиц");
-    private final BooleanSetting hurtColor = new BooleanSetting("Окрас при уроне", true, "Окрашивание в красный цвет при ударе цели");
+    private final BooleanSetting hurtColor = new BooleanSetting("Окрас при уроне", true, "Окрашивание в красный цвет и натяжение нитей при ударе");
     private final SliderSetting maxDistance = new SliderSetting("Дистанция наводки", 30.0, 5.0, 64.0, 1.0, "Максимальная дистанция захвата цели");
     private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", true, "Захватывать только игроков");
 
@@ -50,9 +52,9 @@ public class TargetESP extends Module {
     private float animProgress = 0.0f;
 
     public TargetESP() {
-        super("Target ESP", "Астральные души и кубы вокруг захваченной цели", Category.ESP);
+        super("Target ESP", "Созвездие нейросети и астральные проекции вокруг цели", Category.ESP);
         instance = this;
-        addSettings(mode, radius, speed, particleSize, tailLength, coreGlow, hurtColor, maxDistance, onlyPlayers);
+        addSettings(mode, radius, speed, particleSize, lineThickness, tailLength, coreGlow, hurtColor, maxDistance, onlyPlayers);
     }
 
     public static TargetESP getInstance() {
@@ -172,8 +174,9 @@ public class TargetESP extends Module {
         int themeColor = Theme.getAccent();
         int hurtCol = 0xFFFF2525;
         float hurtTimer = Math.max(0.0F, this.target.hurtTime - delta);
-        float hurtFactor = this.hurtColor.get() ? (float) Math.sin(hurtTimer * (Math.PI / 10.0)) * 0.85F : 0.0f;
-        int activeColor = hurtFactor > 0.01f ? ColorUtil.interpolate(themeColor, hurtCol, MathHelper.clamp(hurtFactor, 0.0f, 1.0f)) : themeColor;
+        float hurtFactor = this.hurtColor.get() ? (float) Math.sin(hurtTimer * (Math.PI / 10.0)) * 0.95F : 0.0f;
+        hurtFactor = MathHelper.clamp(hurtFactor, 0.0f, 1.0f);
+        int activeColor = hurtFactor > 0.01f ? ColorUtil.interpolate(themeColor, hurtCol, hurtFactor) : themeColor;
 
         float baseRadius = (float) this.radius.get();
         float spd = (float) this.speed.get();
@@ -183,10 +186,163 @@ public class TargetESP extends Module {
         float timeSec = (float) (now % 10000000L) / 1000.0f;
 
         String curMode = this.mode.get();
-        if ("Кубы".equals(curMode)) {
+        if ("Созвездие".equals(curMode)) {
+            renderConstellation(context, center.x, center.y, center.z, entityHeight, timeSec, baseRadius, spd, sizeMult, activeColor, hurtFactor, delta);
+        } else if ("Кубы".equals(curMode)) {
             renderCubes(context, center.x, centerY, center.z, entityHeight, timeSec, baseRadius, spd, sizeMult, activeColor);
         } else {
             renderSouls(context, center.x, centerY, center.z, entityHeight, timeSec, baseRadius, spd, sizeMult, steps, activeColor);
+        }
+    }
+
+    private void renderConstellation(DrawContext context, double posX, double posY, double posZ,
+                                     double height, float timeSec, float baseR, float spd,
+                                     float sizeMult, int activeColor, float hurtFactor, float delta) {
+        float bodyYaw = MathHelper.lerp(delta, this.target.lastBodyYaw, this.target.bodyYaw);
+        float yawRad = (float) Math.toRadians(-bodyYaw);
+        float cosYaw = (float) Math.cos(yawRad);
+        float sinYaw = (float) Math.sin(yawRad);
+
+        float tensionMult = 1.0f - 0.22f * hurtFactor;
+
+        int nodeCount = 10;
+        Vec3d[] nodePos = new Vec3d[nodeCount];
+
+        for (int i = 0; i < nodeCount; i++) {
+            float phase = i * 1.6180339f;
+            float t = timeSec * 0.95f * spd + phase;
+
+            float lx, ly, lz;
+            switch (i) {
+                case 0 -> {
+                    float headY = (float) (height * 0.88);
+                    float orbitR = (0.24f + 0.04f * (float) Math.sin(t * 1.7f)) * baseR * tensionMult;
+                    float angle = t * 1.4f;
+                    lx = (float) Math.cos(angle) * orbitR;
+                    lz = (float) Math.sin(angle) * orbitR;
+                    ly = headY + (float) Math.sin(angle * 2.2f) * 0.07f;
+                }
+                case 1 -> {
+                    float shY = (float) (height * 0.72);
+                    lx = (-0.28f * baseR + (float) Math.sin(t * 2.1f) * 0.05f) * tensionMult;
+                    lz = (float) Math.cos(t * 1.6f) * 0.09f * baseR;
+                    ly = shY + (float) Math.sin(t * 1.3f) * 0.04f;
+                }
+                case 2 -> {
+                    float shY = (float) (height * 0.72);
+                    lx = (0.28f * baseR + (float) Math.cos(t * 2.0f) * 0.05f) * tensionMult;
+                    lz = (float) Math.sin(t * 1.8f) * 0.09f * baseR;
+                    ly = shY + (float) Math.cos(t * 1.4f) * 0.04f;
+                }
+                case 3 -> {
+                    float chY = (float) (height * 0.60);
+                    lx = (float) Math.sin(t * 2.3f) * 0.14f * baseR * tensionMult;
+                    lz = (0.16f + 0.03f * (float) Math.sin(t * 2.8f)) * baseR * tensionMult;
+                    ly = chY + (float) Math.cos(t * 1.5f) * 0.06f;
+                }
+                case 4 -> {
+                    float chY = (float) (height * 0.60);
+                    lx = (float) Math.cos(t * 2.2f) * 0.14f * baseR * tensionMult;
+                    lz = (-0.16f - 0.03f * (float) Math.cos(t * 2.6f)) * baseR * tensionMult;
+                    ly = chY + (float) Math.sin(t * 1.6f) * 0.06f;
+                }
+                case 5 -> {
+                    float wY = (float) (height * 0.42);
+                    lx = (-0.20f * baseR + (float) Math.cos(t * 1.8f) * 0.04f) * tensionMult;
+                    lz = (float) Math.sin(t * 2.2f) * 0.11f * baseR;
+                    ly = wY + (float) Math.sin(t * 1.2f) * 0.05f;
+                }
+                case 6 -> {
+                    float wY = (float) (height * 0.42);
+                    lx = (0.20f * baseR + (float) Math.sin(t * 1.7f) * 0.04f) * tensionMult;
+                    lz = (float) Math.cos(t * 2.1f) * 0.11f * baseR;
+                    ly = wY + (float) Math.cos(t * 1.1f) * 0.05f;
+                }
+                case 7 -> {
+                    float kY = (float) (height * 0.22);
+                    lx = (-0.14f * baseR + (float) Math.sin(t * 1.9f) * 0.03f) * tensionMult;
+                    lz = (0.07f + 0.05f * (float) Math.sin(t * 1.5f)) * baseR * tensionMult;
+                    ly = kY + (float) Math.cos(t * 1.4f) * 0.05f;
+                }
+                case 8 -> {
+                    float kY = (float) (height * 0.22);
+                    lx = (0.14f * baseR + (float) Math.cos(t * 1.8f) * 0.03f) * tensionMult;
+                    lz = (0.07f + 0.05f * (float) Math.cos(t * 1.6f)) * baseR * tensionMult;
+                    ly = kY + (float) Math.sin(t * 1.3f) * 0.05f;
+                }
+                default -> {
+                    float satAngle = t * 2.4f;
+                    float satR = 0.36f * baseR * tensionMult;
+                    lx = (float) Math.cos(satAngle) * satR;
+                    lz = (float) Math.sin(satAngle) * satR;
+                    ly = (float) (height * 0.52 + Math.sin(satAngle * 2.0f) * 0.18);
+                }
+            }
+
+            if (hurtFactor > 0.01f) {
+                float vib = (float) Math.sin(timeSec * 70.0f + i * 3.14f) * hurtFactor * 0.015f;
+                lx += vib;
+                ly += vib * 0.6f;
+                lz += vib;
+            }
+
+            double wx = posX + (lx * cosYaw - lz * sinYaw);
+            double wy = posY + ly;
+            double wz = posZ + (lx * sinYaw + lz * cosYaw);
+
+            nodePos[i] = new Vec3d(wx, wy, wz);
+        }
+
+        Vector2f[] screenPos = new Vector2f[nodeCount];
+        boolean[] onScreen = new boolean[nodeCount];
+        for (int i = 0; i < nodeCount; i++) {
+            screenPos[i] = ProjectUtil.toScreen(nodePos[i].x, nodePos[i].y, nodePos[i].z);
+            onScreen[i] = ProjectUtil.isOnScreen(screenPos[i]);
+        }
+
+        double maxConnectDist = 0.72 * baseR;
+        float lineThick = (float) this.lineThickness.get();
+
+        for (int i = 0; i < nodeCount; i++) {
+            if (!onScreen[i]) continue;
+            for (int j = i + 1; j < nodeCount; j++) {
+                if (!onScreen[j]) continue;
+
+                double d3d = nodePos[i].distanceTo(nodePos[j]);
+                if (d3d >= maxConnectDist) continue;
+
+                float ratio = 1.0f - (float) (d3d / maxConnectDist);
+                float factor = ratio * ratio * (3.0f - 2.0f * ratio);
+
+                float lineAlpha = this.animProgress * factor * (0.50f + 0.45f * hurtFactor);
+                int lineCol = ColorUtil.withAlphaFloat(activeColor, lineAlpha);
+
+                if (lineThick > 0.6f) {
+                    int glowCol = ColorUtil.withAlphaFloat(activeColor, lineAlpha * 0.32f);
+                    Render2D.drawLineRotated(context, screenPos[i].x, screenPos[i].y, screenPos[j].x, screenPos[j].y, glowCol, lineThick * 2.2f);
+                }
+
+                Render2D.drawLineRotated(context, screenPos[i].x, screenPos[i].y, screenPos[j].x, screenPos[j].y, lineCol, lineThick);
+            }
+        }
+
+        for (int i = 0; i < nodeCount; i++) {
+            if (!onScreen[i]) continue;
+
+            float pulse = 1.0f + 0.20f * (float) Math.sin(timeSec * 4.0f + i * 1.5f);
+            float baseDotSize = 0.055f * sizeMult * pulse;
+            float alpha = this.animProgress * (0.85f + 0.15f * hurtFactor);
+
+            drawParticle(context, BLOOM_TEXTURE, nodePos[i].x, nodePos[i].y, nodePos[i].z,
+                    baseDotSize * 2.4f, ColorUtil.withAlphaFloat(activeColor, alpha * 0.35f));
+
+            drawParticle(context, GLOWING_TEXTURE, nodePos[i].x, nodePos[i].y, nodePos[i].z,
+                    baseDotSize, ColorUtil.withAlphaFloat(activeColor, alpha * 0.95f));
+
+            if (this.coreGlow.get()) {
+                drawParticle(context, GLOWING_TEXTURE, nodePos[i].x, nodePos[i].y, nodePos[i].z,
+                        baseDotSize * 0.40f, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha * 0.98f));
+            }
         }
     }
 
@@ -219,19 +375,16 @@ public class TargetESP extends Module {
                 }
 
                 if (i == 0) {
-
                     float headSz = 0.35f * sizeMult;
                     float alpha = this.animProgress * 0.95f;
 
                     drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, headSz * 1.9f, ColorUtil.withAlphaFloat(color, alpha * 0.70f));
-
                     drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, headSz, ColorUtil.withAlphaFloat(color, alpha * 0.95f));
 
                     if (this.coreGlow.get()) {
                         drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, headSz * 0.45f, ColorUtil.withAlphaFloat(0xFFFFFFFF, this.animProgress * 0.98f));
                     }
                 } else {
-
                     float tailSz = 0.22f * sizeMult * (0.25f + 0.75f * trailFactor);
                     float alpha = this.animProgress * (0.08f + 0.65f * trailFactor * trailFactor);
 
@@ -249,7 +402,7 @@ public class TargetESP extends Module {
     }
 
     private void renderCubes(DrawContext context, double cx, double cy, double cz, double height,
-                            float timeSec, float baseR, float spd, float sizeMult, int color) {
+                             float timeSec, float baseR, float spd, float sizeMult, int color) {
         int cubeCount = 8;
         float hAmp = (float) (height * 0.45);
 

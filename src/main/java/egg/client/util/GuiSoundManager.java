@@ -1,5 +1,6 @@
 package egg.client.util;
 
+import egg.client.module.misc.ClientSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,13 +73,33 @@ public final class GuiSoundManager {
         }
     }
 
+    private static void applyVolume(Clip clip, float volume) {
+        if (clip == null) return;
+        try {
+            if (clip.isControlSupported(FloatControl.Type.MASTER_GAIN)) {
+                FloatControl gainControl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
+                if (volume <= 0.001f) {
+                    gainControl.setValue(gainControl.getMinimum());
+                } else {
+                    float clamped = Math.max(0.0001f, Math.min(1.0f, volume));
+                    float dB = (float) (Math.log10(clamped) * 20.0);
+                    dB = Math.max(gainControl.getMinimum(), Math.min(gainControl.getMaximum(), dB));
+                    gainControl.setValue(dB);
+                }
+            }
+        } catch (Throwable ignored) {}
+    }
+
     public static void playScreenOpen() {
+        float vol = ClientSettings.getOpenSoundVolume();
+        if (vol <= 0.001f) return;
         ASYNC.submit(() -> {
             try {
                 if (openClip == null) {
                     openClip = loadClip(OPEN_PATH, "/assets/egg/sounds/gui/screen_open.wav");
                 }
                 if (openClip != null) {
+                    applyVolume(openClip, vol);
                     if (openClip.isRunning()) openClip.stop();
                     openClip.setFramePosition(0);
                     openClip.start();
@@ -88,12 +109,15 @@ public final class GuiSoundManager {
     }
 
     public static void playScreenClose() {
+        float vol = ClientSettings.getOpenSoundVolume();
+        if (vol <= 0.001f) return;
         ASYNC.submit(() -> {
             try {
                 if (closeClip == null) {
                     closeClip = loadClip(CLOSE_PATH, "/assets/egg/sounds/gui/screen_close.wav");
                 }
                 if (closeClip != null) {
+                    applyVolume(closeClip, vol);
                     if (closeClip.isRunning()) closeClip.stop();
                     closeClip.setFramePosition(0);
                     closeClip.start();
@@ -103,6 +127,8 @@ public final class GuiSoundManager {
     }
 
     public static void playSlider() {
+        float vol = ClientSettings.getOpenSoundVolume();
+        if (vol <= 0.001f) return;
         long now = System.currentTimeMillis();
         if (now - lastSliderPlayTime < 38L) return;
         lastSliderPlayTime = now;
@@ -117,6 +143,7 @@ public final class GuiSoundManager {
                     sliderClips[sliderClipIndex] = clip;
                 }
                 if (clip != null) {
+                    applyVolume(clip, vol);
                     if (clip.isRunning()) clip.stop();
                     clip.setFramePosition(0);
                     clip.start();

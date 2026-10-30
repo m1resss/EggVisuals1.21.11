@@ -16,12 +16,13 @@ public class ClientSettings extends Module {
     private final ModeSetting lensCenterMode = new ModeSetting("Центр линзы", "Центр окна", "Точка раскрытия жидкой линзы", "Центр окна", "Курсор");
     private final BooleanSetting smoothAnimations = new BooleanSetting("Smooth Animations", true, "Плавные анимации интерфейса");
     private final SliderSetting animSpeed = new SliderSetting("Anim Speed", 1.0, 0.5, 2.5, 0.1, "Множитель скорости анимаций");
+    private final SliderSetting openSoundVolume = new SliderSetting("Громкость звука меню", 1.0, 0.0, 1.0, 0.05, "Громкость звука открытия и закрытия меню ClickGUI (0 = без звука)");
     private final BooleanSetting guiBlur = new BooleanSetting("Background Blur", true, "Размытие заднего плана ванильным шейдером");
     private final BooleanSetting guiShadow = new BooleanSetting("Window Shadow", true, "Мягкая тень вокруг окна GUI");
 
     public ClientSettings() {
         super("ClientSettings", "Основные настройки интерфейса и эффектов клиента", Category.SETTINGS);
-        addSettings(accentColor, openAnimMode, lensCenterMode, smoothAnimations, animSpeed, guiBlur, guiShadow);
+        addSettings(accentColor, openAnimMode, lensCenterMode, smoothAnimations, animSpeed, openSoundVolume, guiBlur, guiShadow);
     }
 
     public ColorSetting getAccentColorSetting() {
@@ -62,6 +63,12 @@ public class ClientSettings extends Module {
         if (EggClient.getInstance() == null || EggClient.getInstance().getModuleManager() == null) return 1.0f;
         ClientSettings s = EggClient.getInstance().getModuleManager().getModule(ClientSettings.class);
         return s == null ? 1.0f : (float) s.animSpeed.get();
+    }
+
+    public static float getOpenSoundVolume() {
+        if (EggClient.getInstance() == null || EggClient.getInstance().getModuleManager() == null) return 1.0f;
+        ClientSettings s = EggClient.getInstance().getModuleManager().getModule(ClientSettings.class);
+        return s == null ? 1.0f : (float) s.openSoundVolume.get();
     }
 
     public static boolean isBlurEnabled() {

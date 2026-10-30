@@ -215,19 +215,27 @@ public final class Render2D {
     }
 
     public static void drawLine(DrawContext context, float x1, float y1, float x2, float y2, int color, float thickness) {
+        drawLineRotated(context, x1, y1, x2, y2, color, thickness);
+    }
+
+    public static void drawLineRotated(DrawContext context, float x1, float y1, float x2, float y2, int color, float thickness) {
         float dx = x2 - x1;
         float dy = y2 - y1;
         float dist = (float) Math.hypot(dx, dy);
-        if (dist <= 0.001f) return;
-        float halfThick = thickness * 0.5f;
-        int steps = Math.max(1, Math.round(dist * 1.5f));
-        float stepX = dx / steps;
-        float stepY = dy / steps;
-        for (int i = 0; i <= steps; i++) {
-            float cx = x1 + stepX * i;
-            float cy = y1 + stepY * i;
-            drawRect(context, cx - halfThick, cy - halfThick, thickness, thickness, color);
+        if (dist <= 0.5f) return;
+
+        float angle = (float) Math.atan2(dy, dx);
+        context.getMatrices().pushMatrix();
+        context.getMatrices().translate(x1, y1);
+        context.getMatrices().rotate(angle);
+        int d = Math.max(1, Math.round(dist));
+        if (thickness <= 1.2f) {
+            context.fill(0, 0, d, 1, color);
+        } else {
+            int half = Math.max(1, Math.round(thickness * 0.5f));
+            context.fill(0, -half, d, half, color);
         }
+        context.getMatrices().popMatrix();
     }
 
     public static void drawText(DrawContext context, String text, float x, float y, int color) {
