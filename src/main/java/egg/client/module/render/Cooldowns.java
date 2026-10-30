@@ -6,6 +6,7 @@ import egg.client.mixin.ItemCooldownManagerAccessor;
 import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
+import egg.client.module.setting.ColorSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Fonts;
@@ -35,6 +36,7 @@ public class Cooldowns extends Module {
 
     private final SliderSetting posX = new SliderSetting("X", 0.5, 0.0, 1.0, 0.001, "Позиция X");
     private final SliderSetting posY = new SliderSetting("Y", 0.76, 0.0, 1.0, 0.001, "Позиция Y");
+    private final ColorSetting bgColor = new ColorSetting("Цвет фона", (int) 0xC4151515L, "Цвет фона капсулы кулдаунов");
     private final SliderSetting scale = new SliderSetting("Размер", 1.0, 0.5, 1.5, 0.05, "Масштаб худа");
 
     private boolean dragging = false;
@@ -73,7 +75,7 @@ public class Cooldowns extends Module {
     public Cooldowns() {
         super("Cooldowns", "Индикатор перезарядки предметов и способностей в виде горизонтальной капсулы", Category.ESP);
         instance = this;
-        addSettings(scale);
+        addSettings(bgColor, scale);
         setEnabled(true);
     }
 
@@ -182,8 +184,8 @@ public class Cooldowns extends Module {
         // 1. Soft atmospheric dark drop shadow
         Draw2DProcessor.INSTANCE.drawGlow(null, px, py, pillW, pillH, pillRadius, ColorUtil.withAlphaFloat(ColorUtil.rgba(0, 0, 0, 110), combatAlpha), 8.0f * s);
 
-        // 2. Dark matte pill background #111111 / rgba(18, 18, 18, 245)
-        Draw2DProcessor.INSTANCE.drawRect(null, px, py, pillW, pillH, pillRadius, ColorUtil.withAlphaFloat(ColorUtil.rgba(18, 18, 18, 245), combatAlpha));
+        // 2. Pill background (customizable, default #C4151515)
+        Draw2DProcessor.INSTANCE.drawRect(null, px, py, pillW, pillH, pillRadius, ColorUtil.withAlphaFloat(bgColor.get(), combatAlpha));
 
         // 3. Crisp subtle border outline
         Draw2DProcessor.INSTANCE.drawOutline(null, px, py, pillW, pillH, pillRadius, 0.8f, ColorUtil.withAlphaFloat(ColorUtil.rgba(255, 255, 255, 20), combatAlpha));
@@ -250,15 +252,50 @@ public class Cooldowns extends Module {
         if (!isEnabled()) return;
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc == null || mc.getWindow() == null) return;
+        int screenW = mc.getWindow().getScaledWidth();
+        int screenH = mc.getWindow().getScaledHeight();
+
+        if (dragging) {
+            onChatMouseDragged(mouseX, mouseY, 0);
+        }
 
         // Render cooldowns widget in chat screen for drag & drop
         render(context, RenderTickCounter.ONE);
 
-        // Visual drag border when in chat screen
-        boolean hovered = mouseX >= lastX && mouseX <= lastX + lastW && mouseY >= lastY && mouseY <= lastY + lastH;
-        if (hovered || dragging) {
-            int borderCol = dragging ? Theme.getAccent() : ColorUtil.rgba(255, 255, 255, 80);
-            Draw2DProcessor.INSTANCE.drawOutline(null, lastX - 2.0f, lastY - 2.0f, lastW + 4.0f, lastH + 4.0f, (lastH + 4.0f) / 2.0f, 1.0f, borderCol);
+        if (dragging) {
+            int gridStep = 25;
+            int gridColor = ColorUtil.rgba(255, 255, 255, 14);
+            for (int gx = gridStep; gx < screenW; gx += gridStep) {
+                Draw2DProcessor.INSTANCE.drawRect(null, gx, 0, 1.0f, screenH, 0.0f, gridColor);
+            }
+            for (int gy = gridStep; gy < screenH; gy += gridStep) {
+                Draw2DProcessor.INSTANCE.drawRect(null, 0, gy, screenW, 1.0f, 0.0f, gridColor);
+            }
+
+            float midX = screenW / 2.0f;
+            float midY = screenH / 2.0f;
+            int centerColor = ColorUtil.rgba(168, 85, 247, 60);
+            Draw2DProcessor.INSTANCE.drawRect(null, midX, 0, 1.0f, screenH, 0.0f, centerColor);
+            Draw2DProcessor.INSTANCE.drawRect(null, 0, midY, screenW, 1.0f, 0.0f, centerColor);
+
+            String label = "HUD - Кулдауны";
+            float lw = Fonts.b.a(label, 11.5f);
+            float lx = lastX + (lastW - lw) / 2.0f;
+            float ly = lastY + lastH + 6.0f;
+            Fonts.b.a(null, label, lx, ly, 11.5f, ColorUtil.rgba(255, 255, 255, 160));
+        }
+
+        boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
+        if (inside || dragging) {
+            float rad = (lastH + 4.0f) / 2.0f;
+            Draw2DProcessor.INSTANCE.drawOutline(null, lastX - 2.0f, lastY - 2.0f, lastW + 4.0f, lastH + 4.0f, rad, 1.0f, Theme.getAccent());
+
+            String scaleBadge = "КД: " + Math.round(scale.getValueFloat() * 100.0f) + "%";
+            float bw = Fonts.b.a(scaleBadge, 9.5f) + 8.0f;
+            float bx = lastX + (lastW - bw) / 2.0f;
+            float by = lastY + lastH + 5.0f;
+            Draw2DProcessor.INSTANCE.drawRect(null, bx, by, bw, 13.0f, 3.0f, ColorUtil.rgba(14, 15, 20, 220));
+            Fonts.b.a(null, scaleBadge, bx + 4.0f, by + 2.5f, 9.5f, Theme.getAccentHover());
             DrawBatcher.flushPending();
         }
     }
@@ -293,6 +330,24 @@ public class Cooldowns extends Module {
 
             float newX = (float) mouseX - dragOffsetX;
             float newY = (float) mouseY - dragOffsetY;
+
+            float midX = (screenW - lastW) / 2.0f;
+            if (Math.abs(newX - midX) < 8.0f) {
+                newX = midX;
+            }
+            float midY = (screenH - lastH) / 2.0f;
+            if (Math.abs(newY - midY) < 8.0f) {
+                newY = midY;
+            }
+
+            float nearestGridX = Math.round(newX / 25.0f) * 25.0f;
+            if (Math.abs(newX - nearestGridX) < 5.0f) {
+                newX = nearestGridX;
+            }
+            float nearestGridY = Math.round(newY / 25.0f) * 25.0f;
+            if (Math.abs(newY - nearestGridY) < 5.0f) {
+                newY = nearestGridY;
+            }
 
             float maxAvailX = Math.max(1.0f, screenW - lastW);
             float maxAvailY = Math.max(1.0f, screenH - lastH);
