@@ -825,25 +825,25 @@ public class WorldTweaks extends Module {
             } else if (colTopY < baseTopY) {
                 hasCliffDown = true;
             } else {
-                sum += 0.08f + getSnowNoise(colX, colZ) * 0.04f;
+                sum += 0.05f + getSnowNoise(colX, colZ) * 0.02f;
                 count++;
             }
         }
 
         if (hasCliffUp) {
-            return 0.14f;
+            return 0.07f;
         }
         if (hasCliffDown && count == 1) {
-            return 0.03f;
+            return 0.02f;
         }
 
-        return count > 0 ? (sum / count) : 0.08f;
+        return count > 0 ? (sum / count) : 0.05f;
     }
 
-    private boolean isDropOff(MinecraftClient mc, int x, int z, int baseY) {
+    private boolean isDifferentElevation(MinecraftClient mc, int x, int z, int baseY) {
         if (!mc.world.isChunkLoaded(x >> 4, z >> 4)) return false;
         int nTopY = findGroundY(mc, x, z, baseY);
-        return nTopY != Integer.MIN_VALUE && nTopY < baseY;
+        return nTopY != baseY;
     }
 
     private void rebuildSnowMesh(MinecraftClient mc, int camBx, int camBy, int camBz) {
@@ -868,27 +868,26 @@ public class WorldTweaks extends Module {
                 BlockPos pos = new BlockPos(bx, topY, bz);
                 BlockPos posAbove = pos.up();
 
-                // Real world lightmap for authentic shadows and daytime lighting
                 int light = WorldRenderer.getLightmapCoordinates(mc.world, posAbove);
 
-                // Thin, pillowed snow cap resting on top face of ground
-                float baseThickness = 0.07f + getSnowNoise(bx, bz) * 0.03f;
-                float baseY = topY + 1.002f;
+                // Snug grounded snow cap sitting directly on block top
+                float baseThickness = 0.045f + getSnowNoise(bx, bz) * 0.020f;
+                float baseY = topY + 1.0015f;
 
                 boolean isLod0 = distSq <= lod0RadSq;
 
                 if (isLod0) {
-                    float cy = baseY + baseThickness + 0.04f;
+                    float cy = baseY + baseThickness + 0.025f;
 
                     float c00 = getSnowCornerHeight(mc, bx, bz, topY, 0, 0);
                     float c10 = getSnowCornerHeight(mc, bx, bz, topY, 1, 0);
                     float c11 = getSnowCornerHeight(mc, bx, bz, topY, 1, 1);
                     float c01 = getSnowCornerHeight(mc, bx, bz, topY, 0, 1);
 
-                    float mNy = baseY + (c00 + c10) * 0.5f + 0.02f;
-                    float mSy = baseY + (c01 + c11) * 0.5f + 0.02f;
-                    float mWy = baseY + (c00 + c01) * 0.5f + 0.02f;
-                    float mEy = baseY + (c10 + c11) * 0.5f + 0.02f;
+                    float mNy = baseY + (c00 + c10) * 0.5f + 0.015f;
+                    float mSy = baseY + (c01 + c11) * 0.5f + 0.015f;
+                    float mWy = baseY + (c00 + c01) * 0.5f + 0.015f;
+                    float mEy = baseY + (c10 + c11) * 0.5f + 0.015f;
 
                     SnowVertex pCenter = new SnowVertex(bx + 0.5f, cy, bz + 0.5f, 0.5f, 0.5f, 255, 255, 255, 255, light);
                     SnowVertex p00     = new SnowVertex(bx, baseY + c00, bz, 0.0f, 0.0f, 240, 246, 252, 255, light);
@@ -901,46 +900,46 @@ public class WorldTweaks extends Module {
                     SnowVertex mW = new SnowVertex((float) bx, mWy, bz + 0.5f, 0.0f, 0.5f, 248, 252, 255, 255, light);
                     SnowVertex mE = new SnowVertex(bx + 1.0f, mEy, bz + 0.5f, 1.0f, 0.5f, 248, 252, 255, 255, light);
 
-                    // 4 quads forming rounded mound
+                    // 4 quads forming smooth pillow mound
                     this.cachedSnowMesh.add(new SnowQuad(p00, mN, pCenter, mW));
                     this.cachedSnowMesh.add(new SnowQuad(mN, p10, mE, pCenter));
                     this.cachedSnowMesh.add(new SnowQuad(pCenter, mE, p11, mS));
                     this.cachedSnowMesh.add(new SnowQuad(mW, pCenter, mS, p01));
 
-                    // Small beveled skirt covering ONLY the thickness of the snow slab itself (down to baseY)
-                    int sr = 210, sg = 222, sb = 236;
-                    float rimY = baseY;
+                    // Seal any edge where neighbor elevation is different (drops down to baseY, sealing the snow block completely)
+                    int sr = 215, sg = 225, sb = 238;
+                    float sealY = baseY;
 
-                    if (isDropOff(mc, bx, bz - 1, topY)) {
-                        SnowVertex b0 = new SnowVertex(bx, rimY, bz, 0.0f, 0.08f, sr, sg, sb, 255, light);
-                        SnowVertex b1 = new SnowVertex(bx + 0.5f, rimY, bz, 0.5f, 0.08f, sr, sg, sb, 255, light);
-                        SnowVertex b2 = new SnowVertex(bx + 1.0f, rimY, bz, 1.0f, 0.08f, sr, sg, sb, 255, light);
+                    if (isDifferentElevation(mc, bx, bz - 1, topY)) {
+                        SnowVertex b0 = new SnowVertex(bx, sealY, bz, 0.0f, 0.05f, sr, sg, sb, 255, light);
+                        SnowVertex b1 = new SnowVertex(bx + 0.5f, sealY, bz, 0.5f, 0.05f, sr, sg, sb, 255, light);
+                        SnowVertex b2 = new SnowVertex(bx + 1.0f, sealY, bz, 1.0f, 0.05f, sr, sg, sb, 255, light);
                         this.cachedSnowMesh.add(new SnowQuad(p00, mN, b1, b0));
                         this.cachedSnowMesh.add(new SnowQuad(mN, p10, b2, b1));
                     }
-                    if (isDropOff(mc, bx, bz + 1, topY)) {
-                        SnowVertex b0 = new SnowVertex(bx, rimY, bz + 1.0f, 0.0f, 0.08f, sr, sg, sb, 255, light);
-                        SnowVertex b1 = new SnowVertex(bx + 0.5f, rimY, bz + 1.0f, 0.5f, 0.08f, sr, sg, sb, 255, light);
-                        SnowVertex b2 = new SnowVertex(bx + 1.0f, rimY, bz + 1.0f, 1.0f, 0.08f, sr, sg, sb, 255, light);
+                    if (isDifferentElevation(mc, bx, bz + 1, topY)) {
+                        SnowVertex b0 = new SnowVertex(bx, sealY, bz + 1.0f, 0.0f, 0.05f, sr, sg, sb, 255, light);
+                        SnowVertex b1 = new SnowVertex(bx + 0.5f, sealY, bz + 1.0f, 0.5f, 0.05f, sr, sg, sb, 255, light);
+                        SnowVertex b2 = new SnowVertex(bx + 1.0f, sealY, bz + 1.0f, 1.0f, 0.05f, sr, sg, sb, 255, light);
                         this.cachedSnowMesh.add(new SnowQuad(p01, b0, b1, mS));
                         this.cachedSnowMesh.add(new SnowQuad(mS, b1, b2, p11));
                     }
-                    if (isDropOff(mc, bx - 1, bz, topY)) {
-                        SnowVertex b0 = new SnowVertex(bx, rimY, bz, 0.0f, 0.08f, sr, sg, sb, 255, light);
-                        SnowVertex b1 = new SnowVertex(bx, rimY, bz + 0.5f, 0.5f, 0.08f, sr, sg, sb, 255, light);
-                        SnowVertex b2 = new SnowVertex(bx, rimY, bz + 1.0f, 1.0f, 0.08f, sr, sg, sb, 255, light);
+                    if (isDifferentElevation(mc, bx - 1, bz, topY)) {
+                        SnowVertex b0 = new SnowVertex(bx, sealY, bz, 0.0f, 0.05f, sr, sg, sb, 255, light);
+                        SnowVertex b1 = new SnowVertex(bx, sealY, bz + 0.5f, 0.5f, 0.05f, sr, sg, sb, 255, light);
+                        SnowVertex b2 = new SnowVertex(bx, sealY, bz + 1.0f, 1.0f, 0.05f, sr, sg, sb, 255, light);
                         this.cachedSnowMesh.add(new SnowQuad(p00, b0, b1, mW));
                         this.cachedSnowMesh.add(new SnowQuad(mW, b1, b2, p01));
                     }
-                    if (isDropOff(mc, bx + 1, bz, topY)) {
-                        SnowVertex b0 = new SnowVertex(bx + 1.0f, rimY, bz, 0.0f, 0.08f, sr, sg, sb, 255, light);
-                        SnowVertex b1 = new SnowVertex(bx + 1.0f, rimY, bz + 0.5f, 0.5f, 0.08f, sr, sg, sb, 255, light);
-                        SnowVertex b2 = new SnowVertex(bx + 1.0f, rimY, bz + 1.0f, 1.0f, 0.08f, sr, sg, sb, 255, light);
+                    if (isDifferentElevation(mc, bx + 1, bz, topY)) {
+                        SnowVertex b0 = new SnowVertex(bx + 1.0f, sealY, bz, 0.0f, 0.05f, sr, sg, sb, 255, light);
+                        SnowVertex b1 = new SnowVertex(bx + 1.0f, sealY, bz + 0.5f, 0.5f, 0.05f, sr, sg, sb, 255, light);
+                        SnowVertex b2 = new SnowVertex(bx + 1.0f, sealY, bz + 1.0f, 1.0f, 0.05f, sr, sg, sb, 255, light);
                         this.cachedSnowMesh.add(new SnowQuad(p10, mE, b1, b0));
                         this.cachedSnowMesh.add(new SnowQuad(mE, p11, b2, b1));
                     }
                 } else {
-                    // LOD 1 (14 to 32 blocks): Flat snow top on block
+                    // LOD 1: Flat snow top on block
                     float flatY = baseY + baseThickness;
                     SnowVertex v0 = new SnowVertex(bx, flatY, bz, 0.0f, 0.0f, 245, 250, 255, 255, light);
                     SnowVertex v1 = new SnowVertex(bx + 1.0f, flatY, bz, 1.0f, 0.0f, 245, 250, 255, 255, light);

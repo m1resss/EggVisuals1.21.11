@@ -26,7 +26,7 @@ public class BlockColorsMixin {
                 if (customColor != null) {
                     cir.setReturnValue(customColor);
                 }
-            } else if (block == Blocks.GRASS_BLOCK || block == Blocks.SHORT_GRASS || block == Blocks.FERN) {
+            } else if (block == Blocks.GRASS_BLOCK || block == Blocks.SHORT_GRASS || block == Blocks.FERN || block == Blocks.TALL_GRASS || block == Blocks.LARGE_FERN) {
                 Integer customGrass = wt.getCustomGrassColor(pos);
                 if (customGrass != null) {
                     cir.setReturnValue(customGrass);
