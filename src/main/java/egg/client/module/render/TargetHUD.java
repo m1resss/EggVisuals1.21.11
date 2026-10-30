@@ -232,7 +232,10 @@ public class TargetHUD extends Module {
         float textX = x + 43.0f;
         float nameY = y + 5.5f;
         String name = target.getName().getString();
-        int maxNameLen = 13;
+        if (egg.client.module.misc.Globals.isEggUser(target)) {
+            name = "🥚 " + name;
+        }
+        int maxNameLen = 15;
         if (name.length() > maxNameLen) {
             name = name.substring(0, maxNameLen) + "...";
         }

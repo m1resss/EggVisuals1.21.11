@@ -41,11 +41,14 @@ public class CosmeticsRenderer extends FeatureRenderer<PlayerEntityRenderState, 
         // Render cosmetics for other Egg Visuals users when Globals and its "Косметика" checkbox are enabled
         Globals globals = ModuleManager.getInstance().getModule(Globals.class);
         if (globals != null && globals.isEnabled() && globals.isCosmeticsEnabled()) {
+            Map<String, String> playerCosmetics = null;
             if (entity instanceof PlayerEntity player && Globals.isEggUser(player)) {
-                Map<String, String> playerCosmetics = Globals.getPlayerCosmetics(player);
-                if (playerCosmetics != null && !playerCosmetics.isEmpty()) {
-                    CosmeticsManager.getInstance().renderAttachedForPlayer(matrices, queue, getContextModel(), light, playerCosmetics);
-                }
+                playerCosmetics = Globals.getPlayerCosmetics(player);
+            } else if (Globals.isEggUser(state)) {
+                playerCosmetics = Globals.getPlayerCosmetics(state);
+            }
+            if (playerCosmetics != null && !playerCosmetics.isEmpty()) {
+                CosmeticsManager.getInstance().renderAttachedForPlayer(matrices, queue, getContextModel(), light, playerCosmetics);
             }
         }
     }
