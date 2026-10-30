@@ -4,6 +4,7 @@ import egg.client.module.ModuleManager;
 import egg.client.module.render.ItemRadius;
 import egg.client.module.render.TotemPopConfetti;
 import egg.client.module.render.Trajectories;
+import egg.client.module.render.WorldTweaks;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.WorldRenderer;
@@ -46,6 +47,11 @@ public class WorldRendererMixin {
         egg.client.module.render.HitSparks hitSparks = ModuleManager.getInstance().getModule(egg.client.module.render.HitSparks.class);
         if (hitSparks != null && hitSparks.isEnabled()) {
             hitSparks.render(immediate, camPos);
+        }
+
+        WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
+        if (wt != null && wt.isEnabled()) {
+            wt.renderWorld3D(immediate, camPos);
         }
 
         immediate.draw();
