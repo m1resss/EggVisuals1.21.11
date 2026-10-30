@@ -33,6 +33,23 @@ public class CosmeticsRenderer extends FeatureRenderer<PlayerEntityRenderState, 
                 isLocal = true;
             }
         }
+        if (mc.player != null) {
+            if (state.id == mc.player.getId() || state.id <= 0) {
+                isLocal = true;
+            }
+            if (entity == mc.player) {
+                isLocal = true;
+            }
+            String myName = mc.player.getNameForScoreboard();
+            if (myName != null && !myName.isEmpty()) {
+                if (state.displayName != null && state.displayName.getString().contains(myName)) {
+                    isLocal = true;
+                }
+                if (state.playerName != null && state.playerName.getString().contains(myName)) {
+                    isLocal = true;
+                }
+            }
+        }
         if (isLocal || state.id <= 0) {
             CosmeticsManager.getInstance().renderAttached(matrices, queue, getContextModel(), light);
             return;

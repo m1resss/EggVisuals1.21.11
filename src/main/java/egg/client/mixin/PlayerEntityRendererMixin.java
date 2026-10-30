@@ -47,13 +47,14 @@ public abstract class PlayerEntityRendererMixin extends LivingEntityRenderer<Abs
         Globals globals = ModuleManager.getInstance().getModule(Globals.class);
         if (globals != null && globals.isEnabled() && Globals.isEggUser(state)) {
             Text eggPrefix = Text.literal("§f🥚 ");
-            if (state.playerName != null && !state.playerName.getString().contains("🥚")) {
-                state.playerName = Text.empty().append(eggPrefix).append(state.playerName);
-            } else if (state.playerName == null && state.displayName != null && !state.displayName.getString().contains("🥚")) {
-                state.playerName = Text.empty().append(eggPrefix).append(state.displayName);
-            }
-            if (state.displayName != null && !state.displayName.getString().contains("🥚")) {
-                state.displayName = Text.empty().append(eggPrefix).append(state.displayName);
+            if (state.displayName != null) {
+                if (!state.displayName.getString().contains("🥚")) {
+                    state.displayName = Text.empty().append(eggPrefix).append(state.displayName);
+                }
+            } else if (state.playerName != null) {
+                if (!state.playerName.getString().contains("🥚")) {
+                    state.playerName = Text.empty().append(eggPrefix).append(state.playerName);
+                }
             }
         }
     }
@@ -67,13 +68,14 @@ public abstract class PlayerEntityRendererMixin extends LivingEntityRenderer<Abs
         Globals globals = ModuleManager.getInstance().getModule(Globals.class);
         if (globals != null && globals.isEnabled() && ((entity instanceof Entity ent && Globals.isEggUser(ent)) || Globals.isEggUser(state))) {
             Text eggPrefix = Text.literal("§f🥚 ");
-            if (state.playerName != null && !state.playerName.getString().contains("🥚")) {
-                state.playerName = Text.empty().append(eggPrefix).append(state.playerName);
-            } else if (state.playerName == null && state.displayName != null && !state.displayName.getString().contains("🥚")) {
-                state.playerName = Text.empty().append(eggPrefix).append(state.displayName);
-            }
-            if (state.displayName != null && !state.displayName.getString().contains("🥚")) {
-                state.displayName = Text.empty().append(eggPrefix).append(state.displayName);
+            if (state.displayName != null) {
+                if (!state.displayName.getString().contains("🥚")) {
+                    state.displayName = Text.empty().append(eggPrefix).append(state.displayName);
+                }
+            } else if (state.playerName != null) {
+                if (!state.playerName.getString().contains("🥚")) {
+                    state.playerName = Text.empty().append(eggPrefix).append(state.playerName);
+                }
             }
         }
 
@@ -87,6 +89,15 @@ public abstract class PlayerEntityRendererMixin extends LivingEntityRenderer<Abs
         if (mc.player != null) {
             if (entity == mc.player || state.id == mc.player.getId() || state.id <= 0) {
                 isLocal = true;
+            }
+            String myName = mc.player.getNameForScoreboard();
+            if (myName != null && !myName.isEmpty()) {
+                if (state.displayName != null && state.displayName.getString().contains(myName)) {
+                    isLocal = true;
+                }
+                if (state.playerName != null && state.playerName.getString().contains(myName)) {
+                    isLocal = true;
+                }
             }
         }
         if (!isLocal) return;

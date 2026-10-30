@@ -18,9 +18,8 @@ public final class CosmeticsConfigManager {
 
     private static final CosmeticsConfigManager INSTANCE = new CosmeticsConfigManager();
 
-    private final File configFile;
     private final List<CosmeticPreset> presets = new ArrayList<>();
-    private String currentPresetName = "Основной";
+    private String currentPresetName = "По умолчанию";
 
     public static class CosmeticPreset {
         public String name;
@@ -49,18 +48,24 @@ public final class CosmeticsConfigManager {
     }
 
     private CosmeticsConfigManager() {
-        File runDir = MinecraftClient.getInstance() != null && MinecraftClient.getInstance().runDirectory != null
-                ? MinecraftClient.getInstance().runDirectory
-                : new File(".");
-        File configsDir = new File(runDir, "configs");
-        if (!configsDir.exists()) {
-            configsDir.mkdirs();
-        }
-        this.configFile = new File(configsDir, "cosmetics_presets.json");
     }
 
     public static CosmeticsConfigManager getInstance() {
         return INSTANCE;
+    }
+
+    public File getConfigFile() {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        File runDir = (mc != null && mc.runDirectory != null) ? mc.runDirectory : new File(".");
+        File configsDir = new File(runDir, "configs");
+        if (!configsDir.exists()) {
+            configsDir.mkdirs();
+        }
+        return new File(configsDir, "cosmetics_presets.json");
+    }
+
+    public File getGlobalFallbackFile() {
+        return new File(System.getProperty("user.home"), ".egg_cosmetics_presets.json");
     }
 
     public List<CosmeticPreset> getPresets() {
@@ -129,7 +134,7 @@ public final class CosmeticsConfigManager {
         if (preset == null) return;
         this.presets.remove(preset);
         if (this.currentPresetName.equalsIgnoreCase(preset.name)) {
-            this.currentPresetName = this.presets.isEmpty() ? "Основной" : this.presets.get(0).name;
+            this.currentPresetName = this.presets.isEmpty() ? "По умолчанию" : this.presets.get(0).name;
         }
         saveConfig();
     }
@@ -139,16 +144,22 @@ public final class CosmeticsConfigManager {
         if (mod != null) {
             mod.clearAll();
         }
-        this.currentPresetName = "Основной";
+        this.currentPresetName = "По умолчанию";
         saveConfig();
     }
 
     public void loadConfig() {
-        if (!this.configFile.exists()) {
-            return;
+        File fileToRead = getConfigFile();
+        if (!fileToRead.exists()) {
+            File fallback = getGlobalFallbackFile();
+            if (fallback.exists()) {
+                fileToRead = fallback;
+            } else {
+                return;
+            }
         }
 
-        try (FileReader reader = new FileReader(this.configFile, StandardCharsets.UTF_8)) {
+        try (FileReader reader = new FileReader(fileToRead, StandardCharsets.UTF_8)) {
             JsonObject json = JsonParser.parseReader(reader).getAsJsonObject();
 
             CosmeticsModule mod = CosmeticsModule.getInstance();
@@ -196,36 +207,45 @@ public final class CosmeticsConfigManager {
         CosmeticsModule mod = CosmeticsModule.getInstance();
         if (mod == null) return;
 
-        try (FileWriter writer = new FileWriter(this.configFile, StandardCharsets.UTF_8)) {
-            JsonObject json = new JsonObject();
-            json.addProperty("current_preset", this.currentPresetName);
+        JsonObject json = new JsonObject();
+        json.addProperty("current_preset", this.currentPresetName);
 
-            JsonObject eq = new JsonObject();
-            eq.addProperty("wings", mod.selected("wings"));
-            eq.addProperty("backpacks", mod.selected("backpacks"));
-            eq.addProperty("hats", mod.selected("hats"));
-            eq.addProperty("masks", mod.selected("masks"));
-            eq.addProperty("pets", mod.selected("pets"));
-            eq.addProperty("sword", mod.selectedSword());
-            eq.addProperty("sword_model", mod.selectedSwordModel());
-            json.add("equipped", eq);
+        JsonObject eq = new JsonObject();
+        eq.addProperty("wings", mod.selected("wings"));
+        eq.addProperty("backpacks", mod.selected("backpacks"));
+        eq.addProperty("hats", mod.selected("hats"));
+        eq.addProperty("masks", mod.selected("masks"));
+        eq.addProperty("pets", mod.selected("pets"));
+        eq.addProperty("sword", mod.selectedSword());
+        eq.addProperty("sword_model", mod.selectedSwordModel());
+        json.add("equipped", eq);
 
-            JsonArray arr = new JsonArray();
-            for (CosmeticPreset p : this.presets) {
-                JsonObject obj = new JsonObject();
-                obj.addProperty("name", p.name);
-                obj.addProperty("wings", p.wings);
-                obj.addProperty("backpacks", p.backpacks);
-                obj.addProperty("hats", p.hats);
-                obj.addProperty("masks", p.masks);
-                obj.addProperty("pets", p.pets);
-                obj.addProperty("sword", p.sword);
-                obj.addProperty("sword_model", p.swordModel);
-                arr.add(obj);
-            }
-            json.add("presets", arr);
+        JsonArray arr = new JsonArray();
+        for (CosmeticPreset p : this.presets) {
+            JsonObject obj = new JsonObject();
+            obj.addProperty("name", p.name);
+            obj.addProperty("wings", p.wings);
+            obj.addProperty("backpacks", p.backpacks);
+            obj.addProperty("hats", p.hats);
+            obj.addProperty("masks", p.masks);
+            obj.addProperty("pets", p.pets);
+            obj.addProperty("sword", p.sword);
+            obj.addProperty("sword_model", p.swordModel);
+            arr.add(obj);
+        }
+        json.add("presets", arr);
 
-            writer.write(json.toString());
+        String jsonString = json.toString();
+
+        // Save to instance configs
+        try (FileWriter writer = new FileWriter(getConfigFile(), StandardCharsets.UTF_8)) {
+            writer.write(jsonString);
+        } catch (Throwable ignored) {
+        }
+
+        // Save to global user fallback (shared across Lunar / Prism / vanilla)
+        try (FileWriter writer = new FileWriter(getGlobalFallbackFile(), StandardCharsets.UTF_8)) {
+            writer.write(jsonString);
         } catch (Throwable ignored) {
         }
     }

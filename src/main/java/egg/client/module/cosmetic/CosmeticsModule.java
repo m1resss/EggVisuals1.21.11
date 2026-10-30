@@ -19,14 +19,14 @@ public class CosmeticsModule extends Module {
     private final ModeSetting backpacks = new ModeSetting("Рюкзаки", "None",
             "None", "Adidas", "Gucci", "Hermes", "Louis Vuitton", "Nike", "Katana", "Supreme", "Vlone", "Bape", "Balenciaga", "Chrome Hearts", "Pepe");
 
-    private final ModeSetting hats = new ModeSetting("Шляпы", "None",
+    private final ModeSetting hats = new ModeSetting("Шапки", "None",
             "None", "Halo", "White Halo", "Bear", "Black Hole Halo", "Frog", "Pilot", "Armadillo", "Camel", "Dark Hat", "Four Leaf", "Classic Frog", "Capybara", "Chicken", "Penguin", "Happy");
 
     private final ModeSetting masks = new ModeSetting("Маски", "None",
             "None", "Angry", "Clown", "Glasses", "Wink");
 
     private final ModeSetting pets = new ModeSetting("Питомцы", "None",
-            "None", "Axolotl", "Big Cat", "Capybara", "Dragon", "Guinea Pig", "Panda", "Patrick", "Perch", "Pig", "Jaguar", "Creeper", "Penguin", "Bee", "Spongebob");
+            "None", "Axolotl", "Big Cat", "Capybara", "Dragon", "Guinea Pig", "Panda", "Shark", "Tiger");
 
     private String selectedWings = "";
     private String selectedBackpacks = "";
@@ -37,8 +37,9 @@ public class CosmeticsModule extends Module {
     private String selectedSwordModel = "";
 
     public CosmeticsModule() {
-        super("Cosmetics", "Кастомные 3D крылья, рюкзаки, шляпы, маски, питомцы и мечи", Category.COSMETICS);
+        super("Cosmetics", "Кастомные 3D крылья, рюкзаки, шапки, маски, питомцы и мечи", Category.COSMETICS);
         instance = this;
+        setEnabled(true);
         addSettings(wings, backpacks, hats, masks, pets);
         CosmeticsConfigManager.getInstance().loadConfig();
     }
@@ -80,6 +81,9 @@ public class CosmeticsModule extends Module {
     }
 
     public void select(String category, String id) {
+        if (!isEnabled()) {
+            setEnabled(true);
+        }
         if (category == null) return;
         String val = (id == null || "None".equalsIgnoreCase(id)) ? "" : id;
         switch (category.toLowerCase(Locale.ROOT)) {
@@ -116,6 +120,9 @@ public class CosmeticsModule extends Module {
     }
 
     public void selectSword(String name, String model) {
+        if (!isEnabled()) {
+            setEnabled(true);
+        }
         this.selectedSword = name == null ? "" : name;
         this.selectedSwordModel = model == null ? "" : model;
         CosmeticsConfigManager.getInstance().saveConfig();
