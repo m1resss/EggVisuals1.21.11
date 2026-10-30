@@ -32,7 +32,7 @@ public class ItemModelManagerMixin {
     ) {
         if (CosmeticsManager.isSword(stack)) {
             LivingEntity entity = (heldItemContext instanceof LivingEntity le) ? le : null;
-            CosmeticsManager.getInstance().applySwordRenderState(renderState, stack, entity);
+            CosmeticsManager.getInstance().applySwordRenderState(renderState, stack, entity, displayContext);
         }
     }
 
@@ -48,7 +48,7 @@ public class ItemModelManagerMixin {
             CallbackInfo ci
     ) {
         if (CosmeticsManager.isSword(stack)) {
-            CosmeticsManager.getInstance().applySwordRenderState(renderState, stack, entity);
+            CosmeticsManager.getInstance().applySwordRenderState(renderState, stack, entity, displayContext);
         }
     }
 
@@ -64,7 +64,7 @@ public class ItemModelManagerMixin {
             CallbackInfo ci
     ) {
         if (CosmeticsManager.isSword(stack)) {
-            CosmeticsManager.getInstance().applySwordRenderState(renderState, stack, null);
+            CosmeticsManager.getInstance().applySwordRenderState(renderState, stack, null, displayContext);
         }
     }
 }

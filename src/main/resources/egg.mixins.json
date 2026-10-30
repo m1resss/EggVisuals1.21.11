@@ -39,7 +39,8 @@
     "PlayerEntityRendererMixin",
     "FogRendererMixin",
     "ItemModelManagerMixin",
-    "DrawContextAccessor"
+    "DrawContextAccessor",
+    "ItemRenderStateAccessor"
   ],
   "client": [],
   "injectors": {

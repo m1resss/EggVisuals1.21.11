@@ -55,6 +55,6 @@ public abstract class PlayerEntityRendererMixin extends LivingEntityRenderer<Abs
         if (state.rightHandItem.isEmpty() || !CosmeticsManager.isSword(state.rightHandItem)) {
             state.rightHandItem = new ItemStack(Items.DIAMOND_SWORD);
         }
-        CosmeticsManager.getInstance().applySwordRenderState(state.rightHandItemState, state.rightHandItem, entity instanceof LivingEntity le ? le : null);
+        CosmeticsManager.getInstance().applySwordRenderState(state.rightHandItemState, state.rightHandItem, entity instanceof LivingEntity le ? le : null, net.minecraft.item.ItemDisplayContext.THIRD_PERSON_RIGHT_HAND);
     }
 }

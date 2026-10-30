@@ -5,6 +5,7 @@ import egg.client.util.ColorUtil;
 import net.minecraft.client.render.model.UnbakedGeometry;
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
 
+import egg.client.mixin.ItemRenderStateAccessor;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -99,8 +100,12 @@ public final class CosmeticsManager  {
         try {
             Optional<Resource> res = mc.getResourceManager().getResource(swordCatId);
             if (res.isPresent()) {
-                try (InputStreamReader isr = new InputStreamReader(res.get().getInputStream(), StandardCharsets.UTF_8)) {
-                    JsonObject root = JsonParser.parseReader(isr).getAsJsonObject();
+                String jsonStr = new String(res.get().getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+                if (jsonStr.startsWith("\uFEFF")) {
+                    jsonStr = jsonStr.substring(1);
+                }
+                JsonObject root = JsonParser.parseString(jsonStr).getAsJsonObject();
+                if (root.has("items") && root.get("items").isJsonArray()) {
                     JsonArray items = root.getAsJsonArray("items");
                     for (JsonElement el : items) {
                         JsonObject obj = el.getAsJsonObject();
@@ -117,7 +122,9 @@ public final class CosmeticsManager  {
                     }
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            System.err.println("[Cosmetics] Failed to load swords catalog: " + e.getMessage());
+        }
     }
 
     public List<Asset> getCategoryAssets(String category, String query) {
@@ -190,32 +197,34 @@ public final class CosmeticsManager  {
             if (mc == null || mc.getResourceManager() == null) return null;
             Optional<Resource> res = mc.getResourceManager().getResource(modelId);
             if (res.isPresent()) {
-                try (InputStreamReader isr = new InputStreamReader(res.get().getInputStream(), StandardCharsets.UTF_8)) {
-                    JsonObject root = JsonParser.parseReader(isr).getAsJsonObject();
-                    Map<String, Identifier> texMap = new HashMap<>();
-                    if (root.has("textures") && root.get("textures").isJsonObject()) {
-                        JsonObject texturesObj = root.getAsJsonObject("textures");
-                        for (Map.Entry<String, JsonElement> e : texturesObj.entrySet()) {
-                            String k = e.getKey();
-                            String v = e.getValue().getAsString();
-                            if (v.startsWith("item/")) {
-                                v = v.substring(5);
-                            }
-                            Identifier texRes = Identifier.of("egg", "textures/item_replacer/sword/" + v + ".png");
-                            texMap.put(k, texRes);
-                            texMap.put("#" + k, texRes);
-                        }
-                    }
-
-                    JsonUnbakedModel unbaked = JsonUnbakedModel.deserialize(new java.io.StringReader(root.toString()));
-                    List<ModelElement> elements = Collections.emptyList();
-                    if (unbaked.geometry() instanceof UnbakedGeometry geom) {
-                        elements = geom.elements();
-                    }
-                    ParsedSwordModel parsed = new ParsedSwordModel(elements, unbaked.transformations(), texMap);
-                    this.swordModelCache.put(sword.model(), parsed);
-                    return parsed;
+                String jsonStr = new String(res.get().getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+                if (jsonStr.startsWith("\uFEFF")) {
+                    jsonStr = jsonStr.substring(1);
                 }
+                JsonObject root = JsonParser.parseString(jsonStr).getAsJsonObject();
+                Map<String, Identifier> texMap = new HashMap<>();
+                if (root.has("textures") && root.get("textures").isJsonObject()) {
+                    JsonObject texturesObj = root.getAsJsonObject("textures");
+                    for (Map.Entry<String, JsonElement> e : texturesObj.entrySet()) {
+                        String k = e.getKey();
+                        String v = e.getValue().getAsString();
+                        if (v.startsWith("item/")) {
+                            v = v.substring(5);
+                        }
+                        Identifier texRes = Identifier.of("egg", "textures/item_replacer/sword/" + v + ".png");
+                        texMap.put(k, texRes);
+                        texMap.put("#" + k, texRes);
+                    }
+                }
+
+                JsonUnbakedModel unbaked = JsonUnbakedModel.deserialize(new java.io.StringReader(jsonStr));
+                List<ModelElement> elements = Collections.emptyList();
+                if (unbaked.geometry() instanceof UnbakedGeometry geom) {
+                    elements = geom.elements();
+                }
+                ParsedSwordModel parsed = new ParsedSwordModel(elements, unbaked.transformations(), texMap);
+                this.swordModelCache.put(sword.model(), parsed);
+                return parsed;
             }
         } catch (Exception e) {
             System.err.println("[Cosmetics] Failed to load sword model " + sword.model() + ": " + e.getMessage());
@@ -224,13 +233,17 @@ public final class CosmeticsManager  {
     }
 
     public boolean applySwordRenderState(ItemRenderState renderState, ItemStack stack, LivingEntity entity) {
+        return applySwordRenderState(renderState, stack, entity, null);
+    }
+
+    public boolean applySwordRenderState(ItemRenderState renderState, ItemStack stack, LivingEntity entity, ItemDisplayContext displayContext) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc == null) return false;
 
         SwordEntry sword = null;
-        if (previewOverrideSword != null || entity == null || entity == mc.player) {
-            CosmeticsModule mod = CosmeticsModule.getInstance();
-            if (mod != null && (mod.isEnabled() || previewOverrideSword != null)) {
+        CosmeticsModule mod = CosmeticsModule.getInstance();
+        if (mod != null && (mod.isEnabled() || previewOverrideSword != null)) {
+            if (previewOverrideSword != null || entity == null || mc.player == null || entity == mc.player || entity.getId() == mc.player.getId() || entity.getId() <= 0) {
                 sword = getSelectedSwordEntry();
             }
         }
@@ -243,10 +256,25 @@ public final class CosmeticsManager  {
             return false;
         }
 
+        ItemDisplayContext currentCtx = null;
+        if (renderState instanceof ItemRenderStateAccessor accessor) {
+            currentCtx = accessor.getDisplayContext();
+        }
+
+        ItemDisplayContext activeCtx = (displayContext != null && displayContext != ItemDisplayContext.NONE)
+                ? displayContext
+                : (currentCtx != null && currentCtx != ItemDisplayContext.NONE
+                    ? currentCtx
+                    : ItemDisplayContext.THIRD_PERSON_RIGHT_HAND);
+
         renderState.clear();
+        if (renderState instanceof ItemRenderStateAccessor accessor) {
+            accessor.setDisplayContext(activeCtx);
+        }
+
         ItemRenderState.LayerRenderState layer = renderState.newLayer();
         layer.setSpecialModel(SwordSpecialModelRenderer.INSTANCE, sword);
-        if (stack.hasGlint()) {
+        if (stack != null && stack.hasGlint()) {
             layer.setGlint(ItemRenderState.Glint.STANDARD);
         }
         return true;
@@ -256,12 +284,18 @@ public final class CosmeticsManager  {
         ParsedSwordModel parsed = getSwordModel(sword);
         if (parsed == null || parsed.elements.isEmpty()) return;
 
+        ItemDisplayContext activeMode = (mode != null && mode != ItemDisplayContext.NONE) ? mode : ItemDisplayContext.THIRD_PERSON_RIGHT_HAND;
+
         matrices.push();
         if (parsed.transformation != null) {
-            Transformation tf = parsed.transformation.getTransformation(mode);
-            if (tf != null && tf != Transformation.IDENTITY) {
-                tf.apply(mode == ItemDisplayContext.FIRST_PERSON_LEFT_HAND || mode == ItemDisplayContext.THIRD_PERSON_LEFT_HAND, matrices.peek());
+            Transformation tf = parsed.transformation.getTransformation(activeMode);
+            if (tf != null) {
+                tf.apply(activeMode.isLeftHand(), matrices.peek());
+            } else {
+                matrices.translate(-0.5f, -0.5f, -0.5f);
             }
+        } else {
+            matrices.translate(-0.5f, -0.5f, -0.5f);
         }
 
         for (ModelElement el : parsed.elements) {

@@ -45,7 +45,6 @@ public class TargetESP extends Module {
             SNOWFLAKES[i] = Identifier.of("egg", "textures/world/snowflake_" + (i + 1) + ".png");
         }
     }
-    private static final Identifier SNOW_CRYSTAL = Identifier.of("egg", "textures/world/snow.png");
 
     // Snowflake vortex physics constants from sfamelov.txt
     private static final int ORBIT_FLAKES = 42;
@@ -72,6 +71,8 @@ public class TargetESP extends Module {
     private LivingEntity attachedTarget;
     private int loseTargetTicks = 0;
     private float animProgress = 0.0f;
+    private Vec3d lastTargetPos = null;
+    private double lastTargetHeight = 1.8;
 
     // Snowflake vortex particles state
     private final List<SnowflakeParticle> snowflakeParticles = new ArrayList<>();
@@ -132,9 +133,11 @@ public class TargetESP extends Module {
         }
 
         if (this.target != null) {
-            this.animProgress = Math.min(1.0f, this.animProgress + 0.15f);
+            this.lastTargetPos = this.target.getEntityPos();
+            this.lastTargetHeight = this.target.getHeight();
+            this.animProgress = Math.min(1.0f, this.animProgress + 0.12f);
         } else {
-            this.animProgress = Math.max(0.0f, this.animProgress - 0.15f);
+            this.animProgress = Math.max(0.0f, this.animProgress - 0.04f);
         }
     }
 
@@ -227,10 +230,11 @@ public class TargetESP extends Module {
             return;
         }
 
-        if (this.target == null || this.animProgress <= 0.01f || !mc.player.canSee(this.target)) return;
+        if (this.animProgress <= 0.01f) return;
 
-        Vec3d center = this.target.getLerpedPos(delta);
-        double entityHeight = this.target.getHeight();
+        Vec3d center = (this.target != null) ? this.target.getLerpedPos(delta) : this.lastTargetPos;
+        if (center == null) return;
+        double entityHeight = (this.target != null) ? this.target.getHeight() : this.lastTargetHeight;
         double centerY = center.y + entityHeight * 0.5;
 
         if ("Кубы".equals(curMode)) {
@@ -299,9 +303,9 @@ public class TargetESP extends Module {
             float glowSize = p.size * 2.8F * sizeMult;
             drawParticle(context, BLOOM_TEXTURE, p.x, p.y, p.z, glowSize, ColorUtil.withAlphaFloat(activeColor, glowAlpha));
 
-            // 2. Crisp snowflake crystal
-            Identifier flakeTex = p.flower ? SNOW_CRYSTAL : SNOWFLAKES[p.textureIdx];
-            float flakeSize = p.size * 1.05F * sizeMult;
+            // 2. Crisp snowflake crystal (all transparent RGBA particle textures, no opaque white blocks)
+            Identifier flakeTex = SNOWFLAKES[p.textureIdx];
+            float flakeSize = (p.flower ? p.size * 1.45F : p.size * 1.05F) * sizeMult;
             int flakeColor = p.flower ? 0xFFFFFFFF : ColorUtil.interpolate(0xFFFFFFFF, activeColor, 0.30F);
             drawParticle(context, flakeTex, p.x, p.y, p.z, flakeSize, ColorUtil.withAlphaFloat(flakeColor, alpha * 0.95F));
         }
@@ -441,28 +445,32 @@ public class TargetESP extends Module {
     private void renderSouls(DrawContext context, double cx, double cy, double cz, double height,
                              float timeSec, float baseR, float spd, float sizeMult, int steps, int color) {
         double timeMs = timeSec * 1000.0;
-        float hAmp = (float) (height * 0.28);
+        float fade = this.animProgress;
+        float expand = (1.0f - fade);
+        float currentR = baseR * (1.0f + expand * 1.6f);
+        double currentCy = cy + expand * 1.35;
+        float hAmp = (float) (height * 0.28) * (1.0f + expand * 0.6f);
 
         for (int soul = 0; soul < 3; soul++) {
             for (int i = 0; i < steps; i++) {
                 float trailFactor = 1.0f - ((float) i / (float) steps);
                 double angle = 0.15 * (timeMs - (i * 12.0 / Math.max(0.5, spd))) / 25.0 * spd;
-                double s = Math.sin(angle) * baseR;
-                double c = Math.cos(angle) * baseR;
+                double s = Math.sin(angle) * currentR;
+                double c = Math.cos(angle) * currentR;
                 double yWave = Math.sin(angle * 1.5 + soul * 2.0) * hAmp;
 
                 double wx, wy, wz;
                 if (soul == 0) {
                     wx = cx + s;
-                    wy = cy + (c * 0.25 + yWave * 0.35);
+                    wy = currentCy + (c * 0.25 + yWave * 0.35);
                     wz = cz - c;
                 } else if (soul == 1) {
                     wx = cx - s;
-                    wy = cy + (s * 0.25 - yWave * 0.35);
+                    wy = currentCy + (s * 0.25 - yWave * 0.35);
                     wz = cz - c;
                 } else {
                     wx = cx - s * 0.7 + c * 0.7;
-                    wy = cy - yWave * 0.4;
+                    wy = currentCy - yWave * 0.4;
                     wz = cz + c * 0.7 + s * 0.7;
                 }
 
@@ -495,18 +503,24 @@ public class TargetESP extends Module {
     private void renderCubes(DrawContext context, double cx, double cy, double cz, double height,
                              float timeSec, float baseR, float spd, float sizeMult, int color) {
         int cubeCount = 8;
+        float fade = this.animProgress;
+        float expand = (1.0f - fade);
+        float currentR = baseR * (1.0f + expand * 2.2f);
+        double currentCy = cy + expand * 0.75;
         float hAmp = (float) (height * 0.45);
+        float spinMult = spd * (1.0f + expand * 2.2f);
+        float sz = (0.28f * sizeMult) * (0.25f + 0.75f * fade);
+        float alpha = fade * fade;
 
         for (int i = 0; i < cubeCount; i++) {
             float phase = (float) (i * (Math.PI * 2.0 / cubeCount));
-            float t = timeSec * 0.85f * spd + phase;
-            double wx = cx + Math.cos(t) * baseR * (1.0f + 0.2f * (float) Math.sin(t * 2.0f));
-            double wz = cz + Math.sin(t) * baseR * (1.0f + 0.2f * (float) Math.cos(t * 2.0f));
-            double wy = cy + Math.sin(t * 1.4f) * hAmp;
+            float t = timeSec * 0.85f * spinMult + phase;
+            double wx = cx + Math.cos(t) * currentR * (1.0f + 0.2f * (float) Math.sin(t * 2.0f));
+            double wz = cz + Math.sin(t) * currentR * (1.0f + 0.2f * (float) Math.cos(t * 2.0f));
+            double wy = currentCy + Math.sin(t * 1.4f) * hAmp;
 
-            float sz = 0.28f * sizeMult;
-            drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, sz * 1.5f, ColorUtil.withAlphaFloat(color, this.animProgress * 0.45f));
-            drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, sz * 0.7f, ColorUtil.withAlphaFloat(0xFFFFFFFF, this.animProgress * 0.9f));
+            drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, sz * 1.8f, ColorUtil.withAlphaFloat(color, alpha * 0.55f));
+            drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, sz * 0.8f, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha * 0.95f));
         }
     }
 

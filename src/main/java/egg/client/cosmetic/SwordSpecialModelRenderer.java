@@ -17,6 +17,9 @@ public class SwordSpecialModelRenderer implements SpecialModelRenderer<Cosmetics
 
     @Override
     public void render(@Nullable CosmeticsManager.SwordEntry sword, ItemDisplayContext mode, MatrixStack matrices, OrderedRenderCommandQueue queue, int light, int overlay, boolean glint, int seed) {
+        if (sword == null) {
+            sword = CosmeticsManager.getInstance().getSelectedSwordEntry();
+        }
         if (sword == null) return;
         CosmeticsManager.getInstance().renderSwordModel(sword, mode, matrices, queue, light, overlay, glint);
     }
