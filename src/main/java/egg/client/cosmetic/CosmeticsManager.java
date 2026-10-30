@@ -37,6 +37,7 @@ import egg.client.render.IconRenderer;
 import net.minecraft.util.math.Direction;
 import org.joml.Quaternionf;
 public final class CosmeticsManager  {
+    public static String previewOverrideSword = null;
     private static final CosmeticsManager INSTANCE = new CosmeticsManager();
 
     private final Map<String, Mesh> meshes = new HashMap<>();
@@ -166,6 +167,9 @@ public final class CosmeticsManager  {
     }
 
     public SwordEntry getSelectedSwordEntry() {
+        if (previewOverrideSword != null && !previewOverrideSword.isEmpty()) {
+            return getSwordEntry(previewOverrideSword);
+        }
         CosmeticsModule mod = CosmeticsModule.getInstance();
         if (mod == null || !mod.isEnabled()) return null;
         String selName = mod.selectedSword();
@@ -222,12 +226,11 @@ public final class CosmeticsManager  {
         if (mc == null) return false;
 
         SwordEntry sword = null;
-        if (entity == null || entity == mc.player) {
+        if (previewOverrideSword != null || entity == null || entity == mc.player) {
             CosmeticsModule mod = CosmeticsModule.getInstance();
-            if (mod == null || !mod.isEnabled()) {
-                return false;
+            if (mod != null && (mod.isEnabled() || previewOverrideSword != null)) {
+                sword = getSelectedSwordEntry();
             }
-            sword = getSelectedSwordEntry();
         }
 
         if (sword == null) {
@@ -331,11 +334,31 @@ public final class CosmeticsManager  {
 
         ensureIndex();
 
-        renderItemQueue(matrices, queue, model, light, mod.getSelectedWingId(), "wings");
-        renderItemQueue(matrices, queue, model, light, mod.getSelectedBackpackId(), "backpacks");
-        renderItemQueue(matrices, queue, model, light, mod.getSelectedHatId(), "hats");
-        renderItemQueue(matrices, queue, model, light, mod.getSelectedMaskId(), "masks");
-        renderItemQueue(matrices, queue, model, light, mod.getSelectedPetId(), "pets");
+        String wingsId = CosmeticsRenderer.previewOverrideCat != null
+                ? ("wings".equals(CosmeticsRenderer.previewOverrideCat) ? CosmeticsRenderer.previewOverrideId : "")
+                : mod.getSelectedWingId();
+
+        String backpackId = CosmeticsRenderer.previewOverrideCat != null
+                ? ("backpacks".equals(CosmeticsRenderer.previewOverrideCat) ? CosmeticsRenderer.previewOverrideId : "")
+                : mod.getSelectedBackpackId();
+
+        String hatId = CosmeticsRenderer.previewOverrideCat != null
+                ? ("hats".equals(CosmeticsRenderer.previewOverrideCat) ? CosmeticsRenderer.previewOverrideId : "")
+                : mod.getSelectedHatId();
+
+        String maskId = CosmeticsRenderer.previewOverrideCat != null
+                ? ("masks".equals(CosmeticsRenderer.previewOverrideCat) ? CosmeticsRenderer.previewOverrideId : "")
+                : mod.getSelectedMaskId();
+
+        String petId = CosmeticsRenderer.previewOverrideCat != null
+                ? ("pets".equals(CosmeticsRenderer.previewOverrideCat) ? CosmeticsRenderer.previewOverrideId : "")
+                : mod.getSelectedPetId();
+
+        renderItemQueue(matrices, queue, model, light, wingsId, "wings");
+        renderItemQueue(matrices, queue, model, light, backpackId, "backpacks");
+        renderItemQueue(matrices, queue, model, light, hatId, "hats");
+        renderItemQueue(matrices, queue, model, light, maskId, "masks");
+        renderItemQueue(matrices, queue, model, light, petId, "pets");
     }
 
     private void renderItemQueue(MatrixStack matrices, OrderedRenderCommandQueue queue, PlayerEntityModel model, int light, String itemId, String cat) {

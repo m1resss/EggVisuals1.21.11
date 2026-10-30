@@ -1,9 +1,9 @@
 package egg.client.ui.section;
 
 import egg.client.cosmetic.CosmeticsManager;
+import egg.client.cosmetic.CosmeticsRenderer;
 import egg.client.module.ModuleManager;
 import egg.client.module.cosmetic.CosmeticsModule;
-import egg.client.render.IconRenderer;
 import egg.client.render.Render2D;
 import egg.client.render.font.ClientFont;
 import egg.client.ui.theme.Theme;
@@ -12,6 +12,8 @@ import egg.client.util.GuiSoundManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 
 import java.util.*;
 
@@ -29,7 +31,6 @@ public class CosmeticsPanel {
     // 3D Player Preview state
     private static float playerYaw = 0.0f;
     private static float playerPitch = 0.0f;
-    private static float playerScale = 1.0f;
     private static boolean isDraggingPlayer = false;
     private static float lastDragMouseX = 0.0f;
     private static float lastDragMouseY = 0.0f;
@@ -65,13 +66,11 @@ public class CosmeticsPanel {
 
         float curY = y - scrollOffset;
 
-        // A. CATEGORY FILTER PILLS (Компактные 2 ряда или аккуратные табы с автошириной)
+        // A. CATEGORY FILTER PILLS (Компактные 2 ряда с идеальным центрированием текста)
         float navY = curY + 2.0f;
-        float navH = 18.0f;
+        float navH = 19.0f;
         float pillGap = 4.0f;
 
-        // Ряд 1: Все, Шляпы, Крылья, Рюкзаки
-        // Ряд 2: Маски, Питомцы, Мечи + Кнопка "Снять все"
         int[] row1 = new int[] { 0, 1, 2, 3 };
         int[] row2 = new int[] { 4, 5, 6 };
 
@@ -88,7 +87,8 @@ public class CosmeticsPanel {
                 Render2D.drawRoundedOutline(context, pX, navY, row1W, navH, 4.0f, 0.6f, Theme.ACCENT);
             }
             int txtCol = isSel ? 0xFFFFFFFF : (hov ? 0xFFE0E6F0 : 0xFFA0A8B8);
-            ClientFont.drawCentered(context, CAT_NAMES[idx], pX + row1W * 0.5f, navY + 4.0f, ClientFont.SF_MEDIUM, txtCol);
+            float txtY = navY + (navH - 8.0f) * 0.5f - 0.5f;
+            ClientFont.drawCentered(context, CAT_NAMES[idx], pX + row1W * 0.5f, txtY, ClientFont.SF_MEDIUM, txtCol);
         }
 
         float navY2 = navY + navH + 4.0f;
@@ -108,7 +108,8 @@ public class CosmeticsPanel {
                 Render2D.drawRoundedOutline(context, pX, navY2, row2W, navH, 4.0f, 0.6f, Theme.ACCENT);
             }
             int txtCol = isSel ? 0xFFFFFFFF : (hov ? 0xFFE0E6F0 : 0xFFA0A8B8);
-            ClientFont.drawCentered(context, CAT_NAMES[idx], pX + row2W * 0.5f, navY2 + 4.0f, ClientFont.SF_MEDIUM, txtCol);
+            float txtY = navY2 + (navH - 8.0f) * 0.5f - 0.5f;
+            ClientFont.drawCentered(context, CAT_NAMES[idx], pX + row2W * 0.5f, txtY, ClientFont.SF_MEDIUM, txtCol);
         }
 
         // Кнопка "Снять все" справа от второго ряда табов
@@ -116,7 +117,8 @@ public class CosmeticsPanel {
         boolean hovClrAll = mouseX >= clrAllX && mouseX <= clrAllX + clrAllW && mouseY >= navY2 && mouseY <= navY2 + navH;
         Render2D.drawRoundedRect(context, clrAllX, navY2, clrAllW, navH, 4.0f, hovClrAll ? 0xDDFF4444 : 0x1EFFFFFF);
         Render2D.drawRoundedOutline(context, clrAllX, navY2, clrAllW, navH, 4.0f, 0.5f, hovClrAll ? 0xFFFF6B6B : Theme.CARD_BORDER);
-        ClientFont.drawCentered(context, "Снять все", clrAllX + clrAllW * 0.5f, navY2 + 4.0f, ClientFont.SF_REGULAR, hovClrAll ? 0xFFFFFFFF : 0xFFA0A8B8);
+        float clrTxtY = navY2 + (navH - 8.0f) * 0.5f - 0.5f;
+        ClientFont.drawCentered(context, "Снять все", clrAllX + clrAllW * 0.5f, clrTxtY, ClientFont.SF_REGULAR, hovClrAll ? 0xFFFFFFFF : 0xFFA0A8B8);
 
         // B. COSMETICS CARDS GRID
         float currentCatY = navY2 + navH + 10.0f;
@@ -137,7 +139,6 @@ public class CosmeticsPanel {
         float rowGap = 7.0f;
         float cardW = (mainW - (cols - 1) * colGap) / cols;
         float cardH = 126.0f;
-        float previewSize = 64.0f;
 
         for (String catKey : activeCats) {
             boolean isSwords = "swords".equals(catKey);
@@ -202,23 +203,62 @@ public class CosmeticsPanel {
                 Render2D.drawRoundedRect(context, cardX, cardY, cardW, cardH, 6.0f, cBg);
                 Render2D.drawRoundedOutline(context, cardX, cardY, cardW, cardH, 6.0f, 0.6f, cBrd);
 
-                // 3D Preview inside card
-                float pX = cardX + (cardW - previewSize) * 0.5f;
-                float pY = cardY + 8.0f;
+                // 3D Preview inside card (Настоящий 3D рендер предмета)
+                if (isSwords && sword != null) {
+                    CosmeticsManager.previewOverrideSword = sword.name();
+                    context.getMatrices().pushMatrix();
+                    context.getMatrices().translate(cardX + cardW * 0.5f, cardY + 46.0f);
+                    context.getMatrices().scale(2.4f, 2.4f);
+                    context.drawItem(new ItemStack(Items.DIAMOND_SWORD), -8, -8);
+                    context.getMatrices().popMatrix();
+                    CosmeticsManager.previewOverrideSword = null;
+                } else if (!isSwords && asset != null && mc.player != null) {
+                    CosmeticsRenderer.previewOverrideCat = catKey;
+                    CosmeticsRenderer.previewOverrideId = asset.id();
 
-                if (!isSwords && asset != null) {
-                    mgr.renderGuiPreview(context, asset.id(), pX, pY, previewSize, alpha);
-                } else if (isSwords && sword != null) {
-                    IconRenderer.drawTextureScaled(context, sword.texture(), pX, pY, previewSize, previewSize, 32, 32, 0xFFFFFFFF);
+                    int pSize = 34;
+                    float lookYaw = 25.0f;
+                    float yShift = 0.0f;
+
+                    if ("hats".equals(catKey) || "masks".equals(catKey)) {
+                        pSize = 40;
+                        lookYaw = 20.0f;
+                        yShift = -16.0f;
+                    } else if ("wings".equals(catKey) || "backpacks".equals(catKey)) {
+                        pSize = 34;
+                        lookYaw = 160.0f; // вид со спины для крыльев и рюкзаков
+                        yShift = -8.0f;
+                    } else if ("pets".equals(catKey)) {
+                        pSize = 30;
+                        lookYaw = 25.0f;
+                        yShift = 2.0f;
+                    }
+
+                    float pCenterX = cardX + cardW * 0.5f;
+                    float pCenterY = cardY + 48.0f + yShift;
+                    int px1 = (int) (pCenterX - pSize * 0.8f);
+                    int py1 = (int) (pCenterY - pSize * 1.8f);
+                    int px2 = (int) (pCenterX + pSize * 0.8f);
+                    int py2 = (int) (pCenterY + pSize * 0.3f);
+
+                    float lX = pCenterX - lookYaw * 2.5f;
+                    float lY = pCenterY;
+                    net.minecraft.client.gui.screen.ingame.InventoryScreen.drawEntity(context, px1, py1, px2, py2, pSize, 0.0625f, lX, lY, mc.player);
+
+                    CosmeticsRenderer.previewOverrideCat = null;
+                    CosmeticsRenderer.previewOverrideId = null;
                 }
 
                 // Divider line
-                Render2D.drawRect(context, cardX + 6.0f, cardY + 90.0f, cardW - 12.0f, 1.0f, 0x15FFFFFF);
+                Render2D.drawRect(context, cardX + 6.0f, cardY + 96.0f, cardW - 12.0f, 1.0f, 0x15FFFFFF);
 
-                // Toggle switch pill
+                // Lower section: идеально отцентрованный текст и переключатель
+                float bottomH = 30.0f;
+                float bottomY = cardY + 96.0f;
+
                 float swW = 20.0f, swH = 11.0f;
                 float swX = cardX + cardW - swW - 7.0f;
-                float swY = cardY + 101.0f;
+                float swY = bottomY + (bottomH - swH) * 0.5f;
 
                 String animKey = isSwords ? "sw_" + sword.name() : "cs_" + asset.id();
                 float swAnim = getAnim(animKey, isSelected);
@@ -239,7 +279,8 @@ public class CosmeticsPanel {
                     }
                     title += "..";
                 }
-                ClientFont.draw(context, title, cardX + 7.0f, cardY + 101.5f, ClientFont.SF_MEDIUM, isSelected ? Theme.ACCENT : 0xFFFFFFFF);
+                float titleY = bottomY + (bottomH - 8.0f) * 0.5f - 0.5f;
+                ClientFont.draw(context, title, cardX + 7.0f, titleY, ClientFont.SF_MEDIUM, isSelected ? Theme.ACCENT : 0xFFFFFFFF);
             }
 
             currentCatY += rows * (cardH + rowGap) + 12.0f;
@@ -272,7 +313,7 @@ public class CosmeticsPanel {
         // Divider
         Render2D.drawRect(context, rightPaneX + 8.0f, rightPaneY + 32.0f, rightPaneW - 16.0f, 1.0f, 0x15FFFFFF);
 
-        // Render 3D player
+        // Render 3D player (Смотрит строго вперед, плавно крутится на ЛКМ)
         if (mc.player != null) {
             float previewBoxX = rightPaneX + 4.0f;
             float previewBoxY = rightPaneY + 34.0f;
@@ -283,25 +324,24 @@ public class CosmeticsPanel {
 
             float centerX = previewBoxX + previewBoxW * 0.5f;
             float centerY = previewBoxY + previewBoxH * 0.82f;
-            int baseSize = (int) (previewBoxH * 0.44f * playerScale);
+            int baseSize = (int) (previewBoxH * 0.44f);
 
-            render3DPlayer(context, centerX, centerY, baseSize, playerYaw, playerPitch, mc.player);
+            int x1 = (int) (centerX - baseSize * 0.8f);
+            int y1 = (int) (centerY - baseSize * 1.8f);
+            int x2 = (int) (centerX + baseSize * 0.8f);
+            int y2 = (int) (centerY + baseSize * 0.3f);
+
+            // Игрок смотрит вперед при yaw=0, pitch=0!
+            float lookX = centerX - playerYaw * 2.5f;
+            float lookY = centerY - playerPitch * 2.5f;
+            net.minecraft.client.gui.screen.ingame.InventoryScreen.drawEntity(context, x1, y1, x2, y2, baseSize, 0.0625f, lookX, lookY, mc.player);
 
             context.disableScissor();
         }
 
-        // Hints at the bottom of the preview panel
+        // Hints at the bottom of the preview panel (Компактный центрированный текст без колесика)
         Render2D.drawRect(context, rightPaneX + 8.0f, rightPaneY + rightPaneH - 22.0f, rightPaneW - 16.0f, 1.0f, 0x15FFFFFF);
-        ClientFont.drawCentered(context, "ЛКМ: Вращение • Колесико: Зум", rightPaneX + rightPaneW * 0.5f, rightPaneY + rightPaneH - 14.0f, ClientFont.SF_REGULAR, 0xFF8A92A2);
-    }
-
-    private static void render3DPlayer(DrawContext context, float centerX, float centerY, int size, float yaw, float pitch, LivingEntity entity) {
-        if (entity == null) return;
-        int x1 = (int) (centerX - size * 0.8f);
-        int y1 = (int) (centerY - size * 1.8f);
-        int x2 = (int) (centerX + size * 0.8f);
-        int y2 = (int) (centerY + size * 0.3f);
-        net.minecraft.client.gui.screen.ingame.InventoryScreen.drawEntity(context, x1, y1, x2, y2, size, -yaw, -pitch, 1.0f, entity);
+        ClientFont.drawCentered(context, "ЛКМ: Вращение модели", rightPaneX + rightPaneW * 0.5f, rightPaneY + rightPaneH - 13.0f, ClientFont.SF_REGULAR, 0xFF8A92A2);
     }
 
     public static boolean mouseClicked(float x, float y, float w, float h, double mouseX, double mouseY, int button) {
@@ -328,7 +368,6 @@ public class CosmeticsPanel {
             if (mouseX >= rstX && mouseX <= rstX + rstW && mouseY >= rstY && mouseY <= rstY + rstH) {
                 playerYaw = 0.0f;
                 playerPitch = 0.0f;
-                playerScale = 1.0f;
                 GuiSoundManager.playClick();
                 return true;
             }
@@ -349,7 +388,7 @@ public class CosmeticsPanel {
 
         // Row 1 tabs click
         float navY = curY + 2.0f;
-        float navH = 18.0f;
+        float navH = 19.0f;
         float pillGap = 4.0f;
         int[] row1 = new int[] { 0, 1, 2, 3 };
         float row1W = (mainW - (row1.length - 1) * pillGap) / row1.length;
@@ -477,7 +516,7 @@ public class CosmeticsPanel {
             float dx = (float) mouseX - lastDragMouseX;
             float dy = (float) mouseY - lastDragMouseY;
             playerYaw += dx * 1.5f;
-            playerPitch = Math.clamp(playerPitch + dy * 1.5f, -65.0f, 65.0f);
+            playerPitch = Math.clamp(playerPitch + dy * 1.5f, -50.0f, 50.0f);
             lastDragMouseX = (float) mouseX;
             lastDragMouseY = (float) mouseY;
             return true;
@@ -490,16 +529,7 @@ public class CosmeticsPanel {
     }
 
     public static boolean mouseScrolled(double mouseX, double mouseY, double amount, float contentX, float contentY, float contentW, float contentH) {
-        float rightPaneW = 158.0f;
-        float rightPaneX = contentX + contentW - rightPaneW;
-
-        // Если курсор находится строго над правой панелью 3D превью -> Зум модельки игрока
-        if (mouseX >= rightPaneX && mouseX <= rightPaneX + rightPaneW && mouseY >= contentY && mouseY <= contentY + contentH) {
-            playerScale = Math.clamp(playerScale + (float) amount * 0.12f, 0.5f, 2.8f);
-            return true;
-        }
-
-        // В противном случае скроллится список косметики слева
+        // Колесико скроллит только список каталога слева
         targetScroll -= (float) (amount * 34.0f);
         targetScroll = Math.clamp(targetScroll, 0.0f, maxScroll);
         return true;

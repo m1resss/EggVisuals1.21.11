@@ -354,56 +354,42 @@ public class TargetESP extends Module {
 
     private void renderSouls(DrawContext context, double cx, double cy, double cz, double height,
                              float timeSec, float baseR, float spd, float sizeMult, int steps, int color) {
-        double timeMs = timeSec * 1000.0;
-        float hAmp = (float) (height * 0.45);
+        float hAmp = (float) (height * 0.38f);
+        int trailSteps = Math.max(34, steps * 2);
 
-        for (int soul = 0; soul < 3; soul++) {
-            for (int i = 0; i < steps; i++) {
-                float trailFactor = 1.0f - ((float) i / (float) steps);
-                double angle = 0.15 * (timeMs - (i * 12.0 / Math.max(0.5, spd))) / 25.0 * spd;
+        // Две чистые светящиеся кометы (инь-ян) вокруг цели
+        for (int soul = 0; soul < 2; soul++) {
+            double phase = soul * Math.PI;
+
+            for (int i = 0; i < trailSteps; i++) {
+                float trailFactor = 1.0f - ((float) i / (float) trailSteps);
+                double angle = (timeSec * 3.4 * spd) + phase - (i * 0.042);
                 double s = Math.sin(angle) * baseR;
                 double c = Math.cos(angle) * baseR;
-                double yWave = Math.sin(angle * 1.5 + soul * 2.0) * hAmp;
+                double yWave = Math.sin(angle * 1.6 + phase) * hAmp;
 
-                double wx, wy, wz;
-                if (soul == 0) {
-                    wx = cx + s;
-                    wy = cy + c * 0.65 + yWave * 0.4;
-                    wz = cz - c;
-                } else if (soul == 1) {
-                    wx = cx - s;
-                    wy = cy + s * 0.65 - yWave * 0.4;
-                    wz = cz - c;
-                } else {
-                    wx = cx - s * 0.7 + c * 0.7;
-                    wy = cy - yWave;
-                    wz = cz + c * 0.7 + s * 0.7;
-                }
+                double wx = cx + s;
+                double wy = cy + yWave + (height * 0.46f);
+                double wz = cz + c;
 
+                float tWidth = (float) Math.pow(trailFactor, 0.75);
+                float baseSz = 0.28f * sizeMult * (0.15f + 0.85f * tWidth);
+                float alpha = this.animProgress * (0.15f + 0.85f * trailFactor);
+
+                // 1. Тонкий неоновый цветной контур свечения (всего на 18% шире белого)
+                drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, baseSz * 1.65f, ColorUtil.withAlphaFloat(color, alpha * 0.85f));
+
+                // 2. Огромное яркое БЕЛОЕ свечение (занимает 85-90% объема кометы как на референсе)
+                drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, baseSz * 1.35f, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha * 0.95f));
+
+                // 3. Плотное ослепительно белое ядро
+                drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, baseSz * 0.95f, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha * 1.0f));
+
+                // В голове кометы — дополнительное мощное белое сияние
                 if (i == 0) {
-                    float headSz = 0.35f * sizeMult;
-                    float alpha = this.animProgress * 0.95f;
-
-                    // 100% soft ethereal atmospheric bloom (NO hard opaque plastic circle)
-                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, headSz * 4.2f, ColorUtil.withAlphaFloat(color, alpha * 0.35f));
-                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, headSz * 2.4f, ColorUtil.withAlphaFloat(color, alpha * 0.55f));
-                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, headSz * 1.3f, ColorUtil.withAlphaFloat(color, alpha * 0.75f));
-
-                    if (this.coreGlow.get()) {
-                        drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, headSz * 0.45f, ColorUtil.withAlphaFloat(0xFFFFFFFF, this.animProgress * 0.85f));
-                    }
-                } else {
-                    float tailSz = 0.22f * sizeMult * (0.25f + 0.75f * trailFactor);
-                    float alpha = this.animProgress * (0.08f + 0.65f * trailFactor * trailFactor);
-
-                    // Pure soft volumetric bloom ribbon, silky smooth with zero hard balls
-                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, tailSz * 2.4f, ColorUtil.withAlphaFloat(color, alpha * 0.45f * trailFactor));
-                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, tailSz * 1.3f, ColorUtil.withAlphaFloat(color, alpha * 0.65f * trailFactor));
-
-                    if (i < steps / 3) {
-                        float coreFactor = 1.0f - ((float) i / (steps * 0.34f));
-                        drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, tailSz * 0.50f, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha * 0.60f * coreFactor));
-                    }
+                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, baseSz * 2.2f, ColorUtil.withAlphaFloat(color, alpha * 0.90f));
+                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, baseSz * 1.7f, ColorUtil.withAlphaFloat(0xFFFFFFFF, 1.0f));
+                    drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, baseSz * 1.3f, ColorUtil.withAlphaFloat(0xFFFFFFFF, 1.0f));
                 }
             }
         }
