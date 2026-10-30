@@ -1,5 +1,7 @@
 package egg.client.cosmetic;
 
+import egg.client.module.ModuleManager;
+import egg.client.module.misc.Globals;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
 import net.minecraft.client.render.entity.feature.FeatureRenderer;
@@ -8,6 +10,9 @@ import net.minecraft.client.render.entity.model.PlayerEntityModel;
 import net.minecraft.client.render.entity.state.PlayerEntityRenderState;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.PlayerEntity;
+
+import java.util.Map;
 
 public class CosmeticsRenderer extends FeatureRenderer<PlayerEntityRenderState, PlayerEntityModel> {
     public static String previewOverrideCat = null;
@@ -21,14 +26,27 @@ public class CosmeticsRenderer extends FeatureRenderer<PlayerEntityRenderState, 
     public void render(MatrixStack matrices, OrderedRenderCommandQueue queue, int light, PlayerEntityRenderState state, float limbAngle, float limbDistance) {
         MinecraftClient mc = MinecraftClient.getInstance();
         boolean isLocal = false;
-        if (mc.player != null && mc.world != null) {
-            Entity entity = mc.world.getEntityById(state.id);
-            if (entity == mc.player) {
+        Entity entity = null;
+        if (mc.world != null) {
+            entity = mc.world.getEntityById(state.id);
+            if (mc.player != null && (entity == mc.player || state.id == mc.player.getId())) {
                 isLocal = true;
             }
         }
-        if (isLocal || state.id <= 0 || (mc.player != null && state.id == mc.player.getId())) {
+        if (isLocal || state.id <= 0) {
             CosmeticsManager.getInstance().renderAttached(matrices, queue, getContextModel(), light);
+            return;
+        }
+
+        // Render cosmetics for other Egg Visuals users when Globals and its "Косметика" checkbox are enabled
+        Globals globals = ModuleManager.getInstance().getModule(Globals.class);
+        if (globals != null && globals.isEnabled() && globals.isCosmeticsEnabled()) {
+            if (entity instanceof PlayerEntity player && Globals.isEggUser(player)) {
+                Map<String, String> playerCosmetics = Globals.getPlayerCosmetics(player);
+                if (playerCosmetics != null && !playerCosmetics.isEmpty()) {
+                    CosmeticsManager.getInstance().renderAttachedForPlayer(matrices, queue, getContextModel(), light, playerCosmetics);
+                }
+            }
         }
     }
 }

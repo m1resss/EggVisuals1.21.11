@@ -35,6 +35,7 @@ public final class CommandManager {
         register(new ConfigCommand());
 // register(new CasesCommand());
         register(new ConfettiCommand());
+        register(new GlobalsCommand());
 
         buildDispatcher();
     }

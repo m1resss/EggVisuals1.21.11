@@ -406,6 +406,16 @@ public final class CosmeticsManager  {
         }
     }
 
+    public void renderAttachedForPlayer(MatrixStack matrices, OrderedRenderCommandQueue queue, PlayerEntityModel model, int light, Map<String, String> cosmetics) {
+        if (cosmetics == null || cosmetics.isEmpty()) return;
+
+        renderItemQueue(matrices, queue, model, light, cosmetics.get("wings"), "wings");
+        renderItemQueue(matrices, queue, model, light, cosmetics.get("backpacks"), "backpacks");
+        renderItemQueue(matrices, queue, model, light, cosmetics.get("hats"), "hats");
+        renderItemQueue(matrices, queue, model, light, cosmetics.get("masks"), "masks");
+        renderItemQueue(matrices, queue, model, light, cosmetics.get("pets"), "pets");
+    }
+
     public static boolean isSword(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return false;
         if (stack.isIn(net.minecraft.registry.tag.ItemTags.SWORDS)) return true;
