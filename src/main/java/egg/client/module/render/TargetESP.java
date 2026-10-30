@@ -378,34 +378,25 @@ public class TargetESP extends Module {
                     float headSz = 0.35f * sizeMult;
                     float alpha = this.animProgress * 0.95f;
 
-                    // 90%+ ethereal glow and atmospheric bloom (no hard opaque plastic)
-                    float outerBloomSz = headSz * 4.6f;
-                    float midBloomSz   = headSz * 2.8f;
-                    float innerGlowSz  = headSz * 1.6f;
-
-                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, outerBloomSz, ColorUtil.withAlphaFloat(color, alpha * 0.45f));
-                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, midBloomSz, ColorUtil.withAlphaFloat(color, alpha * 0.70f));
-                    drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, innerGlowSz, ColorUtil.withAlphaFloat(color, alpha * 0.85f));
-                    drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, headSz * 0.80f, ColorUtil.withAlphaFloat(color, alpha * 0.50f));
+                    // 100% soft ethereal atmospheric bloom (NO hard opaque plastic circle)
+                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, headSz * 4.2f, ColorUtil.withAlphaFloat(color, alpha * 0.35f));
+                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, headSz * 2.4f, ColorUtil.withAlphaFloat(color, alpha * 0.55f));
+                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, headSz * 1.3f, ColorUtil.withAlphaFloat(color, alpha * 0.75f));
 
                     if (this.coreGlow.get()) {
-                        drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, headSz * 0.28f, ColorUtil.withAlphaFloat(0xFFFFFFFF, this.animProgress * 0.95f));
+                        drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, headSz * 0.45f, ColorUtil.withAlphaFloat(0xFFFFFFFF, this.animProgress * 0.85f));
                     }
                 } else {
                     float tailSz = 0.22f * sizeMult * (0.25f + 0.75f * trailFactor);
                     float alpha = this.animProgress * (0.08f + 0.65f * trailFactor * trailFactor);
 
-                    // Continuous volumetric bloom across the entire spirit tail
-                    float tailBloomSz = tailSz * 2.8f;
-                    float tailGlowSz  = tailSz * 1.5f;
+                    // Pure soft volumetric bloom ribbon, silky smooth with zero hard balls
+                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, tailSz * 2.4f, ColorUtil.withAlphaFloat(color, alpha * 0.45f * trailFactor));
+                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, tailSz * 1.3f, ColorUtil.withAlphaFloat(color, alpha * 0.65f * trailFactor));
 
-                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, tailBloomSz, ColorUtil.withAlphaFloat(color, alpha * 0.60f * trailFactor));
-                    drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, tailGlowSz, ColorUtil.withAlphaFloat(color, alpha * 0.75f * trailFactor));
-                    drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, tailSz * 0.70f, ColorUtil.withAlphaFloat(color, alpha * 0.45f));
-
-                    if (i < steps / 2) {
-                        float coreFactor = 1.0f - ((float) i / (steps * 0.5f));
-                        drawParticle(context, GLOWING_TEXTURE, wx, wy, wz, tailSz * 0.26f, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha * 0.75f * coreFactor));
+                    if (i < steps / 3) {
+                        float coreFactor = 1.0f - ((float) i / (steps * 0.34f));
+                        drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, tailSz * 0.50f, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha * 0.60f * coreFactor));
                     }
                 }
             }

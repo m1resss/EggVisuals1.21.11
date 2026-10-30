@@ -49,11 +49,6 @@ public class WorldRendererMixin {
             hitSparks.render(immediate, camPos);
         }
 
-        WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
-        if (wt != null && wt.isEnabled()) {
-            wt.renderWorld3D(immediate, camPos);
-        }
-
         immediate.draw();
     }
 }

@@ -24,6 +24,7 @@ public class WeatherRenderingMixin {
     private void onRenderPrecipitation(VertexConsumerProvider vertexConsumers, Vec3d cameraPos, WeatherRenderState state, CallbackInfo ci) {
         WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
         if (wt != null && wt.isEnabled()) {
+            wt.renderWorld3D(vertexConsumers, cameraPos);
             boolean cancelVanilla = wt.renderWeatherPass(vertexConsumers, cameraPos);
             if (cancelVanilla) {
                 ci.cancel();
