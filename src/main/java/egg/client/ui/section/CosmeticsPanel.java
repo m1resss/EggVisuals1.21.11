@@ -19,8 +19,8 @@ import java.util.*;
 public class CosmeticsPanel {
     private static String searchQuery = "";
 
-    private static final String[] CAT_NAMES = new String[] { "Все", "Шляпы", "Крылья", "Рюкзаки", "Маски", "Питомцы", "Мечи" };
-    private static final String[] CAT_KEYS  = new String[] { "all", "hats", "wings", "backpacks", "masks", "pets", "swords" };
+    private static final String[] CAT_NAMES = new String[] { "Все", "Шляпы", "Крылья", "Рюкзаки", "Маски", "Питомцы" };
+    private static final String[] CAT_KEYS  = new String[] { "all", "hats", "wings", "backpacks", "masks", "pets" };
 
     private static int activeFilter = 0;
     private static float scrollOffset = 0.0f;
@@ -70,14 +70,14 @@ public class CosmeticsPanel {
         int pillsPerRow = 4;
         float pillW = (mainW - (pillsPerRow - 1) * pillGap) / (float) pillsPerRow;
 
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < CAT_NAMES.length + 1; i++) {
             int row = i / pillsPerRow;
             int col = i % pillsPerRow;
             float pX = x + col * (pillW + pillGap);
             float pY = navY + row * (navH + navRowGap);
 
             String label = (i < CAT_NAMES.length) ? CAT_NAMES[i] : "Снять все";
-            boolean isAction = (i == 7);
+            boolean isAction = (i == CAT_NAMES.length);
             boolean isSel = !isAction && (activeFilter == i);
             boolean hov = mouseX >= pX && mouseX <= pX + pillW && mouseY >= pY && mouseY <= pY + navH;
 
@@ -114,7 +114,6 @@ public class CosmeticsPanel {
             activeCats.add("backpacks");
             activeCats.add("masks");
             activeCats.add("pets");
-            activeCats.add("swords");
         } else {
             activeCats.add(CAT_KEYS[activeFilter]);
         }
@@ -340,14 +339,14 @@ public class CosmeticsPanel {
         int pillsPerRow = 4;
         float pillW = (mainW - (pillsPerRow - 1) * pillGap) / (float) pillsPerRow;
 
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < CAT_NAMES.length + 1; i++) {
             int row = i / pillsPerRow;
             int col = i % pillsPerRow;
             float pX = x + col * (pillW + pillGap);
             float pY = navY + row * (navH + navRowGap);
 
             if (mouseX >= pX && mouseX <= pX + pillW && mouseY >= pY && mouseY <= pY + navH) {
-                if (i == 7) {
+                if (i == CAT_NAMES.length) {
                     mod.clearAll();
                     GuiSoundManager.playClick();
                     return true;
@@ -373,7 +372,6 @@ public class CosmeticsPanel {
             activeCats.add("backpacks");
             activeCats.add("masks");
             activeCats.add("pets");
-            activeCats.add("swords");
         } else {
             activeCats.add(CAT_KEYS[activeFilter]);
         }
