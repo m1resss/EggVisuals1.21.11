@@ -34,7 +34,7 @@ public class LyricsCommand extends Command {
                 if (!lyrics.isEnabled()) {
                     lyrics.toggle();
                 }
-                lyrics.playManual("Queen", "Bohemian Rhapsody");
+                lyrics.playDemo();
                 CommandManager.sendClientMessage("§aДемонстрационный трек Queen - Bohemian Rhapsody запущен в скайбоксе!");
             }
             case "stop" -> {

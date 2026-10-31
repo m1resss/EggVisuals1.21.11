@@ -243,7 +243,10 @@ public abstract class GameRendererMixin {
 
         WaypointManager.getInstance().render(context);
 
-
+        Lyrics lyrics = ModuleManager.getInstance().getModule(Lyrics.class);
+        if (lyrics != null && lyrics.isEnabled()) {
+            lyrics.render2D(context, tickCounter);
+        }
 
         DrawBatcher.flushPending();
 

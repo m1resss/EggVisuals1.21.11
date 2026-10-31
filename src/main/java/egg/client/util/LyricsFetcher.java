@@ -50,7 +50,10 @@ public final class LyricsFetcher {
             new LyricLine(85400, "Carry on, carry on as if nothing really matters")
     );
 
-    private LyricsFetcher() {}
+    private LyricsFetcher() {
+        cache.put("queen - bohemian rhapsody", demoLyrics);
+        cache.put(" - bohemian rhapsody", demoLyrics);
+    }
 
     public List<LyricLine> getDemoLyrics() {
         return demoLyrics;
