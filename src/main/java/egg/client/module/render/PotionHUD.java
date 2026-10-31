@@ -7,7 +7,6 @@ import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
-import egg.client.render.IconRenderer;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Fonts;
 import egg.client.render.msdf.Primitive2D;
@@ -18,8 +17,8 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.hud.InGameHud;
+import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.render.RenderTickCounter;
-import net.minecraft.entity.effect.StatusEffect;
 import net.minecraft.entity.effect.StatusEffectCategory;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
@@ -36,8 +35,9 @@ public class PotionHUD extends Module {
         return instance;
     }
 
-    private final ModeSetting timerFormat = new ModeSetting("Формат таймера", "Проценты", "Тип отображения оставшегося времени", "Проценты", "Время");
-    private final BooleanSetting showDigits = new BooleanSetting("Отображать цифры", true, "Отображать значение под иконкой");
+    private final ModeSetting style = new ModeSetting("Вид", "Интерфейс", "Стиль отображения зелий", "Интерфейс", "Капсулы");
+    private final ModeSetting timerFormat = new ModeSetting("Формат таймера", "Время", "Тип отображения оставшегося времени", "Время", "Проценты");
+    private final BooleanSetting showDigits = new BooleanSetting("Отображать цифры", true, "Отображать значение под иконкой (для стиля Капсулы)");
     private final SliderSetting posX = new SliderSetting("X", 0.01, 0.0, 1.0, 0.001, "Позиция X");
     private final SliderSetting posY = new SliderSetting("Y", 0.35, 0.0, 1.0, 0.001, "Позиция Y");
     private final SliderSetting scale = new SliderSetting("Размер", 1.0, 0.5, 1.5, 0.05, "Масштаб зелий");
@@ -51,13 +51,15 @@ public class PotionHUD extends Module {
 
     private float lastX = 8.0f;
     private float lastY = 100.0f;
-    private float lastW = 44.0f;
-    private float lastH = 120.0f;
+    private float lastW = 140.0f;
+    private float lastH = 100.0f;
 
     public PotionHUD() {
-        super("Potions", "Боковой капсульный док активных эффектов зелий", Category.ESP);
+        super("Potions", "Отображение активных эффектов зелий", Category.ESP);
         instance = this;
-        addSettings(timerFormat, showDigits, scale);
+        posX.setVisible(() -> false);
+        posY.setVisible(() -> false);
+        addSettings(style, timerFormat, showDigits, scale, posX, posY);
         setEnabled(true);
     }
 
@@ -66,17 +68,129 @@ public class PotionHUD extends Module {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc == null || mc.getWindow() == null) return;
 
-        int screenW = mc.getWindow().getScaledWidth();
-        int screenH = mc.getWindow().getScaledHeight();
-
+        boolean inChat = mc.currentScreen instanceof ChatScreen;
         List<StatusEffectInstance> effects = collectEffects(mc);
-        if (effects.isEmpty()) return;
+        if (effects.isEmpty()) {
+            if (!inChat) return;
+            effects = createDummyEffects();
+        }
 
         Interface iface = Interface.getInstance();
         float combatAlpha = iface != null ? iface.getCombatAlphaFactor("potions") : 1.0f;
         float combatScale = iface != null ? iface.getCombatScaleFactor("potions") : 1.0f;
-
         float s = scale.getValueFloat() * combatScale;
+
+        if ("Капсулы".equalsIgnoreCase(style.get())) {
+            renderCapsulesMode(context, mc, effects, s, combatAlpha);
+        } else {
+            renderInterfaceMode(context, mc, effects, s, combatAlpha, iface);
+        }
+    }
+
+    private void renderInterfaceMode(DrawContext context, MinecraftClient mc, List<StatusEffectInstance> effects, float s, float combatAlpha, Interface iface) {
+        int screenW = mc.getWindow().getScaledWidth();
+        int screenH = mc.getWindow().getScaledHeight();
+
+        float maxRowW = 0.0f;
+        for (StatusEffectInstance effect : effects) {
+            String name = formatEffectName(effect);
+            float nameW = Fonts.b.a(name, 10.5f * s);
+            String timer = formatTimer(effect);
+            float timerW = Fonts.b.a(timer, 9.5f * s);
+            float badgeW = Math.max(26.0f * s, timerW + 10.0f * s);
+            float rowW = 8.0f * s + 14.0f * s + 6.0f * s + nameW + 10.0f * s + badgeW + 8.0f * s;
+            if (rowW > maxRowW) maxRowW = rowW;
+        }
+
+        float headerW = Fonts.d.a("Зелья", 11.0f * s) + 24.0f * s;
+        float cardW = Math.max(136.0f * s, Math.max(headerW, maxRowW));
+
+        float headerH = 21.0f * s;
+        float rowH = 19.0f * s;
+        float rowGap = 3.5f * s;
+        float padBottom = 5.0f * s;
+        int count = effects.size();
+        float cardH = headerH + count * rowH + Math.max(0, count - 1) * rowGap + padBottom;
+
+        float radius = (iface != null ? iface.getRounding() : 7.0f) * s;
+        int baseBg = iface != null ? iface.getWatermarkBgColor() : 0xD614151E;
+        int finalBg = ColorUtil.rgba(ColorUtil.red(baseBg), ColorUtil.green(baseBg), ColorUtil.blue(baseBg), (int) (214 * combatAlpha));
+        int borderColor = ColorUtil.rgba(255, 255, 255, (int) (22 * combatAlpha));
+
+        float userX = posX.getValueFloat() * (screenW - cardW);
+        float userY = posY.getValueFloat() * (screenH - cardH);
+        float px = Math.clamp(userX, 4.0f, screenW - cardW - 4.0f);
+        float py = Math.clamp(userY, 15.0f, screenH - cardH - 15.0f);
+
+        this.lastX = px;
+        this.lastY = py;
+        this.lastW = cardW;
+        this.lastH = cardH;
+
+        Draw2DProcessor.INSTANCE.drawGlow(null, px, py, cardW, cardH, radius, ColorUtil.rgba(0, 0, 0, (int) (55 * combatAlpha)), 6.0f * s);
+        Draw2DProcessor.INSTANCE.drawRect(null, px, py, cardW, cardH, radius, finalBg);
+        Draw2DProcessor.INSTANCE.drawOutline(null, px, py, cardW, cardH, radius, 0.8f, borderColor);
+
+        if (iface != null && iface.isHudThemeGradient()) {
+            float str = iface.getHudGradientStrength() / 100.0f;
+            int gradC = ColorUtil.rgba(168, 85, 247, (int) (str * 45.0f * combatAlpha));
+            Draw2DProcessor.INSTANCE.drawGradient(null, px, py, cardW, cardH, radius, gradC, 0x00000000, 0x00000000, gradC);
+        }
+
+        Fonts.d.a(null, "Зелья", px + 8.0f * s, py + 5.5f * s, 11.0f * s, ColorUtil.rgba(255, 255, 255, (int) (245 * combatAlpha)));
+        Draw2DProcessor.INSTANCE.drawRect(null, px + 7.0f * s, py + headerH - 1.5f * s, cardW - 14.0f * s, 1.0f, 0.0f, ColorUtil.rgba(255, 255, 255, (int) (18 * combatAlpha)));
+
+        float curY = py + headerH + 2.0f * s;
+
+        for (StatusEffectInstance effect : effects) {
+            float rowCenterY = curY + rowH / 2.0f;
+
+            Identifier icon = InGameHud.getEffectTexture(effect.getEffectType());
+            float iconSize = 13.5f * s;
+            float iconX = px + 8.0f * s;
+            float iconY = rowCenterY - iconSize / 2.0f;
+
+            DrawBatcher.flushPending();
+            if (icon != null) {
+                context.drawGuiTexture(RenderPipelines.GUI_TEXTURED, icon, Math.round(iconX), Math.round(iconY), Math.round(iconSize), Math.round(iconSize), ColorUtil.withAlphaFloat(0xFFFFFFFF, combatAlpha));
+            }
+
+            String name = formatEffectName(effect);
+            boolean harmful = isHarmful(effect);
+            int nameColor = harmful ? ColorUtil.rgba(239, 68, 68, (int) (255 * combatAlpha)) : ColorUtil.rgba(240, 243, 250, (int) (240 * combatAlpha));
+            float nameFontSize = 10.5f * s;
+            float nameX = iconX + iconSize + 6.0f * s;
+            float nameY = rowCenterY - Fonts.b.a(nameFontSize) / 2.0f;
+            Fonts.b.a(null, name, nameX, nameY, nameFontSize, nameColor);
+
+            String timer = formatTimer(effect);
+            float timerFontSize = 9.5f * s;
+            float timerTextW = Fonts.b.a(timer, timerFontSize);
+            float badgeW = Math.max(26.0f * s, timerTextW + 10.0f * s);
+            float badgeH = 13.5f * s;
+            float badgeR = 3.5f * s;
+            float badgeX = px + cardW - 8.0f * s - badgeW;
+            float badgeY = rowCenterY - badgeH / 2.0f;
+
+            int badgeBg = ColorUtil.rgba(36, 40, 52, (int) (190 * combatAlpha));
+            int badgeOutline = ColorUtil.rgba(255, 255, 255, (int) (28 * combatAlpha));
+            Draw2DProcessor.INSTANCE.drawRect(null, badgeX, badgeY, badgeW, badgeH, badgeR, badgeBg);
+            Draw2DProcessor.INSTANCE.drawOutline(null, badgeX, badgeY, badgeW, badgeH, badgeR, 0.8f, badgeOutline);
+
+            float textX = badgeX + (badgeW - timerTextW) / 2.0f;
+            float textY = badgeY + (badgeH - Fonts.b.a(timerFontSize)) / 2.0f;
+            Fonts.b.a(null, timer, textX, textY, timerFontSize, ColorUtil.rgba(235, 238, 245, (int) (240 * combatAlpha)));
+
+            curY += rowH + rowGap;
+        }
+
+        DrawBatcher.flushPending();
+    }
+
+    private void renderCapsulesMode(DrawContext context, MinecraftClient mc, List<StatusEffectInstance> effects, float s, float combatAlpha) {
+        int screenW = mc.getWindow().getScaledWidth();
+        int screenH = mc.getWindow().getScaledHeight();
+
         float ringR = 12.0f * s;
         float innerR = ringR - 2.0f * s;
         float discR = ringR - 1.2f * s;
@@ -127,7 +241,6 @@ public class PotionHUD extends Module {
             int trackColor = ColorUtil.rgba(ColorUtil.red(effectColor), ColorUtil.green(effectColor), ColorUtil.blue(effectColor), 45);
 
             Primitive2D.drawCircle(centerX, cy, discR, ColorUtil.withAlphaFloat(discBg, combatAlpha));
-
             Primitive2D.drawProgressRing(centerX, cy, innerR, ringR, progress, ColorUtil.withAlphaFloat(trackColor, combatAlpha), ColorUtil.withAlphaFloat(effectColor, combatAlpha));
 
             Identifier icon = InGameHud.getEffectTexture(effect.getEffectType());
@@ -140,14 +253,7 @@ public class PotionHUD extends Module {
             }
 
             if (digits) {
-                String label;
-                if ("Время".equalsIgnoreCase(timerFormat.get())) {
-                    int sec = duration / 20;
-                    label = duration > 1000000 ? "∞" : String.format("%d:%02d", sec / 60, sec % 60);
-                } else {
-                    int pct = Math.round(progress * 100.0f);
-                    label = pct + "%";
-                }
+                String label = formatTimer(effect);
                 float fontSize = 9.5f * s;
                 float textW = Fonts.b.a(label, fontSize);
                 float textX = centerX - textW / 2.0f;
@@ -159,6 +265,70 @@ public class PotionHUD extends Module {
         }
 
         DrawBatcher.flushPending();
+    }
+
+    private List<StatusEffectInstance> createDummyEffects() {
+        List<StatusEffectInstance> list = new ArrayList<>();
+        StatusEffectInstance speed = new StatusEffectInstance(StatusEffects.SPEED, 20 * 68, 1);
+        if (speed instanceof IStatusEffectInstance inst) inst.setInitialDuration(20 * 90);
+        list.add(speed);
+
+        StatusEffectInstance strength = new StatusEffectInstance(StatusEffects.STRENGTH, 20 * 58, 1);
+        if (strength instanceof IStatusEffectInstance inst) inst.setInitialDuration(20 * 90);
+        list.add(strength);
+
+        StatusEffectInstance weakness = new StatusEffectInstance(StatusEffects.WEAKNESS, 20 * 30, 0);
+        if (weakness instanceof IStatusEffectInstance inst) inst.setInitialDuration(20 * 45);
+        list.add(weakness);
+
+        return list;
+    }
+
+    public static boolean isHarmful(StatusEffectInstance effect) {
+        if (effect == null || effect.getEffectType() == null) return false;
+        return effect.getEffectType().value().getCategory() == StatusEffectCategory.HARMFUL;
+    }
+
+    public static String formatEffectName(StatusEffectInstance effect) {
+        if (effect == null || effect.getEffectType() == null) return "";
+        String name = effect.getEffectType().value().getName().getString();
+        int amp = effect.getAmplifier();
+        if (amp > 0) {
+            return name + " " + toRoman(amp + 1);
+        }
+        return name;
+    }
+
+    private static String toRoman(int number) {
+        return switch (number) {
+            case 1 -> "I";
+            case 2 -> "II";
+            case 3 -> "III";
+            case 4 -> "IV";
+            case 5 -> "V";
+            case 6 -> "VI";
+            case 7 -> "VII";
+            case 8 -> "VIII";
+            case 9 -> "IX";
+            case 10 -> "X";
+            default -> String.valueOf(number);
+        };
+    }
+
+    private String formatTimer(StatusEffectInstance effect) {
+        int duration = effect.getDuration();
+        if ("Проценты".equalsIgnoreCase(timerFormat.get())) {
+            int initial = 1;
+            if (effect instanceof IStatusEffectInstance inst) {
+                initial = inst.getInitialDuration();
+            }
+            if (initial <= 0) initial = Math.max(duration, 1);
+            float progress = duration > 1000000 ? 1.0f : Math.clamp((float) duration / (float) initial, 0.0f, 1.0f);
+            return Math.round(progress * 100.0f) + "%";
+        } else {
+            int sec = duration / 20;
+            return duration > 1000000 ? "∞" : String.format("%d:%02d", sec / 60, sec % 60);
+        }
     }
 
     private List<StatusEffectInstance> collectEffects(MinecraftClient mc) {
@@ -199,10 +369,47 @@ public class PotionHUD extends Module {
         if (!isEnabled()) return;
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc == null || mc.getWindow() == null) return;
+        int screenW = mc.getWindow().getScaledWidth();
+        int screenH = mc.getWindow().getScaledHeight();
 
         if (dragging) {
-            float rad = 13.0f;
-            Draw2DProcessor.INSTANCE.drawOutline(null, lastX - 2.0f, lastY - 2.0f, lastW + 4.0f, lastH + 4.0f, rad, 1.2f, Theme.getAccent());
+            onChatMouseDragged(mouseX, mouseY, 0);
+        }
+
+        if (dragging) {
+            int gridStep = 25;
+            int gridColor = ColorUtil.rgba(255, 255, 255, 14);
+            for (int gx = gridStep; gx < screenW; gx += gridStep) {
+                Draw2DProcessor.INSTANCE.drawRect(null, gx, 0, 1.0f, screenH, 0.0f, gridColor);
+            }
+            for (int gy = gridStep; gy < screenH; gy += gridStep) {
+                Draw2DProcessor.INSTANCE.drawRect(null, 0, gy, screenW, 1.0f, 0.0f, gridColor);
+            }
+
+            float midX = screenW / 2.0f;
+            float midY = screenH / 2.0f;
+            int centerColor = ColorUtil.rgba(168, 85, 247, 60);
+            Draw2DProcessor.INSTANCE.drawRect(null, midX, 0, 1.0f, screenH, 0.0f, centerColor);
+            Draw2DProcessor.INSTANCE.drawRect(null, 0, midY, screenW, 1.0f, 0.0f, centerColor);
+
+            String label = "HUD — Зелья";
+            float lw = Fonts.b.a(label, 11.5f);
+            float lx = lastX + (lastW - lw) / 2.0f;
+            float ly = lastY + lastH + 6.0f;
+            Fonts.b.a(null, label, lx, ly, 11.5f, ColorUtil.rgba(255, 255, 255, 160));
+        }
+
+        boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
+        if (inside || dragging) {
+            float rad = "Капсулы".equalsIgnoreCase(style.get()) ? Math.min(lastW / 2.0f, 13.0f * scale.getValueFloat()) : 7.0f * scale.getValueFloat();
+            Draw2DProcessor.INSTANCE.drawOutline(null, lastX - 2.0f, lastY - 2.0f, lastW + 4.0f, lastH + 4.0f, rad, 1.0f, Theme.getAccent());
+
+            String scaleBadge = "Зелья: " + Math.round(scale.getValueFloat() * 100.0f) + "%";
+            float bw = Fonts.b.a(scaleBadge, 9.5f) + 8.0f;
+            float bx = lastX + (lastW - bw) / 2.0f;
+            float by = lastY + lastH + 5.0f;
+            Draw2DProcessor.INSTANCE.drawRect(null, bx, by, bw, 13.0f, 3.0f, ColorUtil.rgba(14, 15, 20, 220));
+            Fonts.b.a(null, scaleBadge, bx + 4.0f, by + 2.5f, 9.5f, Theme.getAccentHover());
         }
 
         if (contextMenuOpen) {
@@ -233,10 +440,16 @@ public class PotionHUD extends Module {
         int screenH = mc.getWindow().getScaledHeight();
 
         if (contextMenuOpen) {
-            float mw = 130.0f;
-            float mh = 62.0f;
+            float mw = 135.0f;
+            float mh = 78.0f;
             if (mouseX >= contextMenuX && mouseX <= contextMenuX + mw && mouseY >= contextMenuY && mouseY <= contextMenuY + mh) {
                 float iy = contextMenuY + 22.0f;
+                if (mouseY >= iy && mouseY <= iy + 14.0f) {
+                    style.cycle();
+                    ConfigManager.save();
+                    return true;
+                }
+                iy += 16.0f;
                 if (mouseY >= iy && mouseY <= iy + 14.0f) {
                     timerFormat.cycle();
                     ConfigManager.save();
@@ -257,7 +470,7 @@ public class PotionHUD extends Module {
         if (inside) {
             if (button == 1) {
                 contextMenuOpen = true;
-                contextMenuX = (float) Math.clamp(mouseX, 10.0, screenW - 140.0);
+                contextMenuX = (float) Math.clamp(mouseX, 10.0, screenW - 145.0);
                 contextMenuY = (float) Math.clamp(mouseY, 10.0, screenH - 120.0);
                 return true;
             } else if (button == 0) {
@@ -290,6 +503,24 @@ public class PotionHUD extends Module {
             float newX = (float) mouseX - dragOffsetX;
             float newY = (float) mouseY - dragOffsetY;
 
+            float midX = (screenW - lastW) / 2.0f;
+            if (Math.abs(newX - midX) < 8.0f) {
+                newX = midX;
+            }
+            float midY = (screenH - lastH) / 2.0f;
+            if (Math.abs(newY - midY) < 8.0f) {
+                newY = midY;
+            }
+
+            float nearestGridX = Math.round(newX / 25.0f) * 25.0f;
+            if (Math.abs(newX - nearestGridX) < 5.0f) {
+                newX = nearestGridX;
+            }
+            float nearestGridY = Math.round(newY / 25.0f) * 25.0f;
+            if (Math.abs(newY - nearestGridY) < 5.0f) {
+                newY = nearestGridY;
+            }
+
             float maxAvailX = Math.max(1.0f, screenW - lastW);
             float maxAvailY = Math.max(1.0f, screenH - lastH);
 
@@ -301,8 +532,8 @@ public class PotionHUD extends Module {
     }
 
     private void renderContextMenu(DrawContext context, float mouseX, float mouseY) {
-        float mw = 130.0f;
-        float mh = 62.0f;
+        float mw = 135.0f;
+        float mh = 78.0f;
         float mx = contextMenuX;
         float my = contextMenuY;
 
@@ -314,6 +545,7 @@ public class PotionHUD extends Module {
         Draw2DProcessor.INSTANCE.drawRect(null, mx + 6.0f, my + 18.0f, mw - 12.0f, 1.0f, 0.0f, ColorUtil.rgba(255, 255, 255, 15));
 
         float itemY = my + 22.0f;
+        renderContextItem(context, mx, itemY, mw, "Вид: " + style.get(), true, mouseX, mouseY); itemY += 16.0f;
         renderContextItem(context, mx, itemY, mw, "Формат: " + timerFormat.get(), true, mouseX, mouseY); itemY += 16.0f;
         renderContextItem(context, mx, itemY, mw, "Цифры", showDigits.isEnabled(), mouseX, mouseY);
     }

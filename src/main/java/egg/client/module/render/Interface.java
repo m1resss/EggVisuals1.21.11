@@ -1161,6 +1161,22 @@ public class Interface extends Module {
         return getCombatScaleFactor("watermark");
     }
 
+    public int getWatermarkBgColor() {
+        return watermarkBgColor.get();
+    }
+
+    public float getRounding() {
+        return rounding.getValueFloat();
+    }
+
+    public boolean isHudThemeGradient() {
+        return hudThemeGradient.isEnabled();
+    }
+
+    public float getHudGradientStrength() {
+        return hudGradientStrength.getValueFloat();
+    }
+
     public boolean onMouseScrolled(double mouseX, double mouseY, double amount) {
         if (!isEnabled()) return false;
 
