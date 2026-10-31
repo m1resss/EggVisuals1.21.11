@@ -3,6 +3,7 @@ package egg.client.mixin;
 import egg.client.module.ModuleManager;
 import egg.client.module.player.AutoAccept;
 import egg.client.module.player.NoChatBackground;
+import egg.client.render.animation.HudAnimations;
 import net.minecraft.client.gui.hud.ChatHud;
 import net.minecraft.text.Text;
 import org.spongepowered.asm.mixin.Mixin;
@@ -26,8 +27,20 @@ public class ChatHudMixin {
         return alpha;
     }
 
+    @Inject(
+        method = "render(Lnet/minecraft/client/gui/hud/ChatHud$Backend;IIZ)V",
+        at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/hud/ChatHud$Backend;updatePose(Ljava/util/function/Consumer;)V", shift = At.Shift.AFTER)
+    )
+    private void egg$offsetChatLines(ChatHud.Backend backend, int currentTick, int mouseX, boolean focused, CallbackInfo ci) {
+        float f = HudAnimations.INSTANCE.getChatMessageOffset();
+        if (f != 0.0F) {
+            backend.updatePose(matrix3x2f -> matrix3x2f.translate(0.0F, f));
+        }
+    }
+
     @Inject(method = "addMessage(Lnet/minecraft/text/Text;)V", at = @At("HEAD"))
     private void onAddMessage(Text message, CallbackInfo ci) {
+        HudAnimations.INSTANCE.onChatMessage();
         if (message == null) return;
         String text = message.getString();
 

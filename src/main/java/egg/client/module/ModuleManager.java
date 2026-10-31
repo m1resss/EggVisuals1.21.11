@@ -69,6 +69,7 @@ public class ModuleManager {
         register(new PotionHUD());
         register(new Cooldowns());
         register(new ArmorHUD());
+        register(new Animations());
 
         register(new FullBright());
 

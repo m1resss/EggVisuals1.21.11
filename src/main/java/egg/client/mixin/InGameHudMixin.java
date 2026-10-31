@@ -3,6 +3,7 @@ package egg.client.mixin;
 import egg.client.module.ModuleManager;
 import egg.client.module.render.Crosshair;
 import egg.client.module.render.NoRender;
+import egg.client.render.animation.HudAnimations;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.hud.InGameHud;
 import net.minecraft.client.render.RenderTickCounter;
@@ -41,5 +42,10 @@ public class InGameHudMixin {
             crosshair.render(context, tickCounter);
             ci.cancel();
         }
+    }
+
+    @Inject(method = "render", at = @At("TAIL"))
+    private void egg$renderClosingTabList(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
+        HudAnimations.INSTANCE.renderClosingTabList(context);
     }
 }

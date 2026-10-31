@@ -6,10 +6,12 @@ import egg.client.module.render.PotionHUD;
 import egg.client.module.render.ArmorHUD;
 import egg.client.module.render.Cooldowns;
 import egg.client.module.render.TargetHUD;
+import egg.client.render.animation.HudAnimations;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ChatScreen;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -17,6 +19,32 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(ChatScreen.class)
 public class ChatScreenMixin {
+
+    @Unique
+    private long egg$openedAt;
+    @Unique
+    private boolean egg$shifted;
+
+    @Inject(method = "render", at = @At("HEAD"))
+    private void egg$pushChatOpenAnimation(DrawContext context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
+        if (this.egg$openedAt == 0L) {
+            this.egg$openedAt = System.currentTimeMillis();
+        }
+        float offset = HudAnimations.INSTANCE.getChatOpenOffset(this.egg$openedAt);
+        if (offset != 0.0F) {
+            context.getMatrices().pushMatrix();
+            context.getMatrices().translate(0.0F, offset);
+            this.egg$shifted = true;
+        }
+    }
+
+    @Inject(method = "render", at = @At("RETURN"))
+    private void egg$popChatOpenAnimation(DrawContext context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
+        if (this.egg$shifted) {
+            this.egg$shifted = false;
+            context.getMatrices().popMatrix();
+        }
+    }
 
     @Inject(method = "render", at = @At("TAIL"))
     private void onRenderChatScreenTail(DrawContext context, int mouseX, int mouseY, float delta, CallbackInfo ci) {

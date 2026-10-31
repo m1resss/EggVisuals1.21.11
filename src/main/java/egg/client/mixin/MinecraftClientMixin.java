@@ -1,5 +1,6 @@
 package egg.client.mixin;
 
+import egg.client.render.animation.HudAnimations;
 import egg.client.util.AudioPlayer;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
@@ -21,6 +22,12 @@ public abstract class MinecraftClientMixin {
     @Shadow protected int attackCooldown;
     @Shadow public HitResult crosshairTarget;
     @Shadow public net.minecraft.entity.Entity targetedEntity;
+    @Shadow public Screen currentScreen;
+
+    @Inject(method = "setScreen", at = @At("HEAD"))
+    private void onSetScreen(Screen screen, CallbackInfo ci) {
+        HudAnimations.INSTANCE.onScreenChange(this.currentScreen, screen);
+    }
 
     @Inject(method = "setWorld", at = @At("HEAD"))
     private void onSetWorld(ClientWorld world, CallbackInfo ci) {

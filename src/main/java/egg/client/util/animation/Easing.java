@@ -11,6 +11,11 @@ public interface Easing {
         return t * t * t + 1.0f;
     };
 
+    Easing EASE_OUT_QUART = x -> {
+        float t = Math.clamp(x, 0.0f, 1.0f) - 1.0f;
+        return 1.0f - t * t * t * t;
+    };
+
     Easing EASE_OUT_EXPO = x -> {
         float t = Math.clamp(x, 0.0f, 1.0f);
         return (t == 1.0f) ? 1.0f : 1.0f - (float) Math.pow(2.0, -10.0 * t);

@@ -42,7 +42,9 @@
     "DrawContextAccessor",
     "ItemRenderStateAccessor",
     "ItemCooldownManagerAccessor",
-    "ItemCooldownEntryAccessor"
+    "ItemCooldownEntryAccessor",
+    "PlayerListHudMixin",
+    "ScreenMixin"
   ],
   "client": [],
   "injectors": {

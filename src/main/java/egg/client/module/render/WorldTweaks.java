@@ -85,6 +85,8 @@ public class WorldTweaks extends Module {
     private final ModeSetting fogColorMode = new ModeSetting("Цвет тумана", "По сезону", "Режим цвета тумана", "По сезону", "Кастом", "Ванилла");
     private final ColorSetting fogCustomColor = new ColorSetting("Цвет", 0xFF9FC5E8, "Цвет кастомного тумана");
 
+    private final BooleanSetting reflections = new BooleanSetting("Отражения", false, "Отражения на блоках и воде");
+
     private final BooleanSetting customSound = new BooleanSetting("Звуки дождя/грозы", true, "Кастомный шум дождя и раскаты грома");
     private final SliderSetting soundVolume = new SliderSetting("Громкость звука", 0.65, 0.0, 1.0, 0.05, "Громкость MP3 звуков");
 
@@ -122,6 +124,7 @@ public class WorldTweaks extends Module {
                 this.season, this.weather,
                 this.particles, this.particleDensity, this.snowSpeed,
                 this.smoothSnow, this.snowFootprints, this.autumnLeavesGround,
+                this.reflections,
                 this.customFog, this.fogColorMode, this.fogCustomColor,
                 this.customSound, this.soundVolume
         );
@@ -130,6 +133,14 @@ public class WorldTweaks extends Module {
 
     public static WorldTweaks getInstance() {
         return instance;
+    }
+
+    public BooleanSetting getReflections() {
+        return this.reflections;
+    }
+
+    public boolean isReflectionsEnabled() {
+        return isEnabled() && this.reflections.get();
     }
 
     public boolean isCustomFogColorEnabled() {

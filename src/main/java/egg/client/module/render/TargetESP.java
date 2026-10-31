@@ -5,6 +5,7 @@ import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
+import egg.client.render.Render2D;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
 import egg.client.util.ProjectUtil;
@@ -56,7 +57,7 @@ public class TargetESP extends Module {
     private static final float FREE_LIFE = 1.1F;
 
     private final ModeSetting mode = new ModeSetting("Визуализация цели", "Снежинки", "Стиль Target ESP",
-            "Снежинки", "Души", "Кубы");
+            "Снежинки", "Души", "Кубы", "Молнии", "Разряд");
 
     private final SliderSetting radius = new SliderSetting("Радиус", 0.95, 0.4, 2.5, 0.05, "Радиус охвата цели");
     private final SliderSetting speed = new SliderSetting("Скорость", 1.8, 0.5, 8.0, 0.1, "Скорость движения частиц");
@@ -82,6 +83,14 @@ public class TargetESP extends Module {
     private final Random random = new Random();
     private long lastFrameTime = 0L;
     private float snowSimTime = 0.0f;
+
+    // Lightning & Discharge state
+    private float lightningTime = 0.0f;
+    private long lightningLastNanos = 0L;
+    private float dischargeRotation = 0.0f;
+    private float dischargePulse = 0.0f;
+    private int lastTargetHurtTime = 0;
+    private int trackedTargetId = -1;
 
     public TargetESP() {
         super("Target ESP", "Снежный вихрь и астральные проекции вокруг цели", Category.ESP);
@@ -111,6 +120,12 @@ public class TargetESP extends Module {
         this.newTargetHoverTicks = 0;
         this.animProgress = 0.0f;
         this.snowflakeParticles.clear();
+        this.lightningTime = 0.0f;
+        this.lightningLastNanos = 0L;
+        this.dischargeRotation = 0.0f;
+        this.dischargePulse = 0.0f;
+        this.lastTargetHurtTime = 0;
+        this.trackedTargetId = -1;
     }
 
     public void onTick() {
@@ -279,6 +294,10 @@ public class TargetESP extends Module {
 
         if ("Кубы".equals(curMode)) {
             renderCubes(context, center.x, centerY, center.z, entityHeight, timeSec, baseRadius, spd, sizeMult, activeColor);
+        } else if ("Молнии".equals(curMode)) {
+            renderLightning(context, center, entityHeight, delta, spd, baseRadius, sizeMult, activeColor);
+        } else if ("Разряд".equals(curMode)) {
+            renderDischarge(context, center, entityHeight, delta, spd, baseRadius, sizeMult, activeColor);
         } else {
             renderSouls(context, center.x, centerY, center.z, entityHeight, timeSec, baseRadius, spd, sizeMult, steps, activeColor);
         }
@@ -594,6 +613,264 @@ public class TargetESP extends Module {
                 isize, isize,
                 color
         );
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // LIGHTNING & DISCHARGE MODES (From sadnes TargetEspRenderer)
+    // -----------------------------------------------------------------------------------------
+
+    private void renderLightning(DrawContext context, Vec3d center, double height, float delta,
+                                float spd, float baseR, float sizeMult, int activeColor) {
+        if (this.animProgress <= 0.01f) return;
+        long nowNanos = System.nanoTime();
+        float dt = (this.lightningLastNanos == 0L) ? 0.016F : MathHelper.clamp((nowNanos - this.lightningLastNanos) / 1.0E9F, 0.001F, 0.05F);
+        this.lightningLastNanos = nowNanos;
+        this.lightningTime += dt * spd * 1.1F;
+
+        LivingEntity curTarget = (this.target != null && this.target.isAlive()) ? this.target : null;
+        double width = (curTarget != null) ? curTarget.getWidth() : 0.6;
+        float fRadius = (float) (width * 0.95 * baseR);
+        float fHeight = (float) height;
+
+        float f9 = this.lightningTime * 6.0F;
+        int i2 = (int) f9;
+        float f10 = f9 - i2;
+
+        for (int i3 = 0; i3 < 3; i3++) {
+            float f11 = this.lightningTime * 1.3F + (float) i3 / 3.0F;
+            int i4 = (int) Math.floor(f11);
+            float f12 = f11 - i4;
+            float f13 = MathHelper.clamp(f12 / 0.08F, 0.0F, 1.0F);
+            float f14 = 1.0F - MathHelper.clamp((f12 - 0.42F) / 0.3F, 0.0F, 1.0F);
+            float f15 = MathHelper.clamp(0.55F + 0.45F * smoothNoise(i3, 900, 0, i2, f10), 0.0F, 1.0F);
+            float f16 = f13 * f14 * f15 * this.animProgress;
+            if (f16 <= 0.01F) continue;
+
+            float alpha = f16;
+            float f18 = this.lightningTime * 0.9F;
+            float f19 = fHeight * 0.16F * (float) Math.sin(this.lightningTime * 1.7F + i3 * 2.1F);
+            float f20 = hashNoise(i3, 11, i4) * (float) Math.PI;
+            float f21 = 0.6F + 0.5F * Math.abs(hashNoise(i3, 12, i4));
+            float f22 = hashNoise(i3, 13, i4) >= 0.0F ? 1.0F : -1.0F;
+            float f23 = (float) center.y + fHeight * (0.85F + 0.05F * hashNoise(i3, 14, i4));
+            float f24 = fHeight * 0.67F;
+            float f25 = fRadius * (1.0F + 0.12F * hashNoise(i3, 15, i4));
+
+            float prevX = 0, prevY = 0, prevZ = 0;
+            for (int i5 = 0; i5 <= 3; i5++) {
+                float f29 = (float) i5 / 3.0F;
+                float f30 = f20 + f18 + f22 * f21 * (float) (Math.PI * 2) * f29;
+                float curX = (float) center.x + (float) Math.cos(f30) * f25;
+                float curZ = (float) center.z + (float) Math.sin(f30) * f25;
+                float curY = f23 - f24 * f29 + f19;
+
+                if (i5 > 0) {
+                    int seed = (i3 * 131 + i5) * 17 + i4 * 101 | 1;
+                    buildBoltSegment(context, prevX, prevY, prevZ, curX, curY, curZ, 3,
+                            sizeMult, alpha, activeColor, seed, 0, i2, f10);
+                }
+                prevX = curX;
+                prevY = curY;
+                prevZ = curZ;
+            }
+        }
+    }
+
+    private void buildBoltSegment(DrawContext context, float x1, float y1, float z1,
+                                  float x2, float y2, float z2, int depth,
+                                  float sizeMult, float alpha, int color,
+                                  int seed, int branchCount, int i5, float f10) {
+        float dx = x2 - x1;
+        float dy = y2 - y1;
+        float dz = z2 - z1;
+        float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (depth > 0 && len >= 0.01F) {
+            float dirX = dx / len;
+            float dirY = dy / len;
+            float dirZ = dz / len;
+
+            float upX = Math.abs(dirY) < 0.9F ? 0.0F : 1.0F;
+            float upY = Math.abs(dirY) < 0.9F ? 1.0F : 0.0F;
+            float perpX = -dirZ * upY;
+            float perpY = dirZ * upX;
+            float perpZ = dirX * upY - dirY * upX;
+            float pLen = (float) Math.sqrt(perpX * perpX + perpY * perpY + perpZ * perpZ);
+            if (pLen < 1.0E-5F) pLen = 1.0F;
+            perpX /= pLen; perpY /= pLen; perpZ /= pLen;
+
+            float normX = dirY * perpZ - dirZ * perpY;
+            float normY = dirZ * perpX - dirX * perpZ;
+            float normZ = dirX * perpY - dirY * perpX;
+
+            float n1 = smoothNoise(seed, 0, 0, i5, f10);
+            float n2 = smoothNoise(seed, 1, 0, i5, f10);
+            float disp = len * 0.32F;
+            float midX = (x1 + x2) * 0.5F + (perpX * n1 + normX * n2) * disp;
+            float midY = (y1 + y2) * 0.5F + (perpY * n1 + normY * n2) * disp;
+            float midZ = (z1 + z2) * 0.5F + (perpZ * n1 + normZ * n2) * disp;
+
+            buildBoltSegment(context, x1, y1, z1, midX, midY, midZ, depth - 1, sizeMult, alpha, color, seed * 2 + 7, branchCount, i5, f10);
+            buildBoltSegment(context, midX, midY, midZ, x2, y2, z2, depth - 1, sizeMult, alpha, color, seed * 2 + 9, branchCount, i5, f10);
+
+            if (branchCount < 2 && depth >= 2 && smoothNoise(seed, 2, 0, i5, f10) > 0.45F) {
+                float bn1 = smoothNoise(seed, 3, 0, i5, f10);
+                float bn2 = smoothNoise(seed, 4, 0, i5, f10);
+                float bDirX = dirX * 0.4F + perpX * bn1 + normX * bn2;
+                float bDirY = dirY * 0.4F + perpY * bn1 + normY * bn2;
+                float bDirZ = dirZ * 0.4F + perpZ * bn1 + normZ * bn2;
+                float bLen = (float) Math.sqrt(bDirX * bDirX + bDirY * bDirY + bDirZ * bDirZ);
+                if (bLen < 1.0E-5F) bLen = 1.0F;
+                float bDist = len * 0.65F;
+                float bEndX = midX + (bDirX / bLen) * bDist;
+                float bEndY = midY + (bDirY / bLen) * bDist;
+                float bEndZ = midZ + (bDirZ / bLen) * bDist;
+
+                buildBoltSegment(context, midX, midY, midZ, bEndX, bEndY, bEndZ, depth - 1,
+                        sizeMult * 0.7F, alpha * 0.7F, color, seed * 3 + 13, branchCount + 1, i5, f10);
+            }
+        } else {
+            drawLightningSegment(context, x1, y1, z1, x2, y2, z2, sizeMult, alpha, color);
+        }
+    }
+
+    private void drawLightningSegment(DrawContext context, float x1, float y1, float z1,
+                                      float x2, float y2, float z2,
+                                      float sizeMult, float alpha, int color) {
+        Vector2f s1 = ProjectUtil.toScreen(x1, y1, z1);
+        Vector2f s2 = ProjectUtil.toScreen(x2, y2, z2);
+        if (!ProjectUtil.isOnScreen(s1) && !ProjectUtil.isOnScreen(s2)) return;
+
+        float dx = s2.x - s1.x;
+        float dy = s2.y - s1.y;
+        float len = (float) Math.hypot(dx, dy);
+        if (len < 0.5f) return;
+        float angle = (float) Math.atan2(dy, dx);
+
+        var matrices = context.getMatrices();
+        matrices.pushMatrix();
+        matrices.translate(s1.x, s1.y);
+        matrices.rotate(angle);
+
+        float haloThick = Math.max(3.0f, 6.0f * sizeMult);
+        int haloCol = ColorUtil.withAlphaFloat(color, alpha * 0.35f);
+        Render2D.drawRect(context, 0, -haloThick * 0.5f, len, haloThick, haloCol);
+
+        float coreThick = Math.max(1.5f, 2.4f * sizeMult);
+        int coreCol = ColorUtil.withAlphaFloat(color, alpha * 0.95f);
+        Render2D.drawRect(context, 0, -coreThick * 0.5f, len, coreThick, coreCol);
+
+        float centerThick = Math.max(0.8f, 1.0f * sizeMult);
+        int whiteCol = ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha * 0.95f);
+        Render2D.drawRect(context, 0, -centerThick * 0.5f, len, centerThick, whiteCol);
+
+        matrices.popMatrix();
+    }
+
+    private void renderDischarge(DrawContext context, Vec3d center, double height, float delta,
+                                float spd, float baseR, float sizeMult, int activeColor) {
+        long nowNanos = System.nanoTime();
+        float dt = (this.lastFrameTime == 0L) ? 0.016F : MathHelper.clamp((nowNanos - this.lastFrameTime) / 1.0E9F, 0.001F, 0.05F);
+        this.lastFrameTime = nowNanos;
+
+        LivingEntity curTarget = (this.target != null && this.target.isAlive()) ? this.target : null;
+        if (curTarget != null) {
+            int hurt = curTarget.hurtTime;
+            if (this.trackedTargetId != curTarget.getId()) {
+                this.trackedTargetId = curTarget.getId();
+                this.lastTargetHurtTime = hurt;
+            }
+            if (hurt > this.lastTargetHurtTime) {
+                this.dischargePulse = 1.0F;
+            }
+            this.lastTargetHurtTime = hurt;
+            if (curTarget.isDead()) {
+                this.dischargePulse = 1.0F;
+            }
+        }
+        this.dischargePulse = Math.max(0.0F, this.dischargePulse - dt * 3.0F);
+        this.dischargeRotation = (this.dischargeRotation + dt * 2.5F * spd * (1.0F + 2.0F * this.dischargePulse)) % MathHelper.TAU;
+
+        float fade = this.animProgress;
+        float pulse = this.dischargePulse;
+        float rad = (float) (baseR * (0.85 + 0.15 * pulse));
+
+        // 1. Scanning energy rings traversing the target body
+        float scanPhase = (this.dischargeRotation * 1.8F) % MathHelper.TAU;
+        float scanY1 = (float) (center.y + (0.15 + 0.7 * (0.5 + 0.5 * Math.sin(scanPhase))) * height);
+        float scanY2 = (float) (center.y + (0.15 + 0.7 * (0.5 + 0.5 * Math.sin(scanPhase + Math.PI))) * height);
+
+        drawDischargeRing(context, center.x, scanY1, center.z, rad, 16, activeColor, fade * 0.9f, sizeMult, pulse);
+        drawDischargeRing(context, center.x, scanY2, center.z, rad * 0.92f, 16, activeColor, fade * 0.75f, sizeMult, pulse);
+
+        // 2. Vertical crawling lightning arcs along 4 quadrants of the cylinder
+        int arcs = 4;
+        for (int a = 0; a < arcs; a++) {
+            float baseAngle = this.dischargeRotation + (float) (a * Math.PI / 2.0);
+            int segs = 7;
+            float prevX = 0, prevY = 0, prevZ = 0;
+            for (int s = 0; s <= segs; s++) {
+                float relY = (float) s / (float) segs;
+                float angle = baseAngle + 0.45F * (float) Math.sin(this.snowSimTime * 4.0F + s * 1.2F + a);
+                float r = rad * (1.0F + 0.12F * (float) Math.sin(this.snowSimTime * 7.0F + s * 2.0F));
+                float curX = (float) (center.x + Math.cos(angle) * r);
+                float curZ = (float) (center.z + Math.sin(angle) * r);
+                float curY = (float) (center.y + relY * height * 1.05);
+
+                if (s > 0) {
+                    drawLightningSegment(context, prevX, prevY, prevZ, curX, curY, curZ, sizeMult * 0.9F, fade * 0.95F, activeColor);
+                    if (s % 2 == 1) {
+                        drawParticle(context, BLOOM_TEXTURE, curX, curY, curZ, 0.22F * sizeMult, activeColor);
+                    }
+                }
+                prevX = curX; prevY = curY; prevZ = curZ;
+            }
+        }
+
+        // 3. Discharge bursts on hurt pulse
+        if (pulse > 0.05F) {
+            int sparks = Math.round(pulse * 10);
+            for (int i = 0; i < sparks; i++) {
+                float sa = (float) (i * MathHelper.TAU / sparks + this.snowSimTime * 3.0);
+                float sr = rad * (1.1F + 0.3F * pulse);
+                float sx = (float) (center.x + Math.cos(sa) * sr);
+                float sz = (float) (center.z + Math.sin(sa) * sr);
+                float sy = (float) (center.y + (0.2 + 0.6 * ((i * 17) % 10) / 10.0) * height);
+                drawParticle(context, BLOOM_TEXTURE, sx, sy, sz, 0.35F * sizeMult * (1.0F + pulse), 0xFFFFFFFF);
+                drawParticle(context, BLOOM_TEXTURE, sx, sy, sz, 0.55F * sizeMult * (1.0F + pulse), activeColor);
+            }
+        }
+    }
+
+    private void drawDischargeRing(DrawContext context, double cx, double cy, double cz,
+                                  float radius, int points, int color, float alpha, float sizeMult, float pulse) {
+        float prevX = 0, prevY = 0, prevZ = 0;
+        for (int i = 0; i <= points; i++) {
+            float angle = (float) (i * MathHelper.TAU / points);
+            float jitter = 0.06F * (float) Math.sin(this.snowSimTime * 9.0F + i * 2.3F) * (1.0F + pulse * 2.0F);
+            float r = radius * (1.0F + jitter);
+            float curX = (float) (cx + Math.cos(angle) * r);
+            float curZ = (float) (cz + Math.sin(angle) * r);
+            float curY = (float) (cy + 0.04 * Math.sin(this.snowSimTime * 6.0F + angle * 3.0F));
+
+            if (i > 0) {
+                drawLightningSegment(context, prevX, prevY, prevZ, curX, curY, curZ, sizeMult * 0.75F, alpha, color);
+            }
+            prevX = curX; prevY = curY; prevZ = curZ;
+        }
+    }
+
+    private static float smoothNoise(int i, int i2, int i3, int i4, float f) {
+        float f2 = hashNoise(i, i2, i4 * 4 + i3);
+        float f3 = hashNoise(i, i2, (i4 + 1) * 4 + i3);
+        float f4 = f * f * (3.0F - 2.0F * f);
+        return f2 + (f3 - f2) * f4;
+    }
+
+    private static float hashNoise(int i, int i2, int i3) {
+        int i4 = i * 374761393 + i2 * 668265263 + i3 * 1274126177;
+        int i5 = (i4 ^ i4 >>> 13) * 1274126177;
+        int i6 = i5 ^ i5 >>> 16;
+        return (i6 & 65535) / 32768.0F - 1.0F;
     }
 
     private static final class SnowflakeParticle {

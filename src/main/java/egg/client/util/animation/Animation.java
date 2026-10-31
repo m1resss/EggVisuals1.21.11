@@ -71,6 +71,10 @@ public class Animation {
         return this.currentValue;
     }
 
+    public float get() {
+        return getValue();
+    }
+
     public float getTarget() {
         return this.targetValue;
     }
