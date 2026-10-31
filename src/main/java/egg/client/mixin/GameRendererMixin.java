@@ -184,6 +184,11 @@ public abstract class GameRendererMixin {
 
         }
 
+        ArmorHUD armorHUD = ModuleManager.getInstance().getModule(ArmorHUD.class);
+        if (armorHUD != null && armorHUD.isEnabled()) {
+            armorHUD.render(context, tickCounter);
+        }
+
 
 
         Hitmarker hitmarker = ModuleManager.getInstance().getModule(Hitmarker.class);

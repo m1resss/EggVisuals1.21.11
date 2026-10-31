@@ -630,6 +630,7 @@ public class ClickGuiScreen extends Screen {
 
         MODULE_KEYWORDS.put("Interface", new String[]{"интерфейс", "худ", "ватермарка", "айленд", "остров", "динамик", "музыка", "трек", "бар", "watermark", "island"});
         MODULE_KEYWORDS.put("PotionHUD", new String[]{"зелья", "эффекты", "баффы", "поушн", "зельки", "hud", "potion"});
+        MODULE_KEYWORDS.put("ArmorHUD", new String[]{"броня", "бронь", "шлем", "нагрудник", "поножи", "ботинки", "armor", "hud", "армор"});
         MODULE_KEYWORDS.put("FullBright", new String[]{"яркость", "свет", "гамма", "ночное видение", "ночь", "фулбрайт", "full bright"});
         MODULE_KEYWORDS.put("NoRender", new String[]{"норендер", "тыква", "огонь", "тотем", "слепота", "эффекты", "но рендер", "no render"});
         MODULE_KEYWORDS.put("Glow", new String[]{"свечение", "глов", "обводка", "подсветка", "аура", "glow"});

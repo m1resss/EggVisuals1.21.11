@@ -3,6 +3,7 @@ package egg.client.mixin;
 import egg.client.module.ModuleManager;
 import egg.client.module.render.Interface;
 import egg.client.module.render.PotionHUD;
+import egg.client.module.render.ArmorHUD;
 import egg.client.module.render.Cooldowns;
 import egg.client.module.render.TargetHUD;
 import net.minecraft.client.gui.Click;
@@ -35,10 +36,21 @@ public class ChatScreenMixin {
         if (targetHUD != null && targetHUD.isEnabled()) {
             targetHUD.renderChatOverlay(context, mouseX, mouseY);
         }
+        ArmorHUD armorHUD = ModuleManager.getInstance().getModule(ArmorHUD.class);
+        if (armorHUD != null && armorHUD.isEnabled()) {
+            armorHUD.renderChatOverlay(context, mouseX, mouseY);
+        }
     }
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void onChatMouseClicked(Click click, boolean bl, CallbackInfoReturnable<Boolean> cir) {
+        ArmorHUD armorHUD = ModuleManager.getInstance().getModule(ArmorHUD.class);
+        if (armorHUD != null && armorHUD.isEnabled()) {
+            if (armorHUD.onChatMouseClicked(click.x(), click.y(), click.button())) {
+                cir.setReturnValue(true);
+                return;
+            }
+        }
         TargetHUD targetHUD = ModuleManager.getInstance().getModule(TargetHUD.class);
         if (targetHUD != null && targetHUD.isEnabled()) {
             if (targetHUD.onChatMouseClicked(click.x(), click.y(), click.button())) {
@@ -87,6 +99,13 @@ public class ChatScreenMixin {
         PotionHUD potionHUD = ModuleManager.getInstance().getModule(PotionHUD.class);
         if (potionHUD != null && potionHUD.isEnabled()) {
             if (potionHUD.onMouseScrolled(mouseX, mouseY, verticalAmount)) {
+                cir.setReturnValue(true);
+                return;
+            }
+        }
+        ArmorHUD armorHUD = ModuleManager.getInstance().getModule(ArmorHUD.class);
+        if (armorHUD != null && armorHUD.isEnabled()) {
+            if (armorHUD.onMouseScrolled(mouseX, mouseY, verticalAmount)) {
                 cir.setReturnValue(true);
             }
         }

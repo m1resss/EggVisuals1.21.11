@@ -104,6 +104,11 @@ public class MouseMixin {
                     potionHUD.onChatMouseReleased(mouseX, mouseY, button);
                 }
 
+                egg.client.module.render.ArmorHUD armorHUD = ModuleManager.getInstance().getModule(egg.client.module.render.ArmorHUD.class);
+                if (armorHUD != null && armorHUD.isEnabled()) {
+                    armorHUD.onChatMouseReleased(mouseX, mouseY, button);
+                }
+
                 egg.client.module.render.Interface iface = ModuleManager.getInstance().getModule(egg.client.module.render.Interface.class);
                 if (iface != null && iface.isEnabled()) {
                     iface.onChatMouseReleased(mouseX, mouseY, button);
@@ -148,6 +153,14 @@ public class MouseMixin {
             egg.client.module.render.PotionHUD potionHUD = ModuleManager.getInstance().getModule(egg.client.module.render.PotionHUD.class);
             if (potionHUD != null && potionHUD.isEnabled()) {
                 if (potionHUD.onMouseScrolled(mouseX, mouseY, vertical)) {
+                    ci.cancel();
+                    return;
+                }
+            }
+
+            egg.client.module.render.ArmorHUD armorHUD = ModuleManager.getInstance().getModule(egg.client.module.render.ArmorHUD.class);
+            if (armorHUD != null && armorHUD.isEnabled()) {
+                if (armorHUD.onMouseScrolled(mouseX, mouseY, vertical)) {
                     ci.cancel();
                     return;
                 }
