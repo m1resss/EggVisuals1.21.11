@@ -117,9 +117,17 @@ publishing {
 
 tasks.register('copyToLunar', Copy) {
     dependsOn 'remapJar'
+    doFirst {
+        delete fileTree("C:/Users/admin/.lunarclient/profiles/1.21/mods/fabric-1.21.11") {
+            include "EggVisual*.jar"
+        }
+    }
     from remapJar.archiveFile
     into file("C:/Users/admin/.lunarclient/profiles/1.21/mods/fabric-1.21.11")
     doLast {
+        delete fileTree("C:/Users/admin/AppData/Roaming/.minecraft/mods") {
+            include "EggVisual*.jar"
+        }
         copy {
             from remapJar.archiveFile
             into file("C:/Users/admin/AppData/Roaming/.minecraft/mods")
