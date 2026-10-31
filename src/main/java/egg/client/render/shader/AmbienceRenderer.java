@@ -80,12 +80,11 @@ public enum AmbienceRenderer {
             boolean openGl = isOpenGl();
             boolean doReflections = wt.isReflectionsEnabled() && this.reflectionReady && openGl;
             this.reflectionReady = false;
-            boolean doDepthBlur = wt.isDistanceBlurEnabled() && openGl;
             boolean doBloom = wt.isBloomEnabled();
             boolean doColorGrade = wt.isColorGradeEnabled();
             boolean noSubmersion = gameRenderer.getCamera().getSubmersionType() == CameraSubmersionType.NONE;
 
-            if (doReflections || doDepthBlur || doBloom || doColorGrade) {
+            if (doReflections || doBloom || doColorGrade) {
                 Framebuffer framebuffer = mc.getFramebuffer();
                 if (isFramebufferUsable(framebuffer)) {
                     int w = framebuffer.textureWidth;
@@ -95,7 +94,7 @@ public enum AmbienceRenderer {
                     GpuSampler linearSampler = RenderSystem.getSamplerCache().get(FilterMode.LINEAR);
                     GpuSampler nearestSampler = RenderSystem.getSamplerCache().get(FilterMode.NEAREST);
 
-                    if (doReflections || doDepthBlur || doColorGrade) {
+                    if (doReflections || doColorGrade) {
                         this.captureTarget = ensureTarget(this.captureTarget, "egg_ambience_post_capture", w, h);
                     } else if (this.captureTarget != null) {
                         deleteTarget(this.captureTarget);
@@ -114,12 +113,6 @@ public enum AmbienceRenderer {
                         }
                     }
 
-                    if (doDepthBlur) {
-                        this.captureScene(framebuffer, w, h, nearestSampler);
-                        try (FullscreenPass.RenderStateGuard guard = FullscreenPass.guardState()) {
-                            this.renderDepthBlur(framebuffer, wt.getBlurStrength(), ubo, linearSampler, nearestSampler);
-                        }
-                    }
 
                     if (doColorGrade) {
                         this.captureScene(framebuffer, w, h, nearestSampler);
@@ -177,23 +170,6 @@ public enum AmbienceRenderer {
         FullscreenPass.drawAmbiencePass(Pipelines.AMBIENCE_BLOOM_COMPOSITE, framebuffer, this.resultTarget.getColorAttachmentView(), linear, ubo);
     }
 
-    private void renderDepthBlur(Framebuffer framebuffer, int strength, GpuBufferSlice ubo, GpuSampler linear, GpuSampler nearest) {
-        int mips = Math.max(1, Math.min(strength, 6));
-        this.ensureMipTargets(mips);
-
-        FullscreenPass.drawAmbienceDepthPass(Pipelines.AMBIENCE_DEPTH_BLUR, this.mipTargets[0], this.captureTarget.getColorAttachmentView(), framebuffer.getDepthAttachmentView(), linear, nearest, ubo, BLUR_OFFSET);
-
-        for (int i = 1; i < mips; i++) {
-            FullscreenPass.blitUnflipped(Pipelines.AMBIENCE_BLUR_DOWN, this.mipTargets[i], this.mipTargets[i - 1].getColorAttachmentView(), linear, BLUR_OFFSET);
-        }
-
-        for (int i = mips - 2; i >= 0; i--) {
-            FullscreenPass.blitUnflipped(Pipelines.AMBIENCE_BLUR_UP, this.mipTargets[i], this.mipTargets[i + 1].getColorAttachmentView(), linear, BLUR_OFFSET);
-        }
-
-        FullscreenPass.drawAmbiencePass(Pipelines.AMBIENCE_DEPTH_BLUR, framebuffer, this.mipTargets[0].getColorAttachmentView(), linear, ubo);
-    }
-
     private GpuBufferSlice createUniforms(GameRenderer gameRenderer, WorldTweaks wt, Quaternionf rot) {
         Vector3f up = rot.transform(new Vector3f(0.0F, 1.0F, 0.0F));
         Vector3f right = rot.transform(new Vector3f(1.0F, 0.0F, 0.0F));
@@ -201,7 +177,7 @@ public enum AmbienceRenderer {
         Vector3f sunDir = rot.transform(new Vector3f(-MathHelper.sin(sunAngle), MathHelper.cos(sunAngle), 0.0F));
         Vec3d camPos = gameRenderer.getCamera().getCameraPos();
 
-        float blurDist = (float) wt.getBlurDistance();
+        float blurDist = 99999.0F;
         float waveTime = (float)((System.nanoTime() % 1000000000000L) / 1.0E9);
 
         return AmbiencePostUniformStorage.write(

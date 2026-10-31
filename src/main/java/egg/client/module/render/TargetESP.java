@@ -169,7 +169,6 @@ public class TargetESP extends Module {
             this.target = null;
             this.targetRetainTimer = 0.0f;
             this.newTargetHoverTicks = 0;
-        this.dischargeEffect.reset();
             return;
         }
 
@@ -178,7 +177,6 @@ public class TargetESP extends Module {
             this.target = null;
             this.targetRetainTimer = 0.0f;
             this.newTargetHoverTicks = 0;
-        this.dischargeEffect.reset();
             return;
         }
 
@@ -192,29 +190,24 @@ public class TargetESP extends Module {
                 this.target = hovered;
                 this.targetRetainTimer = (hovered != null) ? (float) this.retainTime.get() : 0.0f;
                 this.newTargetHoverTicks = 0;
-        this.dischargeEffect.reset();
             } else if (hovered == this.target) {
                 this.targetRetainTimer = (float) this.retainTime.get();
                 this.newTargetHoverTicks = 0;
-        this.dischargeEffect.reset();
             } else if (hovered != null && hovered != this.target) {
                 if (!this.focusSystem.get()) {
                     this.target = hovered;
                     this.targetRetainTimer = (float) this.retainTime.get();
                     this.newTargetHoverTicks = 0;
-        this.dischargeEffect.reset();
                 } else {
                     this.newTargetHoverTicks++;
                     if (this.newTargetHoverTicks >= 6 || this.targetRetainTimer <= 0.0f) {
                         this.target = hovered;
                         this.targetRetainTimer = (float) this.retainTime.get();
                         this.newTargetHoverTicks = 0;
-        this.dischargeEffect.reset();
                     }
                 }
             } else {
                 this.newTargetHoverTicks = 0;
-        this.dischargeEffect.reset();
                 if (this.targetRetainTimer > 0.0f) {
                     this.targetRetainTimer -= 0.05f;
                 }
@@ -227,7 +220,6 @@ public class TargetESP extends Module {
                 this.target = hovered;
                 this.targetRetainTimer = (float) this.retainTime.get();
                 this.newTargetHoverTicks = 0;
-        this.dischargeEffect.reset();
             }
         }
 
@@ -678,31 +670,31 @@ public class TargetESP extends Module {
         }
     }
 
+    public double getDischargeSpeed() {
+        return this.dischargeSpeed.get();
+    }
+
     public void renderWorld3D(MatrixStack matrices, Camera camera, float tickDelta, VertexConsumerProvider.Immediate immediate, Vec3d camPos) {
         if (!isEnabled()) return;
         String curMode = this.mode.get();
         LivingEntity curTarget = (this.target != null && this.target.isAlive()) ? this.target : null;
-        if (curTarget == null) {
-            if (this.attachedTarget != null && this.attachedTarget.isAlive()) {
-                curTarget = this.attachedTarget;
-            } else {
-                if ("Разряд".equals(curMode)) {
-                    this.dischargeEffect.reset();
-                }
-                return;
-            }
+        if (curTarget == null && this.attachedTarget != null && this.attachedTarget.isAlive()) {
+            curTarget = this.attachedTarget;
         }
-        if (this.animProgress <= 0.01f) {
-            if ("Разряд".equals(curMode)) {
-                this.dischargeEffect.reset();
+
+        if ("Разряд".equals(curMode)) {
+            if (curTarget != null || this.animProgress > 0.01f) {
+                int col = getActiveDischargeColor(0.0f);
+                this.dischargeEffect.render(matrices, camera, tickDelta, curTarget, col);
             }
             return;
         }
 
-        if ("Разряд".equals(curMode)) {
-            int col = getActiveDischargeColor(0.0f);
-            this.dischargeEffect.render(matrices, camera, tickDelta, curTarget, col);
-        } else if ("Молнии".equals(curMode)) {
+        if (curTarget == null || this.animProgress <= 0.01f) {
+            return;
+        }
+
+        if ("Молнии".equals(curMode)) {
             renderLightning(matrices, camera, tickDelta, curTarget);
         }
     }

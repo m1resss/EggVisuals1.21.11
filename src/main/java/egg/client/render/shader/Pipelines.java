@@ -158,21 +158,7 @@ public final class Pipelines {
             .build()
     );
 
-    public static final RenderPipeline AMBIENCE_DEPTH_BLUR = register(
-        RenderPipeline.builder()
-            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/ambience_depth_blur"))
-            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/fullscreen/pass"))
-            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/fullscreen/ambience_depth_blur"))
-            .withSampler("Sampler0")
-            .withSampler("Sampler1")
-            .withSampler("Sampler2")
-            .withUniform("SadnesAmbiencePost", UniformType.UNIFORM_BUFFER)
-            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
-            .withDepthWrite(false)
-            .withCull(false)
-            .withVertexFormat(CustomVertexFormats.POSITION_TEX_LINE_WIDTH, DrawMode.QUADS)
-            .build()
-    );
+
 
     public static final RenderPipeline AMBIENCE_BLUR_DOWN = register(
         RenderPipeline.builder()

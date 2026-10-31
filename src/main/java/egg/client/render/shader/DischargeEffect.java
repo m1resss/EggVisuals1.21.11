@@ -23,11 +23,15 @@ public final class DischargeEffect {
         float targetVis = livingEntity == null ? 0.0F : 1.0F;
         this.visibility = MathHelper.stepTowards(this.visibility, targetVis, f * 4.0F);
 
-        if (livingEntity != null && livingEntity != this.target) {
-            this.target = livingEntity;
-            this.rotation = 0.0F;
-            this.pulse = 0.0F;
-        } else if (livingEntity == null && this.visibility <= 0.0F) {
+        if (livingEntity != null) {
+            if (this.target == null || livingEntity.getId() != this.trackedEntityId) {
+                this.target = livingEntity;
+                this.trackedEntityId = livingEntity.getId();
+                this.pulse = 0.0F;
+            } else {
+                this.target = livingEntity;
+            }
+        } else if (this.visibility <= 0.0F) {
             this.target = null;
             this.trackedEntityId = -1;
         }
@@ -49,7 +53,12 @@ public final class DischargeEffect {
                 this.pulse = 1.0F;
             }
 
-            this.rotation = (this.rotation + f * (float) (Math.PI * 5.0 / 6.0) * (1.0F + 2.0F * this.pulse)) % (float) (Math.PI * 2);
+            float speedMult = 1.0F;
+            egg.client.module.render.TargetESP esp = egg.client.module.render.TargetESP.getInstance();
+            if (esp != null) {
+                speedMult = (float) (esp.getDischargeSpeed() / 2.2);
+            }
+            this.rotation = (this.rotation + f * (float) (Math.PI * 5.0 / 6.0) * (1.0F + 2.0F * this.pulse) * speedMult) % (float) (Math.PI * 2);
             this.pulse = Math.max(0.0F, this.pulse - f * 3.2F);
             float f2 = this.visibility;
             if (!(f2 <= 0.01F)) {

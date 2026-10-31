@@ -93,9 +93,6 @@ public class WorldTweaks extends Module {
     private final BooleanSetting bloom = new BooleanSetting("Блум", false, "Свечение ярких элементов и неба");
     private final SliderSetting bloomIntensity = new SliderSetting("Сила блума", 0.8, 0.1, 2.5, 0.05, "Интенсивность свечения");
     private final SliderSetting bloomThreshold = new SliderSetting("Порог блума", 0.8, 0.2, 1.5, 0.05, "Порог яркости для свечения");
-    private final BooleanSetting distanceBlur = new BooleanSetting("Блюр дали", false, "Эффект глубины резкости горизонта");
-    private final SliderSetting blurDistance = new SliderSetting("Дистанция блюра", 64.0, 8.0, 256.0, 4.0, "Дистанция начала размытия (м)");
-    private final SliderSetting blurStrength = new SliderSetting("Сила блюра", 3.0, 1.0, 4.0, 1.0, "Количество проходов размытия");
     private final BooleanSetting colorGrade = new BooleanSetting("Цветокоррекция", false, "Пост-обработка цвета мира");
     private final SliderSetting colorGradeSaturation = new SliderSetting("Насыщенность", 100.0, 0.0, 200.0, 5.0, "Насыщенность цвета (%)");
     private final SliderSetting colorGradeContrast = new SliderSetting("Контраст", 100.0, 50.0, 150.0, 5.0, "Контраст изображения (%)");
@@ -141,7 +138,6 @@ public class WorldTweaks extends Module {
                 this.smoothSnow, this.snowFootprints, this.autumnLeavesGround,
                 this.shaderQuality, this.reflections,
                 this.bloom, this.bloomIntensity, this.bloomThreshold,
-                this.distanceBlur, this.blurDistance, this.blurStrength,
                 this.colorGrade, this.colorGradeSaturation, this.colorGradeContrast, this.colorGradeBrightness, this.colorGradeTemperature,
                 this.customFog, this.fogColorMode, this.fogCustomColor,
                 this.customSound, this.soundVolume
@@ -161,24 +157,12 @@ public class WorldTweaks extends Module {
         return isEnabled() && this.reflections.get();
     }
 
-    public boolean isDistanceBlurEnabled() {
-        return isEnabled() && this.distanceBlur.get();
-    }
-
     public boolean isBloomEnabled() {
         return isEnabled() && this.bloom.get();
     }
 
     public boolean isColorGradeEnabled() {
         return isEnabled() && this.colorGrade.get();
-    }
-
-    public int getBlurStrength() {
-        return (int) this.blurStrength.get();
-    }
-
-    public double getBlurDistance() {
-        return this.blurDistance.get();
     }
 
     public double getBloomIntensity() {
