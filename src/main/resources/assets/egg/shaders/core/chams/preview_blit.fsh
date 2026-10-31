@@ -1,0 +1,13 @@
+#version 330
+
+uniform sampler2D Sampler0;
+
+in vec2 texCoord0;
+in vec4 tint;
+
+out vec4 fragColor;
+
+void main() {
+    fragColor = texture(Sampler0, texCoord0) * tint;
+    if (fragColor.a <= 0.0005) discard;
+}

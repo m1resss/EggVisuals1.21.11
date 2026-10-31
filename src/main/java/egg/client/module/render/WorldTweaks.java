@@ -87,7 +87,20 @@ public class WorldTweaks extends Module {
     private final ModeSetting fogColorMode = new ModeSetting("Цвет тумана", "По сезону", "Режим цвета тумана", "По сезону", "Кастом", "Ванилла");
     private final ColorSetting fogCustomColor = new ColorSetting("Цвет", 0xFF9FC5E8, "Цвет кастомного тумана");
 
-    private final BooleanSetting reflections = new BooleanSetting("Отражения", false, "Отражения на блоках и воде");
+    private final BooleanSetting reflections = new BooleanSetting("Отражения", false, "SSR отражения в реальном времени на воде и блоках");
+    private final SliderSetting timeHour = new SliderSetting("Время (ч)", 12.0, 0.0, 24.0, 0.1, "Время суток в часах");
+    private final ModeSetting shaderQuality = new ModeSetting("Качество шейдеров", "x2", "Качество эффектов", "x1", "x2", "x3", "x4");
+    private final BooleanSetting bloom = new BooleanSetting("Блум", false, "Свечение ярких элементов и неба");
+    private final SliderSetting bloomIntensity = new SliderSetting("Сила блума", 0.8, 0.1, 2.5, 0.05, "Интенсивность свечения");
+    private final SliderSetting bloomThreshold = new SliderSetting("Порог блума", 0.8, 0.2, 1.5, 0.05, "Порог яркости для свечения");
+    private final BooleanSetting distanceBlur = new BooleanSetting("Блюр дали", false, "Эффект глубины резкости горизонта");
+    private final SliderSetting blurDistance = new SliderSetting("Дистанция блюра", 64.0, 8.0, 256.0, 4.0, "Дистанция начала размытия (м)");
+    private final SliderSetting blurStrength = new SliderSetting("Сила блюра", 3.0, 1.0, 4.0, 1.0, "Количество проходов размытия");
+    private final BooleanSetting colorGrade = new BooleanSetting("Цветокоррекция", false, "Пост-обработка цвета мира");
+    private final SliderSetting colorGradeSaturation = new SliderSetting("Насыщенность", 100.0, 0.0, 200.0, 5.0, "Насыщенность цвета (%)");
+    private final SliderSetting colorGradeContrast = new SliderSetting("Контраст", 100.0, 50.0, 150.0, 5.0, "Контраст изображения (%)");
+    private final SliderSetting colorGradeBrightness = new SliderSetting("Яркость", 100.0, 50.0, 150.0, 5.0, "Яркость мира (%)");
+    private final SliderSetting colorGradeTemperature = new SliderSetting("Температура", 0.0, -100.0, 100.0, 5.0, "Цветовая температура");
 
     private final BooleanSetting customSound = new BooleanSetting("Звуки дождя/грозы", true, "Кастомный шум дождя и раскаты грома");
     private final SliderSetting soundVolume = new SliderSetting("Громкость звука", 0.65, 0.0, 1.0, 0.05, "Громкость MP3 звуков");
@@ -122,11 +135,14 @@ public class WorldTweaks extends Module {
     public WorldTweaks() {
         super("World Tweaks", "Кастомная погода, времена года и оптимизированные частицы", Category.MISC);
         addSettings(
-                this.timeMode, this.timeOfDay,
+                this.timeMode, this.timeOfDay, this.timeHour,
                 this.season, this.weather,
                 this.particles, this.particleDensity, this.snowSpeed,
                 this.smoothSnow, this.snowFootprints, this.autumnLeavesGround,
-                this.reflections,
+                this.shaderQuality, this.reflections,
+                this.bloom, this.bloomIntensity, this.bloomThreshold,
+                this.distanceBlur, this.blurDistance, this.blurStrength,
+                this.colorGrade, this.colorGradeSaturation, this.colorGradeContrast, this.colorGradeBrightness, this.colorGradeTemperature,
                 this.customFog, this.fogColorMode, this.fogCustomColor,
                 this.customSound, this.soundVolume
         );
@@ -143,6 +159,58 @@ public class WorldTweaks extends Module {
 
     public boolean isReflectionsEnabled() {
         return isEnabled() && this.reflections.get();
+    }
+
+    public boolean isDistanceBlurEnabled() {
+        return isEnabled() && this.distanceBlur.get();
+    }
+
+    public boolean isBloomEnabled() {
+        return isEnabled() && this.bloom.get();
+    }
+
+    public boolean isColorGradeEnabled() {
+        return isEnabled() && this.colorGrade.get();
+    }
+
+    public int getBlurStrength() {
+        return (int) this.blurStrength.get();
+    }
+
+    public double getBlurDistance() {
+        return this.blurDistance.get();
+    }
+
+    public double getBloomIntensity() {
+        return this.bloomIntensity.get();
+    }
+
+    public double getBloomThreshold() {
+        return this.bloomThreshold.get();
+    }
+
+    public double getColorGradeSaturation() {
+        return this.colorGradeSaturation.get() / 100.0;
+    }
+
+    public double getColorGradeContrast() {
+        return this.colorGradeContrast.get() / 100.0;
+    }
+
+    public double getColorGradeBrightness() {
+        return this.colorGradeBrightness.get() / 100.0;
+    }
+
+    public double getColorGradeTemperature() {
+        return this.colorGradeTemperature.get() / 100.0;
+    }
+
+    public int getShaderQualityScale() {
+        String mode = this.shaderQuality.get();
+        if ("x1".equals(mode)) return 1;
+        if ("x3".equals(mode)) return 3;
+        if ("x4".equals(mode)) return 4;
+        return 2;
     }
 
     public boolean isCustomFogColorEnabled() {
@@ -1064,9 +1132,7 @@ public class WorldTweaks extends Module {
 
     public void renderWorld3D(VertexConsumerProvider immediate, Vec3d camPos) {
         if (!isEnabled()) return;
-        if (isReflectionsEnabled()) {
-            renderWaterReflections(immediate, camPos);
-        }
+        // SSR reflections are rendered in post-pipeline by AmbienceRenderer
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.world == null || mc.player == null) return;
 

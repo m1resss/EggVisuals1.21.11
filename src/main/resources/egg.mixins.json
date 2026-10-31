@@ -45,7 +45,9 @@
     "ItemCooldownEntryAccessor",
     "PlayerListHudMixin",
     "ScreenMixin",
-    "TextFieldWidgetAnimationMixin"
+    "TextFieldWidgetAnimationMixin",
+    "WorldRendererProjectionMixin",
+    "WorldRendererReflectionMixin"
   ],
   "client": [],
   "injectors": {
