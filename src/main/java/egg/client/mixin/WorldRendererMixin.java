@@ -6,6 +6,7 @@ import egg.client.module.render.ItemRadius;
 import egg.client.module.render.TotemPopConfetti;
 import egg.client.module.render.Trajectories;
 import egg.client.module.render.WorldTweaks;
+import egg.client.module.render.TargetESP;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.WorldRenderer;
@@ -58,6 +59,10 @@ public class WorldRendererMixin {
         HitSparks hitSparks = ModuleManager.getInstance().getModule(HitSparks.class);
         if (hitSparks != null && hitSparks.isEnabled()) {
             hitSparks.render(immediate, camPos);
+        }
+        TargetESP targetESP = ModuleManager.getInstance().getModule(TargetESP.class);
+        if (targetESP != null && targetESP.isEnabled()) {
+            targetESP.renderWorld3D(immediate, camPos);
         }
 
         immediate.draw();

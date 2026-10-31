@@ -5,6 +5,10 @@ import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
+import egg.client.module.setting.ColorSetting;
+import net.minecraft.client.render.RenderLayers;
+import net.minecraft.client.render.VertexConsumer;
+import net.minecraft.client.render.VertexConsumerProvider;
 import egg.client.render.Render2D;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
@@ -59,6 +63,14 @@ public class TargetESP extends Module {
     private final ModeSetting mode = new ModeSetting("Визуализация цели", "Снежинки", "Стиль Target ESP",
             "Снежинки", "Души", "Кубы", "Молнии", "Разряд");
 
+    // Discharge settings
+    private final ModeSetting dischargeColorMode = new ModeSetting("Цвет разряда", "Переливание", "Режим окраски разряда",
+            "Переливание", "Статичный", "Тема");
+    private final ColorSetting dischargeColor1 = new ColorSetting("Цвет 1", 0xFFA855F7, "Первый цвет переливания (фиолетовый)");
+    private final ColorSetting dischargeColor2 = new ColorSetting("Цвет 2", 0xFFEC4899, "Второй цвет переливания (розовый)");
+    private final ColorSetting dischargeColorStatic = new ColorSetting("Статичный цвет", 0xFFA855F7, "Статичный цвет разряда");
+    private final SliderSetting dischargeSpeed = new SliderSetting("Скорость разряда", 2.2, 0.5, 6.0, 0.1, "Скорость перемещения полосы разряда");
+
     private final SliderSetting radius = new SliderSetting("Радиус", 0.95, 0.4, 2.5, 0.05, "Радиус охвата цели");
     private final SliderSetting speed = new SliderSetting("Скорость", 1.8, 0.5, 8.0, 0.1, "Скорость движения частиц");
     private final SliderSetting particleSize = new SliderSetting("Размер частиц", 1.1, 0.3, 2.5, 0.05, "Масштаб частиц");
@@ -100,7 +112,15 @@ public class TargetESP extends Module {
         coreGlow.setVisible(() -> "Души".equals(mode.get()));
         radius.setVisible(() -> true);
 
-        addSettings(mode, radius, speed, particleSize, tailLength, coreGlow, hurtColor, maxDistance, onlyPlayers, retainTime, focusSystem);
+        dischargeColorMode.setVisible(() -> "Разряд".equals(mode.get()));
+        dischargeColor1.setVisible(() -> "Разряд".equals(mode.get()) && "Переливание".equals(dischargeColorMode.get()));
+        dischargeColor2.setVisible(() -> "Разряд".equals(mode.get()) && "Переливание".equals(dischargeColorMode.get()));
+        dischargeColorStatic.setVisible(() -> "Разряд".equals(mode.get()) && "Статичный".equals(dischargeColorMode.get()));
+        dischargeSpeed.setVisible(() -> "Разряд".equals(mode.get()));
+
+        addSettings(mode, radius, speed, particleSize, tailLength, coreGlow,
+                dischargeColorMode, dischargeColor1, dischargeColor2, dischargeColorStatic, dischargeSpeed,
+                hurtColor, maxDistance, onlyPlayers, retainTime, focusSystem);
     }
 
     public static TargetESP getInstance() {
@@ -295,9 +315,9 @@ public class TargetESP extends Module {
         if ("Кубы".equals(curMode)) {
             renderCubes(context, center.x, centerY, center.z, entityHeight, timeSec, baseRadius, spd, sizeMult, activeColor);
         } else if ("Молнии".equals(curMode)) {
-            renderLightning(context, center, entityHeight, delta, spd, baseRadius, sizeMult, activeColor);
+            // Rendered in 3D world space (WorldRendererMixin) with pure white depth testing
         } else if ("Разряд".equals(curMode)) {
-            renderDischarge(context, center, entityHeight, delta, spd, baseRadius, sizeMult, activeColor);
+            // Rendered in 3D world space (WorldRendererMixin) with glowing scanning band and outline
         } else {
             renderSouls(context, center.x, centerY, center.z, entityHeight, timeSec, baseRadius, spd, sizeMult, steps, activeColor);
         }
@@ -616,58 +636,104 @@ public class TargetESP extends Module {
     }
 
     // -----------------------------------------------------------------------------------------
-    // LIGHTNING & DISCHARGE MODES (From sadnes TargetEspRenderer)
+    // -----------------------------------------------------------------------------------------
+    // 3D LIGHTNING & DISCHARGE ENGINE (Rendered in World Space with Depth Testing)
     // -----------------------------------------------------------------------------------------
 
-    private void renderLightning(DrawContext context, Vec3d center, double height, float delta,
-                                float spd, float baseR, float sizeMult, int activeColor) {
+    public int getActiveDischargeColor(float offsetSec) {
+        String cMode = dischargeColorMode.get();
+        if ("Статичный".equals(cMode)) {
+            return dischargeColorStatic.get();
+        } else if ("Тема".equals(cMode)) {
+            return Theme.getAccent();
+        } else {
+            // "Переливание" - smooth sine shift between Color1 and Color2
+            float t = (float) ((System.currentTimeMillis() % 4000L) / 4000.0);
+            float factor = 0.5f + 0.5f * (float) Math.sin((t * Math.PI * 2.0) + offsetSec);
+            return ColorUtil.interpolate(dischargeColor1.get(), dischargeColor2.get(), factor);
+        }
+    }
+
+    public void renderWorld3D(VertexConsumerProvider.Immediate immediate, Vec3d camPos) {
+        if (!isEnabled()) return;
+        String curMode = this.mode.get();
+        if (!"Молнии".equals(curMode) && !"Разряд".equals(curMode)) return;
+
+        LivingEntity curTarget = (this.target != null && this.target.isAlive()) ? this.target : null;
+        if (curTarget == null) {
+            if (this.attachedTarget != null && this.attachedTarget.isAlive()) {
+                curTarget = this.attachedTarget;
+            } else {
+                return;
+            }
+        }
         if (this.animProgress <= 0.01f) return;
+
+        if ("Молнии".equals(curMode)) {
+            render3DLightning(immediate, curTarget, camPos);
+        } else if ("Разряд".equals(curMode)) {
+            render3DDischarge(immediate, curTarget, camPos);
+        }
+    }
+
+    /**
+     * Pure White 3D Lightning Target ESP:
+     * - Rendered in camera-relative world coordinates with depth testing
+     * - Always pure white (0xFFFFFFFF) as requested
+     * - Fractal midpoint displacement with 3 helical rotating strands
+     * - Double-layered camera-facing ribbon quads: outer glowing halo + intense incandescent core
+     */
+    private void render3DLightning(VertexConsumerProvider.Immediate immediate, LivingEntity curTarget, Vec3d camPos) {
         long nowNanos = System.nanoTime();
         float dt = (this.lightningLastNanos == 0L) ? 0.016F : MathHelper.clamp((nowNanos - this.lightningLastNanos) / 1.0E9F, 0.001F, 0.05F);
         this.lightningLastNanos = nowNanos;
-        this.lightningTime += dt * spd * 1.1F;
+        this.lightningTime += dt * (float) this.speed.get() * 1.1F;
 
-        LivingEntity curTarget = (this.target != null && this.target.isAlive()) ? this.target : null;
-        double width = (curTarget != null) ? curTarget.getWidth() : 0.6;
-        float fRadius = (float) (width * 0.95 * baseR);
-        float fHeight = (float) height;
+        float fRadius = (float) ((curTarget.getWidth() * 0.75F + 0.16F) * this.radius.get());
+        float fHeight = curTarget.getHeight();
+        float targetX = (float) (curTarget.getX() - camPos.x);
+        float targetY = (float) (curTarget.getY() - camPos.y);
+        float targetZ = (float) (curTarget.getZ() - camPos.z);
+        float sizeMult = (float) this.particleSize.get();
 
         float f9 = this.lightningTime * 6.0F;
         int i2 = (int) f9;
         float f10 = f9 - i2;
 
-        for (int i3 = 0; i3 < 3; i3++) {
-            float f11 = this.lightningTime * 1.3F + (float) i3 / 3.0F;
+        VertexConsumer buf = immediate.getBuffer(RenderLayers.lightning());
+
+        for (int strand = 0; strand < 3; strand++) {
+            float f11 = this.lightningTime * 1.3F + (float) strand / 3.0F;
             int i4 = (int) Math.floor(f11);
             float f12 = f11 - i4;
             float f13 = MathHelper.clamp(f12 / 0.08F, 0.0F, 1.0F);
             float f14 = 1.0F - MathHelper.clamp((f12 - 0.42F) / 0.3F, 0.0F, 1.0F);
-            float f15 = MathHelper.clamp(0.55F + 0.45F * smoothNoise(i3, 900, 0, i2, f10), 0.0F, 1.0F);
+            float f15 = MathHelper.clamp(0.55F + 0.45F * smoothNoise(strand, 900, 0, i2, f10), 0.0F, 1.0F);
             float f16 = f13 * f14 * f15 * this.animProgress;
             if (f16 <= 0.01F) continue;
 
-            float alpha = f16;
-            float f18 = this.lightningTime * 0.9F;
-            float f19 = fHeight * 0.16F * (float) Math.sin(this.lightningTime * 1.7F + i3 * 2.1F);
-            float f20 = hashNoise(i3, 11, i4) * (float) Math.PI;
-            float f21 = 0.6F + 0.5F * Math.abs(hashNoise(i3, 12, i4));
-            float f22 = hashNoise(i3, 13, i4) >= 0.0F ? 1.0F : -1.0F;
-            float f23 = (float) center.y + fHeight * (0.85F + 0.05F * hashNoise(i3, 14, i4));
-            float f24 = fHeight * 0.67F;
-            float f25 = fRadius * (1.0F + 0.12F * hashNoise(i3, 15, i4));
+            float strandAlpha = f16;
+            float rotOffset = this.lightningTime * 0.9F;
+            float vertBob = fHeight * 0.16F * (float) Math.sin(this.lightningTime * 1.7F + strand * 2.1F);
+            float startAngle = hashNoise(strand, 11, i4) * (float) Math.PI;
+            float angularSpan = 0.6F + 0.5F * Math.abs(hashNoise(strand, 12, i4));
+            float dir = hashNoise(strand, 13, i4) >= 0.0F ? 1.0F : -1.0F;
+            float startY = targetY + fHeight * (0.85F + 0.05F * hashNoise(strand, 14, i4));
+            float heightDrop = fHeight * 0.67F;
+            float strandR = fRadius * (1.0F + 0.12F * hashNoise(strand, 15, i4));
 
             float prevX = 0, prevY = 0, prevZ = 0;
-            for (int i5 = 0; i5 <= 3; i5++) {
-                float f29 = (float) i5 / 3.0F;
-                float f30 = f20 + f18 + f22 * f21 * (float) (Math.PI * 2) * f29;
-                float curX = (float) center.x + (float) Math.cos(f30) * f25;
-                float curZ = (float) center.z + (float) Math.sin(f30) * f25;
-                float curY = f23 - f24 * f29 + f19;
+            for (int seg = 0; seg <= 3; seg++) {
+                float segProg = (float) seg / 3.0F;
+                float angle = startAngle + rotOffset + dir * angularSpan * (float) (Math.PI * 2.0) * segProg;
+                float curX = targetX + (float) Math.cos(angle) * strandR;
+                float curZ = targetZ + (float) Math.sin(angle) * strandR;
+                float curY = startY - heightDrop * segProg + vertBob;
 
-                if (i5 > 0) {
-                    int seed = (i3 * 131 + i5) * 17 + i4 * 101 | 1;
-                    buildBoltSegment(context, prevX, prevY, prevZ, curX, curY, curZ, 3,
-                            sizeMult, alpha, activeColor, seed, 0, i2, f10);
+                if (seg > 0) {
+                    int seed = (strand * 131 + seg) * 17 + i4 * 101 | 1;
+                    buildBoltSegment3D(buf, prevX, prevY, prevZ, curX, curY, curZ, 4,
+                            sizeMult, strandAlpha, seed, 0, i2, f10);
                 }
                 prevX = curX;
                 prevY = curY;
@@ -676,10 +742,10 @@ public class TargetESP extends Module {
         }
     }
 
-    private void buildBoltSegment(DrawContext context, float x1, float y1, float z1,
-                                  float x2, float y2, float z2, int depth,
-                                  float sizeMult, float alpha, int color,
-                                  int seed, int branchCount, int i5, float f10) {
+    private void buildBoltSegment3D(VertexConsumer buf, float x1, float y1, float z1,
+                                    float x2, float y2, float z2, int depth,
+                                    float sizeMult, float alpha, int seed,
+                                    int branchCount, int i5, float f10) {
         float dx = x2 - x1;
         float dy = y2 - y1;
         float dz = z2 - z1;
@@ -709,8 +775,8 @@ public class TargetESP extends Module {
             float midY = (y1 + y2) * 0.5F + (perpY * n1 + normY * n2) * disp;
             float midZ = (z1 + z2) * 0.5F + (perpZ * n1 + normZ * n2) * disp;
 
-            buildBoltSegment(context, x1, y1, z1, midX, midY, midZ, depth - 1, sizeMult, alpha, color, seed * 2 + 7, branchCount, i5, f10);
-            buildBoltSegment(context, midX, midY, midZ, x2, y2, z2, depth - 1, sizeMult, alpha, color, seed * 2 + 9, branchCount, i5, f10);
+            buildBoltSegment3D(buf, x1, y1, z1, midX, midY, midZ, depth - 1, sizeMult, alpha, seed * 2 + 7, branchCount, i5, f10);
+            buildBoltSegment3D(buf, midX, midY, midZ, x2, y2, z2, depth - 1, sizeMult, alpha, seed * 2 + 9, branchCount, i5, f10);
 
             if (branchCount < 2 && depth >= 2 && smoothNoise(seed, 2, 0, i5, f10) > 0.45F) {
                 float bn1 = smoothNoise(seed, 3, 0, i5, f10);
@@ -725,137 +791,206 @@ public class TargetESP extends Module {
                 float bEndY = midY + (bDirY / bLen) * bDist;
                 float bEndZ = midZ + (bDirZ / bLen) * bDist;
 
-                buildBoltSegment(context, midX, midY, midZ, bEndX, bEndY, bEndZ, depth - 1,
-                        sizeMult * 0.7F, alpha * 0.7F, color, seed * 3 + 13, branchCount + 1, i5, f10);
+                buildBoltSegment3D(buf, midX, midY, midZ, bEndX, bEndY, bEndZ, depth - 1,
+                        sizeMult * 0.7F, alpha * 0.7F, seed * 3 + 13, branchCount + 1, i5, f10);
             }
         } else {
-            drawLightningSegment(context, x1, y1, z1, x2, y2, z2, sizeMult, alpha, color);
+            emitRibbonQuad(buf, x1, y1, z1, x2, y2, z2, sizeMult, alpha);
         }
     }
 
-    private void drawLightningSegment(DrawContext context, float x1, float y1, float z1,
-                                      float x2, float y2, float z2,
-                                      float sizeMult, float alpha, int color) {
-        Vector2f s1 = ProjectUtil.toScreen(x1, y1, z1);
-        Vector2f s2 = ProjectUtil.toScreen(x2, y2, z2);
-        if (!ProjectUtil.isOnScreen(s1) && !ProjectUtil.isOnScreen(s2)) return;
+    private void emitRibbonQuad(VertexConsumer buf, float x1, float y1, float z1,
+                                float x2, float y2, float z2, float sizeMult, float alpha) {
+        float sx = x2 - x1;
+        float sy = y2 - y1;
+        float sz = z2 - z1;
+        float segLen = (float) Math.sqrt(sx * sx + sy * sy + sz * sz);
+        if (segLen < 1.0E-4F) return;
 
-        float dx = s2.x - s1.x;
-        float dy = s2.y - s1.y;
-        float len = (float) Math.hypot(dx, dy);
-        if (len < 0.5f) return;
-        float angle = (float) Math.atan2(dy, dx);
+        float mx = (x1 + x2) * 0.5F;
+        float my = (y1 + y2) * 0.5F;
+        float mz = (z1 + z2) * 0.5F;
 
-        var matrices = context.getMatrices();
-        matrices.pushMatrix();
-        matrices.translate(s1.x, s1.y);
-        matrices.rotate(angle);
+        float nx = sy * mz - sz * my;
+        float ny = sz * mx - sx * mz;
+        float nz = sx * my - sy * mx;
+        float nLen = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+        if (nLen < 1.0E-5F) {
+            nx = 0.0F; ny = 1.0F; nz = 0.0F;
+        } else {
+            nx /= nLen; ny /= nLen; nz /= nLen;
+        }
 
-        float haloThick = Math.max(3.0f, 6.0f * sizeMult);
-        int haloCol = ColorUtil.withAlphaFloat(color, alpha * 0.35f);
-        Render2D.drawRect(context, 0, -haloThick * 0.5f, len, haloThick, haloCol);
+        // 1. Halo quad (outer glow - pure white)
+        float haloHalf = 0.052F * sizeMult;
+        float hx = nx * haloHalf;
+        float hy = ny * haloHalf;
+        float hz = nz * haloHalf;
+        int haloA = Math.max(1, (int) (alpha * 100));
+        buf.vertex(x1 - hx, y1 - hy, z1 - hz).color(255, 255, 255, haloA);
+        buf.vertex(x1 + hx, y1 + hy, z1 + hz).color(255, 255, 255, haloA);
+        buf.vertex(x2 + hx, y2 + hy, z2 + hz).color(255, 255, 255, haloA);
+        buf.vertex(x2 - hx, y2 - hy, z2 - hz).color(255, 255, 255, haloA);
 
-        float coreThick = Math.max(1.5f, 2.4f * sizeMult);
-        int coreCol = ColorUtil.withAlphaFloat(color, alpha * 0.95f);
-        Render2D.drawRect(context, 0, -coreThick * 0.5f, len, coreThick, coreCol);
-
-        float centerThick = Math.max(0.8f, 1.0f * sizeMult);
-        int whiteCol = ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha * 0.95f);
-        Render2D.drawRect(context, 0, -centerThick * 0.5f, len, centerThick, whiteCol);
-
-        matrices.popMatrix();
+        // 2. Core quad (intense incandescent center - pure white)
+        float coreHalf = 0.015F * sizeMult;
+        float cx = nx * coreHalf;
+        float cy = ny * coreHalf;
+        float cz = nz * coreHalf;
+        int coreA = Math.max(1, (int) (alpha * 255));
+        buf.vertex(x1 - cx, y1 - cy, z1 - cz).color(255, 255, 255, coreA);
+        buf.vertex(x1 + cx, y1 + cy, z1 + cz).color(255, 255, 255, coreA);
+        buf.vertex(x2 + cx, y2 + cy, z2 + cz).color(255, 255, 255, coreA);
+        buf.vertex(x2 - cx, y2 - cy, z2 - cz).color(255, 255, 255, coreA);
     }
 
-    private void renderDischarge(DrawContext context, Vec3d center, double height, float delta,
-                                float spd, float baseR, float sizeMult, int activeColor) {
+    /**
+     * 3D Discharge Target ESP:
+     * - Brilliant glowing scanning band moving up and down the entity model with hot white core
+     * - Smooth color shifting ("Переливание") via color pickers
+     * - Luminous silhouette outline / aura contour around player body
+     * - Additive glow via RenderLayers.lightning() with depth testing
+     */
+    private void render3DDischarge(VertexConsumerProvider.Immediate immediate, LivingEntity curTarget, Vec3d camPos) {
         long nowNanos = System.nanoTime();
         float dt = (this.lastFrameTime == 0L) ? 0.016F : MathHelper.clamp((nowNanos - this.lastFrameTime) / 1.0E9F, 0.001F, 0.05F);
         this.lastFrameTime = nowNanos;
 
-        LivingEntity curTarget = (this.target != null && this.target.isAlive()) ? this.target : null;
-        if (curTarget != null) {
-            int hurt = curTarget.hurtTime;
-            if (this.trackedTargetId != curTarget.getId()) {
-                this.trackedTargetId = curTarget.getId();
-                this.lastTargetHurtTime = hurt;
-            }
-            if (hurt > this.lastTargetHurtTime) {
-                this.dischargePulse = 1.0F;
-            }
+        int hurt = curTarget.hurtTime;
+        if (this.trackedTargetId != curTarget.getId()) {
+            this.trackedTargetId = curTarget.getId();
             this.lastTargetHurtTime = hurt;
-            if (curTarget.isDead()) {
-                this.dischargePulse = 1.0F;
-            }
         }
+        if (hurt > this.lastTargetHurtTime) {
+            this.dischargePulse = 1.0F;
+        }
+        this.lastTargetHurtTime = hurt;
         this.dischargePulse = Math.max(0.0F, this.dischargePulse - dt * 3.0F);
-        this.dischargeRotation = (this.dischargeRotation + dt * 2.5F * spd * (1.0F + 2.0F * this.dischargePulse)) % MathHelper.TAU;
 
+        float spdVal = (float) this.dischargeSpeed.get();
+        this.dischargeRotation = (this.dischargeRotation + dt * 2.2F * spdVal * (1.0F + 1.5F * this.dischargePulse)) % MathHelper.TAU;
+
+        float targetX = (float) (curTarget.getX() - camPos.x);
+        float targetY = (float) (curTarget.getY() - camPos.y);
+        float targetZ = (float) (curTarget.getZ() - camPos.z);
+        float w = curTarget.getWidth();
+        float h = curTarget.getHeight();
+        float rad = (float) (w * 0.55 * this.radius.get());
         float fade = this.animProgress;
         float pulse = this.dischargePulse;
-        float rad = (float) (baseR * (0.85 + 0.15 * pulse));
 
-        // 1. Scanning energy rings traversing the target body
-        float scanPhase = (this.dischargeRotation * 1.8F) % MathHelper.TAU;
-        float scanY1 = (float) (center.y + (0.15 + 0.7 * (0.5 + 0.5 * Math.sin(scanPhase))) * height);
-        float scanY2 = (float) (center.y + (0.15 + 0.7 * (0.5 + 0.5 * Math.sin(scanPhase + Math.PI))) * height);
+        int activeCol = getActiveDischargeColor(0.0f);
+        int r = (activeCol >> 16) & 0xFF;
+        int g = (activeCol >> 8) & 0xFF;
+        int b = activeCol & 0xFF;
 
-        drawDischargeRing(context, center.x, scanY1, center.z, rad, 16, activeColor, fade * 0.9f, sizeMult, pulse);
-        drawDischargeRing(context, center.x, scanY2, center.z, rad * 0.92f, 16, activeColor, fade * 0.75f, sizeMult, pulse);
+        VertexConsumer buf = immediate.getBuffer(RenderLayers.lightning());
 
-        // 2. Vertical crawling lightning arcs along 4 quadrants of the cylinder
-        int arcs = 4;
-        for (int a = 0; a < arcs; a++) {
-            float baseAngle = this.dischargeRotation + (float) (a * Math.PI / 2.0);
-            int segs = 7;
-            float prevX = 0, prevY = 0, prevZ = 0;
-            for (int s = 0; s <= segs; s++) {
-                float relY = (float) s / (float) segs;
-                float angle = baseAngle + 0.45F * (float) Math.sin(this.snowSimTime * 4.0F + s * 1.2F + a);
-                float r = rad * (1.0F + 0.12F * (float) Math.sin(this.snowSimTime * 7.0F + s * 2.0F));
-                float curX = (float) (center.x + Math.cos(angle) * r);
-                float curZ = (float) (center.z + Math.sin(angle) * r);
-                float curY = (float) (center.y + relY * height * 1.05);
+        // 1. Scanning horizontal energy band moving smoothly up and down the player model
+        float scanProg = 0.5F + 0.5F * (float) Math.sin(this.dischargeRotation * 1.5F);
+        float scanY = targetY + (0.08F + 0.84F * scanProg) * h;
 
-                if (s > 0) {
-                    drawLightningSegment(context, prevX, prevY, prevZ, curX, curY, curZ, sizeMult * 0.9F, fade * 0.95F, activeColor);
-                    if (s % 2 == 1) {
-                        drawParticle(context, BLOOM_TEXTURE, curX, curY, curZ, 0.22F * sizeMult, activeColor);
-                    }
-                }
-                prevX = curX; prevY = curY; prevZ = curZ;
-            }
+        // Concentric horizontal energy ring at scanY
+        int ringPts = 24;
+        float prevCos = (float) Math.cos(0);
+        float prevSin = (float) Math.sin(0);
+        float rInner = rad * 0.88F;
+        float rCore = rad * 1.05F;
+        float rOuter = rad * 1.35F;
+
+        for (int i = 1; i <= ringPts; i++) {
+            float angle = (float) (i * MathHelper.TAU / ringPts);
+            float curCos = (float) Math.cos(angle);
+            float curSin = (float) Math.sin(angle);
+
+            float jitter = 0.04F * (float) Math.sin(this.dischargeRotation * 5.0F + i * 1.7F);
+            float rc = rCore * (1.0F + jitter);
+            float ro = rOuter * (1.0F + jitter);
+
+            int whiteAlpha = Math.max(1, (int) (fade * (200 + 55 * pulse)));
+            int colAlpha = Math.max(1, (int) (fade * 140));
+
+            // Inner to Core quad (hot white center)
+            buf.vertex(targetX + prevCos * rInner, scanY, targetZ + prevSin * rInner).color(255, 255, 255, whiteAlpha);
+            buf.vertex(targetX + prevCos * rc, scanY, targetZ + prevSin * rc).color(255, 255, 255, whiteAlpha);
+            buf.vertex(targetX + curCos * rc, scanY, targetZ + curSin * rc).color(255, 255, 255, whiteAlpha);
+            buf.vertex(targetX + curCos * rInner, scanY, targetZ + curSin * rInner).color(255, 255, 255, whiteAlpha);
+
+            // Core to Outer quad (colored aura fade)
+            buf.vertex(targetX + prevCos * rc, scanY, targetZ + prevSin * rc).color(r, g, b, colAlpha);
+            buf.vertex(targetX + prevCos * ro, scanY, targetZ + prevSin * ro).color(r, g, b, 0);
+            buf.vertex(targetX + curCos * ro, scanY, targetZ + curSin * ro).color(r, g, b, 0);
+            buf.vertex(targetX + curCos * rc, scanY, targetZ + curSin * rc).color(r, g, b, colAlpha);
+
+            prevCos = curCos;
+            prevSin = curSin;
         }
 
-        // 3. Discharge bursts on hurt pulse
+        // Vertical glowing band hugging the player model around scanY
+        float bandHalf = 0.16F * h;
+        for (int i = 0; i < ringPts; i++) {
+            float a1 = (float) (i * MathHelper.TAU / ringPts);
+            float a2 = (float) ((i + 1) * MathHelper.TAU / ringPts);
+            float c1 = (float) Math.cos(a1) * rad;
+            float s1 = (float) Math.sin(a1) * rad;
+            float c2 = (float) Math.cos(a2) * rad;
+            float s2 = (float) Math.sin(a2) * rad;
+
+            int wAlpha = Math.max(1, (int) (fade * 220));
+
+            // Bottom to center (fades up from transparent colored to white core)
+            buf.vertex(targetX + c1, scanY - bandHalf, targetZ + s1).color(r, g, b, 0);
+            buf.vertex(targetX + c1, scanY, targetZ + s1).color(255, 255, 255, wAlpha);
+            buf.vertex(targetX + c2, scanY, targetZ + s2).color(255, 255, 255, wAlpha);
+            buf.vertex(targetX + c2, scanY - bandHalf, targetZ + s2).color(r, g, b, 0);
+
+            // Center to top (fades up from white core to transparent colored)
+            buf.vertex(targetX + c1, scanY, targetZ + s1).color(255, 255, 255, wAlpha);
+            buf.vertex(targetX + c1, scanY + bandHalf, targetZ + s1).color(r, g, b, 0);
+            buf.vertex(targetX + c2, scanY + bandHalf, targetZ + s2).color(r, g, b, 0);
+            buf.vertex(targetX + c2, scanY, targetZ + s2).color(255, 255, 255, wAlpha);
+        }
+
+        // 2. Beautiful glowing silhouette outline (Обводка) hugging the whole player body
+        float hullRad = rad * 1.08F;
+        int hullPts = 24;
+        for (int i = 0; i < hullPts; i++) {
+            float a1 = (float) (i * MathHelper.TAU / hullPts);
+            float a2 = (float) ((i + 1) * MathHelper.TAU / hullPts);
+            float c1 = (float) Math.cos(a1) * hullRad;
+            float s1 = (float) Math.sin(a1) * hullRad;
+            float c2 = (float) Math.cos(a2) * hullRad;
+            float s2 = (float) Math.sin(a2) * hullRad;
+
+            // Fresnel edge effect: perpendicular to view gets maximum alpha
+            float midAngle = (a1 + a2) * 0.5F;
+            float dotView = (float) Math.abs(Math.sin(midAngle - Math.atan2(targetZ, targetX)));
+            float rimAlpha = (0.2F + 0.8F * dotView) * fade * (0.65F + 0.35F * pulse);
+            int rimA = Math.max(1, (int) (rimAlpha * 120));
+
+            buf.vertex(targetX + c1, targetY, targetZ + s1).color(r, g, b, rimA);
+            buf.vertex(targetX + c1, targetY + h + 0.05F, targetZ + s1).color(r, g, b, rimA);
+            buf.vertex(targetX + c2, targetY + h + 0.05F, targetZ + s2).color(r, g, b, rimA);
+            buf.vertex(targetX + c2, targetY, targetZ + s2).color(r, g, b, rimA);
+        }
+
+        // On hurt pulse, flash brilliant white aura
         if (pulse > 0.05F) {
-            int sparks = Math.round(pulse * 10);
-            for (int i = 0; i < sparks; i++) {
-                float sa = (float) (i * MathHelper.TAU / sparks + this.snowSimTime * 3.0);
-                float sr = rad * (1.1F + 0.3F * pulse);
-                float sx = (float) (center.x + Math.cos(sa) * sr);
-                float sz = (float) (center.z + Math.sin(sa) * sr);
-                float sy = (float) (center.y + (0.2 + 0.6 * ((i * 17) % 10) / 10.0) * height);
-                drawParticle(context, BLOOM_TEXTURE, sx, sy, sz, 0.35F * sizeMult * (1.0F + pulse), 0xFFFFFFFF);
-                drawParticle(context, BLOOM_TEXTURE, sx, sy, sz, 0.55F * sizeMult * (1.0F + pulse), activeColor);
-            }
-        }
-    }
+            float flashRad = hullRad * (1.0F + 0.25F * pulse);
+            int flashA = (int) (pulse * 150);
+            for (int i = 0; i < hullPts; i++) {
+                float a1 = (float) (i * MathHelper.TAU / hullPts);
+                float a2 = (float) ((i + 1) * MathHelper.TAU / hullPts);
+                float c1 = (float) Math.cos(a1) * flashRad;
+                float s1 = (float) Math.sin(a1) * flashRad;
+                float c2 = (float) Math.cos(a2) * flashRad;
+                float s2 = (float) Math.sin(a2) * flashRad;
 
-    private void drawDischargeRing(DrawContext context, double cx, double cy, double cz,
-                                  float radius, int points, int color, float alpha, float sizeMult, float pulse) {
-        float prevX = 0, prevY = 0, prevZ = 0;
-        for (int i = 0; i <= points; i++) {
-            float angle = (float) (i * MathHelper.TAU / points);
-            float jitter = 0.06F * (float) Math.sin(this.snowSimTime * 9.0F + i * 2.3F) * (1.0F + pulse * 2.0F);
-            float r = radius * (1.0F + jitter);
-            float curX = (float) (cx + Math.cos(angle) * r);
-            float curZ = (float) (cz + Math.sin(angle) * r);
-            float curY = (float) (cy + 0.04 * Math.sin(this.snowSimTime * 6.0F + angle * 3.0F));
-
-            if (i > 0) {
-                drawLightningSegment(context, prevX, prevY, prevZ, curX, curY, curZ, sizeMult * 0.75F, alpha, color);
+                buf.vertex(targetX + c1, targetY, targetZ + s1).color(255, 255, 255, flashA);
+                buf.vertex(targetX + c1, targetY + h, targetZ + s1).color(255, 255, 255, flashA);
+                buf.vertex(targetX + c2, targetY + h, targetZ + s2).color(255, 255, 255, flashA);
+                buf.vertex(targetX + c2, targetY, targetZ + s2).color(255, 255, 255, flashA);
             }
-            prevX = curX; prevY = curY; prevZ = curZ;
         }
     }
 

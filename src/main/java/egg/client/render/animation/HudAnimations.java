@@ -160,4 +160,18 @@ public final class HudAnimations {
     public void endContainerTransform(DrawContext context) {
         context.getMatrices().popMatrix();
     }
+
+    public float getTypingProgress(long typedAt) {
+        if (typedAt == 0L) return 1.0f;
+        Animations animations = Animations.getInstance();
+        if (animations == null || !animations.isTypingEnabled()) return 1.0f;
+
+        float speed = animations.getSpeed();
+        float elapsed = Math.min((float) (System.currentTimeMillis() - typedAt) / (130.0f / speed), 1.0f);
+        if (elapsed >= 1.0f) return 1.0f;
+
+        // Cubic out easing: 1 - pow(1 - x, 3)
+        float f = 1.0f - elapsed;
+        return 1.0f - f * f * f;
+    }
 }

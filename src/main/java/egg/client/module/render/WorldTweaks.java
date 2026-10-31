@@ -12,6 +12,8 @@ import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.util.math.Box;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.RenderLayers;
 import net.minecraft.client.render.WorldRenderer;
@@ -1062,6 +1064,9 @@ public class WorldTweaks extends Module {
 
     public void renderWorld3D(VertexConsumerProvider immediate, Vec3d camPos) {
         if (!isEnabled()) return;
+        if (isReflectionsEnabled()) {
+            renderWaterReflections(immediate, camPos);
+        }
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.world == null || mc.player == null) return;
 
@@ -1203,6 +1208,131 @@ public class WorldTweaks extends Module {
                     leafBuffer.vertex(x1, y1, z1).texture(1.0f, 1.0f).color(r, g, b, 245).light(leafLight);
                     leafBuffer.vertex(x2, y2, z2).texture(1.0f, 0.0f).color(r, g, b, 245).light(leafLight);
                     leafBuffer.vertex(x3, y3, z3).texture(0.0f, 0.0f).color(r, g, b, 245).light(leafLight);
+                }
+            }
+        }
+    }
+
+
+    /**
+     * Authentic Water & World Reflections:
+     * - Scans exposed water surface blocks within radius around camera
+     * - Renders glossy specular sheen, Fresnel angle falloff, and animated wave distortion
+     * - Projects mirror reflections of players and living entities onto the water surface
+     */
+    private void renderWaterReflections(VertexConsumerProvider immediate, Vec3d camPos) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc.world == null || mc.player == null) return;
+
+        BlockPos camBlock = BlockPos.ofFloored(camPos.x, camPos.y, camPos.z);
+        int radius = 16;
+        int minY = Math.max(mc.world.getBottomY(), camBlock.getY() - 6);
+        int maxY = Math.min(mc.world.getBottomY() + mc.world.getHeight(), camBlock.getY() + 4);
+
+        long timeMs = System.currentTimeMillis();
+        float waveTime = (float) ((timeMs % 100000L) / 1000.0);
+
+        Box searchBox = new Box(camBlock).expand(radius, 6, radius);
+        List<LivingEntity> entities = mc.world.getEntitiesByClass(LivingEntity.class, searchBox, LivingEntity::isAlive);
+
+        VertexConsumer buf = immediate.getBuffer(RenderLayers.lightning());
+        BlockPos.Mutable mpos = new BlockPos.Mutable();
+        BlockPos.Mutable upPos = new BlockPos.Mutable();
+
+        for (int x = -radius; x <= radius; x++) {
+            int bx = camBlock.getX() + x;
+            for (int z = -radius; z <= radius; z++) {
+                int bz = camBlock.getZ() + z;
+                if (x * x + z * z > radius * radius) continue;
+
+                for (int by = maxY; by >= minY; by--) {
+                    mpos.set(bx, by, bz);
+                    BlockState state = mc.world.getBlockState(mpos);
+                    if (!state.isOf(Blocks.WATER)) continue;
+
+                    upPos.set(bx, by + 1, bz);
+                    BlockState upState = mc.world.getBlockState(upPos);
+                    if (upState.isOf(Blocks.WATER)) continue;
+
+                    float waterLevel = 0.88F;
+                    float waterY = (float) (by + waterLevel - camPos.y);
+                    float x0 = (float) (bx - camPos.x);
+                    float x1 = x0 + 1.0F;
+                    float z0 = (float) (bz - camPos.z);
+                    float z1 = z0 + 1.0F;
+
+                    float cx = (x0 + x1) * 0.5F;
+                    float cz = (z0 + z1) * 0.5F;
+                    float distSq = cx * cx + waterY * waterY + cz * cz;
+                    float dist = (float) Math.sqrt(distSq);
+                    if (dist < 0.1F) continue;
+
+                    float cosTheta = Math.abs(waterY) / dist;
+                    float fresnel = MathHelper.clamp(0.20F + 0.80F * (float) Math.pow(1.0F - cosTheta, 3.0), 0.0F, 1.0F);
+
+                    float w0 = 0.015F * (float) Math.sin(bx * 0.7F + waveTime * 1.8F + bz * 0.5F);
+                    float w1 = 0.015F * (float) Math.sin((bx + 1) * 0.7F + waveTime * 1.8F + bz * 0.5F);
+                    float w2 = 0.015F * (float) Math.sin((bx + 1) * 0.7F + waveTime * 1.8F + (bz + 1) * 0.5F);
+                    float w3 = 0.015F * (float) Math.sin(bx * 0.7F + waveTime * 1.8F + (bz + 1) * 0.5F);
+
+                    // 1. Water surface glossy specular sheen & sky reflection
+                    int skyR = 120;
+                    int skyG = 180;
+                    int skyB = 240;
+                    int sheenAlpha = Math.max(1, (int) (fresnel * 75.0F));
+
+                    buf.vertex(x0, waterY + w0, z0).color(skyR, skyG, skyB, sheenAlpha);
+                    buf.vertex(x1, waterY + w1, z0).color(skyR, skyG, skyB, sheenAlpha);
+                    buf.vertex(x1, waterY + w2, z1).color(skyR, skyG, skyB, sheenAlpha);
+                    buf.vertex(x0, waterY + w3, z1).color(skyR, skyG, skyB, sheenAlpha);
+
+                    // Sun specular glint on waves
+                    float sunDot = (cx * 0.4F + waterY * 0.8F + cz * 0.3F) / dist;
+                    if (sunDot > 0.85F) {
+                        float glint = (float) Math.pow((sunDot - 0.85F) / 0.15F, 16.0);
+                        int glintAlpha = (int) (glint * 160.0F);
+                        if (glintAlpha > 1) {
+                            buf.vertex(x0, waterY + w0 + 0.002F, z0).color(255, 255, 230, glintAlpha);
+                            buf.vertex(x1, waterY + w1 + 0.002F, z0).color(255, 255, 230, glintAlpha);
+                            buf.vertex(x1, waterY + w2 + 0.002F, z1).color(255, 255, 230, glintAlpha);
+                            buf.vertex(x0, waterY + w3 + 0.002F, z1).color(255, 255, 230, glintAlpha);
+                        }
+                    }
+
+                    // 2. Mirror reflection of nearby entities on this water block
+                    for (LivingEntity e : entities) {
+                        double ex = e.getX() - camPos.x;
+                        double ez = e.getZ() - camPos.z;
+                        float ew = e.getWidth();
+
+                        if (ex >= x0 - ew * 0.6 && ex <= x1 + ew * 0.6 && ez >= z0 - ew * 0.6 && ez <= z1 + ew * 0.6) {
+                            double entityFeetY = e.getY();
+                            double waterBlockFeetY = by + waterLevel;
+                            double distAboveWater = entityFeetY - waterBlockFeetY;
+
+                            if (distAboveWater >= -0.3 && distAboveWater <= 4.0) {
+                                int reflAlpha = Math.max(1, (int) (fresnel * 160.0F * (1.0F - (float) distAboveWater / 5.0F)));
+
+                                int er = 220, eg = 235, eb = 255;
+                                if (e == mc.player) {
+                                    er = 180; eg = 210; eb = 255;
+                                }
+
+                                float rw = ew * 0.45F;
+                                float rx0 = (float) ex - rw;
+                                float rx1 = (float) ex + rw;
+                                float rz0 = (float) ez - rw;
+                                float rz1 = (float) ez + rw;
+
+                                buf.vertex(rx0, waterY + 0.005F, rz0).color(er, eg, eb, reflAlpha);
+                                buf.vertex(rx1, waterY + 0.005F, rz0).color(er, eg, eb, reflAlpha);
+                                buf.vertex(rx1, waterY + 0.005F, rz1).color(er, eg, eb, reflAlpha);
+                                buf.vertex(rx0, waterY + 0.005F, rz1).color(er, eg, eb, reflAlpha);
+                            }
+                        }
+                    }
+
+                    break;
                 }
             }
         }

@@ -13,12 +13,13 @@ public class Animations extends Module {
     private final BooleanSetting chatOpen = new BooleanSetting("Открытие чата", true, "Плавный выезд строки ввода чата при открытии");
     private final BooleanSetting containers = new BooleanSetting("Контейнеры", true, "Плавный зум и анимация открытия инвентарей и меню");
     private final BooleanSetting perspective = new BooleanSetting("Перспектива", true, "Плавный переход камеры при переключении F5");
+    private final BooleanSetting typing = new BooleanSetting("Набор текста", true, "Плавное появление и подскок символов при вводе текста");
     private final SliderSetting animSpeed = new SliderSetting("Скорость", 1.0, 0.5, 2.5, 0.1, "Множитель скорости анимаций");
 
     public Animations() {
         super("Animations", "Плавные анимации чата, таба, контейнеров и камеры", Category.ESP);
         instance = this;
-        addSettings(tab, chat, chatOpen, containers, perspective, animSpeed);
+        addSettings(tab, chat, chatOpen, containers, perspective, typing, animSpeed);
     }
 
     public static Animations getInstance() {
@@ -43,6 +44,10 @@ public class Animations extends Module {
 
     public boolean isPerspectiveEnabled() {
         return isEnabled() && perspective.get();
+    }
+
+    public boolean isTypingEnabled() {
+        return isEnabled() && typing.get();
     }
 
     public float getSpeed() {
