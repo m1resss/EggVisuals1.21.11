@@ -645,6 +645,7 @@ public class ClickGuiScreen extends Screen {
         MODULE_KEYWORDS.put("HpCounter", new String[]{"хп", "хпшка", "здоровье", "сердечки", "жизни", "хп каунтер", "hp counter"});
         MODULE_KEYWORDS.put("SmoothEat", new String[]{"еда", "анимация еды", "плавная еда", "кушать", "smooth eat"});
         MODULE_KEYWORDS.put("Trajectories", new String[]{"траектории", "предикшен", "стрелы", "перлы", "зелья", "прицел", "траектория", "арбалет", "prediction", "trajectories"});
+        MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбоксы", "customhitbox", "hitbox", "обводка", "заливка", "бокс", "кубы", "hitboxes"});
 
         MODULE_KEYWORDS.put("AutoRespawn", new String[]{"автореспавн", "респавн", "возрождение", "смерть", "auto respawn"});
         MODULE_KEYWORDS.put("NoChatBackground", new String[]{"чат", "фон чата", "прозрачный чат", "no chat background"});

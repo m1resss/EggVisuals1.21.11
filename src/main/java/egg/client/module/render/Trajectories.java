@@ -60,6 +60,12 @@ public class Trajectories extends Module {
     }
 
     public void render(VertexConsumerProvider consumers, Vec3d camPos) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        float tickDelta = mc.getRenderTickCounter() != null ? mc.getRenderTickCounter().getTickProgress(false) : 1.0f;
+        render(consumers, camPos, tickDelta);
+    }
+
+    public void render(VertexConsumerProvider consumers, Vec3d camPos, float tickDelta) {
         if (!isEnabled()) return;
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null || mc.world == null) return;
@@ -79,21 +85,23 @@ public class Trajectories extends Module {
         VertexConsumer quadBuffer = consumers.getBuffer(RenderLayers.debugQuads());
         Set<String> activeKeys = new HashSet<>();
 
-        Box viewRange = mc.player.getBoundingBox().expand(80.0);
-        for (Entity entity : mc.world.getOtherEntities(mc.player, viewRange)) {
-            if (!entity.isAlive() || entity.getVelocity().lengthSquared() < 0.0001) continue;
-            if (entity instanceof ProjectileEntity || entity instanceof ArrowEntity || entity instanceof EnderPearlEntity || entity instanceof PotionEntity || entity instanceof TridentEntity) {
-                renderInFlightPrediction(mc, entity, quadBuffer, camPos, r, g, b, smoothFactor, activeKeys);
+        if (inFlight.isEnabled()) {
+            Box viewRange = mc.player.getBoundingBox().expand(80.0);
+            for (Entity entity : mc.world.getOtherEntities(mc.player, viewRange)) {
+                if (!entity.isAlive() || entity.getVelocity().lengthSquared() < 0.0001) continue;
+                if (entity instanceof ProjectileEntity || entity instanceof ArrowEntity || entity instanceof EnderPearlEntity || entity instanceof PotionEntity || entity instanceof TridentEntity) {
+                    renderInFlightPrediction(mc, entity, quadBuffer, camPos, r, g, b, smoothFactor, activeKeys);
+                }
             }
         }
 
         ItemStack main = mc.player.getMainHandStack();
         ItemStack off = mc.player.getOffHandStack();
         if (isThrowableOrWeapon(main.getItem())) {
-            renderItemPrediction(mc, main, Hand.MAIN_HAND, quadBuffer, camPos, r, g, b, smoothFactor, activeKeys);
+            renderItemPrediction(mc, main, Hand.MAIN_HAND, quadBuffer, camPos, r, g, b, smoothFactor, activeKeys, tickDelta);
         }
         if (isThrowableOrWeapon(off.getItem())) {
-            renderItemPrediction(mc, off, Hand.OFF_HAND, quadBuffer, camPos, r, g, b, smoothFactor, activeKeys);
+            renderItemPrediction(mc, off, Hand.OFF_HAND, quadBuffer, camPos, r, g, b, smoothFactor, activeKeys, tickDelta);
         }
 
         smoothedPositions.keySet().removeIf(k -> !activeKeys.contains(k));
@@ -108,7 +116,8 @@ public class Trajectories extends Module {
 
     private void renderItemPrediction(MinecraftClient mc, ItemStack stack, Hand hand,
                                       VertexConsumer quadBuffer, Vec3d camPos,
-                                      int r, int g, int b, float smoothFactor, Set<String> activeKeys) {
+                                      int r, int g, int b, float smoothFactor, Set<String> activeKeys,
+                                      float tickDelta) {
         if (stack == null || stack.isEmpty()) return;
         Item item = stack.getItem();
 
@@ -120,7 +129,6 @@ public class Trajectories extends Module {
         if (item instanceof BowItem) {
             float pull = getBowPull(mc.player);
             if (pull <= 0.0f) {
-
                 speed = 3.0f;
             } else {
                 speed = pull * 3.0f;
@@ -154,6 +162,16 @@ public class Trajectories extends Module {
 
         if (speed <= 0.0f) return;
 
+        if (pullThreshold.get() > 0.0) {
+            if (item instanceof BowItem) {
+                if (getBowPull(mc.player) < pullThreshold.get()) return;
+            } else if (item instanceof CrossbowItem) {
+                if (!CrossbowItem.isCharged(stack) && !mc.player.isUsingItem()) return;
+            } else if (item instanceof TridentItem) {
+                if (!mc.player.isUsingItem()) return;
+            }
+        }
+
         boolean isMulti = (item instanceof CrossbowItem) && hasMultishot(stack);
         float[] yawSpreads = isMulti ? new float[]{-10.0f, 0.0f, 10.0f} : new float[]{0.0f};
 
@@ -170,23 +188,17 @@ public class Trajectories extends Module {
                     return old.lerp(targetImpact, smoothFactor);
                 });
 
-                if (showLine.isEnabled()) {
-                    boolean lineAllowed = true;
-                    if (pullThreshold.get() > 0.0) {
-                        if (item instanceof BowItem) {
-                            lineAllowed = getBowPull(mc.player) >= pullThreshold.get();
-                        } else if (item instanceof CrossbowItem) {
-                            lineAllowed = CrossbowItem.isCharged(stack) || mc.player.isUsingItem();
-                        } else if (item instanceof TridentItem) {
-                            lineAllowed = mc.player.isUsingItem();
-                        }
-                    }
-                    if (lineAllowed) {
-                        renderPathRibbon(quadBuffer, res.path, camPos, r, g, b);
-                    }
+                // Flight trajectory path ribbon is STICTLY ONLY shown when projectile is already thrown in flight!
+                // When aiming, check if aimed at an enemy target:
+                if (res.hitEntity instanceof LivingEntity target && target.isAlive() && target != mc.player) {
+                    Box targetBox = CustomHitbox.getInterpolatedBoundingBox(target, tickDelta);
+                    CustomHitbox.renderHitbox(quadBuffer, targetBox, camPos,
+                            true, r, g, b, 128,
+                            true, r, g, b, 255,
+                            1.8f);
+                } else {
+                    renderGlowingLandingCircle(quadBuffer, smoothPos, camPos, res.impactSide, r, g, b);
                 }
-
-                renderGlowingLandingCircle(quadBuffer, smoothPos, camPos, res.impactSide, r, g, b);
             }
         }
     }
@@ -268,17 +280,17 @@ public class Trajectories extends Module {
 
             Vec3d end = hitBlock.getType() != HitResult.Type.MISS ? hitBlock.getPos() : next;
 
-            Entity hitEntity = raycastEntity(mc, pos, end);
+            Entity hitEntity = raycastEntity(mc, pos, end, mc.player);
             if (hitEntity != null) {
                 impactPoint = hitEntity.getBoundingBox().expand(0.3).raycast(pos, end).orElse(end);
                 path.add(impactPoint);
-                return new TrajectoryResult(path, impactPoint, Direction.UP);
+                return new TrajectoryResult(path, impactPoint, Direction.UP, hitEntity);
             }
 
             if (hitBlock.getType() != HitResult.Type.MISS) {
                 impactPoint = hitBlock.getPos();
                 path.add(impactPoint);
-                return new TrajectoryResult(path, impactPoint, hitBlock.getSide());
+                return new TrajectoryResult(path, impactPoint, hitBlock.getSide(), null);
             }
 
             pos = next;
@@ -289,7 +301,7 @@ public class Trajectories extends Module {
             impactPoint = pos;
         }
 
-        return new TrajectoryResult(path, impactPoint, Direction.UP);
+        return new TrajectoryResult(path, impactPoint, Direction.UP, null);
     }
 
     private TrajectoryResult simulateInFlight(MinecraftClient mc, Entity entity) {
@@ -316,9 +328,17 @@ public class Trajectories extends Module {
             BlockHitResult hit = mc.world.raycast(new RaycastContext(
                     pos, next, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, entity));
 
+            Vec3d end = hit.getType() != HitResult.Type.MISS ? hit.getPos() : next;
+            Entity hitEntity = raycastEntity(mc, pos, end, entity);
+            if (hitEntity != null) {
+                Vec3d entImpact = hitEntity.getBoundingBox().expand(0.3).raycast(pos, end).orElse(end);
+                path.add(entImpact);
+                return new TrajectoryResult(path, entImpact, Direction.UP, hitEntity);
+            }
+
             if (hit.getType() != HitResult.Type.MISS) {
                 path.add(hit.getPos());
-                return new TrajectoryResult(path, hit.getPos(), hit.getSide());
+                return new TrajectoryResult(path, hit.getPos(), hit.getSide(), null);
             }
 
             pos = next;
@@ -330,12 +350,12 @@ public class Trajectories extends Module {
         return new TrajectoryResult(path, pos, Direction.UP);
     }
 
-    private Entity raycastEntity(MinecraftClient mc, Vec3d start, Vec3d end) {
+    private Entity raycastEntity(MinecraftClient mc, Vec3d start, Vec3d end, Entity ignoreEntity) {
         Entity closest = null;
         double closestDist = Double.MAX_VALUE;
         Box range = new Box(start, end).expand(1.0);
 
-        for (Entity candidate : mc.world.getOtherEntities(mc.player, range)) {
+        for (Entity candidate : mc.world.getOtherEntities(ignoreEntity, range)) {
             if (candidate.isAlive() && !candidate.isSpectator() && (candidate instanceof LivingEntity)) {
                 Optional<Vec3d> hit = candidate.getBoundingBox().expand(0.3).raycast(start, end);
                 if (hit.isPresent()) {
@@ -537,11 +557,17 @@ public class Trajectories extends Module {
         final List<Vec3d> path;
         final Vec3d impactPoint;
         final Direction impactSide;
+        final Entity hitEntity;
 
-        TrajectoryResult(List<Vec3d> path, Vec3d impactPoint, Direction impactSide) {
+        TrajectoryResult(List<Vec3d> path, Vec3d impactPoint, Direction impactSide, Entity hitEntity) {
             this.path = path;
             this.impactPoint = impactPoint;
             this.impactSide = impactSide != null ? impactSide : Direction.UP;
+            this.hitEntity = hitEntity;
+        }
+
+        TrajectoryResult(List<Vec3d> path, Vec3d impactPoint, Direction impactSide) {
+            this(path, impactPoint, impactSide, null);
         }
     }
 }

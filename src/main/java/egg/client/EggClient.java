@@ -5,6 +5,7 @@ import egg.client.module.render.HitSparks;
 import egg.client.module.render.ItemRadius;
 import egg.client.module.render.TargetESP;
 import egg.client.module.render.TotemPopConfetti;
+import egg.client.module.render.CustomHitbox;
 import egg.client.module.render.Trajectories;
 import egg.client.module.render.WorldTweaks;
 import egg.client.render.shader.FrameBufferPool;
@@ -64,7 +65,12 @@ public class EggClient implements ClientModInitializer {
 
                 Trajectories traj = ModuleManager.getInstance().getModule(Trajectories.class);
                 if (traj != null && traj.isEnabled()) {
-                    traj.render(immediate, camPos);
+                    traj.render(immediate, camPos, tickDelta);
+                }
+
+                CustomHitbox customHitbox = ModuleManager.getInstance().getModule(CustomHitbox.class);
+                if (customHitbox != null && customHitbox.isEnabled()) {
+                    customHitbox.render(immediate, camPos, tickDelta);
                 }
 
                 ItemRadius itemRadius = ModuleManager.getInstance().getModule(ItemRadius.class);
