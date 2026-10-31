@@ -155,6 +155,11 @@ public abstract class GameRendererMixin {
     @Unique
 
     private void renderCustomHud(DrawContext context, RenderTickCounter tickCounter) {
+        Lyrics lyrics = ModuleManager.getInstance().getModule(Lyrics.class);
+        if (lyrics != null && lyrics.isEnabled()) {
+            lyrics.render2D(context, tickCounter);
+            DrawBatcher.flushPending();
+        }
 
         Interface iface = ModuleManager.getInstance().getModule(Interface.class);
 
@@ -242,11 +247,6 @@ public abstract class GameRendererMixin {
 
 
         WaypointManager.getInstance().render(context);
-
-        Lyrics lyrics = ModuleManager.getInstance().getModule(Lyrics.class);
-        if (lyrics != null && lyrics.isEnabled()) {
-            lyrics.render2D(context, tickCounter);
-        }
 
         DrawBatcher.flushPending();
 

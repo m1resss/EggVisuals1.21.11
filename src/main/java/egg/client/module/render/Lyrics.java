@@ -29,8 +29,12 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
 import org.joml.Vector2f;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class Lyrics extends Module {
     private final BooleanSetting demoMode = new BooleanSetting("Демо трек", false, "Воспроизведение демо-трека Queen - Bohemian Rhapsody");
@@ -39,7 +43,8 @@ public class Lyrics extends Module {
     private final SliderSetting size = new SliderSetting("Размер", 1.2, 0.6, 2.5, 0.05, "Масштаб шрифта");
     private final BooleanSetting glow = new BooleanSetting("Неоновое свечение", true, "Свечение в цвет темы клиента");
     private final BooleanSetting background = new BooleanSetting("Тёмная подложка", true, "Фон для контраста в небе");
-    private final BooleanSetting trackBadge = new BooleanSetting("Инфо о треке", true, "Название трека и исполнитель над текстом");
+    private final BooleanSetting trackBadge = new BooleanSetting("Инфо о треке", false, "Название трека и исполнитель над текстом");
+    private final BooleanSetting karaoke = new BooleanSetting("Караоке анимация", true, "Анимация проявления слов по мере пения трека");
     private final ModeSetting colorMode = new ModeSetting("Цвет текста", "Белый", "Белый", "Тема", "Градиент");
 
     private Vec3d activeSkyDirection = null;
@@ -55,6 +60,28 @@ public class Lyrics extends Module {
     private long lastFrameNanos = 0L;
     private long demoPlayTimeMs = 0L;
 
+    public static class TimedWord {
+        public final String word;
+        public final float width;
+        public final float xOffset;
+        public final long startOffsetMs;
+        public final long durationMs;
+
+        public TimedWord(String word, float width, float xOffset, long startOffsetMs, long durationMs) {
+            this.word = word;
+            this.width = width;
+            this.xOffset = xOffset;
+            this.startOffsetMs = startOffsetMs;
+            this.durationMs = durationMs;
+        }
+    }
+
+    private int cachedWordsLineIndex = -1;
+    private float cachedWordScale = -1.0f;
+    private List<TimedWord> cachedWords = null;
+    private float cachedLineWidth = 0.0f;
+    private static final Pattern SYLLABLE_PATTERN = Pattern.compile("<(?:(\\d+):)?(\\d+(?:\\.\\d+)?)>([^<]+)");
+
     private boolean manualPlayback = false;
     private String manualArtist = "";
     private String manualTitle = "";
@@ -63,7 +90,7 @@ public class Lyrics extends Module {
 
     public Lyrics() {
         super("Lyrics", "Отображает текст играющей музыки в скайбоксе с плавной анимацией", Category.ESP);
-        addSettings(demoMode, distance, elevation, size, glow, background, trackBadge, colorMode);
+        addSettings(demoMode, distance, elevation, size, glow, background, trackBadge, karaoke, colorMode);
     }
 
     @Override
@@ -85,6 +112,9 @@ public class Lyrics extends Module {
         lastSongKey = "";
         currentLineIndex = -1;
         prevLineIndex = -1;
+        cachedWordsLineIndex = -1;
+        cachedWords = null;
+        cachedLineWidth = 0.0f;
         overallAlpha = 0.0f;
     }
 
@@ -265,30 +295,50 @@ public class Lyrics extends Module {
             float cx = currentScreenPos.x;
             float cy = currentScreenPos.y;
 
-            if (trackBadge.isEnabled() && !currentTitle.isEmpty()) {
-                String badgeText = (currentArtist.isEmpty() ? "" : currentArtist + " — ") + currentTitle;
-                float bw = Fonts.d.a(badgeText, badgeFontSize) + 16.0f * userScale;
-                float bh = Fonts.d.a(badgeFontSize) + 7.0f * userScale;
-                float bx = cx - bw / 2.0f;
-                float by = cy - 32.0f * userScale;
+            // Safe clearance against top HUD (Dynamic Island, Watermark) and bottom hotbar
+            float topClearanceY = 64.0f * userScale;
+            float topFade = MathHelper.clamp((cy - topClearanceY) / (22.0f * userScale), 0.0f, 1.0f);
+            float bottomClearanceY = screenH - 52.0f * userScale;
+            float bottomFade = MathHelper.clamp((bottomClearanceY - cy) / (22.0f * userScale), 0.0f, 1.0f);
+            float hudClearanceFade = topFade * bottomFade;
 
-                if (background.isEnabled()) {
-                    Draw2DProcessor.INSTANCE.drawRect(null, bx, by, bw, bh, 4.0f * userScale, ColorUtil.rgba(14, 15, 20, (int) (180 * effectiveAlpha)));
-                    Draw2DProcessor.INSTANCE.drawOutline(null, bx, by, bw, bh, 4.0f * userScale, 0.8f, ColorUtil.withAlphaFloat(accentColor, 0.50f * effectiveAlpha));
+            float lineEffectiveAlpha = effectiveAlpha * hudClearanceFade;
+
+            if (lineEffectiveAlpha > 0.01f) {
+                if (trackBadge.isEnabled() && !currentTitle.isEmpty()) {
+                    String badgeText = (currentArtist.isEmpty() ? "" : currentArtist + " — ") + currentTitle;
+                    float bw = Fonts.d.a(badgeText, badgeFontSize) + 16.0f * userScale;
+                    float bh = Fonts.d.a(badgeFontSize) + 7.0f * userScale;
+                    float bx = cx - bw / 2.0f;
+                    float by = cy - 32.0f * userScale;
+
+                    if (background.isEnabled()) {
+                        Draw2DProcessor.INSTANCE.drawRect(null, bx, by, bw, bh, 4.0f * userScale, ColorUtil.rgba(14, 15, 20, (int) (180 * lineEffectiveAlpha)));
+                        Draw2DProcessor.INSTANCE.drawOutline(null, bx, by, bw, bh, 4.0f * userScale, 0.8f, ColorUtil.withAlphaFloat(accentColor, 0.50f * lineEffectiveAlpha));
+                    }
+                    float tx = cx - Fonts.d.a(badgeText, badgeFontSize) / 2.0f;
+                    float ty = by + (bh - Fonts.d.a(badgeFontSize)) / 2.0f - 0.5f;
+                    Fonts.d.a(null, badgeText, tx, ty, badgeFontSize, ColorUtil.withAlphaFloat(accentColor, 0.95f * lineEffectiveAlpha));
                 }
-                float tx = cx - Fonts.d.a(badgeText, badgeFontSize) / 2.0f;
-                float ty = by + (bh - Fonts.d.a(badgeFontSize)) / 2.0f - 0.5f;
-                Fonts.d.a(null, badgeText, tx, ty, badgeFontSize, ColorUtil.withAlphaFloat(accentColor, 0.95f * effectiveAlpha));
-            }
 
-            float line1Y = cy + (1.0f - ease) * 14.0f;
-            float line1Alpha = (0.50f + 0.50f * ease) * effectiveAlpha;
-            renderVectorLine(cx, line1Y, currentText, mainFontSize, line1Alpha, activeTextColor, accentColor, true, userScale);
+                float line1Y = cy + (1.0f - ease) * 14.0f;
+                float line1Alpha = (0.50f + 0.50f * ease) * lineEffectiveAlpha;
 
-            if (nextText != null && !nextText.isBlank()) {
-                float line2Y = cy + Fonts.d.a(mainFontSize) + 10.0f * userScale;
-                float line2Alpha = (0.35f + 0.15f * ease) * effectiveAlpha;
-                renderVectorLine(cx, line2Y, nextText, nextFontSize, line2Alpha, ColorUtil.rgba(215, 220, 235, 255), accentColor, false, userScale);
+                if (karaoke.isEnabled() && activeLyrics != null && !activeLyrics.isEmpty()) {
+                    int mainIdx = currentLineIndex >= 0 ? currentLineIndex : 0;
+                    LyricLine curLine = activeLyrics.get(mainIdx);
+                    LyricLine nxtLine = (mainIdx + 1 < activeLyrics.size()) ? activeLyrics.get(mainIdx + 1) : null;
+                    renderKaraokeLine(cx, line1Y, mainIdx, curLine, nxtLine, playTimeMs, mainFontSize, line1Alpha, activeTextColor, accentColor, userScale);
+                } else {
+                    renderVectorLine(cx, line1Y, currentText, mainFontSize, line1Alpha, activeTextColor, accentColor, true, userScale);
+                }
+
+                if (nextText != null && !nextText.isBlank()) {
+                    float line2Y = cy + Fonts.d.a(mainFontSize) + 10.0f * userScale;
+                    float line2Alpha = (0.35f + 0.15f * ease) * lineEffectiveAlpha;
+                    int upcomingGrey = ColorUtil.rgba(140, 145, 160, (int) (180 * line2Alpha));
+                    renderVectorLine(cx, line2Y, nextText, nextFontSize, line2Alpha, upcomingGrey, accentColor, false, userScale);
+                }
             }
         }
 
@@ -303,6 +353,158 @@ public class Lyrics extends Module {
         }
 
         DrawBatcher.flushPending();
+    }
+
+    private void updateWordCache(LyricLine line, LyricLine nextLine, float fontSize) {
+        cachedWords = new ArrayList<>();
+        if (line == null || line.text().isBlank()) {
+            cachedLineWidth = 0.0f;
+            return;
+        }
+
+        String rawText = line.text().trim();
+        long lineStartTime = line.timeMs();
+
+        if (rawText.contains("<") && rawText.contains(">")) {
+            Matcher m = SYLLABLE_PATTERN.matcher(rawText);
+            float curX = 0.0f;
+            float spaceW = Fonts.d.a(" ", fontSize);
+            long prevTagTime = lineStartTime;
+
+            while (m.find()) {
+                try {
+                    String minStr = m.group(1);
+                    int minutes = minStr != null ? Integer.parseInt(minStr) : 0;
+                    float seconds = Float.parseFloat(m.group(2));
+                    long tagTime = (long) ((minutes * 60 + seconds) * 1000);
+                    String wordText = m.group(3).trim();
+                    if (!wordText.isEmpty()) {
+                        float wWidth = Fonts.d.a(wordText, fontSize);
+                        long startOffset = Math.max(0L, tagTime - lineStartTime);
+                        long dur = Math.max(180L, tagTime - prevTagTime);
+                        cachedWords.add(new TimedWord(wordText, wWidth, curX, startOffset, dur));
+                        curX += wWidth + spaceW;
+                        prevTagTime = tagTime;
+                    }
+                } catch (Exception ignored) {}
+            }
+            if (!cachedWords.isEmpty()) {
+                cachedLineWidth = Math.max(0.0f, curX - spaceW);
+                return;
+            }
+        }
+
+        String[] rawWords = rawText.split("\\s+");
+        if (rawWords.length == 0) {
+            cachedLineWidth = 0.0f;
+            return;
+        }
+
+        long rawDuration;
+        if (nextLine != null && nextLine.timeMs() > lineStartTime) {
+            rawDuration = nextLine.timeMs() - lineStartTime;
+        } else {
+            rawDuration = Math.max(2500L, rawWords.length * 500L);
+        }
+
+        long singingDuration = Math.min(rawDuration, Math.max(2000L, rawWords.length * 480L));
+        long usableDuration = (long) (singingDuration * 0.90f);
+
+        float totalWeight = 0.0f;
+        for (String w : rawWords) {
+            totalWeight += Math.max(1.5f, (float) w.length());
+        }
+
+        float curX = 0.0f;
+        float spaceW = Fonts.d.a(" ", fontSize);
+        float accWeight = 0.0f;
+
+        for (int i = 0; i < rawWords.length; i++) {
+            String w = rawWords[i];
+            float wWidth = Fonts.d.a(w, fontSize);
+            float weight = Math.max(1.5f, (float) w.length());
+
+            long startOffsetMs = (long) ((accWeight / totalWeight) * usableDuration);
+            long wordDurMs = Math.max(180L, (long) ((weight / totalWeight) * usableDuration));
+
+            cachedWords.add(new TimedWord(w, wWidth, curX, startOffsetMs, wordDurMs));
+            curX += wWidth + spaceW;
+            accWeight += weight;
+        }
+
+        cachedLineWidth = Math.max(0.0f, curX - spaceW);
+    }
+
+    private void renderKaraokeLine(float cx, float cy, int lineIndex, LyricLine line, LyricLine nextLine,
+                                   long playTimeMs, float fontSize, float alpha,
+                                   int activeTextColor, int accentColor, float userScale) {
+        if (line == null || line.text().isBlank() || alpha <= 0.01f) return;
+
+        if (cachedWordsLineIndex != lineIndex || Math.abs(cachedWordScale - userScale) > 0.01f || cachedWords == null) {
+            cachedWordsLineIndex = lineIndex;
+            cachedWordScale = userScale;
+            updateWordCache(line, nextLine, fontSize);
+        }
+
+        if (cachedWords == null || cachedWords.isEmpty()) {
+            renderVectorLine(cx, cy, line.text(), fontSize, alpha, activeTextColor, accentColor, true, userScale);
+            return;
+        }
+
+        float totalW = cachedLineWidth;
+        float lineH = Fonts.d.a(fontSize) + 8.0f * userScale;
+        float padX = 14.0f * userScale;
+        float boxW = totalW + padX * 2.0f;
+
+        float bx = cx - boxW / 2.0f;
+        float by = cy - lineH / 2.0f;
+
+        if (background.isEnabled()) {
+            int bgCol = ColorUtil.rgba(12, 14, 20, (int) (180 * alpha));
+            Draw2DProcessor.INSTANCE.drawRect(null, bx, by, boxW, lineH, 5.0f * userScale, bgCol);
+
+            if (glow.isEnabled()) {
+                int outlineCol = ColorUtil.withAlphaFloat(accentColor, 0.45f * alpha);
+                Draw2DProcessor.INSTANCE.drawOutline(null, bx, by, boxW, lineH, 5.0f * userScale, 1.0f, outlineCol);
+            }
+        }
+
+        float lineStartX = cx - totalW / 2.0f;
+        float textY = cy - Fonts.d.a(fontSize) / 2.0f - 0.5f;
+
+        long lineStartTime = line.timeMs();
+        long lineElapsedMs = playTimeMs - lineStartTime;
+        final long DURATION_MS = 180L;
+
+        for (TimedWord tw : cachedWords) {
+            float wordBaseX = lineStartX + tw.xOffset;
+            long wordElapsed = lineElapsedMs - tw.startOffsetMs;
+
+            if (wordElapsed < 0) {
+                int greyCol = ColorUtil.rgba(140, 145, 160, (int) (165 * alpha));
+                Fonts.d.a(null, tw.word, wordBaseX, textY, fontSize, greyCol);
+            } else if (wordElapsed < DURATION_MS) {
+                float t = (float) wordElapsed / (float) DURATION_MS;
+                float ease = 1.0f - (float) Math.pow(1.0f - t, 3);
+
+                float oldY = textY - ease * 5.0f * userScale;
+                int oldA = Math.round(165 * (1.0f - ease) * alpha);
+                if (oldA > 5) {
+                    int oldCol = ColorUtil.rgba(140, 145, 160, oldA);
+                    Fonts.d.a(null, tw.word, wordBaseX, oldY, fontSize, oldCol);
+                }
+
+                float newY = textY + (1.0f - ease) * 5.0f * userScale;
+                int newA = Math.round(255 * ease * alpha);
+                if (newA > 5) {
+                    int brightCol = ColorUtil.withAlphaFloat(activeTextColor, (float) newA / 255.0f);
+                    Fonts.d.a(null, tw.word, wordBaseX, newY, fontSize, brightCol);
+                }
+            } else {
+                int brightCol = ColorUtil.withAlphaFloat(activeTextColor, alpha);
+                Fonts.d.a(null, tw.word, wordBaseX, textY, fontSize, brightCol);
+            }
+        }
     }
 
     private void renderVectorLine(float cx, float cy, String text, float fontSize, float alpha,
@@ -399,6 +601,8 @@ public class Lyrics extends Module {
         this.prevLineIndex = -1;
         this.lastSongKey = "demo";
         this.activeSkyDirection = null;
+        this.cachedWordsLineIndex = -1;
+        this.cachedWords = null;
         this.overallAlpha = 1.0f;
         this.occlusionAlpha = 1.0f;
     }
@@ -415,6 +619,8 @@ public class Lyrics extends Module {
         this.activeSkyDirection = null;
         this.activeLyrics = null;
         this.lastSongKey = "";
+        this.cachedWordsLineIndex = -1;
+        this.cachedWords = null;
         this.overallAlpha = 1.0f;
         this.occlusionAlpha = 1.0f;
     }
