@@ -53,6 +53,7 @@ public final class LyricsFetcher {
     private LyricsFetcher() {
         cache.put("queen - bohemian rhapsody", demoLyrics);
         cache.put(" - bohemian rhapsody", demoLyrics);
+        cache.put("bohemian rhapsody", demoLyrics);
     }
 
     public List<LyricLine> getDemoLyrics() {
@@ -60,13 +61,23 @@ public final class LyricsFetcher {
     }
 
     public List<LyricLine> getCachedLyrics(String artist, String title) {
-        String key = makeKey(artist, title);
-        return cache.get(key);
+        if (title == null || title.isBlank()) return null;
+        String rawKey = makeKey(artist, title);
+        List<LyricLine> found = cache.get(rawKey);
+        if (found != null) return found;
+
+        String clean = cleanTitle(title);
+        String cleanKey = makeKey(artist, clean);
+        found = cache.get(cleanKey);
+        if (found != null) return found;
+
+        String bareTitleKey = clean.toLowerCase().trim();
+        return cache.get(bareTitleKey);
     }
 
     public CompletableFuture<List<LyricLine>> fetchLyricsAsync(String artist, String title) {
         String key = makeKey(artist, title);
-        List<LyricLine> cached = cache.get(key);
+        List<LyricLine> cached = getCachedLyrics(artist, title);
         if (cached != null) {
             return CompletableFuture.completedFuture(cached);
         }
@@ -80,7 +91,10 @@ public final class LyricsFetcher {
             try {
                 List<LyricLine> result = fetchFromApi(artist, title);
                 if (result != null && !result.isEmpty()) {
+                    String clean = cleanTitle(title);
                     cache.put(key, result);
+                    cache.put(makeKey(artist, clean), result);
+                    cache.put(clean.toLowerCase().trim(), result);
                     future.complete(result);
                 } else {
                     future.complete(Collections.emptyList());
@@ -101,16 +115,24 @@ public final class LyricsFetcher {
     }
 
     private List<LyricLine> fetchFromApi(String artist, String title) {
-        String cleanTitle = cleanTitle(title);
-        String cleanArtist = artist != null ? artist.trim() : "";
+        String cleanT = cleanTitle(title);
+        String cleanA = artist != null ? artist.trim() : "";
 
-        String synced = tryGetEndpoint(cleanArtist, title);
-        if (synced == null && !cleanTitle.equalsIgnoreCase(title)) {
-            synced = tryGetEndpoint(cleanArtist, cleanTitle);
+        String synced = tryGetEndpoint(cleanA, cleanT);
+
+        if (synced == null && !cleanA.isEmpty()) {
+            synced = trySearchEndpoint(cleanA + " " + cleanT);
         }
 
-        if (synced == null) {
-            synced = trySearchEndpoint(cleanArtist + " " + cleanTitle);
+        if (synced == null && !cleanT.isEmpty()) {
+            synced = trySearchEndpoint(cleanT);
+        }
+
+        if (synced == null && !title.equalsIgnoreCase(cleanT)) {
+            synced = tryGetEndpoint(cleanA, title);
+            if (synced == null && !cleanA.isEmpty()) {
+                synced = trySearchEndpoint(cleanA + " " + title);
+            }
         }
 
         if (synced != null && !synced.isBlank()) {
@@ -122,9 +144,9 @@ public final class LyricsFetcher {
     private String tryGetEndpoint(String artist, String track) {
         if (track == null || track.isBlank()) return null;
         try {
-            String url = API_BASE + "/get?artist_name=" + URLEncoder.encode(artist, StandardCharsets.UTF_8)
+            String url = API_BASE + "/get?artist_name=" + URLEncoder.encode(artist != null ? artist : "", StandardCharsets.UTF_8)
                     + "&track_name=" + URLEncoder.encode(track, StandardCharsets.UTF_8);
-            String json = httpGet(url);
+            String json = httpGetWithRetry(url);
             if (json != null && !json.isBlank()) {
                 JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
                 if (obj.has("syncedLyrics") && !obj.get("syncedLyrics").isJsonNull()) {
@@ -139,7 +161,7 @@ public final class LyricsFetcher {
         if (query == null || query.isBlank()) return null;
         try {
             String url = API_BASE + "/search?q=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
-            String json = httpGet(url);
+            String json = httpGetWithRetry(url);
             if (json != null && !json.isBlank()) {
                 JsonElement elem = JsonParser.parseString(json);
                 if (elem.isJsonArray()) {
@@ -148,7 +170,10 @@ public final class LyricsFetcher {
                         if (item.isJsonObject()) {
                             JsonObject obj = item.getAsJsonObject();
                             if (obj.has("syncedLyrics") && !obj.get("syncedLyrics").isJsonNull()) {
-                                return obj.get("syncedLyrics").getAsString();
+                                String s = obj.get("syncedLyrics").getAsString();
+                                if (s != null && !s.isBlank()) {
+                                    return s;
+                                }
                             }
                         }
                     }
@@ -158,15 +183,26 @@ public final class LyricsFetcher {
         return null;
     }
 
+    private String httpGetWithRetry(String urlStr) {
+        String res = httpGet(urlStr);
+        if (res == null) {
+            try {
+                Thread.sleep(250);
+            } catch (InterruptedException ignored) {}
+            res = httpGet(urlStr);
+        }
+        return res;
+    }
+
     private String httpGet(String urlStr) {
         HttpURLConnection conn = null;
         try {
             URI uri = URI.create(urlStr);
             conn = (HttpURLConnection) uri.toURL().openConnection();
             conn.setRequestMethod("GET");
-            conn.setConnectTimeout(3500);
-            conn.setReadTimeout(4000);
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) EggVisual/1.0");
+            conn.setConnectTimeout(4000);
+            conn.setReadTimeout(4500);
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) EggClient/1.0");
             conn.setRequestProperty("Accept", "application/json");
 
             int code = conn.getResponseCode();
@@ -214,16 +250,19 @@ public final class LyricsFetcher {
     public static String cleanTitle(String title) {
         if (title == null) return "";
         String t = title;
-        t = t.replaceAll("(?i)\\(feat\\.[^)]+\\)", "");
-        t = t.replaceAll("(?i)\\[feat\\.[^\\]]+\\]", "");
-        t = t.replaceAll("(?i)\\(ft\\.[^)]+\\)", "");
-        t = t.replaceAll("(?i)\\[ft\\.[^\\]]+\\]", "");
-        t = t.replaceAll("(?i)\\(remaster(ed)?(\\s+\\d{4})?\\)", "");
-        t = t.replaceAll("(?i)-\\s+remaster(ed)?(\\s+\\d{4})?", "");
-        t = t.replaceAll("(?i)\\(official(\\s+music)?\\s+video\\)", "");
-        t = t.replaceAll("(?i)\\(audio\\)", "");
-        t = t.replaceAll("(?i)\\(visualizer\\)", "");
-        t = t.replaceAll("(?i)\\[official video\\]", "");
+        // Strip parenthesized remixes and modifiers
+        t = t.replaceAll("(?i)\\((?:hoodtrap|remix|sped up|slowed|edit|tiktok version|tik tok version|drill|phonk|acoustic|cover|instrumental|bass boosted|nightcore|reverb|radio edit|extended|vip|prod\\.[^)]*)\\)", "");
+        t = t.replaceAll("(?i)\\[(?:hoodtrap|remix|sped up|slowed|edit|tiktok version|tik tok version|drill|phonk|acoustic|cover|instrumental|bass boosted|nightcore|reverb|radio edit|extended|vip|prod\\.[^\\]]*)\\]", "");
+        // Strip hyphens with modifiers
+        t = t.replaceAll("(?i)-\\s*(?:hoodtrap|remix|sped up|slowed|edit|drill|phonk|acoustic|bass boosted|nightcore|reverb).*$", "");
+        // Strip feat / ft / with / prod
+        t = t.replaceAll("(?i)\\((?:feat|ft|with|prod)\\.[^)]+\\)", "");
+        t = t.replaceAll("(?i)\\[(?:feat|ft|with|prod)\\.[^\\]]+\\]", "");
+        // Strip remasters and video tags
+        t = t.replaceAll("(?i)\\((?:remaster|remastered|official|audio|visualizer|deluxe|bonus track)[^)]*\\)", "");
+        t = t.replaceAll("(?i)\\[(?:remaster|remastered|official|audio|visualizer|deluxe|bonus track)[^\\]]*\\]", "");
+        t = t.replaceAll("(?i)-\\s*(?:remaster|remastered|deluxe).*$", "");
+        t = t.replaceAll("\\s+", " ");
         return t.trim();
     }
 

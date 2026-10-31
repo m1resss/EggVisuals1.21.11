@@ -47,7 +47,8 @@
     "ScreenMixin",
     "TextFieldWidgetAnimationMixin",
     "WorldRendererProjectionMixin",
-    "WorldRendererReflectionMixin"
+    "WorldRendererReflectionMixin",
+    "WorldRendererCloudMixin"
   ],
   "client": [],
   "injectors": {

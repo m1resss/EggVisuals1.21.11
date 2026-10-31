@@ -8,6 +8,7 @@ import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.util.AudioPlayer;
 import egg.client.util.ColorUtil;
+import egg.client.render.world.AmbienceLightningRenderer;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
@@ -102,6 +103,15 @@ public class WorldTweaks extends Module {
     private final BooleanSetting customSound = new BooleanSetting("Звуки дождя/грозы", true, "Кастомный шум дождя и раскаты грома");
     private final SliderSetting soundVolume = new SliderSetting("Громкость звука", 0.65, 0.0, 1.0, 0.05, "Громкость MP3 звуков");
 
+    private final BooleanSetting customClouds = new BooleanSetting("Облака", true, "Кастомные облака");
+    private final ModeSetting cloudMode = new ModeSetting("Режим облаков", "Ванильные", "Режим отображения облаков", "Ванильные", "Цветные", "Выкл");
+    private final SliderSetting cloudHeight = new SliderSetting("Высота облаков", 192.0, 64.0, 384.0, 8.0, "Высота облаков над миром");
+    private final SliderSetting cloudSpeed = new SliderSetting("Скорость облаков", 1.0, 0.0, 5.0, 0.1, "Скорость движения облаков");
+    private final ColorSetting cloudColor = new ColorSetting("Цвет облаков", 0xFFFFFFFF, "Оттенок облаков");
+
+    private final BooleanSetting customThunder = new BooleanSetting("Гроза и молнии", true, "Реалистичные процедурные 3D молнии и гром");
+    private final SliderSetting lightningFrequency = new SliderSetting("Частота молний", 50.0, 5.0, 100.0, 5.0, "Частота ударов молний при грозе (%)");
+
     private final List<FallingParticle> fallingParticles = new ArrayList<>();
     private final List<RainStreak> rainStreaks = new ArrayList<>();
     private final List<Footprint> footprints = new ArrayList<>();
@@ -140,7 +150,9 @@ public class WorldTweaks extends Module {
                 this.bloom, this.bloomIntensity, this.bloomThreshold,
                 this.colorGrade, this.colorGradeSaturation, this.colorGradeContrast, this.colorGradeBrightness, this.colorGradeTemperature,
                 this.customFog, this.fogColorMode, this.fogCustomColor,
-                this.customSound, this.soundVolume
+                this.customSound, this.soundVolume,
+                this.customClouds, this.cloudMode, this.cloudHeight, this.cloudSpeed, this.cloudColor,
+                this.customThunder, this.lightningFrequency
         );
         instance = this;
     }
@@ -244,6 +256,11 @@ public class WorldTweaks extends Module {
                     AudioPlayer.playThunder((float) this.soundVolume.get());
                 }
             }
+        }
+        if (isThundering() && isThunderLightningEnabled()) {
+            AmbienceLightningRenderer.INSTANCE.tick(mc.world, getLightningFrequency());
+        } else {
+            AmbienceLightningRenderer.INSTANCE.tick(mc.world, 0.0F);
         }
 
         syncAudioState();
@@ -695,6 +712,37 @@ public class WorldTweaks extends Module {
 
     public boolean shouldOverrideVanillaSound() {
         return isEnabled() && isCustomWeather() && this.customSound.get();
+    }
+
+    public boolean isCustomCloudsEnabled() {
+        return isEnabled() && this.customClouds.get();
+    }
+
+    public String getCloudMode() {
+        return this.cloudMode.get();
+    }
+
+    public double getCloudHeight() {
+        return this.cloudHeight.get();
+    }
+
+    public double getCloudSpeed() {
+        return this.cloudSpeed.get();
+    }
+
+    public int getCloudColor() {
+        if ("Цветные".equals(this.cloudMode.get())) {
+            return this.cloudColor.get();
+        }
+        return -1;
+    }
+
+    public boolean isThunderLightningEnabled() {
+        return isEnabled() && this.customThunder.get();
+    }
+
+    public float getLightningFrequency() {
+        return (float) (this.lightningFrequency.get() / 100.0);
     }
 
     public ModeSetting getSeasonSetting() {
@@ -1252,6 +1300,10 @@ public class WorldTweaks extends Module {
                     leafBuffer.vertex(x3, y3, z3).texture(0.0f, 0.0f).color(r, g, b, 245).light(leafLight);
                 }
             }
+        }
+
+        if (isThundering() && isThunderLightningEnabled()) {
+            AmbienceLightningRenderer.INSTANCE.render(camPos, 0.0F, 0.005F);
         }
     }
 

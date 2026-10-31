@@ -1173,6 +1173,26 @@ public class Interface extends Module {
         return hudThemeGradient.isEnabled();
     }
 
+    public boolean hasActiveMedia() {
+        return this.hasActiveMedia;
+    }
+
+    public boolean isMediaPlaying() {
+        return this.isMediaPlaying;
+    }
+
+    public String getCurrentMediaTitle() {
+        return this.currentMediaTitle;
+    }
+
+    public String getCurrentMediaArtist() {
+        return this.currentMediaArtist;
+    }
+
+    public long getCurrentPositionMs() {
+        return this.currentPositionMs;
+    }
+
     public float getHudGradientStrength() {
         return hudGradientStrength.getValueFloat();
     }
