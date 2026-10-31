@@ -1,6 +1,6 @@
 #version 330
 
-// Стили 3D-чамса по Type из UBO SadnesChams: 0 = Flat, 1 = Glass, 2 = Blur,
+// Стили 3D-чамса по Type из UBO EggChams: 0 = Flat, 1 = Glass, 2 = Blur,
 // 3 = Cosmic, 4 = Ghost, 5 = Outline (тут только его полупрозрачная заливка —
 // саму кайму частей рисует отдельный проход chams/outline поверх). Sampler0 —
 // родная текстура модели: alpha даёт cutout (прозрачные части скина не
@@ -23,7 +23,7 @@ uniform sampler2D Sampler2;
 // Тайлящаяся noise-LUT (REPEAT-сэмплер), RG-пак 16 бит.
 uniform sampler2D Sampler3;
 
-layout(std140) uniform SadnesChams {
+layout(std140) uniform EggChams {
     float Time;
     float Speed;
     float Scale;

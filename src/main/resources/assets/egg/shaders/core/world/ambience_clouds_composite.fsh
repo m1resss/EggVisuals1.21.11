@@ -3,7 +3,7 @@
 uniform sampler2D Sampler0;
 uniform sampler2D Sampler1;
 
-layout(std140) uniform SadnesAmbiencePost {
+layout(std140) uniform EggAmbiencePost {
     float Proj00;
     float Proj11;
     float Near;

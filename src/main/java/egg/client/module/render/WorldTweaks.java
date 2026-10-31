@@ -811,7 +811,7 @@ public class WorldTweaks extends Module {
     }
 
     public float getSnowDepthAt(double worldX, double worldZ) {
-        // Broad, natural rolling snowdrifts across terrain (spans 10-22 blocks, eliminating repetitive per-block bumps)
+
         double n1 = Math.sin(worldX * 0.075 + 1.4) * Math.cos(worldZ * 0.075 + 0.8);
         double n2 = Math.sin((worldX * 0.045 + worldZ * 0.055) + 2.8) * 0.45 + Math.cos((worldX * 0.055 - worldZ * 0.045) + 1.2) * 0.35;
         double n3 = Math.sin(worldX * 0.14 + 0.3) * Math.cos(worldZ * 0.14 + 1.1) * 0.20;
@@ -819,7 +819,6 @@ public class WorldTweaks extends Module {
         double combined = (n1 * 0.52 + n2 * 0.34 + n3 * 0.14 + 1.0) * 0.5;
         combined = Math.max(0.0, Math.min(1.0, combined));
 
-        // Randomized height across terrain: varying gently between 3cm up to 25cm
         return (float) (Math.pow(combined, 1.35) * 0.24 + 0.03);
     }
 
@@ -851,7 +850,6 @@ public class WorldTweaks extends Module {
         int topY = mc.world.getTopY(Heightmap.Type.MOTION_BLOCKING, bx, bz) - 1;
         if (topY < mc.world.getBottomY()) return Integer.MIN_VALUE;
 
-        // Scan downwards starting from topY, skipping server barrier ceilings, foliage, plants and thin snow
         int minY = Math.max(mc.world.getBottomY(), camBy - 36);
         BlockPos.Mutable mut = new BlockPos.Mutable(bx, topY, bz);
 
@@ -878,17 +876,15 @@ public class WorldTweaks extends Module {
     private int getElevationDiff(MinecraftClient mc, int x, int z, int baseTopY) {
         if (!mc.world.isChunkLoaded(x >> 4, z >> 4)) return 0;
 
-        // Check if there is a solid block (tree trunk log, stone wall, pillar, etc.) right above the ground level
         BlockPos wallPos = new BlockPos(x, baseTopY + 1, z);
         BlockState wallState = mc.world.getBlockState(wallPos);
         if (wallState.blocksMovement() && !isBarrierOrIgnored(wallState) && !(wallState.getBlock() instanceof PlantBlock) && !(wallState.getBlock() instanceof LeavesBlock)) {
-            return 1; // It's a tree trunk or wall standing on the block!
+            return 1;
         }
 
-        // Check if the block directly at baseTopY is solid ground
         BlockState atBase = mc.world.getBlockState(new BlockPos(x, baseTopY, z));
         if (atBase.blocksMovement() && !(atBase.getBlock() instanceof LeavesBlock)) {
-            return 0; // Same elevation!
+            return 0;
         }
 
         int nTopY = findGroundY(mc, x, z, baseTopY);
@@ -903,7 +899,7 @@ public class WorldTweaks extends Module {
         BlockPos posAbove = pos.up();
         BlockState aboveState = mc.world.getBlockState(posAbove);
         if (aboveState.blocksMovement() && !(aboveState.getBlock() instanceof PlantBlock)) {
-            return; // Never generate snow inside tree trunks or solid pillars
+            return;
         }
 
         int light = WorldRenderer.getLightmapCoordinates(mc.world, posAbove);
@@ -916,7 +912,7 @@ public class WorldTweaks extends Module {
         int diffE = getElevationDiff(mc, bx + 1, bz, topY);
 
         if (isLod0) {
-            // Sample continuous snow depth at vertices
+
             float dCenter = getSnowDepthAt(bx + 0.5, bz + 0.5);
             float dN      = getSnowDepthAt(bx + 0.5, bz);
             float dS      = getSnowDepthAt(bx + 0.5, bz + 1.0);
@@ -928,7 +924,6 @@ public class WorldTweaks extends Module {
             float d11     = getSnowDepthAt(bx + 1.0, bz + 1.0);
             float d01     = getSnowDepthAt(bx, bz + 1.0);
 
-            // Connect smoothly against tree trunks/walls (no gap), and taper gently on cliff drops (no pyramid spikes)
             float mNy = (diffN < 0) ? (baseY + dN * 0.45f) : (baseY + dN);
             float mSy = (diffS < 0) ? (baseY + dS * 0.45f) : (baseY + dS);
             float mWy = (diffW < 0) ? (baseY + dW * 0.45f) : (baseY + dW);
@@ -941,7 +936,6 @@ public class WorldTweaks extends Module {
             float c11 = (diffS < 0 || diffE < 0) ? (baseY + d11 * 0.45f) : (baseY + d11);
             float c01 = (diffS < 0 || diffW < 0) ? (baseY + d01 * 0.45f) : (baseY + d01);
 
-            // Realistic lighting based on height: higher points are brighter, valleys have soft blue-gray shading
             int cr = Math.min(255, (int) (240 + dCenter * 70));
             int cg = Math.min(255, (int) (246 + dCenter * 40));
             int cb = 255;
@@ -969,13 +963,12 @@ public class WorldTweaks extends Module {
             SnowVertex mW = new SnowVertex(bx, mWy, bz + 0.5f, 0.0f, 0.5f, mrW, mgW, 250, 255, light);
             SnowVertex mE = new SnowVertex(bx + 1.0f, mEy, bz + 0.5f, 1.0f, 0.5f, mrE, mgE, 250, 255, light);
 
-            // 4 quads forming seamless organic snow blanket (no overlapping vertical skirts = 0% flickering)
             this.cachedSnowMesh.add(new SnowQuad(p00, mN, pCenter, mW));
             this.cachedSnowMesh.add(new SnowQuad(mN, p10, mE, pCenter));
             this.cachedSnowMesh.add(new SnowQuad(pCenter, mE, p11, mS));
             this.cachedSnowMesh.add(new SnowQuad(mW, pCenter, mS, p01));
         } else {
-            // LOD 1: Smooth flat snow top resting on the block
+
             float flatY = baseY + Math.min(0.04f, getSnowDepthAt(bx + 0.5, bz + 0.5) * 0.4f);
             SnowVertex v0 = new SnowVertex(bx, flatY, bz, 0.0f, 0.0f, 246, 250, 255, 255, light);
             SnowVertex v1 = new SnowVertex(bx + 1.0f, flatY, bz, 1.0f, 0.0f, 246, 250, 255, 255, light);
@@ -1033,7 +1026,6 @@ public class WorldTweaks extends Module {
                     buildSnowBlock(mc, bx, groundY, bz, distSq, lod0RadSq);
                 }
 
-                // Check for tree leaves canopy above (skipping server barrier ceilings)
                 int searchLeafY = Math.min(mc.world.getTopY(Heightmap.Type.MOTION_BLOCKING, bx, bz) - 1, groundY + 36);
                 for (int y = searchLeafY; y > groundY; y--) {
                     BlockPos lp = new BlockPos(bx, y, bz);
@@ -1116,7 +1108,7 @@ public class WorldTweaks extends Module {
 
     public void renderWorld3D(VertexConsumerProvider immediate, Vec3d camPos) {
         if (!isEnabled()) return;
-        // SSR reflections are rendered in post-pipeline by AmbienceRenderer
+
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.world == null || mc.player == null) return;
 
@@ -1263,13 +1255,6 @@ public class WorldTweaks extends Module {
         }
     }
 
-
-    /**
-     * Authentic Water & World Reflections:
-     * - Scans exposed water surface blocks within radius around camera
-     * - Renders glossy specular sheen, Fresnel angle falloff, and animated wave distortion
-     * - Projects mirror reflections of players and living entities onto the water surface
-     */
     private void renderWaterReflections(VertexConsumerProvider immediate, Vec3d camPos) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.world == null || mc.player == null) return;
@@ -1325,7 +1310,6 @@ public class WorldTweaks extends Module {
                     float w2 = 0.015F * (float) Math.sin((bx + 1) * 0.7F + waveTime * 1.8F + (bz + 1) * 0.5F);
                     float w3 = 0.015F * (float) Math.sin(bx * 0.7F + waveTime * 1.8F + (bz + 1) * 0.5F);
 
-                    // 1. Water surface glossy specular sheen & sky reflection
                     int skyR = 120;
                     int skyG = 180;
                     int skyB = 240;
@@ -1336,7 +1320,6 @@ public class WorldTweaks extends Module {
                     buf.vertex(x1, waterY + w2, z1).color(skyR, skyG, skyB, sheenAlpha);
                     buf.vertex(x0, waterY + w3, z1).color(skyR, skyG, skyB, sheenAlpha);
 
-                    // Sun specular glint on waves
                     float sunDot = (cx * 0.4F + waterY * 0.8F + cz * 0.3F) / dist;
                     if (sunDot > 0.85F) {
                         float glint = (float) Math.pow((sunDot - 0.85F) / 0.15F, 16.0);
@@ -1349,7 +1332,6 @@ public class WorldTweaks extends Module {
                         }
                     }
 
-                    // 2. Mirror reflection of nearby entities on this water block
                     for (LivingEntity e : entities) {
                         double ex = e.getX() - camPos.x;
                         double ez = e.getZ() - camPos.z;

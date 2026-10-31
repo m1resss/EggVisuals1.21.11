@@ -206,7 +206,7 @@ public class ArmorHUD extends Module {
                 context.drawItem(piece, 0, 0);
                 context.getMatrices().popMatrix();
             } else {
-                // Ghost slot indicator
+
                 float ghostSize = 10.0f * s;
                 float gx = itemX + (itemSize - ghostSize) / 2.0f;
                 float gy = itemY + (itemSize - ghostSize) / 2.0f;

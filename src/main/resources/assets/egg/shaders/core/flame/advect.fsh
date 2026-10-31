@@ -11,7 +11,7 @@ uniform sampler2D Sampler1; // свежий seed — размытое покры
 //   Sway — -//-
 //   CamShiftX — сдвиг прошлого поля по дельте поворота камеры (UV) -> след при повороте
 //   TexColor — -//-
-layout(std140) uniform SadnesFlame {
+layout(std140) uniform EggFlame {
     float Time;
     float Speed;
     float Rise;

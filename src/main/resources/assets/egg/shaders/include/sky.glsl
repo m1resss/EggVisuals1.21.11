@@ -5,7 +5,7 @@ layout(std140) uniform DynamicTransforms {
     mat4 TextureMat;
 };
 
-layout(std140) uniform SadnesSky {
+layout(std140) uniform EggSky {
     float Time;
     int Variant;
     float Brightness;

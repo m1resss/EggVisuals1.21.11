@@ -4,7 +4,7 @@ uniform sampler2D Sampler0; // цвет сцены ДО прозрачного �
 uniform sampler2D Sampler1; // depth мира вместе с прозрачным слоем
 uniform sampler2D Sampler2; // depth одной непрозрачной геометрии (до прозрачного слоя)
 
-layout(std140) uniform SadnesAmbiencePost {
+layout(std140) uniform EggAmbiencePost {
     float Proj00;
     float Proj11;
     float Near;

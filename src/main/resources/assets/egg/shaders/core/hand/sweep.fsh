@@ -10,7 +10,7 @@ uniform sampler2D Sampler1; // резкое покрытие (alpha силуэт
 //   BandWidth — длина светящегося хвоста в долях оси
 //   Intensity — сила подсветки (анимация наведения)
 //   SharpFlip — 1.0, если Sampler1 лежит в нативной ориентации бэкенда (VulkanMod): его V переворачиваем
-layout(std140) uniform SadnesFlame {
+layout(std140) uniform EggFlame {
     float Progress;
     float BandWidth;
     float AxisX;

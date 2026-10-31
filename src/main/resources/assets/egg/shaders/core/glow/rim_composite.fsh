@@ -5,7 +5,7 @@ uniform sampler2D Sampler1; // резкое покрытие (alpha силуэт
 
 // Делим UBO с пламенем. Time/Speed — бегущий блик. CamShiftX/Y переиспользованы как trail-вектор:
 // trail=0 → обычный Rimlight; trail≠0 → весь glow меча дублируется хвостом назад (Spring при прыжке).
-layout(std140) uniform SadnesFlame {
+layout(std140) uniform EggFlame {
     float Time;
     float Speed;
     float Rise;

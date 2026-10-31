@@ -3,7 +3,7 @@
 uniform sampler2D Sampler0;
 uniform sampler2D Sampler1;
 
-layout(std140) uniform SadnesMotionBlur {
+layout(std140) uniform EggMotionBlur {
     mat4 Proj;
     mat4 InvProj;
     mat4 DeltaView;

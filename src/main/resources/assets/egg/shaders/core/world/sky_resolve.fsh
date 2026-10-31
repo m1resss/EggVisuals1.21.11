@@ -3,7 +3,7 @@
 uniform sampler2D Sampler0;
 uniform sampler2D Sampler1;
 
-layout(std140) uniform SadnesSky {
+layout(std140) uniform EggSky {
     float Time;
     int Variant;
     float Brightness;

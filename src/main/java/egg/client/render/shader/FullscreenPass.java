@@ -144,7 +144,7 @@ public final class FullscreenPass {
                         .createRenderPass(() -> "egg ambience pass", framebuffer.getColorAttachmentView(), OptionalInt.empty())) {
                     renderPass.setPipeline(renderPipeline);
                     renderPass.bindTexture("Sampler0", gpuTextureView, gpuSampler);
-                    renderPass.setUniform("SadnesAmbiencePost", gpuBufferSlice);
+                    renderPass.setUniform("EggAmbiencePost", gpuBufferSlice);
                     renderPass.setVertexBuffer(0, gpuBuffer);
                     renderPass.setIndexBuffer(gpuBuffer2, shapeIndexBuffer.getIndexType());
                     renderPass.drawIndexed(0, 0, builtBuffer.getDrawParameters().indexCount(), 1);
@@ -196,7 +196,7 @@ public final class FullscreenPass {
                     renderPass.bindTexture("Sampler0", gpuTextureView, gpuSampler);
                     renderPass.bindTexture("Sampler1", gpuTextureView2, gpuSampler2);
                     renderPass.bindTexture("Sampler2", gpuTextureView3, gpuSampler2);
-                    renderPass.setUniform("SadnesAmbiencePost", gpuBufferSlice);
+                    renderPass.setUniform("EggAmbiencePost", gpuBufferSlice);
                     renderPass.setVertexBuffer(0, gpuBuffer);
                     renderPass.setIndexBuffer(gpuBuffer2, shapeIndexBuffer.getIndexType());
                     renderPass.drawIndexed(0, 0, builtBuffer.getDrawParameters().indexCount(), 1);
@@ -296,7 +296,7 @@ public final class FullscreenPass {
                     renderPass.bindTexture("Sampler0", gpuTextureView2, gpuSampler);
                     renderPass.bindTexture("Sampler1", gpuTextureView3, gpuSampler);
                     if (gpuBufferSlice != null) {
-                        renderPass.setUniform("SadnesFlame", gpuBufferSlice);
+                        renderPass.setUniform("EggFlame", gpuBufferSlice);
                     }
 
                     renderPass.setVertexBuffer(0, gpuBuffer);
@@ -337,7 +337,7 @@ public final class FullscreenPass {
             renderPass.setPipeline(renderPipeline);
             renderPass.bindTexture("Sampler0", gpuTextureView, gpuSampler);
             if (gpuBufferSlice != null) {
-                renderPass.setUniform("SadnesBlurRect", gpuBufferSlice);
+                renderPass.setUniform("EggBlurRect", gpuBufferSlice);
             }
 
             renderPass.setVertexBuffer(0, gpuBuffer);

@@ -12,7 +12,7 @@ public final class FlameUniformStorage {
 
     public static void init() {
         if (storage == null) {
-            String string = "SadnesFlame";
+            String string = "EggFlame";
             storage = new DynamicUniformStorage<>(string, 48, 64);
         }
     }

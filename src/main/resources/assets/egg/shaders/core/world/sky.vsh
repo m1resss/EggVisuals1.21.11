@@ -9,7 +9,7 @@ layout(std140) uniform DynamicTransforms {
 layout(std140) uniform Projection {
     mat4 ProjMat;
 };
-layout(std140) uniform SadnesSky {
+layout(std140) uniform EggSky {
     float Time;
     int Variant;
     float Brightness;

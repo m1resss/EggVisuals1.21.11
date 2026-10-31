@@ -11,7 +11,7 @@ uniform sampler2D Sampler0; // поле силуэта (bloom-база + motion-
 //   CamShiftX — хвостовой слот (паддинг)
 //   CamShiftY — хвостовой слот (паддинг)
 //   TexColor — >0.5 -> цвет пламени из краёв текстуры предмета, иначе из тинта
-layout(std140) uniform SadnesFlame {
+layout(std140) uniform EggFlame {
     float Time;
     float Speed;
     float Rise;

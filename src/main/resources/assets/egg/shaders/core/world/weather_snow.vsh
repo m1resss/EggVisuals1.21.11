@@ -21,7 +21,7 @@ layout(std140) uniform Globals {
     int UseRgss;
 };
 
-layout(std140) uniform SadnesWeather {
+layout(std140) uniform EggWeather {
     float BoxSize;
     float InnerFade;
     float OriginAX;

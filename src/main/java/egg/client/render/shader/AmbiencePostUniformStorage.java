@@ -12,7 +12,7 @@ public final class AmbiencePostUniformStorage {
 
     public static void init() {
         if (storage == null) {
-            String string = "SadnesAmbiencePost";
+            String string = "EggAmbiencePost";
             storage = new DynamicUniformStorage<>(string, 272, 4);
         }
     }

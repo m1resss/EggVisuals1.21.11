@@ -5,7 +5,7 @@ uniform sampler2D Sampler0;
 // Комментарии к полям вынесены наружу: внутри блока их не переваривает конвертер GLSL у VulkanMod.
 //   Bounds — minU, minV, maxU, maxV (framebuffer-UV, v-вверх)
 //   Radius — радиус угла в framebuffer px
-layout(std140) uniform SadnesBlurRect {
+layout(std140) uniform EggBlurRect {
     vec4 Bounds;
     float Radius;
 };

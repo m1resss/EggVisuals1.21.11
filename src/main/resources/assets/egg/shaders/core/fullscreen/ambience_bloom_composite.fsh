@@ -2,7 +2,7 @@
 
 uniform sampler2D Sampler0; // накопленное свечение (half-res пирамида)
 
-layout(std140) uniform SadnesAmbiencePost {
+layout(std140) uniform EggAmbiencePost {
     float Proj00;
     float Proj11;
     float Near;

@@ -118,7 +118,7 @@ public class PotionHUD extends Module {
     }
 
     private void updateAnimatedPotions(List<StatusEffectInstance> current) {
-        // 1. Update existing or add newly gained effects
+
         for (StatusEffectInstance eff : current) {
             StatusEffect type = eff.getEffectType().value();
             AnimatedPotion found = null;
@@ -142,7 +142,6 @@ public class PotionHUD extends Module {
             }
         }
 
-        // 2. Mark removed/expired effects for smooth slide-out
         for (AnimatedPotion ap : animatedPotions) {
             boolean exists = false;
             for (StatusEffectInstance eff : current) {
@@ -157,7 +156,6 @@ public class PotionHUD extends Module {
             }
         }
 
-        // 3. Update animation values and remove finished exits
         Iterator<AnimatedPotion> it = animatedPotions.iterator();
         while (it.hasNext()) {
             AnimatedPotion ap = it.next();

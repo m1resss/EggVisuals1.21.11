@@ -33,7 +33,7 @@ public class ShaderLoaderMixin {
         try {
             return original.call(instance, pipeline, wrapped);
         } catch (RuntimeException exception) {
-            if (!"egg".equals(pipeline.getLocation().getNamespace()) && !"sadnes".equals(pipeline.getLocation().getNamespace())) {
+            if (!"egg".equals(pipeline.getLocation().getNamespace())) {
                 throw exception;
             }
             return () -> false;
@@ -45,7 +45,7 @@ public class ShaderLoaderMixin {
             at = @At(value = "INVOKE", target = "Ljava/util/List;add(Ljava/lang/Object;)Z")
     )
     private boolean delta$skipOwnFailedPipeline(java.util.List<Object> objects, Object object) {
-        if (object instanceof Identifier identifier && ("egg".equals(identifier.getNamespace()) || "sadnes".equals(identifier.getNamespace()))) {
+        if (object instanceof Identifier identifier && "egg".equals(identifier.getNamespace())) {
             return false;
         }
         return objects.add(object);

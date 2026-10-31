@@ -10,10 +10,10 @@ uniform sampler2D Sampler1;   // размытая маска шнура, a = в�
 
 // Блок-черновик на восемь float, общий с пламенем и rim-glow: каждый композит занимает свои слоты
 // и игнорирует остальные. Нам нужен один — матовость. Порядок и размер обязаны совпадать с
-// SadnesFlameUniform, иначе std140-смещения разъедутся.
+// EggFlameUniform, иначе std140-смещения разъедутся.
 // Комментарии к полям вынесены наружу: внутри блока их не переваривает конвертер GLSL у VulkanMod.
 //   Frost — сила матовости 0..1
-layout(std140) uniform SadnesFlame {
+layout(std140) uniform EggFlame {
     float Frost;
     float Unused1;
     float Unused2;

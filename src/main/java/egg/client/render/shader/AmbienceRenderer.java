@@ -113,7 +113,6 @@ public enum AmbienceRenderer {
                         }
                     }
 
-
                     if (doColorGrade) {
                         this.captureScene(framebuffer, w, h, nearestSampler);
                         try (FullscreenPass.RenderStateGuard guard = FullscreenPass.guardState()) {

@@ -10,7 +10,7 @@
 
 uniform sampler2D Sampler0;
 
-layout(std140) uniform SadnesChams {
+layout(std140) uniform EggChams {
     float Time;
     float Speed;
     float Scale;

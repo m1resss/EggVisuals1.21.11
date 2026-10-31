@@ -12,7 +12,7 @@ public final class BlurRectUniformStorage {
 
     public static void init() {
         if (storage == null) {
-            String string = "SadnesBlurRect";
+            String string = "EggBlurRect";
             storage = new DynamicUniformStorage<>(string, 32, 16);
         }
     }

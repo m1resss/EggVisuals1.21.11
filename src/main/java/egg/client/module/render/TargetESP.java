@@ -65,7 +65,6 @@ public class TargetESP extends Module {
         }
     }
 
-    // Snowflake vortex physics constants from sfamelov.txt
     private static final int ORBIT_FLAKES = 28;
     private static final int ORBIT_CRYSTALS = 4;
     private static final float GRAVITY = 2.6F;
@@ -77,7 +76,6 @@ public class TargetESP extends Module {
     private final ModeSetting mode = new ModeSetting("Стиль", "Разряд", "Стиль Target ESP",
             "Разряд", "Молнии", "Снежинки", "Души", "Кубы");
 
-    // Discharge & Target ESP color mode matching Sadnes
     private final ModeSetting dischargeColorMode = new ModeSetting("Режим цвета", "Переливание", "Режим окраски цели",
             "Переливание", "Статичный", "Тема");
     private final ColorSetting dischargeColor1 = new ColorSetting("Цвет 1", 0xFF3888FF, "Первый цвет переливания (циановый)");
@@ -104,13 +102,11 @@ public class TargetESP extends Module {
     private Vec3d lastTargetPos = null;
     private double lastTargetHeight = 1.8;
 
-    // Snowflake vortex particles state
     private final List<SnowflakeParticle> snowflakeParticles = new ArrayList<>();
     private final Random random = new Random();
     private long lastFrameTime = 0L;
     private float snowSimTime = 0.0f;
 
-    // Lightning & Discharge state
     private float lightningTime = 0.0f;
     private long lightningLastNanos = 0L;
     private float dischargeRotation = 0.0f;
@@ -331,17 +327,13 @@ public class TargetESP extends Module {
         if ("Кубы".equals(curMode)) {
             renderCubes(context, center.x, centerY, center.z, entityHeight, timeSec, baseRadius, spd, sizeMult, activeColor);
         } else if ("Молнии".equals(curMode)) {
-            // Rendered in 3D world space (WorldRendererMixin) with pure white depth testing
+
         } else if ("Разряд".equals(curMode)) {
-            // Rendered in 3D world space (WorldRendererMixin) with glowing scanning band and outline
+
         } else {
             renderSouls(context, center.x, centerY, center.z, entityHeight, timeSec, baseRadius, spd, sizeMult, steps, activeColor);
         }
     }
-
-    // -----------------------------------------------------------------------------------------
-    // SFAMELOV SAKURA/SNOWFLAKE VORTEX ENGINE
-    // -----------------------------------------------------------------------------------------
 
     private void renderSnowflakesVortex(DrawContext context, float tickDelta, float spd, float baseR, float sizeMult, int activeColor) {
         long nowNanos = System.nanoTime();
@@ -388,17 +380,14 @@ public class TargetESP extends Module {
 
         if (this.snowflakeParticles.isEmpty()) return;
 
-        // Render snowflake particles
         for (SnowflakeParticle p : this.snowflakeParticles) {
             float alpha = p.alpha * p.fade;
             if (alpha <= 0.01F) continue;
 
-            // 1. Soft glowing bloom backdrop
             float glowAlpha = alpha * (p.flower ? 0.38F : 0.18F);
             float glowSize = p.size * 2.8F * sizeMult;
             drawParticle(context, BLOOM_TEXTURE, p.x, p.y, p.z, glowSize, ColorUtil.withAlphaFloat(activeColor, glowAlpha));
 
-            // 2. Crisp snowflake crystal (all transparent RGBA particle textures, no opaque white blocks)
             Identifier flakeTex = SNOWFLAKES[p.textureIdx];
             float flakeSize = (p.flower ? p.size * 1.45F : p.size * 1.05F) * sizeMult;
             int flakeColor = p.flower ? 0xFFFFFFFF : ColorUtil.interpolate(0xFFFFFFFF, activeColor, 0.30F);
@@ -489,7 +478,7 @@ public class TargetESP extends Module {
     }
 
     private void releaseSnow() {
-        // Accelerate existing free flakes so switching targets does not create particle bloat
+
         for (SnowflakeParticle p : this.snowflakeParticles) {
             if (!p.orbiting) {
                 p.fade *= 0.35F;
@@ -540,10 +529,6 @@ public class TargetESP extends Module {
         }
         return fromY - 1.0;
     }
-
-    // -----------------------------------------------------------------------------------------
-    // SOULS & CUBES MODES
-    // -----------------------------------------------------------------------------------------
 
     private void renderSouls(DrawContext context, double cx, double cy, double cz, double height,
                              float timeSec, float baseR, float spd, float sizeMult, int steps, int color) {
@@ -651,11 +636,6 @@ public class TargetESP extends Module {
         );
     }
 
-    // -----------------------------------------------------------------------------------------
-    // -----------------------------------------------------------------------------------------
-    // 3D LIGHTNING & DISCHARGE ENGINE (Rendered in World Space with Depth Testing)
-    // -----------------------------------------------------------------------------------------
-
     public int getActiveDischargeColor(float offsetSec) {
         String cMode = dischargeColorMode.get();
         if ("Статичный".equals(cMode)) {
@@ -663,7 +643,7 @@ public class TargetESP extends Module {
         } else if ("Тема".equals(cMode)) {
             return Theme.getAccent();
         } else {
-            // "Переливание" - smooth sine shift between Color1 and Color2
+
             float t = (float) ((System.currentTimeMillis() % 4000L) / 4000.0);
             float factor = 0.5f + 0.5f * (float) Math.sin((t * Math.PI * 2.0) + offsetSec);
             return ColorUtil.interpolate(dischargeColor1.get(), dischargeColor2.get(), factor);
@@ -712,7 +692,7 @@ public class TargetESP extends Module {
         float height = curTarget.getHeight();
         float radius = (float) ((curTarget.getWidth() * 0.75F + 0.16F) * this.radius.get());
         float alpha = this.animProgress;
-        int color = 0xFFFFFFFF; // Pure white lightning
+        int color = 0xFFFFFFFF;
         RenderPipeline pipeline = Pipelines.LIGHTNING_DEPTH;
         float midY = targetY + height * 0.5F;
         float scaledBloomSize = ProjectionUtil.getScaledSize(0.085F, Math.sqrt(targetX * targetX + midY * midY + targetZ * targetZ));
