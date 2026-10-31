@@ -22,8 +22,8 @@ public final class LyricsFetcher {
         return INSTANCE;
     }
 
-    private static final String API_BASE = "https://lrclib.net/api";
-    private static final Pattern LRC_PATTERN = Pattern.compile("^\\[(\\d{1,2}):(\\d{1,2}(?:\\.\\d+)?)\\](.*)$");
+    private static final String LRCLIB_BASE = "https://lrclib.net/api";
+    private static final Pattern LRC_PATTERN = Pattern.compile("^\\[(\\d{1,3}):(\\d{1,2}(?:\\.\\d+)?)\\](.*)$");
 
     private final Map<String, List<LyricLine>> cache = new ConcurrentHashMap<>();
     private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
@@ -83,7 +83,7 @@ public final class LyricsFetcher {
         }
 
         if (!inFlight.add(key)) {
-            return CompletableFuture.completedFuture(Collections.emptyList());
+            return CompletableFuture.completedFuture(null);
         }
 
         CompletableFuture<List<LyricLine>> future = new CompletableFuture<>();
@@ -118,21 +118,30 @@ public final class LyricsFetcher {
         String cleanT = cleanTitle(title);
         String cleanA = artist != null ? artist.trim() : "";
 
-        String synced = tryGetEndpoint(cleanA, cleanT);
-
-        if (synced == null && !cleanA.isEmpty()) {
-            synced = trySearchEndpoint(cleanA + " " + cleanT);
+        // 1. Primary: Kugou Music API (high-availability, synced LRC database)
+        String synced = null;
+        if (!cleanA.isEmpty() && !cleanT.isEmpty()) {
+            synced = fetchFromKugou(cleanA, cleanT);
         }
-
         if (synced == null && !cleanT.isEmpty()) {
-            synced = trySearchEndpoint(cleanT);
+            synced = fetchFromKugou("", cleanT);
+        }
+        if (synced == null && !title.equalsIgnoreCase(cleanT)) {
+            synced = fetchFromKugou(cleanA, title);
         }
 
+        // 2. Secondary fallback: LrcLib API
+        if (synced == null) {
+            synced = tryGetLrclib(cleanA, cleanT);
+        }
+        if (synced == null && !cleanA.isEmpty()) {
+            synced = trySearchLrclib(cleanA + " " + cleanT);
+        }
+        if (synced == null && !cleanT.isEmpty()) {
+            synced = trySearchLrclib(cleanT);
+        }
         if (synced == null && !title.equalsIgnoreCase(cleanT)) {
-            synced = tryGetEndpoint(cleanA, title);
-            if (synced == null && !cleanA.isEmpty()) {
-                synced = trySearchEndpoint(cleanA + " " + title);
-            }
+            synced = tryGetLrclib(cleanA, title);
         }
 
         if (synced != null && !synced.isBlank()) {
@@ -141,12 +150,71 @@ public final class LyricsFetcher {
         return Collections.emptyList();
     }
 
-    private String tryGetEndpoint(String artist, String track) {
+    private String fetchFromKugou(String artist, String track) {
         if (track == null || track.isBlank()) return null;
         try {
-            String url = API_BASE + "/get?artist_name=" + URLEncoder.encode(artist != null ? artist : "", StandardCharsets.UTF_8)
+            String query = (artist != null && !artist.isBlank()) ? (artist.trim() + " " + track.trim()) : track.trim();
+            String searchUrl = "http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword="
+                    + URLEncoder.encode(query, StandardCharsets.UTF_8) + "&page=1&pagesize=5";
+            String searchJson = httpGet(searchUrl);
+            if (searchJson == null || searchJson.isBlank()) return null;
+
+            JsonObject sObj = JsonParser.parseString(searchJson).getAsJsonObject();
+            if (!sObj.has("data") || !sObj.get("data").isJsonObject()) return null;
+            JsonObject dObj = sObj.getAsJsonObject("data");
+            if (!dObj.has("info") || !dObj.get("info").isJsonArray()) return null;
+            JsonArray infoArr = dObj.getAsJsonArray("info");
+            if (infoArr.isEmpty()) return null;
+
+            for (JsonElement elem : infoArr) {
+                if (!elem.isJsonObject()) continue;
+                JsonObject song = elem.getAsJsonObject();
+                if (!song.has("hash")) continue;
+                String hash = song.get("hash").getAsString();
+                if (hash == null || hash.isBlank()) continue;
+
+                String candUrl = "http://krcs.kugou.com/search?ver=1&man=yes&client=mobi&keyword="
+                        + URLEncoder.encode(query, StandardCharsets.UTF_8) + "&hash=" + hash;
+                String candJson = httpGet(candUrl);
+                if (candJson == null || candJson.isBlank()) continue;
+
+                JsonObject cObj = JsonParser.parseString(candJson).getAsJsonObject();
+                if (!cObj.has("candidates") || !cObj.get("candidates").isJsonArray()) continue;
+                JsonArray cands = cObj.getAsJsonArray("candidates");
+                if (cands.isEmpty()) continue;
+
+                JsonObject bestCand = cands.get(0).getAsJsonObject();
+                if (!bestCand.has("id") || !bestCand.has("accesskey")) continue;
+                String candId = bestCand.get("id").getAsString();
+                String accessKey = bestCand.get("accesskey").getAsString();
+
+                String dlUrl = "http://krcs.kugou.com/download?ver=1&client=mobi&id="
+                        + candId + "&accesskey=" + accessKey + "&fmt=lrc&charset=utf8";
+                String dlJson = httpGet(dlUrl);
+                if (dlJson == null || dlJson.isBlank()) continue;
+
+                JsonObject dlObj = JsonParser.parseString(dlJson).getAsJsonObject();
+                if (dlObj.has("content")) {
+                    String base64Content = dlObj.get("content").getAsString();
+                    if (base64Content != null && !base64Content.isBlank()) {
+                        byte[] decoded = Base64.getDecoder().decode(base64Content);
+                        String lrc = new String(decoded, StandardCharsets.UTF_8);
+                        if (!lrc.isBlank()) {
+                            return lrc;
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    private String tryGetLrclib(String artist, String track) {
+        if (track == null || track.isBlank()) return null;
+        try {
+            String url = LRCLIB_BASE + "/get?artist_name=" + URLEncoder.encode(artist != null ? artist : "", StandardCharsets.UTF_8)
                     + "&track_name=" + URLEncoder.encode(track, StandardCharsets.UTF_8);
-            String json = httpGetWithRetry(url);
+            String json = httpGet(url);
             if (json != null && !json.isBlank()) {
                 JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
                 if (obj.has("syncedLyrics") && !obj.get("syncedLyrics").isJsonNull()) {
@@ -157,11 +225,11 @@ public final class LyricsFetcher {
         return null;
     }
 
-    private String trySearchEndpoint(String query) {
+    private String trySearchLrclib(String query) {
         if (query == null || query.isBlank()) return null;
         try {
-            String url = API_BASE + "/search?q=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
-            String json = httpGetWithRetry(url);
+            String url = LRCLIB_BASE + "/search?q=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
+            String json = httpGet(url);
             if (json != null && !json.isBlank()) {
                 JsonElement elem = JsonParser.parseString(json);
                 if (elem.isJsonArray()) {
@@ -183,27 +251,16 @@ public final class LyricsFetcher {
         return null;
     }
 
-    private String httpGetWithRetry(String urlStr) {
-        String res = httpGet(urlStr);
-        if (res == null) {
-            try {
-                Thread.sleep(250);
-            } catch (InterruptedException ignored) {}
-            res = httpGet(urlStr);
-        }
-        return res;
-    }
-
     private String httpGet(String urlStr) {
         HttpURLConnection conn = null;
         try {
             URI uri = URI.create(urlStr);
             conn = (HttpURLConnection) uri.toURL().openConnection();
             conn.setRequestMethod("GET");
-            conn.setConnectTimeout(4000);
-            conn.setReadTimeout(4500);
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) EggClient/1.0");
-            conn.setRequestProperty("Accept", "application/json");
+            conn.setConnectTimeout(3500);
+            conn.setReadTimeout(4000);
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) EggVisual/1.0");
+            conn.setRequestProperty("Accept", "*/*");
 
             int code = conn.getResponseCode();
             if (code == 200) {
@@ -225,10 +282,11 @@ public final class LyricsFetcher {
 
     public static List<LyricLine> parseLrc(String lrcContent) {
         if (lrcContent == null || lrcContent.isBlank()) return Collections.emptyList();
+        lrcContent = lrcContent.replace("\uFEFF", "").replace("\u200B", "");
         List<LyricLine> list = new ArrayList<>();
         String[] rawLines = lrcContent.split("\\r?\\n");
         for (String raw : rawLines) {
-            String line = raw.trim();
+            String line = raw.trim().replace("\uFEFF", "");
             if (line.isEmpty()) continue;
             Matcher m = LRC_PATTERN.matcher(line);
             if (m.matches()) {

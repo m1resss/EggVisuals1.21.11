@@ -189,7 +189,7 @@ public class Lyrics extends Module {
                 activeLyrics = LyricsFetcher.getInstance().getCachedLyrics(currentArtist, currentTitle);
                 if (activeLyrics == null) {
                     LyricsFetcher.getInstance().fetchLyricsAsync(currentArtist, currentTitle).thenAccept(lines -> {
-                        if (songKey.equals(lastSongKey)) {
+                        if (lines != null && songKey.equals(lastSongKey)) {
                             activeLyrics = lines;
                         }
                     });
@@ -276,18 +276,13 @@ public class Lyrics extends Module {
         float nextFontSize = 15.0f * userScale;
         float badgeFontSize = 11.0f * userScale;
 
-        String currentText;
-        String nextText = null;
-
-        if (activeLyrics != null && !activeLyrics.isEmpty()) {
-            int mainIdx = currentLineIndex >= 0 ? currentLineIndex : 0;
-            currentText = activeLyrics.get(mainIdx).text();
-            if (mainIdx + 1 < activeLyrics.size()) {
-                nextText = activeLyrics.get(mainIdx + 1).text();
-            }
-        } else {
-            currentText = (activeLyrics == null) ? "Поиск текста песни..." : "Инструментал";
+        if (activeLyrics == null || activeLyrics.isEmpty()) {
+            return;
         }
+
+        int mainIdx = currentLineIndex >= 0 ? currentLineIndex : 0;
+        String currentText = activeLyrics.get(mainIdx).text();
+        String nextText = (mainIdx + 1 < activeLyrics.size()) ? activeLyrics.get(mainIdx + 1).text() : null;
 
         float effectiveAlpha = overallAlpha * lookFactor * this.occlusionAlpha;
 
@@ -325,7 +320,6 @@ public class Lyrics extends Module {
                 float line1Alpha = (0.50f + 0.50f * ease) * lineEffectiveAlpha;
 
                 if (karaoke.isEnabled() && activeLyrics != null && !activeLyrics.isEmpty()) {
-                    int mainIdx = currentLineIndex >= 0 ? currentLineIndex : 0;
                     LyricLine curLine = activeLyrics.get(mainIdx);
                     LyricLine nxtLine = (mainIdx + 1 < activeLyrics.size()) ? activeLyrics.get(mainIdx + 1) : null;
                     renderKaraokeLine(cx, line1Y, mainIdx, curLine, nxtLine, playTimeMs, mainFontSize, line1Alpha, activeTextColor, accentColor, userScale);
