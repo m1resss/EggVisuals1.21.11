@@ -31,7 +31,10 @@ import net.minecraft.world.RaycastContext;
 import org.joml.Matrix3x2f;
 import org.joml.Vector2f;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class TargetHUD extends Module {
 
@@ -43,6 +46,7 @@ public class TargetHUD extends Module {
     private final SliderSetting hudScale = new SliderSetting("Масштаб", 1.0, 0.5, 2.0, 0.05, "Масштаб Target HUD");
     private final SliderSetting targetTimeout = new SliderSetting("Таймаут цели", 3.0, 0.5, 8.0, 0.5, "Сколько секунд держать цель после отвода прицела");
     private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", true, "Отображать карточку только для игроков");
+    private final BooleanSetting hitParticles = new BooleanSetting("Партиклы при ударе", true, "Отображать вылетающие частицы на полоске здоровья при получении урона");
     private final BooleanSetting showFps = new BooleanSetting("Показывать FPS", true, "Отображать метку FPS на карточке");
     private final BooleanSetting showDistance = new BooleanSetting("Дистанция", true, "Отображать дистанцию до цели");
 
@@ -68,15 +72,28 @@ public class TargetHUD extends Module {
     private float lastRenderW = 152.0f;
     private float lastRenderH = 44.0f;
 
+    private final List<HitParticle> particles = new ArrayList<>();
+    private LivingEntity lastDamageTarget = null;
+    private float lastKnownHp = -1.0f;
+    private int lastHurtTime = 0;
+
     public TargetHUD() {
         super("Target HUD", "Информационная карточка цели на экране или в центре противника", Category.ESP);
         instance = this;
 
-        addSettings(mode, hudScale, targetTimeout, onlyPlayers);
+        addSettings(mode, hudScale, targetTimeout, onlyPlayers, hitParticles);
     }
 
     public static TargetHUD getInstance() {
         return instance;
+    }
+
+    @Override
+    public void onDisable() {
+        super.onDisable();
+        this.particles.clear();
+        this.lastDamageTarget = null;
+        this.lastKnownHp = -1.0f;
     }
 
     public void render(DrawContext context, RenderTickCounter tickCounter) {
@@ -180,11 +197,11 @@ public class TargetHUD extends Module {
         this.lastRenderW = cardW * scale;
         this.lastRenderH = cardH * scale;
 
-        renderCard(context, renderTarget, cardX, cardY, cardW, cardH, cardRadius, scale, animAlpha, maxHealth, actualAbsorption);
+        renderCard(context, renderTarget, cardX, cardY, cardW, cardH, cardRadius, scale, animAlpha, maxHealth, actualAbsorption, dt);
     }
 
     private void renderCard(DrawContext context, LivingEntity target, float x, float y, float w, float h,
-                            float radius, float scale, float alpha, float maxHp, float absorption) {
+                            float radius, float scale, float alpha, float maxHp, float absorption, float dt) {
         Matrix3x2f mat = null;
         boolean customScale = Math.abs(scale - 1.0f) > 0.001f;
         if (customScale) {
@@ -284,18 +301,120 @@ public class TargetHUD extends Module {
             Draw2DProcessor.INSTANCE.drawGradient(mat, barX, barY, baseW, barH, barRadius, themeFill1, themeFill2, themeFill1, themeFill2);
         }
 
+        float tipX = barX + baseW;
+        float tipY = barY + barH / 2.0f;
+
         if (visualAbsorption > 0.01f) {
             float absRatio = Math.clamp(visualAbsorption / totalMax, 0.0f, 1.0f - baseRatio);
             float absW = Math.max(3.0f, barW * absRatio);
             float absX = barX + baseW;
+            tipX = absX + absW;
 
             int goldCol1 = ColorUtil.rgba(255, 215, 0, (int) (255 * alpha));
             int goldCol2 = ColorUtil.rgba(255, 179, 0, (int) (255 * alpha));
             Draw2DProcessor.INSTANCE.drawGradient(mat, absX, barY, absW, barH, barRadius, goldCol1, goldCol2, goldCol1, goldCol2);
         }
 
+        float curActualHp = target.getHealth();
+        int curHurt = target.hurtTime;
+        if (lastDamageTarget != target || lastKnownHp < 0.0f) {
+            lastDamageTarget = target;
+            lastKnownHp = curActualHp;
+            lastHurtTime = curHurt;
+        } else {
+            float diff = lastKnownHp - curActualHp;
+            boolean damaged = diff > 0.01f || (curHurt > 0 && lastHurtTime == 0);
+            if (damaged && hitParticles.get()) {
+                spawnDamageParticles(tipX, tipY, Math.max(diff, 1.0f));
+            }
+            lastKnownHp = curActualHp;
+            lastHurtTime = curHurt;
+        }
+
+        if (!particles.isEmpty()) {
+            particles.removeIf(p -> !p.update(dt));
+            if (hitParticles.get()) {
+                for (HitParticle p : particles) {
+                    p.render(mat, alpha);
+                }
+            } else {
+                particles.clear();
+            }
+        }
+
         if (customScale) {
             context.getMatrices().popMatrix();
+        }
+    }
+
+    private void spawnDamageParticles(float tipX, float tipY, float damage) {
+        int count = Math.clamp(8 + (int) (damage * 3.0f), 10, 24);
+        int themeCol = Theme.getAccent();
+        int themeHover = Theme.getAccentHover();
+        ThreadLocalRandom rng = ThreadLocalRandom.current();
+
+        for (int i = 0; i < count; i++) {
+            double angle = rng.nextDouble(-Math.PI * 0.85, Math.PI * 0.35);
+            float speed = (float) rng.nextDouble(28.0, 85.0);
+            float vx = (float) Math.cos(angle) * speed;
+            float vy = (float) Math.sin(angle) * speed;
+
+            float whiteFactor = (float) rng.nextDouble(0.1, 0.6);
+            int baseC = rng.nextBoolean() ? themeCol : themeHover;
+            int pColor = ColorUtil.interpolate(baseC, 0xFFFFFFFF, whiteFactor);
+
+            float size = (float) rng.nextDouble(1.8, 3.4);
+            float lifetime = (float) rng.nextDouble(0.45, 0.85);
+
+            particles.add(new HitParticle(
+                tipX + (float) rng.nextDouble(-2.0, 2.0),
+                tipY + (float) rng.nextDouble(-1.5, 1.5),
+                vx, vy, size, pColor, lifetime
+            ));
+        }
+    }
+
+    private static class HitParticle {
+        private float x, y;
+        private float vx, vy;
+        private final float size;
+        private final int color;
+        private float life;
+        private final float maxLife;
+
+        HitParticle(float x, float y, float vx, float vy, float size, int color, float maxLife) {
+            this.x = x;
+            this.y = y;
+            this.vx = vx;
+            this.vy = vy;
+            this.size = size;
+            this.color = color;
+            this.life = maxLife;
+            this.maxLife = maxLife;
+        }
+
+        boolean update(float dt) {
+            life -= dt;
+            if (life <= 0.0f) return false;
+            vy += 50.0f * dt;
+            vx *= Math.max(0.0f, 1.0f - 2.8f * dt);
+            vy *= Math.max(0.0f, 1.0f - 2.8f * dt);
+            x += vx * dt;
+            y += vy * dt;
+            return true;
+        }
+
+        void render(Matrix3x2f mat, float cardAlpha) {
+            float progress = life / maxLife;
+            float pAlpha = progress * cardAlpha;
+            if (pAlpha <= 0.01f) return;
+
+            int c = ColorUtil.withAlpha(color, (int) (255 * pAlpha));
+            int glowC = ColorUtil.withAlpha(color, (int) (120 * pAlpha));
+            float r = size * (0.6f + 0.4f * progress);
+
+            Draw2DProcessor.INSTANCE.drawGlow(mat, x - r, y - r, r * 2.0f, r * 2.0f, r, glowC, 3.5f);
+            Draw2DProcessor.INSTANCE.drawRect(mat, x - r, y - r, r * 2.0f, r * 2.0f, r, c);
         }
     }
 
@@ -326,13 +445,19 @@ public class TargetHUD extends Module {
                 this.targetTimer -= dt;
                 if (this.targetTimer <= 0.0f) {
                     this.currentTarget = null;
+                    this.lastDamageTarget = null;
+                    this.lastKnownHp = -1.0f;
                 }
             } else {
                 this.currentTarget = null;
+                this.lastDamageTarget = null;
+                this.lastKnownHp = -1.0f;
             }
         }
         if (this.currentTarget != null && onlyPlayers.get() && !(this.currentTarget instanceof PlayerEntity)) {
             this.currentTarget = null;
+            this.lastDamageTarget = null;
+            this.lastKnownHp = -1.0f;
             this.targetTimer = 0.0f;
         }
     }
