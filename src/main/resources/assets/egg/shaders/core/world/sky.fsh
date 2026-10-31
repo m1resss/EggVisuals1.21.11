@@ -12,4 +12,4 @@ float hash21(vec2 p) {
     return fract(p.x * p.y);
 }
 
-#moj_import <sadnes:sky.glsl>
+#moj_import <egg:sky.glsl>

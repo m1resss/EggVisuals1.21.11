@@ -19,4 +19,4 @@ float hash21(vec2 p) {
     return float(mixBits(b.x ^ mixBits(b.y + 0x9e3779b9u)) >> 8) * (1.0 / 16777216.0);
 }
 
-#moj_import <sadnes:sky.glsl>
+#moj_import <egg:sky.glsl>

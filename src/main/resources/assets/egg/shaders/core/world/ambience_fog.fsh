@@ -91,7 +91,7 @@ layout(std140) uniform SadnesFog {
 
 out vec4 fragColor;
 
-#moj_import <sadnes:ambience_fog.glsl>
+#moj_import <egg:ambience_fog.glsl>
 
 // Туман поверх кадра на полном разрешении (Sampler0 - depth кадра). Дистанционный и приземный режимы
 // считаются здесь точно. Объёмный марш идёт вдвое мельче (Sampler1): его слой растягивается с учётом

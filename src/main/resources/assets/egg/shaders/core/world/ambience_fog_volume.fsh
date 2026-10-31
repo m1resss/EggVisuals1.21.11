@@ -92,7 +92,7 @@ layout(std140) uniform SadnesFog {
 
 out vec4 fragColor;
 
-#moj_import <sadnes:ambience_fog.glsl>
+#moj_import <egg:ambience_fog.glsl>
 
 // Объёмный туман, вдвое мельче кадра: луч из камеры идёт через слой до поверхности (Sampler0 - depth кадра),
 // в каждой точке плотность слоя умножается на плывущий по ветру 3D-шум (Sampler1 - LUT шума облаков, BA),

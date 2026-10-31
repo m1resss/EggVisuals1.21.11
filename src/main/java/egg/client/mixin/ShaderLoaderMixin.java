@@ -30,7 +30,25 @@ public class ShaderLoaderMixin {
             }
             return getter.get(id, type);
         };
-        return original.call(instance, pipeline, wrapped);
+        try {
+            return original.call(instance, pipeline, wrapped);
+        } catch (RuntimeException exception) {
+            if (!"egg".equals(pipeline.getLocation().getNamespace()) && !"sadnes".equals(pipeline.getLocation().getNamespace())) {
+                throw exception;
+            }
+            return () -> false;
+        }
+    }
+
+    @org.spongepowered.asm.mixin.injection.Redirect(
+            method = "apply(Lnet/minecraft/client/gl/ShaderLoader$Definitions;Lnet/minecraft/resource/ResourceManager;Lnet/minecraft/util/profiler/Profiler;)V",
+            at = @At(value = "INVOKE", target = "Ljava/util/List;add(Ljava/lang/Object;)Z")
+    )
+    private boolean delta$skipOwnFailedPipeline(java.util.List<Object> objects, Object object) {
+        if (object instanceof Identifier identifier && ("egg".equals(identifier.getNamespace()) || "sadnes".equals(identifier.getNamespace()))) {
+            return false;
+        }
+        return objects.add(object);
     }
 
     @Inject(method = "getSource", at = @At("HEAD"), cancellable = true)
