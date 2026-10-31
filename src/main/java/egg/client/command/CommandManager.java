@@ -36,6 +36,7 @@ public final class CommandManager {
 // register(new CasesCommand());
         register(new ConfettiCommand());
         register(new GlobalsCommand());
+        register(new LyricsCommand());
 
         buildDispatcher();
     }
@@ -43,6 +44,8 @@ public final class CommandManager {
     private void buildDispatcher() {
 
         dispatcher.register(literal("help"));
+        dispatcher.register(literal("lyrics"));
+        dispatcher.register(literal("lyr"));
 
         dispatcher.register(literal("confetti"));
         dispatcher.register(literal("totem"));

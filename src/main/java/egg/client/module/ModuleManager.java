@@ -100,6 +100,7 @@ public class ModuleManager {
         register(new TargetHUD());
 
         register(new HitSparks());
+        register(new Lyrics());
 
 
 

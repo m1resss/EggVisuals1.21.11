@@ -7,6 +7,7 @@ import egg.client.module.render.TargetESP;
 import egg.client.module.render.TotemPopConfetti;
 import egg.client.module.render.Trajectories;
 import egg.client.module.render.WorldTweaks;
+import egg.client.module.render.Lyrics;
 import egg.client.render.shader.FrameBufferPool;
 import egg.client.render.shader.GlStateSnapshot;
 import net.fabricmc.api.ClientModInitializer;
@@ -82,6 +83,11 @@ public class EggClient implements ClientModInitializer {
                 TargetESP targetESP = ModuleManager.getInstance().getModule(TargetESP.class);
                 if (targetESP != null && targetESP.isEnabled()) {
                     targetESP.renderWorld3D(matrices, camera, tickDelta, immediate, camPos);
+                }
+
+                Lyrics lyrics = ModuleManager.getInstance().getModule(Lyrics.class);
+                if (lyrics != null && lyrics.isEnabled()) {
+                    lyrics.renderWorld3D(matrices, camera, tickDelta, immediate, camPos);
                 }
 
                 immediate.draw();

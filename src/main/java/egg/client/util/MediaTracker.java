@@ -16,6 +16,8 @@ public final class MediaTracker {
     private volatile String trackTitle = "";
     private volatile String trackArtist = "";
     private volatile Identifier coverTexture = DEFAULT_COVER;
+    private volatile long trackStartTime = System.currentTimeMillis();
+    private volatile long manualOffsetMs = 0L;
 
     private MediaTracker() {
         Thread thread = new Thread(this::pollLoop, "Egg-MediaTracker");
@@ -39,11 +41,25 @@ public final class MediaTracker {
         return coverTexture != null ? coverTexture : DEFAULT_COVER;
     }
 
+    public long getTrackElapsedMs() {
+        if (!playing) return manualOffsetMs;
+        return Math.max(0L, (System.currentTimeMillis() - trackStartTime) + manualOffsetMs);
+    }
+
+    public void setTrackElapsedMs(long ms) {
+        this.manualOffsetMs = ms;
+        this.trackStartTime = System.currentTimeMillis();
+    }
+
     public void setSimulatedTrack(boolean active, String title, String artist) {
         if (active) {
             this.playing = true;
             this.trackTitle = title != null ? title : "Midnight City";
             this.trackArtist = artist != null ? artist : "M83";
+            this.trackStartTime = System.currentTimeMillis();
+            this.manualOffsetMs = 0L;
+        } else {
+            this.playing = false;
         }
     }
 
@@ -118,6 +134,10 @@ public final class MediaTracker {
                 }, null);
 
                 if (found[0]) {
+                    if (!this.trackTitle.equals(foundTitle[0]) || !this.trackArtist.equals(foundArtist[0])) {
+                        this.trackStartTime = System.currentTimeMillis();
+                        this.manualOffsetMs = 0L;
+                    }
                     this.playing = true;
                     this.trackTitle = foundTitle[0];
                     this.trackArtist = foundArtist[0];
