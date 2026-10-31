@@ -19,24 +19,31 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.RenderTickCounter;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.RaycastContext;
 import org.joml.Vector2f;
 
 import java.util.List;
+import java.util.Optional;
 
 public class Lyrics extends Module {
     private final BooleanSetting demoMode = new BooleanSetting("Демо трек", false, "Воспроизведение демо-трека Queen - Bohemian Rhapsody");
-    private final SliderSetting distance = new SliderSetting("Дистанция", 28.0, 10.0, 80.0, 1.0, "Расстояние до текста в скайбоксе");
-    private final SliderSetting elevation = new SliderSetting("Высота", 12.0, 0.0, 50.0, 1.0, "Высота над горизонтом");
+    private final SliderSetting distance = new SliderSetting("Дистанция", 32.0, 10.0, 80.0, 1.0, "Расстояние до текста в скайбоксе");
+    private final SliderSetting elevation = new SliderSetting("Высота", 14.0, 0.0, 50.0, 1.0, "Высота над горизонтом");
     private final SliderSetting size = new SliderSetting("Размер", 1.2, 0.6, 2.5, 0.05, "Масштаб шрифта");
     private final BooleanSetting glow = new BooleanSetting("Неоновое свечение", true, "Свечение в цвет темы клиента");
     private final BooleanSetting background = new BooleanSetting("Тёмная подложка", true, "Фон для контраста в небе");
     private final BooleanSetting trackBadge = new BooleanSetting("Инфо о треке", true, "Название трека и исполнитель над текстом");
     private final ModeSetting colorMode = new ModeSetting("Цвет текста", "Белый", "Белый", "Тема", "Градиент");
 
-    private Vec3d activeLineWorldPos = null;
-    private Vec3d prevLineWorldPos = null;
+    private Vec3d activeSkyDirection = null;
+    private Vec3d prevSkyDirection = null;
 
     private List<LyricLine> activeLyrics = null;
     private String lastSongKey = "";
@@ -44,6 +51,7 @@ public class Lyrics extends Module {
     private int prevLineIndex = -1;
     private long lineChangeTimeMs = 0L;
     private float overallAlpha = 0.0f;
+    private float occlusionAlpha = 1.0f;
     private long lastFrameNanos = 0L;
     private long demoPlayTimeMs = 0L;
 
@@ -61,8 +69,9 @@ public class Lyrics extends Module {
     @Override
     public void onEnable() {
         overallAlpha = 1.0f;
-        activeLineWorldPos = null;
-        prevLineWorldPos = null;
+        occlusionAlpha = 1.0f;
+        activeSkyDirection = null;
+        prevSkyDirection = null;
         if (demoMode.isEnabled()) {
             playDemo();
         }
@@ -70,8 +79,8 @@ public class Lyrics extends Module {
 
     @Override
     public void onDisable() {
-        activeLineWorldPos = null;
-        prevLineWorldPos = null;
+        activeSkyDirection = null;
+        prevSkyDirection = null;
         activeLyrics = null;
         lastSongKey = "";
         currentLineIndex = -1;
@@ -169,29 +178,52 @@ public class Lyrics extends Module {
             }
             if (found != currentLineIndex) {
                 prevLineIndex = currentLineIndex;
-                prevLineWorldPos = activeLineWorldPos;
+                prevSkyDirection = activeSkyDirection;
                 currentLineIndex = found;
                 lineChangeTimeMs = System.currentTimeMillis();
 
-                activeLineWorldPos = calculateSkyAnchor(camera);
+                activeSkyDirection = calculateSkyDirection(camera);
             }
         }
 
-        if (activeLineWorldPos == null) {
-            activeLineWorldPos = calculateSkyAnchor(camera);
+        if (activeSkyDirection == null) {
+            activeSkyDirection = calculateSkyDirection(camera);
         }
 
-        Vector2f currentScreenPos = ProjectionUtil.worldToScreen(activeLineWorldPos);
+        Vec3d camPos = camera.getCameraPos();
+        Vec3d lookVec = getCameraLookVector(camera);
+
+        boolean occluded = checkOcclusion(mc, camPos, activeSkyDirection);
+        float targetOcc = occluded ? 0.0f : 1.0f;
+        this.occlusionAlpha += (targetOcc - this.occlusionAlpha) * Math.min(1.0f, dt * 14.0f);
+        if (this.occlusionAlpha <= 0.01f) {
+            return;
+        }
+
+        double dot = lookVec.dotProduct(activeSkyDirection);
+        float lookFactor = (float) MathHelper.clamp((dot - 0.72) / (0.90 - 0.72), 0.0, 1.0);
+        if (lookFactor <= 0.01f) {
+            return;
+        }
+
+        Vec3d targetWorldPos = camPos.add(activeSkyDirection.multiply(distance.getValue()));
+        Vector2f currentScreenPos = ProjectionUtil.worldToScreen(targetWorldPos);
         int screenW = mc.getWindow().getScaledWidth();
         int screenH = mc.getWindow().getScaledHeight();
 
         boolean currentVisible = currentScreenPos != null
-                && currentScreenPos.x >= -250 && currentScreenPos.x <= screenW + 250
-                && currentScreenPos.y >= -200 && currentScreenPos.y <= screenH + 200;
+                && currentScreenPos.x >= 10 && currentScreenPos.x <= screenW - 10
+                && currentScreenPos.y >= 10 && currentScreenPos.y <= screenH - 10;
 
         Vector2f prevScreenPos = null;
-        if (prevLineWorldPos != null) {
-            prevScreenPos = ProjectionUtil.worldToScreen(prevLineWorldPos);
+        float prevLookFactor = 0.0f;
+        if (prevSkyDirection != null) {
+            double prevDot = lookVec.dotProduct(prevSkyDirection);
+            prevLookFactor = (float) MathHelper.clamp((prevDot - 0.72) / (0.90 - 0.72), 0.0, 1.0);
+            if (prevLookFactor > 0.01f) {
+                Vec3d prevWorldPos = camPos.add(prevSkyDirection.multiply(distance.getValue()));
+                prevScreenPos = ProjectionUtil.worldToScreen(prevWorldPos);
+            }
         }
 
         if (!currentVisible && prevScreenPos == null) {
@@ -227,6 +259,8 @@ public class Lyrics extends Module {
             currentText = (activeLyrics == null) ? "Поиск текста песни..." : "Инструментал";
         }
 
+        float effectiveAlpha = overallAlpha * lookFactor * this.occlusionAlpha;
+
         if (currentVisible && currentScreenPos != null) {
             float cx = currentScreenPos.x;
             float cy = currentScreenPos.y;
@@ -239,31 +273,33 @@ public class Lyrics extends Module {
                 float by = cy - 32.0f * userScale;
 
                 if (background.isEnabled()) {
-                    Draw2DProcessor.INSTANCE.drawRect(null, bx, by, bw, bh, 4.0f * userScale, ColorUtil.rgba(14, 15, 20, (int) (180 * overallAlpha)));
-                    Draw2DProcessor.INSTANCE.drawOutline(null, bx, by, bw, bh, 4.0f * userScale, 0.8f, ColorUtil.withAlphaFloat(accentColor, 0.50f * overallAlpha));
+                    Draw2DProcessor.INSTANCE.drawRect(null, bx, by, bw, bh, 4.0f * userScale, ColorUtil.rgba(14, 15, 20, (int) (180 * effectiveAlpha)));
+                    Draw2DProcessor.INSTANCE.drawOutline(null, bx, by, bw, bh, 4.0f * userScale, 0.8f, ColorUtil.withAlphaFloat(accentColor, 0.50f * effectiveAlpha));
                 }
                 float tx = cx - Fonts.d.a(badgeText, badgeFontSize) / 2.0f;
                 float ty = by + (bh - Fonts.d.a(badgeFontSize)) / 2.0f - 0.5f;
-                Fonts.d.a(null, badgeText, tx, ty, badgeFontSize, ColorUtil.withAlphaFloat(accentColor, 0.95f * overallAlpha));
+                Fonts.d.a(null, badgeText, tx, ty, badgeFontSize, ColorUtil.withAlphaFloat(accentColor, 0.95f * effectiveAlpha));
             }
 
             float line1Y = cy + (1.0f - ease) * 14.0f;
-            float line1Alpha = (0.50f + 0.50f * ease) * overallAlpha;
+            float line1Alpha = (0.50f + 0.50f * ease) * effectiveAlpha;
             renderVectorLine(cx, line1Y, currentText, mainFontSize, line1Alpha, activeTextColor, accentColor, true, userScale);
 
             if (nextText != null && !nextText.isBlank()) {
                 float line2Y = cy + Fonts.d.a(mainFontSize) + 10.0f * userScale;
-                float line2Alpha = (0.35f + 0.15f * ease) * overallAlpha;
+                float line2Alpha = (0.35f + 0.15f * ease) * effectiveAlpha;
                 renderVectorLine(cx, line2Y, nextText, nextFontSize, line2Alpha, ColorUtil.rgba(215, 220, 235, 255), accentColor, false, userScale);
             }
         }
 
         if (prevScreenPos != null && prevLineIndex >= 0 && activeLyrics != null && prevLineIndex < activeLyrics.size() && animProgress < 1.0f) {
             String prevText = activeLyrics.get(prevLineIndex).text();
-            float prevAlpha = (1.0f - ease) * 0.70f * overallAlpha;
-            float px = prevScreenPos.x;
-            float py = prevScreenPos.y - ease * 12.0f;
-            renderVectorLine(px, py, prevText, mainFontSize, prevAlpha, activeTextColor, accentColor, true, userScale);
+            float prevAlpha = (1.0f - ease) * 0.70f * overallAlpha * prevLookFactor * this.occlusionAlpha;
+            if (prevAlpha > 0.01f) {
+                float px = prevScreenPos.x;
+                float py = prevScreenPos.y - ease * 12.0f;
+                renderVectorLine(px, py, prevText, mainFontSize, prevAlpha, activeTextColor, accentColor, true, userScale);
+            }
         }
 
         DrawBatcher.flushPending();
@@ -297,8 +333,35 @@ public class Lyrics extends Module {
         Fonts.d.a(null, text, textX, textY, fontSize, finalCol);
     }
 
-    private Vec3d calculateSkyAnchor(Camera camera) {
-        Vec3d camPos = camera.getCameraPos();
+    private boolean checkOcclusion(MinecraftClient mc, Vec3d camPos, Vec3d skyDir) {
+        if (mc.world == null) return false;
+        double rayDist = Math.max(10.0, distance.getValue());
+        Vec3d rayEnd = camPos.add(skyDir.multiply(rayDist));
+
+        BlockHitResult blockHit = mc.world.raycast(new RaycastContext(
+                camPos,
+                rayEnd,
+                RaycastContext.ShapeType.COLLIDER,
+                RaycastContext.FluidHandling.NONE,
+                mc.player
+        ));
+        if (blockHit != null && blockHit.getType() != HitResult.Type.MISS) {
+            return true;
+        }
+
+        Box checkRange = new Box(camPos, rayEnd).expand(0.5);
+        for (Entity candidate : mc.world.getOtherEntities(mc.player, checkRange)) {
+            if (candidate.isAlive() && !candidate.isSpectator()) {
+                Box box = candidate.getBoundingBox().expand(0.15);
+                if (box.contains(camPos) || box.raycast(camPos, rayEnd).isPresent()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private Vec3d calculateSkyDirection(Camera camera) {
         float pitch = camera.getPitch();
         float yaw = camera.getYaw();
 
@@ -313,9 +376,18 @@ public class Lyrics extends Module {
         double ly = -Math.sin(radP);
         double lz = Math.cos(radY) * Math.cos(radP);
 
-        Vec3d skyUnit = new Vec3d(lx, ly, lz).normalize();
-        double dist = distance.getValue();
-        return camPos.add(skyUnit.multiply(dist));
+        return new Vec3d(lx, ly, lz).normalize();
+    }
+
+    private Vec3d getCameraLookVector(Camera camera) {
+        float pitch = camera.getPitch();
+        float yaw = camera.getYaw();
+        double radP = Math.toRadians(pitch);
+        double radY = Math.toRadians(yaw);
+        double lx = -Math.sin(radY) * Math.cos(radP);
+        double ly = -Math.sin(radP);
+        double lz = Math.cos(radY) * Math.cos(radP);
+        return new Vec3d(lx, ly, lz).normalize();
     }
 
     public void playDemo() {
@@ -326,8 +398,9 @@ public class Lyrics extends Module {
         this.currentLineIndex = -1;
         this.prevLineIndex = -1;
         this.lastSongKey = "demo";
-        this.activeLineWorldPos = null;
+        this.activeSkyDirection = null;
         this.overallAlpha = 1.0f;
+        this.occlusionAlpha = 1.0f;
     }
 
     public void playManual(String artist, String title) {
@@ -339,10 +412,11 @@ public class Lyrics extends Module {
         this.manualOffsetMs = 0L;
         this.currentLineIndex = -1;
         this.prevLineIndex = -1;
-        this.activeLineWorldPos = null;
+        this.activeSkyDirection = null;
         this.activeLyrics = null;
         this.lastSongKey = "";
         this.overallAlpha = 1.0f;
+        this.occlusionAlpha = 1.0f;
     }
 
     public void stopManual() {
@@ -350,7 +424,7 @@ public class Lyrics extends Module {
         this.demoMode.setEnabled(false);
         this.overallAlpha = 0.0f;
         this.activeLyrics = null;
-        this.activeLineWorldPos = null;
+        this.activeSkyDirection = null;
         this.currentLineIndex = -1;
         this.prevLineIndex = -1;
     }
