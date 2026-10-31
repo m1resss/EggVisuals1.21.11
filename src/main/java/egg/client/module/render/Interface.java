@@ -1177,6 +1177,10 @@ public class Interface extends Module {
         return hudGradientStrength.getValueFloat();
     }
 
+    public float getOpacityVal() {
+        return opacity.getValueFloat() / 255.0f;
+    }
+
     public boolean onMouseScrolled(double mouseX, double mouseY, double amount) {
         if (!isEnabled()) return false;
 
