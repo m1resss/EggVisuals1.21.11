@@ -118,19 +118,28 @@ public final class LyricsFetcher {
         String cleanT = cleanTitle(title);
         String cleanA = artist != null ? artist.trim() : "";
 
-        // 1. Primary: Kugou Music API (high-availability, synced LRC database)
+        // 1. Try artist + clean title on Kugou
         String synced = null;
         if (!cleanA.isEmpty() && !cleanT.isEmpty()) {
-            synced = fetchFromKugou(cleanA, cleanT);
-        }
-        if (synced == null && !cleanT.isEmpty()) {
-            synced = fetchFromKugou("", cleanT);
-        }
-        if (synced == null && !title.equalsIgnoreCase(cleanT)) {
-            synced = fetchFromKugou(cleanA, title);
+            synced = fetchFromKugou(cleanA + " " + cleanT);
         }
 
-        // 2. Secondary fallback: LrcLib API
+        // 2. Try clean title alone on Kugou (crucial for remixes/covers like Epizoon - 505)
+        if (synced == null && !cleanT.isEmpty()) {
+            synced = fetchFromKugou(cleanT);
+        }
+
+        // 3. Try artist + raw title if different
+        if (synced == null && !title.equalsIgnoreCase(cleanT) && !cleanA.isEmpty()) {
+            synced = fetchFromKugou(cleanA + " " + title);
+        }
+
+        // 4. Try raw title alone if different
+        if (synced == null && !title.equalsIgnoreCase(cleanT)) {
+            synced = fetchFromKugou(title);
+        }
+
+        // 5. Fallback to LrcLib API
         if (synced == null) {
             synced = tryGetLrclib(cleanA, cleanT);
         }
@@ -140,9 +149,6 @@ public final class LyricsFetcher {
         if (synced == null && !cleanT.isEmpty()) {
             synced = trySearchLrclib(cleanT);
         }
-        if (synced == null && !title.equalsIgnoreCase(cleanT)) {
-            synced = tryGetLrclib(cleanA, title);
-        }
 
         if (synced != null && !synced.isBlank()) {
             return parseLrc(synced);
@@ -150,12 +156,54 @@ public final class LyricsFetcher {
         return Collections.emptyList();
     }
 
-    private String fetchFromKugou(String artist, String track) {
-        if (track == null || track.isBlank()) return null;
+    private static boolean hasCjk(String s) {
+        if (s == null) return false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c >= '\u4e00' && c <= '\u9fff') return true;
+        }
+        return false;
+    }
+
+    private static boolean isLrcCjkDominant(String text) {
+        if (text == null) return false;
+        int cjk = 0;
+        int alpha = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c >= '\u4e00' && c <= '\u9fff') {
+                cjk++;
+                alpha++;
+            } else if (Character.isLetter(c)) {
+                alpha++;
+            }
+        }
+        return alpha > 0 && ((float) cjk / (float) alpha) > 0.35f;
+    }
+
+    private static boolean isValidLrc(String lrc, boolean queryHasCjk) {
+        if (lrc == null || lrc.trim().length() < 20) return false;
+        if (!queryHasCjk && isLrcCjkDominant(lrc)) return false;
+
+        String[] rawLines = lrc.split("\\r?\\n");
+        int realCount = 0;
+        for (String raw : rawLines) {
+            String l = raw.trim();
+            if (l.startsWith("[0") || l.startsWith("[1") || l.startsWith("[2")) {
+                if (!l.contains("纯音乐") && !l.contains("暂无歌词") && !l.contains("作词") && !l.contains("作曲")) {
+                    realCount++;
+                }
+            }
+        }
+        return realCount >= 3;
+    }
+
+    private String fetchFromKugou(String query) {
+        if (query == null || query.isBlank()) return null;
+        boolean queryHasCjk = hasCjk(query);
         try {
-            String query = (artist != null && !artist.isBlank()) ? (artist.trim() + " " + track.trim()) : track.trim();
             String searchUrl = "http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword="
-                    + URLEncoder.encode(query, StandardCharsets.UTF_8) + "&page=1&pagesize=5";
+                    + URLEncoder.encode(query.trim(), StandardCharsets.UTF_8) + "&page=1&pagesize=5";
             String searchJson = httpGet(searchUrl);
             if (searchJson == null || searchJson.isBlank()) return null;
 
@@ -174,7 +222,7 @@ public final class LyricsFetcher {
                 if (hash == null || hash.isBlank()) continue;
 
                 String candUrl = "http://krcs.kugou.com/search?ver=1&man=yes&client=mobi&keyword="
-                        + URLEncoder.encode(query, StandardCharsets.UTF_8) + "&hash=" + hash;
+                        + URLEncoder.encode(query.trim(), StandardCharsets.UTF_8) + "&hash=" + hash;
                 String candJson = httpGet(candUrl);
                 if (candJson == null || candJson.isBlank()) continue;
 
@@ -183,24 +231,27 @@ public final class LyricsFetcher {
                 JsonArray cands = cObj.getAsJsonArray("candidates");
                 if (cands.isEmpty()) continue;
 
-                JsonObject bestCand = cands.get(0).getAsJsonObject();
-                if (!bestCand.has("id") || !bestCand.has("accesskey")) continue;
-                String candId = bestCand.get("id").getAsString();
-                String accessKey = bestCand.get("accesskey").getAsString();
+                for (JsonElement candElem : cands) {
+                    if (!candElem.isJsonObject()) continue;
+                    JsonObject cand = candElem.getAsJsonObject();
+                    if (!cand.has("id") || !cand.has("accesskey")) continue;
+                    String candId = cand.get("id").getAsString();
+                    String accessKey = cand.get("accesskey").getAsString();
 
-                String dlUrl = "http://krcs.kugou.com/download?ver=1&client=mobi&id="
-                        + candId + "&accesskey=" + accessKey + "&fmt=lrc&charset=utf8";
-                String dlJson = httpGet(dlUrl);
-                if (dlJson == null || dlJson.isBlank()) continue;
+                    String dlUrl = "http://krcs.kugou.com/download?ver=1&client=mobi&id="
+                            + candId + "&accesskey=" + accessKey + "&fmt=lrc&charset=utf8";
+                    String dlJson = httpGet(dlUrl);
+                    if (dlJson == null || dlJson.isBlank()) continue;
 
-                JsonObject dlObj = JsonParser.parseString(dlJson).getAsJsonObject();
-                if (dlObj.has("content")) {
-                    String base64Content = dlObj.get("content").getAsString();
-                    if (base64Content != null && !base64Content.isBlank()) {
-                        byte[] decoded = Base64.getDecoder().decode(base64Content);
-                        String lrc = new String(decoded, StandardCharsets.UTF_8);
-                        if (!lrc.isBlank()) {
-                            return lrc;
+                    JsonObject dlObj = JsonParser.parseString(dlJson).getAsJsonObject();
+                    if (dlObj.has("content")) {
+                        String base64Content = dlObj.get("content").getAsString();
+                        if (base64Content != null && !base64Content.isBlank()) {
+                            byte[] decoded = Base64.getDecoder().decode(base64Content);
+                            String lrc = new String(decoded, StandardCharsets.UTF_8);
+                            if (isValidLrc(lrc, queryHasCjk)) {
+                                return lrc;
+                            }
                         }
                     }
                 }
