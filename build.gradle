@@ -132,6 +132,16 @@ tasks.register('copyToLunar', Copy) {
             from remapJar.archiveFile
             into file("C:/Users/admin/AppData/Roaming/.minecraft/mods")
         }
+        def prismMods = file("C:/Users/admin/AppData/Roaming/PrismLauncher/instances/Fabulously Optimized/minecraft/mods")
+        if (prismMods.exists()) {
+            delete fileTree(prismMods) {
+                include "EggVisual*.jar"
+            }
+            copy {
+                from remapJar.archiveFile
+                into prismMods
+            }
+        }
     }
 }
 
