@@ -104,8 +104,10 @@ public class WorldTweaks extends Module {
     private final SliderSetting soundVolume = new SliderSetting("Громкость звука", 0.65, 0.0, 1.0, 0.05, "Громкость MP3 звуков");
 
     private final BooleanSetting customClouds = new BooleanSetting("Облака", true, "Кастомные облака");
-    private final ModeSetting cloudMode = new ModeSetting("Режим облаков", "Ванильные", "Режим отображения облаков", "Ванильные", "Цветные", "Выкл");
-    private final SliderSetting cloudHeight = new SliderSetting("Высота облаков", 192.0, 64.0, 384.0, 8.0, "Высота облаков над миром");
+    private final ModeSetting cloudMode = new ModeSetting("Режим облаков", "Шейдерные", "Режим отображения облаков", "Шейдерные", "Ванильные", "Цветные", "Выкл");
+    private final SliderSetting cloudCoverage = new SliderSetting("Плотность облаков", 55.0, 5.0, 95.0, 5.0, "Покрытие неба облаками (%)");
+    private final SliderSetting cloudDistance = new SliderSetting("Дистанция облаков", 2048.0, 512.0, 4096.0, 128.0, "Дальность прорисовки облаков");
+    private final SliderSetting cloudHeight = new SliderSetting("Высота облаков", 192.0, 64.0, 384.0, 8.0, "Высота нижнего края облаков");
     private final SliderSetting cloudSpeed = new SliderSetting("Скорость облаков", 1.0, 0.0, 5.0, 0.1, "Скорость движения облаков");
     private final ColorSetting cloudColor = new ColorSetting("Цвет облаков", 0xFFFFFFFF, "Оттенок облаков");
 
@@ -151,7 +153,7 @@ public class WorldTweaks extends Module {
                 this.colorGrade, this.colorGradeSaturation, this.colorGradeContrast, this.colorGradeBrightness, this.colorGradeTemperature,
                 this.customFog, this.fogColorMode, this.fogCustomColor,
                 this.customSound, this.soundVolume,
-                this.customClouds, this.cloudMode, this.cloudHeight, this.cloudSpeed, this.cloudColor,
+                this.customClouds, this.cloudMode, this.cloudCoverage, this.cloudDistance, this.cloudHeight, this.cloudSpeed, this.cloudColor,
                 this.customThunder, this.lightningFrequency
         );
         instance = this;
@@ -718,8 +720,20 @@ public class WorldTweaks extends Module {
         return isEnabled() && this.customClouds.get();
     }
 
+    public boolean isVolumetricClouds() {
+        return isCustomCloudsEnabled() && ("Шейдерные".equals(this.cloudMode.get()) || "Объемные".equals(this.cloudMode.get()));
+    }
+
     public String getCloudMode() {
         return this.cloudMode.get();
+    }
+
+    public double getCloudCoverage() {
+        return this.cloudCoverage.get();
+    }
+
+    public double getCloudDistance() {
+        return this.cloudDistance.get();
     }
 
     public double getCloudHeight() {
@@ -731,7 +745,7 @@ public class WorldTweaks extends Module {
     }
 
     public int getCloudColor() {
-        if ("Цветные".equals(this.cloudMode.get())) {
+        if ("Цветные".equals(this.cloudMode.get()) || "Шейдерные".equals(this.cloudMode.get()) || "Объемные".equals(this.cloudMode.get())) {
             return this.cloudColor.get();
         }
         return -1;

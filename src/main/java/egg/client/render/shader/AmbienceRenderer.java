@@ -9,8 +9,10 @@ import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.textures.TextureFormat;
 import egg.client.module.ModuleManager;
 import egg.client.module.render.WorldTweaks;
+import egg.client.render.texture.CloudNoiseTexture;
 import egg.client.util.ColorUtil;
 import java.util.Arrays;
+import java.util.OptionalInt;
 import net.minecraft.block.enums.CameraSubmersionType;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.Framebuffer;
@@ -37,6 +39,13 @@ public enum AmbienceRenderer {
     private SimpleFramebuffer captureTarget;
     private SimpleFramebuffer resultTarget;
     private SimpleFramebuffer[] mipTargets = new SimpleFramebuffer[0];
+
+    private SimpleFramebuffer cloudsTarget;
+    private double cloudOffsetX;
+    private double cloudOffsetZ;
+    private float cloudHeight;
+    private int cloudColor = -1;
+    private boolean cloudsRendered;
 
     private final TextureSnapshot opaqueDepth = new TextureSnapshot("egg_ambience_depth_opaque", TextureFormat.DEPTH32);
     private final TextureSnapshot worldDepth = new TextureSnapshot("egg_ambience_depth_world", TextureFormat.DEPTH32);
@@ -69,11 +78,98 @@ public enum AmbienceRenderer {
         skyVisibility = f2;
     }
 
+    public static void setSkyColor(int i, float f) {
+        skyColor = i;
+        sunAngle = f;
+    }
+
+    public static void setHorizonColor(int i) {
+        horizonColor = i;
+    }
+
+    public static float getSunAngle() {
+        return sunAngle;
+    }
+
+    public static int getSkyColor() {
+        return skyColor;
+    }
+
+    public static int getHorizonColor() {
+        return horizonColor;
+    }
+
     public static boolean isOpenGl() {
         return GlStateSnapshot.isOpenGl();
     }
 
+    public void renderClouds(int i, float f, Vec3d vec3d, long l, float f2) {
+        MinecraftClient minecraftClient = MinecraftClient.getInstance();
+        GameRenderer gameRenderer = minecraftClient.gameRenderer;
+        Framebuffer framebuffer = minecraftClient.getFramebuffer();
+        if (gameRenderer.getCamera().getSubmersionType() == CameraSubmersionType.NONE && isFramebufferUsable(framebuffer)) {
+            GpuTextureView noiseTex = CloudNoiseTexture.getNoiseTexture();
+            GpuTextureView levelsTex = CloudNoiseTexture.getLevelsTexture();
+            if (noiseTex != null && levelsTex != null) {
+                WorldTweaks wt = WorldTweaks.getInstance();
+                double speed = wt != null ? wt.getCloudSpeed() : 1.0;
+                this.cloudOffsetX = vec3d.x + ((double) l + f2) * 0.03 * speed;
+                this.cloudOffsetZ = vec3d.z;
+                this.cloudHeight = f - (float) vec3d.y;
+                int baseCol = (wt != null && wt.getCloudColor() != -1) ? wt.getCloudColor() : i;
+                this.cloudColor = applyWeatherToColor(baseCol, minecraftClient.world);
+                this.cloudsRendered = true;
+                Quaternionf rot = gameRenderer.getCamera().getRotation().conjugate(new Quaternionf());
+                GpuBufferSlice ubo = this.createUniforms(gameRenderer, wt, rot);
+                Matrix4f matrix4f = new Matrix4f().rotation(rot);
+                this.cloudsTarget = ensureTarget(
+                    this.cloudsTarget, "egg_ambience_clouds", Math.max(1, framebuffer.textureWidth / 2), Math.max(1, framebuffer.textureHeight / 2)
+                );
+                GpuTextureView cloudsView = this.cloudsTarget.getColorAttachmentView();
+                GpuTextureView depthView = framebuffer.getDepthAttachmentView();
+                GpuSampler nearestSampler = RenderSystem.getSamplerCache().get(FilterMode.NEAREST);
+                GpuSampler linearSampler = RenderSystem.getSamplerCache().get(FilterMode.LINEAR);
+                GpuSampler repeatLinearSampler = RenderSystem.getSamplerCache().getRepeated(FilterMode.LINEAR);
+
+                try (FullscreenPass.RenderStateGuard guard = FullscreenPass.guardState()) {
+                    AtmosphereCubeRenderer.draw(Pipelines.AMBIENCE_CLOUDS, cloudsView, OptionalInt.of(0), ubo, matrix4f, "clouds", renderPass -> {
+                        renderPass.bindTexture("Sampler0", depthView, nearestSampler);
+                        renderPass.bindTexture("Sampler1", noiseTex, repeatLinearSampler);
+                        renderPass.bindTexture("Sampler2", levelsTex, repeatLinearSampler);
+                    });
+                    AtmosphereCubeRenderer.draw(
+                        Pipelines.AMBIENCE_CLOUDS_COMPOSITE, framebuffer.getColorAttachmentView(), OptionalInt.empty(), ubo, matrix4f, "clouds composite", renderPass2 -> {
+                            renderPass2.bindTexture("Sampler0", cloudsView, linearSampler);
+                            renderPass2.bindTexture("Sampler1", depthView, nearestSampler);
+                        }
+                    );
+                }
+            }
+        }
+    }
+
+    public static int applyWeatherToColor(int i, net.minecraft.world.World world) {
+        if (world == null) {
+            return i;
+        }
+        float f = world.getThunderGradient(1.0F);
+        float f2 = Math.max(world.getRainGradient(1.0F) - f, 0.0F);
+        float f3 = MathHelper.lerp(f2, 1.0F, 0.5F) * MathHelper.lerp(f, 1.0F, 0.25F);
+        float f4 = MathHelper.lerp(f2, 1.0F, 0.6F) * MathHelper.lerp(f, 1.0F, 0.3F);
+        float r = (((i >> 16) & 0xFF) / 255.0F) * f3;
+        float g = (((i >> 8) & 0xFF) / 255.0F) * f3;
+        float b = ((i & 0xFF) / 255.0F) * f4;
+        float a = ((i >> 24) & 0xFF) / 255.0F;
+        return ((int)(a * 255.0F) << 24) | ((int)(r * 255.0F) << 16) | ((int)(g * 255.0F) << 8) | (int)(b * 255.0F);
+    }
+
     public void renderPostEffects(GameRenderer gameRenderer) {
+        if (!this.cloudsRendered && this.cloudsTarget != null) {
+            deleteTarget(this.cloudsTarget);
+            this.cloudsTarget = null;
+        }
+        this.cloudsRendered = false;
+
         MinecraftClient mc = MinecraftClient.getInstance();
         WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
         if (mc.player != null && mc.world != null && wt != null && wt.isEnabled()) {
@@ -101,36 +197,37 @@ public enum AmbienceRenderer {
                         this.captureTarget = null;
                     }
 
-                    if (doBloom) {
-                        try (FullscreenPass.RenderStateGuard guard = FullscreenPass.guardState()) {
-                            this.renderBloom(framebuffer, ubo, linearSampler);
-                        }
+                    if (this.captureTarget != null) {
+                        this.captureScene(framebuffer, w, h, linearSampler);
                     }
 
                     if (doReflections && noSubmersion) {
-                        try (FullscreenPass.RenderStateGuard guard = FullscreenPass.guardState()) {
-                            this.renderReflections(framebuffer, ubo, linearSampler, nearestSampler);
-                        }
+                        this.renderReflections(framebuffer, ubo, linearSampler, nearestSampler);
                     }
 
-                    if (doColorGrade) {
-                        this.captureScene(framebuffer, w, h, nearestSampler);
-                        try (FullscreenPass.RenderStateGuard guard = FullscreenPass.guardState()) {
-                            FullscreenPass.drawAmbiencePass(Pipelines.AMBIENCE_COLOR_GRADE, framebuffer, this.captureTarget.getColorAttachmentView(), nearestSampler, ubo);
-                        }
+                    if (doBloom) {
+                        this.renderBloom(framebuffer, ubo, linearSampler);
+                    }
+
+                    if (doColorGrade && this.captureTarget != null) {
+                        FullscreenPass.drawAmbiencePass(
+                            Pipelines.AMBIENCE_COLOR_GRADE, framebuffer, this.captureTarget.getColorAttachmentView(), linearSampler, ubo
+                        );
                     }
                 }
+            } else {
+                this.releaseIfUnused();
             }
         } else {
             this.releaseIfUnused();
         }
     }
 
-    private void captureScene(Framebuffer framebuffer, int w, int h, GpuSampler sampler) {
-        if (GlStateSnapshot.isOpenGl()) {
+    private void captureScene(Framebuffer framebuffer, int i, int i2, GpuSampler gpuSampler) {
+        if (isOpenGl()) {
             RenderSystem.getDevice()
                 .createCommandEncoder()
-                .copyTextureToTexture(framebuffer.getColorAttachment(), this.captureTarget.getColorAttachment(), 0, 0, 0, 0, 0, w, h);
+                .copyTextureToTexture(framebuffer.getColorAttachment(), this.captureTarget.getColorAttachment(), 0, 0, 0, 0, 0, i, i2);
         }
     }
 
@@ -169,6 +266,10 @@ public enum AmbienceRenderer {
         FullscreenPass.drawAmbiencePass(Pipelines.AMBIENCE_BLOOM_COMPOSITE, framebuffer, this.resultTarget.getColorAttachmentView(), linear, ubo);
     }
 
+    private static float wrap(double d, double d2) {
+        return (float)(d - Math.floor(d / d2) * d2);
+    }
+
     private GpuBufferSlice createUniforms(GameRenderer gameRenderer, WorldTweaks wt, Quaternionf rot) {
         Vector3f up = rot.transform(new Vector3f(0.0F, 1.0F, 0.0F));
         Vector3f right = rot.transform(new Vector3f(1.0F, 0.0F, 0.0F));
@@ -178,6 +279,23 @@ public enum AmbienceRenderer {
 
         float blurDist = 99999.0F;
         float waveTime = (float)((System.nanoTime() % 1000000000000L) / 1.0E9);
+
+        float cloudCamX = wrap(this.cloudOffsetX, 65536.0);
+        float cloudCamZ = wrap(this.cloudOffsetZ, 65536.0);
+        float cloudBottom = this.cloudHeight;
+        float cloudThickness = 96.0F;
+        float coverage = wt != null ? (float)(wt.getCloudCoverage() / 100.0) : 0.55F;
+        float rain = (gameRenderer.getClient().world != null) ? gameRenderer.getClient().world.getRainGradient(1.0F) : 0.0F;
+        float effectiveCover = MathHelper.lerp(rain * 0.7F, coverage, Math.max(coverage, 0.68F));
+        float cloudThreshold = MathHelper.lerp(effectiveCover, 0.75F, 0.1F);
+        float cloudExtinction = 0.06F;
+        float cloudDist = wt != null ? (float) wt.getCloudDistance() : 2048.0F;
+        float cloudLift = 28.0F;
+        float cloudR = ((this.cloudColor >> 16) & 0xFF) / 255.0F;
+        float cloudG = ((this.cloudColor >> 8) & 0xFF) / 255.0F;
+        float cloudB = (this.cloudColor & 0xFF) / 255.0F;
+        float cloudA = ((this.cloudColor >> 24) & 0xFF) / 255.0F;
+        float cloudNight = 0.0F;
 
         return AmbiencePostUniformStorage.write(
             new AmbiencePostUniforms(
@@ -218,10 +336,20 @@ public enum AmbienceRenderer {
                 wt.getShaderQualityScale(),
                 0,
                 0.0F,
-                0.0F,
-                (float) camPos.x, (float) camPos.z,
-                128.0F, 16.0F, 0.5F, 1.0F, 256.0F, 0.0F,
-                1.0F, 1.0F, 1.0F, 1.0F, 0.0F,
+                isOpenGl() ? 0.0F : 1.0F,
+                cloudCamX,
+                cloudCamZ,
+                cloudBottom,
+                cloudThickness,
+                cloudThreshold,
+                cloudExtinction,
+                cloudDist,
+                cloudLift,
+                cloudR,
+                cloudG,
+                cloudB,
+                cloudA,
+                cloudNight,
                 (float) wt.getColorGradeSaturation(),
                 (float) wt.getColorGradeContrast(),
                 (float) wt.getColorGradeBrightness(),
@@ -258,7 +386,7 @@ public enum AmbienceRenderer {
     }
 
     private void releaseIfUnused() {
-        if (this.captureTarget != null || this.resultTarget != null || this.mipTargets.length > 0 || this.opaqueDepth.getView() != null) {
+        if (this.captureTarget != null || this.resultTarget != null || this.mipTargets.length > 0 || this.opaqueDepth.getView() != null || this.cloudsTarget != null) {
             this.releaseTargets();
         }
     }
@@ -268,6 +396,8 @@ public enum AmbienceRenderer {
         this.captureTarget = null;
         deleteTarget(this.resultTarget);
         this.resultTarget = null;
+        deleteTarget(this.cloudsTarget);
+        this.cloudsTarget = null;
         for (SimpleFramebuffer fb : this.mipTargets) {
             deleteTarget(fb);
         }
@@ -277,6 +407,8 @@ public enum AmbienceRenderer {
         this.sceneColor.close();
         this.opaqueCaptured = false;
         this.reflectionReady = false;
+        CloudNoiseTexture.close();
+        AtmosphereCubeRenderer.close();
     }
 
     private static SimpleFramebuffer ensureTarget(SimpleFramebuffer simpleFramebuffer, String string, int i, int i2) {

@@ -51,6 +51,8 @@
     "WorldRendererProjectionMixin",
     "WorldRendererReflectionMixin",
     "WorldRendererCloudMixin",
+    "CloudRendererMixin",
+    "SkyRenderingAmbienceMixin",
     "GlyphAtlasTextureMixin"
   ],
   "client": [],

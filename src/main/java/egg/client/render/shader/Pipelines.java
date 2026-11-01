@@ -273,4 +273,39 @@ public final class Pipelines {
             .withVertexFormat(CustomVertexFormats.POSITION_TEX_LINE_WIDTH, DrawMode.QUADS)
             .build()
     );
+    public static final RenderPipeline AMBIENCE_CLOUDS = register(
+        RenderPipeline.builder()
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/ambience_clouds"))
+            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/world/ambience_volume"))
+            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/world/ambience_clouds"))
+            .withSampler("Sampler0")
+            .withSampler("Sampler1")
+            .withSampler("Sampler2")
+            .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
+            .withUniform("Projection", UniformType.UNIFORM_BUFFER)
+            .withUniform("EggAmbiencePost", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .withVertexFormat(VertexFormats.POSITION, DrawMode.QUADS)
+            .build()
+    );
+
+    public static final RenderPipeline AMBIENCE_CLOUDS_COMPOSITE = register(
+        RenderPipeline.builder()
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/ambience_clouds_composite"))
+            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/world/ambience_volume"))
+            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/world/ambience_clouds_composite"))
+            .withSampler("Sampler0")
+            .withSampler("Sampler1")
+            .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
+            .withUniform("Projection", UniformType.UNIFORM_BUFFER)
+            .withUniform("EggAmbiencePost", UniformType.UNIFORM_BUFFER)
+            .withBlend(new BlendFunction(SourceFactor.ONE, DestFactor.ONE_MINUS_SRC_ALPHA, SourceFactor.ZERO, DestFactor.ONE))
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .withVertexFormat(VertexFormats.POSITION, DrawMode.QUADS)
+            .build()
+    );
 }
