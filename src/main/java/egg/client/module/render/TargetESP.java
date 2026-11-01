@@ -9,6 +9,7 @@ import egg.client.render.shader.Pipelines;
 import egg.client.render.shader.ProjectionUtil;
 import egg.client.module.ModuleManager;
 import egg.client.util.MediaTracker;
+import egg.client.util.AudioMeter;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.BuiltBuffer;
 import net.minecraft.client.render.Camera;
@@ -59,6 +60,7 @@ public class TargetESP extends Module {
 
     private static final Identifier GLOWING_TEXTURE = Identifier.of("egg", "textures/glowing.png");
     private static final Identifier BLOOM_TEXTURE = Identifier.of("egg", "textures/target/bloom.png");
+    private static final Identifier TARGET_ESP_TEXTURE = Identifier.of("egg", "textures/target/target_esp.png");
 
     private static final Identifier[] SNOWFLAKES = new Identifier[10];
     static {
@@ -124,6 +126,7 @@ public class TargetESP extends Module {
     private float hoopCurrentB = -1.0f;
     private float hoopTime = 0.0f;
     private long hoopLastNanos = 0L;
+    private float currentAudioLevel = 0.0f;
 
     public TargetESP() {
         super("Target ESP", "Снежный вихрь и астральные проекции вокруг цели", Category.ESP);
@@ -951,7 +954,7 @@ public class TargetESP extends Module {
             hurtFactor = MathHelper.clamp(hurtFactor, 0.0f, 1.0f);
         }
 
-        // Boost color vibrancy & lightness so glow is NEVER dark or muddy
+        // Boost color vibrancy & lightness so glow is light, radiant and never muddy
         float rawR = this.hoopCurrentR;
         float rawG = this.hoopCurrentG;
         float rawB = this.hoopCurrentB;
@@ -962,9 +965,9 @@ public class TargetESP extends Module {
         float vibB = Math.min(1.0f, rawB * boost);
 
         // Light/luminous base (glow can only be bright and light)
-        float lightR = MathHelper.lerp(0.25f, vibR, 1.0f);
-        float lightG = MathHelper.lerp(0.25f, vibG, 1.0f);
-        float lightB = MathHelper.lerp(0.25f, vibB, 1.0f);
+        float lightR = MathHelper.lerp(0.35f, vibR, 1.0f);
+        float lightG = MathHelper.lerp(0.35f, vibG, 1.0f);
+        float lightB = MathHelper.lerp(0.35f, vibB, 1.0f);
 
         if (hurtFactor > 0.01f) {
             vibR = MathHelper.lerp(hurtFactor, vibR, 1.0f);
@@ -999,26 +1002,35 @@ public class TargetESP extends Module {
         float masterAlpha = MathHelper.clamp(this.animProgress * glowMult, 0.0f, 2.0f);
         if (masterAlpha <= 0.005f) return;
 
-        // Jello spring/bounce vertical motion on the enemy
+        // 2. Real-time Audio Level Detection (Quiet vs Loud beat jumps)
         float t = this.hoopTime;
-        float beatRaw = isMusicPlaying ? (float) Math.sin(t * 3.6f) : 0.0f;
-        float beatPulse = Math.max(0.0f, beatRaw);
-        beatPulse = beatPulse * beatPulse * beatPulse; // sharp kick pulse
-        float snareRaw = isMusicPlaying ? (float) Math.cos(t * 7.2f + 0.3f) : 0.0f;
-        float snarePulse = Math.max(0.0f, snareRaw) * 0.5f;
-        float audioEnergy = isMusicPlaying ? (0.65f + 0.35f * (beatPulse + snarePulse)) : 0.35f;
+        float realAudioPeak = AudioMeter.getPeak();
+        boolean hasRealAudio = AudioMeter.isActive() && (isMusicPlaying || realAudioPeak > 0.01f);
 
-        float jelloPhase = t * 2.8f;
-        float jelloBounce = (float) (Math.sin(jelloPhase) * 0.07f + Math.sin(jelloPhase * 2.0f) * 0.03f);
-        if (isMusicPlaying) {
-            jelloBounce += (beatPulse - 0.25f) * 0.10f;
+        // Fallback rhythmic beat if no live WASAPI audio detected
+        float beatRaw = isMusicPlaying ? (float) Math.sin(t * 3.6f) : 0.0f;
+        float beatSim = Math.max(0.0f, beatRaw);
+        beatSim = beatSim * beatSim * beatSim;
+
+        float targetAudioLevel = hasRealAudio ? realAudioPeak : (isMusicPlaying ? (0.25f + 0.75f * beatSim) : 0.12f);
+
+        // Smooth envelope follower: fast attack on kick, organic decay
+        if (targetAudioLevel > this.currentAudioLevel) {
+            this.currentAudioLevel += (targetAudioLevel - this.currentAudioLevel) * Math.min(1.0f, dt * 22.0f);
+        } else {
+            this.currentAudioLevel += (targetAudioLevel - this.currentAudioLevel) * Math.min(1.0f, dt * 5.5f);
         }
-        float dynamicBaseY = relY + 0.04f + jelloBounce * hoopH;
+
+        // Jello spring/bounce vertical motion: jumps on loud beats, calm on quiet parts
+        float jelloPhase = t * 2.8f;
+        float jelloBounce = (float) (Math.sin(jelloPhase) * 0.05f + Math.sin(jelloPhase * 2.0f) * 0.02f);
+        float audioJump = (float) Math.pow(this.currentAudioLevel, 1.8) * 0.16f;
+        float dynamicBaseY = relY + 0.04f + (jelloBounce + audioJump) * hoopH;
 
         int segments = 96;
         float angleStep = (float) (2.0 * Math.PI / segments);
 
-        // Precompute coordinates, wave heights, and per-vertex colors (light/dark dynamics)
+        // Precompute coordinates, natural fluid wave heights, and per-vertex colors
         float[] vx = new float[segments + 1];
         float[] vz = new float[segments + 1];
         float[] waveY = new float[segments + 1];
@@ -1030,6 +1042,9 @@ public class TargetESP extends Module {
         int[] lightColG = new int[segments + 1];
         int[] lightColB = new int[segments + 1];
 
+        // Dynamic wave amplitude: in quiet parts waves stay low, on loud beats they jump high
+        float waveAmp = 0.08f + this.currentAudioLevel * 0.58f;
+
         for (int i = 0; i <= segments; i++) {
             float theta = i * angleStep;
             float cos = (float) Math.cos(theta);
@@ -1037,66 +1052,93 @@ public class TargetESP extends Module {
             vx[i] = relX + hoopR * cos;
             vz[i] = relZ + hoopR * sin;
 
-            // Crisp audio harmonics (less smoothed / less sterile)
-            float w1 = (float) Math.sin(3.0 * theta - t * 2.8f);
-            float w2 = (float) Math.sin(7.0 * theta + t * 4.4f) * 0.60f;
-            float w3 = (float) Math.cos(11.0 * theta - t * 6.5f) * 0.38f;
-            float w4 = (float) Math.sin(17.0 * theta + t * 8.8f) * (0.22f + 0.45f * beatPulse);
+            // Natural organic acoustic wave (multi-octave value noise, like in real life)
+            float n1 = vnoise2D(cos * 2.2f + t * 0.7f, sin * 2.2f - t * 0.5f);
+            float n2 = vnoise2D(cos * 4.8f - t * 1.1f, sin * 4.8f + t * 0.9f) * 0.5f;
+            float n3 = vnoise2D(cos * 9.5f + t * 2.2f, sin * 9.5f - t * 1.8f) * 0.25f;
+            float naturalWave = (n1 + n2 + n3) / 1.75f; // [0..1] continuous, seamless, organic
 
-            // Reflected vertically (снизу вверх) so crests arch and spike upwards
-            float rawWave = -(w1 + w2 + w3 + w4) / 2.2f;
-            float sign = Math.signum(rawWave);
-            float sharpWave = sign * (float) Math.pow(Math.abs(rawWave), 0.82f);
+            // Small audio ripple details
+            float ripple = (float) Math.sin(16.0 * theta + t * 7.5f) * (0.05f + 0.15f * this.currentAudioLevel);
+            float rawHeightFactor = MathHelper.clamp(naturalWave + ripple, 0.0f, 1.0f);
 
-            waveSpikes[i] = sharpWave;
-            float amp = 0.35f + 0.28f * audioEnergy;
-            float waveHFactor = MathHelper.clamp(0.20f + (sharpWave * 0.5f + 0.5f) * amp, 0.04f, 0.94f);
-            waveY[i] = dynamicBaseY + hoopH * waveHFactor;
+            waveSpikes[i] = rawHeightFactor;
+            waveY[i] = dynamicBaseY + hoopH * (0.10f + rawHeightFactor * waveAmp);
 
-            // Non-monochromatic wave: light vs dark variation along circumference and height
-            float shimmer = (float) (Math.sin(theta * 2.0 - t * 2.2f) * 0.25f + 0.75f);
-            float crestFactor = MathHelper.clamp((sharpWave + 1.0f) * 0.5f, 0.0f, 1.0f);
-            float localBri = MathHelper.clamp(0.40f + 0.60f * crestFactor * shimmer, 0.0f, 1.0f);
+            // Rotating multi-color spectrum gradient around the cylinder (like in reference image)
+            // Left: album accent, Center: luminous hot white-yellow spot, Right: hue-shifted complementary
+            float gradPhase = theta - t * 0.8f;
+            float hotSpot = (float) Math.pow(Math.max(0.0f, (float) Math.cos(gradPhase)), 4.0);
+            float compShift = (float) (Math.sin(gradPhase + 1.2f) * 0.5f + 0.5f);
 
-            // Darker saturated valleys
-            float curR = vibR * (0.55f + 0.45f * localBri);
-            float curG = vibG * (0.55f + 0.45f * localBri);
-            float curB = vibB * (0.55f + 0.45f * localBri);
+            // Shimmer and crest lightness
+            float crestFactor = MathHelper.clamp(rawHeightFactor, 0.0f, 1.0f);
 
-            colR[i] = MathHelper.clamp((int) (curR * 255.0f), 0, 255);
-            colG[i] = MathHelper.clamp((int) (curG * 255.0f), 0, 255);
-            colB[i] = MathHelper.clamp((int) (curB * 255.0f), 0, 255);
+            // Base rich color with rotating hue shift
+            float rShift = MathHelper.lerp(compShift * 0.35f, vibR, lightG);
+            float gShift = MathHelper.lerp(compShift * 0.35f, vibG, lightB);
+            float bShift = MathHelper.lerp(compShift * 0.35f, vibB, lightR);
 
-            // Bright white-hot peaks
-            float peakR = MathHelper.lerp(crestFactor * 0.85f, lightR, 1.0f);
-            float peakG = MathHelper.lerp(crestFactor * 0.85f, lightG, 1.0f);
-            float peakB = MathHelper.lerp(crestFactor * 0.85f, lightB, 1.0f);
+            colR[i] = MathHelper.clamp((int) (rShift * 255.0f), 0, 255);
+            colG[i] = MathHelper.clamp((int) (gShift * 255.0f), 0, 255);
+            colB[i] = MathHelper.clamp((int) (bShift * 255.0f), 0, 255);
+
+            // Bright white-hot highlight spot & peaks
+            float peakR = MathHelper.lerp(Math.max(crestFactor * 0.75f, hotSpot), lightR, 1.0f);
+            float peakG = MathHelper.lerp(Math.max(crestFactor * 0.75f, hotSpot), lightG, 1.0f);
+            float peakB = MathHelper.lerp(Math.max(crestFactor * 0.75f, hotSpot), lightB, 1.0f);
 
             lightColR[i] = MathHelper.clamp((int) (peakR * 255.0f), 0, 255);
             lightColG[i] = MathHelper.clamp((int) (peakG * 255.0f), 0, 255);
             lightColB[i] = MathHelper.clamp((int) (peakB * 255.0f), 0, 255);
         }
 
-        // PASS 1: Solid & Opaque Wave Line + Contact Rim (RenderLayers.debugQuads)
-        // High opacity so wave is NEVER see-through or faded
-        VertexConsumer quadBuf = immediate.getBuffer(RenderLayers.debugQuads());
+        // PASS 1: Semi-transparent Textured Cylinder with smooth rotating gradient (RenderLayers.weather)
+        VertexConsumer texBuf = immediate.getBuffer(RenderLayers.weather(TARGET_ESP_TEXTURE, true));
+        float uScroll = (t * 0.08f) % 1.0f;
+        int aCyl = (int) MathHelper.clamp(145.0f * masterAlpha, 0.0f, 255.0f);
 
-        float solidThick = hoopH * 0.038f;
+        for (int i = 0; i < segments; i++) {
+            float x1 = vx[i], z1 = vz[i];
+            float x2 = vx[i + 1], z2 = vz[i + 1];
+            float u1 = (float) i / segments + uScroll;
+            float u2 = (float) (i + 1) / segments + uScroll;
+
+            float yBottom = dynamicBaseY;
+            float yTop = dynamicBaseY + hoopH * 1.05f;
+
+            // Front face
+            texBuf.vertex(x1, yBottom, z1).texture(u1, 1.0f).color(colR[i], colG[i], colB[i], aCyl).light(0x00F000F0);
+            texBuf.vertex(x2, yBottom, z2).texture(u2, 1.0f).color(colR[i + 1], colG[i + 1], colB[i + 1], aCyl).light(0x00F000F0);
+            texBuf.vertex(x2, yTop, z2).texture(u2, 0.0f).color(lightColR[i + 1], lightColG[i + 1], lightColB[i + 1], (int) (aCyl * 0.25f)).light(0x00F000F0);
+            texBuf.vertex(x1, yTop, z1).texture(u1, 0.0f).color(lightColR[i], lightColG[i], lightColB[i], (int) (aCyl * 0.25f)).light(0x00F000F0);
+
+            // Back face (inside looking out)
+            texBuf.vertex(x1, yTop, z1).texture(u1, 0.0f).color(lightColR[i], lightColG[i], lightColB[i], (int) (aCyl * 0.25f)).light(0x00F000F0);
+            texBuf.vertex(x2, yTop, z2).texture(u2, 0.0f).color(lightColR[i + 1], lightColG[i + 1], lightColB[i + 1], (int) (aCyl * 0.25f)).light(0x00F000F0);
+            texBuf.vertex(x2, yBottom, z2).texture(u2, 1.0f).color(colR[i + 1], colG[i + 1], colB[i + 1], aCyl).light(0x00F000F0);
+            texBuf.vertex(x1, yBottom, z1).texture(u1, 1.0f).color(colR[i], colG[i], colB[i], aCyl).light(0x00F000F0);
+        }
+
+        // PASS 2: Solid Fluid Wave Ribbon + Ground Contact Rim (RenderLayers.debugQuads)
+        // High opacity so wave is fully opaque and crisp, not washed out
+        VertexConsumer quadBuf = immediate.getBuffer(RenderLayers.debugQuads());
+        float fluidThick = hoopH * 0.032f;
         int aSolid = (int) MathHelper.clamp(255.0f * masterAlpha, 0.0f, 255.0f);
 
         for (int i = 0; i < segments; i++) {
             float x1 = vx[i], z1 = vz[i], y1 = waveY[i];
             float x2 = vx[i + 1], z2 = vz[i + 1], y2 = waveY[i + 1];
 
-            // Solid opaque wave ribbon with light/dark variation
+            // Fluid natural wave ribbon (not a rigid artificial outline stroke)
             drawGradQuadDoubleSided(quadBuf,
-                    x1, y1 - solidThick, z1, colR[i], colG[i], colB[i], aSolid,
-                    x2, y2 - solidThick, z2, colR[i + 1], colG[i + 1], colB[i + 1], aSolid,
-                    x2, y2 + solidThick, z2, lightColR[i + 1], lightColG[i + 1], lightColB[i + 1], aSolid,
-                    x1, y1 + solidThick, z1, lightColR[i], lightColG[i], lightColB[i], aSolid);
+                    x1, y1 - fluidThick, z1, colR[i], colG[i], colB[i], aSolid,
+                    x2, y2 - fluidThick, z2, colR[i + 1], colG[i + 1], colB[i + 1], aSolid,
+                    x2, y2 + fluidThick, z2, lightColR[i + 1], lightColG[i + 1], lightColB[i + 1], aSolid,
+                    x1, y1 + fluidThick, z1, lightColR[i], lightColG[i], lightColB[i], aSolid);
 
-            // Intense white laser core line in the center
-            float coreThick = hoopH * 0.014f;
+            // Intense white laser core tracing the fluid wave
+            float coreThick = hoopH * 0.012f;
             drawGradQuadDoubleSided(quadBuf,
                     x1, y1 - coreThick, z1, 255, 255, 255, aSolid,
                     x2, y2 - coreThick, z2, 255, 255, 255, aSolid,
@@ -1106,7 +1148,7 @@ public class TargetESP extends Module {
 
         // Grounded rim contact line at dynamicBaseY
         float ringPad = 0.07f;
-        int aRimSolid = (int) MathHelper.clamp(190.0f * masterAlpha, 0.0f, 255.0f);
+        int aRimSolid = (int) MathHelper.clamp(180.0f * masterAlpha, 0.0f, 255.0f);
         for (int i = 0; i < segments; i++) {
             float theta1 = i * angleStep;
             float theta2 = (i + 1) * angleStep;
@@ -1125,19 +1167,17 @@ public class TargetESP extends Module {
                     outX1, dynamicBaseY, outZ1, lightColR[i], lightColG[i], lightColB[i], aRimSolid);
         }
 
-        // PASS 2: Additive Emissive Glow & Upward Aura (RenderLayers.lightning)
-        // Additive blending creates truly bright, light, expensive glow
+        // PASS 3: Additive Emissive Glow & Upward Light Aura (RenderLayers.lightning)
         VertexConsumer glowBuf = immediate.getBuffer(RenderLayers.lightning());
 
-        // 1. Aura beaming UPWARDS from the wave line (отрази снизу вверх)
-        int aAuraBase = (int) MathHelper.clamp(170.0f * masterAlpha, 0.0f, 255.0f);
-        float auraHeight = hoopH * 0.95f;
+        // 1. Upward light aura rising FROM the wave line into the air
+        int aAuraBase = (int) MathHelper.clamp(160.0f * masterAlpha, 0.0f, 255.0f);
+        float auraHeight = hoopH * 0.90f;
 
         for (int i = 0; i < segments; i++) {
             float x1 = vx[i], z1 = vz[i], y1 = waveY[i];
             float x2 = vx[i + 1], z2 = vz[i + 1], y2 = waveY[i + 1];
 
-            // Gradient rises UPWARDS from the wave line into the air, fading to 0
             drawGradQuadDoubleSided(glowBuf,
                     x1, y1, z1, lightColR[i], lightColG[i], lightColB[i], aAuraBase,
                     x2, y2, z2, lightColR[i + 1], lightColG[i + 1], lightColB[i + 1], aAuraBase,
@@ -1146,8 +1186,8 @@ public class TargetESP extends Module {
         }
 
         // 2. Wide Additive Neon Bloom Ribbon along the wave
-        float bloomThick = hoopH * 0.080f;
-        int aBloom = (int) MathHelper.clamp(180.0f * masterAlpha, 0.0f, 255.0f);
+        float bloomThick = hoopH * 0.075f;
+        int aBloom = (int) MathHelper.clamp(175.0f * masterAlpha, 0.0f, 255.0f);
 
         for (int i = 0; i < segments; i++) {
             float x1 = vx[i], z1 = vz[i], y1 = waveY[i];
@@ -1160,14 +1200,15 @@ public class TargetESP extends Module {
                     x1, y1 + bloomThick, z1, lightColR[i], lightColG[i], lightColB[i], aBloom);
         }
 
-        // 3. Audio Peak Needles / Spikes shooting upwards on beat crests
-        if (isMusicPlaying) {
-            float needleHalfW = 0.004f;
+        // 3. Audio Peak Needles / Spikes shooting upwards on high sound volumes
+        if (this.currentAudioLevel > 0.35f) {
+            float needleHalfW = 0.0035f;
+            float audioIntensity = (this.currentAudioLevel - 0.35f) / 0.65f;
             for (int i = 0; i < segments; i++) {
-                if (waveSpikes[i] > 0.45f) {
-                    float spikeIntensity = (waveSpikes[i] - 0.45f) / 0.55f;
-                    float needleTop = waveY[i] + hoopH * (0.25f + 0.35f * spikeIntensity);
-                    int aNeedle = (int) MathHelper.clamp(240.0f * spikeIntensity * masterAlpha, 0.0f, 255.0f);
+                if (waveSpikes[i] > 0.60f) {
+                    float spikeFactor = (waveSpikes[i] - 0.60f) / 0.40f;
+                    float needleTop = waveY[i] + hoopH * (0.20f + 0.40f * spikeFactor * audioIntensity);
+                    int aNeedle = (int) MathHelper.clamp(230.0f * spikeFactor * audioIntensity * masterAlpha, 0.0f, 255.0f);
 
                     float x = vx[i], z = vz[i], y = waveY[i];
                     drawGradQuadDoubleSided(glowBuf,
@@ -1178,6 +1219,28 @@ public class TargetESP extends Module {
                 }
             }
         }
+    }
+
+    private static float hashNoise2D(int x, int y) {
+        int n = x * 374761393 + y * 668265263;
+        n = (n ^ (n >>> 13)) * 1274126177;
+        return ((n ^ (n >>> 16)) & 65535) / 65535.0f;
+    }
+
+    private static float vnoise2D(float x, float y) {
+        int ix = (int) Math.floor(x);
+        int iy = (int) Math.floor(y);
+        float fx = x - ix;
+        float fy = y - iy;
+        float ux = fx * fx * (3.0f - 2.0f * fx);
+        float uy = fy * fy * (3.0f - 2.0f * fy);
+
+        float a = hashNoise2D(ix, iy);
+        float b = hashNoise2D(ix + 1, iy);
+        float c = hashNoise2D(ix, iy + 1);
+        float d = hashNoise2D(ix + 1, iy + 1);
+
+        return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
     }
 
     private static void drawGradQuadDoubleSided(VertexConsumer buf,
