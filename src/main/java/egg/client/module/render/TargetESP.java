@@ -59,7 +59,8 @@ public class TargetESP extends Module {
     private static TargetESP instance;
 
     private static final Identifier GLOWING_TEXTURE = Identifier.of("egg", "textures/glowing.png");
-    private static final Identifier BLOOM_TEXTURE = Identifier.of("egg", "textures/target/bloom.png");
+    private static final Identifier BLOOM_TEXTURE = Identifier.of("egg", "textures/target/bloom.png");
+    private static final Identifier RHOMBUS_TEXTURE = Identifier.of("egg", "textures/target/rhombus.png");
 
     private static final Identifier[] SNOWFLAKES = new Identifier[10];
     static {
@@ -77,7 +78,10 @@ public class TargetESP extends Module {
     private static final float FREE_LIFE = 1.1F;
 
     private final ModeSetting mode = new ModeSetting("Стиль", "Разряд", "Стиль Target ESP",
-            "Разряд", "Молнии", "Снежинки", "Души", "Кубы");
+            "Разряд", "Молнии", "Снежинки", "Души", "Ромб", "Кубы");
+
+    private final SliderSetting rhombusHeight = new SliderSetting("Высота ромба", 0.0, -0.8, 1.5, 0.05, "Смещение ромба по высоте");
+    private final SliderSetting rhombusSize = new SliderSetting("Размер ромба", 1.25, 0.3, 2.5, 0.05, "Размер ромба");
 
     private final ModeSetting dischargeColorMode = new ModeSetting("Режим цвета", "Переливание", "Режим окраски цели",
             "Переливание", "Статичный", "Тема");
@@ -124,10 +128,12 @@ public class TargetESP extends Module {
         super("Target ESP", "Снежный вихрь и астральные проекции вокруг цели", Category.ESP);
         instance = this;
 
+        rhombusHeight.setVisible(() -> "Ромб".equals(mode.get()));
+        rhombusSize.setVisible(() -> "Ромб".equals(mode.get()));
         tailLength.setVisible(() -> "Души".equals(mode.get()));
         coreGlow.setVisible(() -> "Души".equals(mode.get()));
-        radius.setVisible(() -> true);
-        speed.setVisible(() -> !"Разряд".equals(mode.get()));
+        radius.setVisible(() -> !"Ромб".equals(mode.get()));
+        speed.setVisible(() -> !"Разряд".equals(mode.get()) && !"Ромб".equals(mode.get()));
         particleSize.setVisible(() -> "Снежинки".equals(mode.get()) || "Души".equals(mode.get()) || "Кубы".equals(mode.get()));
 
         dischargeColorMode.setVisible(() -> "Разряд".equals(mode.get()));
@@ -136,7 +142,7 @@ public class TargetESP extends Module {
         dischargeColorStatic.setVisible(() -> "Разряд".equals(mode.get()) && "Статичный".equals(dischargeColorMode.get()));
         dischargeSpeed.setVisible(() -> "Разряд".equals(mode.get()));
 
-        addSettings(mode, radius, speed, particleSize, tailLength, coreGlow,
+        addSettings(mode, rhombusHeight, rhombusSize, radius, speed, particleSize, tailLength, coreGlow,
                 dischargeColorMode, dischargeColor1, dischargeColor2, dischargeColorStatic, dischargeSpeed,
                 hurtColor, maxDistance, onlyPlayers, retainTime, focusSystem);
     }
@@ -145,6 +151,14 @@ public class TargetESP extends Module {
         return instance;
     }
 
+    public SliderSetting getRhombusHeight() {
+        return this.rhombusHeight;
+    }
+
+    public SliderSetting getRhombusSize() {
+        return this.rhombusSize;
+    }
+
     public LivingEntity getTarget() {
         return this.target;
     }
@@ -777,9 +791,109 @@ public class TargetESP extends Module {
             }
         } else if ("Души".equals(curMode)) {
             renderSouls3D(matrices, camera, tickDelta, immediate, curTarget, camPos);
+        } else if ("Ромб".equals(curMode)) {
+            renderRhombus3D(camera, tickDelta, curTarget);
         }
     }
 
+    private void renderRhombus3D(Camera camera, float tickDelta, LivingEntity curTarget) {
+        Vec3d camPos = camera.getCameraPos();
+        float targetX;
+        float targetY;
+        float targetZ;
+        float height;
+        if (curTarget != null) {
+            targetX = (float) (MathHelper.lerp(tickDelta, curTarget.lastRenderX, curTarget.getX()) - camPos.x);
+            targetY = (float) (MathHelper.lerp(tickDelta, curTarget.lastRenderY, curTarget.getY()) - camPos.y);
+            targetZ = (float) (MathHelper.lerp(tickDelta, curTarget.lastRenderZ, curTarget.getZ()) - camPos.z);
+            height = curTarget.getHeight();
+        } else if (this.lastTargetPos != null) {
+            targetX = (float) (this.lastTargetPos.x - camPos.x);
+            targetY = (float) (this.lastTargetPos.y - camPos.y);
+            targetZ = (float) (this.lastTargetPos.z - camPos.z);
+            height = (float) this.lastTargetHeight;
+        } else {
+            return;
+        }
+
+        float userHeight = (float) this.rhombusHeight.get();
+        float userSize = (float) this.rhombusSize.get();
+
+        float timeSec = (float) ((System.currentTimeMillis() % 10000000L) / 1000.0);
+        float bob = (float) Math.sin(timeSec * 3.5) * 0.04f;
+        double centerY = targetY + (height * 0.5) + userHeight + bob;
+
+        double dist = Math.sqrt(targetX * targetX + centerY * centerY + targetZ * targetZ);
+        if (dist < 0.01) return;
+
+        double offset = Math.min(0.42, dist * 0.4);
+        float renderX = (float) (targetX - (targetX / dist) * offset);
+        float renderY = (float) (centerY - (centerY / dist) * offset);
+        float renderZ = (float) (targetZ - (targetZ / dist) * offset);
+
+        int themeColor = Theme.getAccent();
+        int hurtCol = 0xFFFF2525;
+        float hurtFactor = 0.0f;
+        if (curTarget != null) {
+            float hurtTimer = Math.max(0.0F, curTarget.hurtTime - tickDelta);
+            hurtFactor = this.hurtColor.get() ? (float) Math.sin(hurtTimer * (Math.PI / 10.0)) * 0.95F : 0.0f;
+            hurtFactor = MathHelper.clamp(hurtFactor, 0.0f, 1.0f);
+        }
+        int activeColor = hurtFactor > 0.01f ? ColorUtil.interpolate(themeColor, hurtCol, hurtFactor) : themeColor;
+
+        long cyclePeriod = 5600L;
+        long halfPeriod = cyclePeriod / 2L;
+        long curTime = System.currentTimeMillis() % cyclePeriod;
+
+        float rotAngle;
+        if (curTime < halfPeriod) {
+            float u = (float) curTime / (float) halfPeriod;
+            float ease = (float) (0.5 - 0.5 * Math.cos(u * Math.PI));
+            rotAngle = ease * 1080.0f;
+        } else {
+            float u = (float) (curTime - halfPeriod) / (float) halfPeriod;
+            float ease = (float) (0.5 - 0.5 * Math.cos(u * Math.PI));
+            rotAngle = (1.0f - ease) * 1080.0f;
+        }
+
+        float anim = this.animProgress;
+        float size = userSize * anim;
+        if (size <= 0.001f || anim <= 0.001f) return;
+
+        Quaternionf camRot = camera.getRotation();
+        Quaternionf quadRot = new Quaternionf(camRot).rotateZ((float) Math.toRadians(-rotAngle));
+
+        try (BufferAllocator allocGlow = new BufferAllocator(1024)) {
+            BufferBuilder bufGlow = new BufferBuilder(allocGlow, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+            emitBloomQuad(bufGlow, camRot, renderX, renderY, renderZ, size * 1.35f,
+                    ColorUtil.withAlphaFloat(activeColor, (140.0f / 255.0f) * anim));
+            BuiltBuffer builtGlow = bufGlow.endNullable();
+            if (builtGlow != null) {
+                MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_BLOOM_DEPTH, builtGlow, "egg rhombus glow", BLOOM_TEXTURE);
+            }
+        }
+
+        try (BufferAllocator allocRhombus = new BufferAllocator(1024)) {
+            BufferBuilder bufRhombus = new BufferBuilder(allocRhombus, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+            emitBloomQuad(bufRhombus, quadRot, renderX, renderY, renderZ, size,
+                    ColorUtil.withAlphaFloat(activeColor, anim));
+            BuiltBuffer builtRhombus = bufRhombus.endNullable();
+            if (builtRhombus != null) {
+                MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_TEXTURE_DEPTH, builtRhombus, "egg rhombus main", RHOMBUS_TEXTURE);
+            }
+        }
+
+        try (BufferAllocator allocEdge = new BufferAllocator(1024)) {
+            BufferBuilder bufEdge = new BufferBuilder(allocEdge, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+            emitBloomQuad(bufEdge, quadRot, renderX, renderY, renderZ, size,
+                    ColorUtil.withAlphaFloat(0xFFFFFFFF, (180.0f / 255.0f) * anim));
+            BuiltBuffer builtEdge = bufEdge.endNullable();
+            if (builtEdge != null) {
+                MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_BLOOM_DEPTH, builtEdge, "egg rhombus edge", RHOMBUS_TEXTURE);
+            }
+        }
+    }
+
     private void renderLightning(MatrixStack matrices, Camera camera, float tickDelta, LivingEntity curTarget) {
         long now = System.nanoTime();
         float deltaSec = this.lightningLastNanos == 0L ? 0.016666668F : Math.min((float)(now - this.lightningLastNanos) / 1.0E9F, 0.05F);
