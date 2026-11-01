@@ -68,13 +68,16 @@ public abstract class PlayerEntityModelMixin extends BipedEntityModel<PlayerEnti
                     }
                 }
 
-                // Synchronize outer 3D clothing layers
-                this.rightSleeve.pitch = this.rightArm.pitch;
-                this.rightSleeve.yaw = this.rightArm.yaw;
-                this.rightSleeve.roll = this.rightArm.roll;
-                this.leftSleeve.pitch = this.leftArm.pitch;
-                this.leftSleeve.yaw = this.leftArm.yaw;
-                this.leftSleeve.roll = this.leftArm.roll;
+                // In 1.21+, sleeves (2nd layer) are child parts of arms, so their relative angles
+                // must remain neutral (0, 0, 0) so they automatically follow the arm parent transform
+                this.rightSleeve.resetTransform();
+                this.leftSleeve.resetTransform();
+                this.rightSleeve.pitch = 0.0f;
+                this.rightSleeve.yaw = 0.0f;
+                this.rightSleeve.roll = 0.0f;
+                this.leftSleeve.pitch = 0.0f;
+                this.leftSleeve.yaw = 0.0f;
+                this.leftSleeve.roll = 0.0f;
             }
         }
     }
