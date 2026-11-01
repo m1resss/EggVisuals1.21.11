@@ -4,6 +4,7 @@ import egg.client.module.ModuleManager;
 import egg.client.module.render.HitSparks;
 import egg.client.module.render.ItemRadius;
 import egg.client.module.render.TargetESP;
+import egg.client.module.render.Trail;
 import egg.client.module.render.TotemPopConfetti;
 import egg.client.module.render.CustomHitbox;
 import egg.client.module.render.Trajectories;
@@ -88,6 +89,11 @@ public class EggClient implements ClientModInitializer {
                 TargetESP targetESP = ModuleManager.getInstance().getModule(TargetESP.class);
                 if (targetESP != null && targetESP.isEnabled()) {
                     targetESP.renderWorld3D(matrices, camera, tickDelta, immediate, camPos);
+                }
+
+                Trail trail = ModuleManager.getInstance().getModule(Trail.class);
+                if (trail != null && trail.isEnabled()) {
+                    trail.render(matrices, camera, tickDelta, immediate, camPos);
                 }
 
 

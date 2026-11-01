@@ -105,6 +105,7 @@ public class ModuleManager {
 
         register(new HitSparks());
         register(new Lyrics());
+        register(new Trail());
 
 
 
