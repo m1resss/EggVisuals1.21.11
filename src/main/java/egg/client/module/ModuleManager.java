@@ -104,6 +104,7 @@ public class ModuleManager {
         register(new TargetHUD());
 
         register(new HitParticles());
+        register(new KillEffect());
         register(new Lyrics());
         register(new Trail());
 

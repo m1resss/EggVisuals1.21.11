@@ -91,50 +91,63 @@ public class HitParticles extends Module {
     public void spawnBurst(PlayerEntity player, Entity target, boolean isCrit) {
         Vec3d origin = getHitPosition(player, target);
         Vec3d look = player.getRotationVec(1.0f).normalize();
-        Vec3d up = new Vec3d(0.0, 1.0, 0.0);
-        Vec3d right = look.crossProduct(up);
-        if (right.lengthSquared() < 0.001) {
-            right = new Vec3d(1.0, 0.0, 0.0);
-        } else {
-            right = right.normalize();
-        }
-        Vec3d left = right.multiply(-1.0);
 
-        int baseCount = isCrit ? 36 : 18;
+        Vec3d knockbackDir = new Vec3d(target.getX() - player.getX(), 0.0, target.getZ() - player.getZ());
+        Vec3d kbHoriz = new Vec3d(knockbackDir.x, 0.0, knockbackDir.z);
+        if (kbHoriz.lengthSquared() > 0.0001) {
+            kbHoriz = kbHoriz.normalize();
+        } else {
+            kbHoriz = new Vec3d(look.x, 0.0, look.z);
+            if (kbHoriz.lengthSquared() > 0.0001) {
+                kbHoriz = kbHoriz.normalize();
+            } else {
+                kbHoriz = new Vec3d(0.0, 0.0, 1.0);
+            }
+        }
+
+        Vec3d up = new Vec3d(0.0, 1.0, 0.0);
+        Vec3d right = kbHoriz.crossProduct(up).normalize();
+
+        double tw = target.getWidth() * 0.45;
+        double th = target.getHeight() * 0.35;
+
+        int baseCount = isCrit ? 36 : 20;
         int count = Math.clamp(Math.round(baseCount * (float) amount.get()), 4, 128);
-        float baseSpeed = (float) speed.get() * (isCrit ? 1.25f : 1.0f);
+        float baseSpeed = (float) speed.get() * (isCrit ? 1.30f : 1.0f);
         float baseSize = (float) size.get() * (isCrit ? 1.15f : 1.0f);
         float baseLife = (float) lifetime.get();
 
         int tint = syncColor.isEnabled() ? Theme.getAccent() : color.get();
 
         for (int i = 0; i < count; i++) {
+            double px = origin.x + (random.nextDouble() - 0.5) * tw * 2.0;
+            double py = origin.y + (random.nextDouble() - 0.5) * th * 2.0;
+            double pz = origin.z + (random.nextDouble() - 0.5) * tw * 2.0;
+
             boolean isRight = (i % 2 == 0);
-            Vec3d sideDir = isRight ? right : left;
+            float sideSign = isRight ? 1.0f : -1.0f;
 
-            float sideMul = 0.70f + 0.60f * random.nextFloat();
-            float upMul = 0.25f + 0.65f * random.nextFloat();
-            float fwdMul = (random.nextFloat() - 0.5f) * 0.40f;
+            float fwdMul = 0.50f + 1.20f * random.nextFloat();
+            float sideMul = (0.35f + 1.40f * random.nextFloat()) * sideSign;
+            float upMul = -0.10f + 0.90f * random.nextFloat();
 
-            double vx = (sideDir.x * sideMul + look.x * fwdMul) * baseSpeed;
-            double vy = upMul * baseSpeed;
-            double vz = (sideDir.z * sideMul + look.z * fwdMul) * baseSpeed;
+            float speedMul = baseSpeed * (0.50f + 0.85f * random.nextFloat());
 
-            double px = origin.x + (random.nextDouble() - 0.5) * 0.2;
-            double py = origin.y + (random.nextDouble() - 0.5) * 0.2;
-            double pz = origin.z + (random.nextDouble() - 0.5) * 0.2;
+            double vx = (kbHoriz.x * fwdMul + right.x * sideMul) * speedMul;
+            double vy = upMul * speedMul + 0.8;
+            double vz = (kbHoriz.z * fwdMul + right.z * sideMul) * speedMul;
 
             int shapeType = random.nextInt(4);
-            float shardSize = baseSize * (0.75f + 0.50f * random.nextFloat());
+            float shardSize = baseSize * (0.65f + 0.65f * random.nextFloat());
             float shardLife = baseLife * (0.70f + 0.60f * random.nextFloat());
 
             float pitch = random.nextFloat() * 360.0f;
             float yaw = random.nextFloat() * 360.0f;
             float roll = random.nextFloat() * 360.0f;
 
-            float rotPitch = (random.nextFloat() - 0.5f) * 720.0f;
-            float rotYaw = (random.nextFloat() - 0.5f) * 720.0f;
-            float rotRoll = (random.nextFloat() - 0.5f) * 720.0f;
+            float rotPitch = (random.nextFloat() - 0.5f) * 750.0f;
+            float rotYaw = (random.nextFloat() - 0.5f) * 750.0f;
+            float rotRoll = (random.nextFloat() - 0.5f) * 750.0f;
 
             particles.add(new GlassShard(
                     px, py, pz,

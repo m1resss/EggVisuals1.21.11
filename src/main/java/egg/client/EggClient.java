@@ -2,6 +2,7 @@ package egg.client;
 
 import egg.client.module.ModuleManager;
 import egg.client.module.render.HitParticles;
+import egg.client.module.render.KillEffect;
 import egg.client.module.render.ItemRadius;
 import egg.client.module.render.TargetESP;
 import egg.client.module.render.Trail;
@@ -82,6 +83,11 @@ public class EggClient implements ClientModInitializer {
                 HitParticles hitParticles = ModuleManager.getInstance().getModule(HitParticles.class);
                 if (hitParticles != null && hitParticles.isEnabled()) {
                     hitParticles.render(immediate, camPos);
+                }
+
+                KillEffect killEffect = ModuleManager.getInstance().getModule(KillEffect.class);
+                if (killEffect != null && killEffect.isEnabled()) {
+                    killEffect.render(immediate, camPos);
                 }
 
                 immediate.draw();
