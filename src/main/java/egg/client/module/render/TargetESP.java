@@ -108,6 +108,8 @@ public class TargetESP extends Module {
     private final List<SnowflakeParticle> snowflakeParticles = new ArrayList<>();
     private final Random random = new Random();
     private long lastFrameTime = 0L;
+    private float ghostsTime = 0.0f;
+    private long ghostsLastNanos = 0L;
     private float snowSimTime = 0.0f;
 
     private float lightningTime = 0.0f;
@@ -545,24 +547,21 @@ public class TargetESP extends Module {
             return;
         }
 
+        long l = System.nanoTime();
+        float dt = this.ghostsLastNanos == 0L ? 0.016666668F : Math.min((float)(l - this.ghostsLastNanos) / 1.0E9F, 0.05F);
+        this.ghostsLastNanos = l;
+        float spd = (float) this.speed.get();
+        this.ghostsTime += dt * 125.0F * spd;
+
         float targetX = (float) (targetPos.x - camPos.x);
         float targetY = (float) (targetPos.y - camPos.y);
         float targetZ = (float) (targetPos.z - camPos.z);
 
-        long now = System.currentTimeMillis();
-        float timeSec = (float) (now % 10000000L) / 1000.0f;
-        double timeMs = timeSec * 1000.0;
-
         float fade = this.animProgress;
         float expand = (1.0f - fade);
-        float baseR = (float) this.radius.get();
-        float spd = (float) this.speed.get();
+        float baseR = (float) this.radius.get() * (1.0f + expand * 1.6f);
         float sizeMult = (float) this.particleSize.get();
         int steps = Math.max(6, (int) this.tailLength.get());
-
-        float currentR = baseR * (1.0f + expand * 1.6f);
-        double centerY = targetY + height * 0.5 + expand * 1.35;
-        float hAmp = (float) (height * 0.28) * (1.0f + expand * 0.6f);
 
         int themeColor = Theme.getAccent();
         int hurtCol = 0xFFFF2525;
@@ -577,256 +576,104 @@ public class TargetESP extends Module {
         int g = (activeColor >> 8) & 0xFF;
         int b = activeColor & 0xFF;
 
-        int coreR = this.coreGlow.get() ? (int) MathHelper.lerp(0.75f, r, 255.0f) : r;
-        int coreG = this.coreGlow.get() ? (int) MathHelper.lerp(0.75f, g, 255.0f) : g;
-        int coreB = this.coreGlow.get() ? (int) MathHelper.lerp(0.75f, b, 255.0f) : b;
+        int alpha = MathHelper.clamp((int) (255.0f * fade), 0, 255);
+        int baseColor = (alpha << 24) | (r << 16) | (g << 8) | b;
+        int bloomColor = (MathHelper.clamp((int) (255.0f * fade * 0.85f), 0, 255) << 24) | (r << 16) | (g << 8) | b;
 
-        List<List<Vec3d>> soulPaths = new ArrayList<>(3);
+        Quaternionf quaternionf = camera.getRotation();
+        float dist = (float) Math.sqrt(targetX * targetX + (targetY + height * 0.5) * (targetY + height * 0.5) + targetZ * targetZ);
+        float scaledBloomSize = ProjectionUtil.getScaledSize(0.06F, Math.max(1.0f, dist));
 
-        for (int soul = 0; soul < 3; soul++) {
-            List<Vec3d> rawPoints = new ArrayList<>(steps);
-            for (int i = 0; i < steps; i++) {
-                double delayMs = (i * 13.5 / Math.max(0.5, spd));
-                double angle = 0.15 * (timeMs - delayMs) / 25.0 * spd;
-                double s = Math.sin(angle) * currentR;
-                double c = Math.cos(angle) * currentR;
-                double yWave = Math.sin(angle * 1.5 + soul * 2.0) * hAmp;
-
-                double wx, wy, wz;
-                if (soul == 0) {
-                    wx = targetX + s;
-                    wy = centerY + (c * 0.25 + yWave * 0.35);
-                    wz = targetZ - c;
-                } else if (soul == 1) {
-                    wx = targetX - s;
-                    wy = centerY + (s * 0.25 - yWave * 0.35);
-                    wz = targetZ - c;
-                } else {
-                    wx = targetX - s * 0.7 + c * 0.7;
-                    wy = centerY - yWave * 0.4;
-                    wz = targetZ + c * 0.7 + s * 0.7;
-                }
-                rawPoints.add(new Vec3d(wx, wy, wz));
-            }
-
-            int subDivs = 4;
-            int totalSamples = (steps - 1) * subDivs + 1;
-            List<Vec3d> smoothSamples = new ArrayList<>(totalSamples);
-
-            for (int i = 0; i < steps - 1; i++) {
-                Vec3d p0 = (i == 0) ? rawPoints.get(0) : rawPoints.get(i - 1);
-                Vec3d p1 = rawPoints.get(i);
-                Vec3d p2 = rawPoints.get(i + 1);
-                Vec3d p3 = (i + 2 < steps) ? rawPoints.get(i + 2) : rawPoints.get(i + 1);
-
-                for (int step = 0; step < subDivs; step++) {
-                    float t = (float) step / (float) subDivs;
-                    float t2 = t * t;
-                    float t3 = t2 * t;
-
-                    double sx = 0.5 * ((2.0 * p1.x) + (-p0.x + p2.x) * t + (2.0 * p0.x - 5.0 * p1.x + 4.0 * p2.x - p3.x) * t2 + (-p0.x + 3.0 * p1.x - 3.0 * p2.x + p3.x) * t3);
-                    double sy = 0.5 * ((2.0 * p1.y) + (-p0.y + p2.y) * t + (2.0 * p0.y - 5.0 * p1.y + 4.0 * p2.y - p3.y) * t2 + (-p0.y + 3.0 * p1.y - 3.0 * p2.y + p3.y) * t3);
-                    double sz = 0.5 * ((2.0 * p1.z) + (-p0.z + p2.z) * t + (2.0 * p0.z - 5.0 * p1.z + 4.0 * p2.z - p3.z) * t2 + (-p0.z + 3.0 * p1.z - 3.0 * p2.z + p3.z) * t3);
-
-                    float progress = (float) smoothSamples.size() / (float) (totalSamples - 1);
-                    if (progress > 0.05f) {
-                        float flutterAmp = 0.024f * progress * (float) Math.sqrt(progress) * sizeMult;
-                        float phi = (float) (timeSec * 7.5 - progress * 10.0 + soul * 2.2);
-                        sx += Math.cos(phi) * flutterAmp;
-                        sy += Math.sin(phi * 1.2f) * flutterAmp;
-                        sz += Math.sin(phi + 1.3f) * flutterAmp;
-                    }
-
-                    smoothSamples.add(new Vec3d(sx, sy, sz));
-                }
-            }
-            smoothSamples.add(rawPoints.get(steps - 1));
-            soulPaths.add(smoothSamples);
-        }
-
-        // 1. BILLBOARD ORBS & WISPS PASS (Depth-tested, smooth spherical heads and fading comet droplets)
-        if (immediate != null) {
-            Quaternionf camRot = camera.getRotation();
-            Vector3f camRight = new Vector3f(1.0f, 0.0f, 0.0f).rotate(camRot);
-            Vector3f camUp = new Vector3f(0.0f, 1.0f, 0.0f).rotate(camRot);
-
-            VertexConsumer bloomBuf = immediate.getBuffer(RenderLayers.weather(BLOOM_TEXTURE, true));
-            for (int s = 0; s < 3; s++) {
-                List<Vec3d> path = soulPaths.get(s);
-                if (path.isEmpty()) continue;
-                Vec3d head = path.get(0);
-                float pulse = 1.0f + 0.08f * (float) Math.sin(timeSec * 5.5 + s * 2.094);
-
-                // Head bloom aura
-                float headBloomR = 0.46f * sizeMult * pulse;
-                int headBloomA = MathHelper.clamp((int) (255.0f * fade * 0.70f), 0, 255);
-                drawBillboardQuad(bloomBuf, head.x, head.y, head.z, camRight, camUp, headBloomR, r, g, b, headBloomA);
-
-                // Upper trail bloom halos
-                int dropletCount = Math.min(14, steps);
-                float stepSamples = (float) (path.size() - 1) / (float) dropletCount;
-                for (int k = 1; k <= 3 && k < dropletCount; k++) {
-                    int sampleIdx = Math.round(k * stepSamples);
-                    if (sampleIdx < path.size()) {
-                        Vec3d pt = path.get(sampleIdx);
-                        float t = (float) k / (float) dropletCount;
-                        float dropBloomR = headBloomR * (1.0f - t * 0.50f);
-                        int dropBloomA = MathHelper.clamp((int) (headBloomA * (1.0f - t) * 0.65f), 0, 255);
-                        drawBillboardQuad(bloomBuf, pt.x, pt.y, pt.z, camRight, camUp, dropBloomR, r, g, b, dropBloomA);
-                    }
-                }
-            }
-
-            VertexConsumer glowBuf = immediate.getBuffer(RenderLayers.weather(GLOWING_TEXTURE, true));
-            for (int s = 0; s < 3; s++) {
-                List<Vec3d> path = soulPaths.get(s);
-                if (path.isEmpty()) continue;
-                Vec3d head = path.get(0);
-                float pulse = 1.0f + 0.08f * (float) Math.sin(timeSec * 5.5 + s * 2.094);
-
-                // Head radiant body
-                float headBodyR = 0.28f * sizeMult * pulse;
-                int headBodyA = MathHelper.clamp((int) (255.0f * fade * 0.95f), 0, 255);
-                drawBillboardQuad(glowBuf, head.x, head.y, head.z, camRight, camUp, headBodyR, r, g, b, headBodyA);
-
-                // Head bright white nucleus
-                if (this.coreGlow.get()) {
-                    float headCoreR = 0.13f * sizeMult * pulse;
-                    int headCoreA = MathHelper.clamp((int) (255.0f * fade * 0.98f), 0, 255);
-                    drawBillboardQuad(glowBuf, head.x, head.y, head.z, camRight, camUp, headCoreR, 255, 255, 255, headCoreA);
-                }
-
-                // Trailing spirit droplets along the comet tail
-                int dropletCount = Math.min(14, steps);
-                float stepSamples = (float) (path.size() - 1) / (float) dropletCount;
-                for (int k = 1; k < dropletCount; k++) {
-                    int sampleIdx = Math.round(k * stepSamples);
-                    if (sampleIdx >= path.size()) continue;
-                    Vec3d pt = path.get(sampleIdx);
-                    float t = (float) k / (float) dropletCount;
-
-                    float dropR = (0.22f * sizeMult) * (1.0f - t * 0.72f);
-                    float dropFade = (1.0f - t) * (1.0f - t * 0.35f);
-                    int dropA = MathHelper.clamp((int) (255.0f * fade * dropFade * 0.85f), 0, 255);
-
-                    drawBillboardQuad(glowBuf, pt.x, pt.y, pt.z, camRight, camUp, dropR, r, g, b, dropA);
-
-                    if (this.coreGlow.get() && k <= 4) {
-                        float coreFactor = 1.0f - (t / 0.35f);
-                        if (coreFactor > 0.0f) {
-                            int coreA = MathHelper.clamp((int) (255.0f * fade * coreFactor * 0.90f), 0, 255);
-                            drawBillboardQuad(glowBuf, pt.x, pt.y, pt.z, camRight, camUp, dropR * 0.45f, 255, 255, 255, coreA);
-                        }
-                    }
-                }
-            }
-        }
-
-        // 2. LUMINOUS SILK SPINE (Trail shader bloom, halo, and laser core connecting the souls smoothly)
-        MatrixStack.Entry entry = matrices.peek();
-        RenderPipeline pipeline = Pipelines.LIGHTNING_DEPTH;
-
-        float dist = (float) Math.sqrt(targetX * targetX + centerY * centerY + targetZ * targetZ);
-        float scaledBloomSize = ProjectionUtil.getScaledSize(0.095F, Math.max(1.0f, dist));
-
-        // PASS 1: Volumetric Gaussian Bloom via ParticleBlurRenderer
-        try (BufferAllocator allocBloom = new BufferAllocator(65536)) {
-            BufferBuilder bufBloom = new BufferBuilder(allocBloom, DrawMode.LINES, VertexFormats.POSITION_COLOR_NORMAL_LINE_WIDTH);
-
-            for (int s = 0; s < 3; s++) {
-                List<Vec3d> path = soulPaths.get(s);
-                buildSoulMesh(bufBloom, entry, path, r, g, b, sizeMult,
-                        (14.0f + 15.0f * sizeMult), 0.65f * fade, 0.85f);
-            }
-
+        try (
+                BufferAllocator allocBloom = new BufferAllocator(16384);
+                BufferAllocator allocSharp = new BufferAllocator(16384);
+                BufferAllocator allocCore = new BufferAllocator(8192)
+        ) {
+            // PASS 1: Volumetric Gaussian Bloom with AURA_BLOOM_DEPTH
+            BufferBuilder bufBloom = new BufferBuilder(allocBloom, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+            buildGhosts(bufBloom, quaternionf, targetX, targetY, targetZ, baseR, (float) height, sizeMult, steps, bloomColor, 2.0F, false);
             BuiltBuffer builtBloom = bufBloom.endNullable();
             if (builtBloom != null) {
-                ParticleBlurRenderer.INSTANCE.render(scaledBloomSize, fade, () -> MeshDrawUtil.drawLabeled(pipeline, builtBloom, "egg souls bloom"));
-            }
-        }
-
-        // PASS 2 & 3: Colored Halo + Laser Filament Core
-        try (
-                BufferAllocator allocHalo = new BufferAllocator(65536);
-                BufferAllocator allocCore = new BufferAllocator(65536)
-        ) {
-            BufferBuilder bufHalo = new BufferBuilder(allocHalo, DrawMode.LINES, VertexFormats.POSITION_COLOR_NORMAL_LINE_WIDTH);
-            BufferBuilder bufCore = new BufferBuilder(allocCore, DrawMode.LINES, VertexFormats.POSITION_COLOR_NORMAL_LINE_WIDTH);
-
-            for (int s = 0; s < 3; s++) {
-                List<Vec3d> path = soulPaths.get(s);
-
-                // Halo: colored neon aura
-                buildSoulMesh(bufHalo, entry, path, r, g, b, sizeMult,
-                        (6.5f + 8.0f * sizeMult), 0.45f * fade, 0.70f);
-
-                // Core: razor-sharp laser center
-                buildSoulMesh(bufCore, entry, path, coreR, coreG, coreB, sizeMult,
-                        (1.8f + 2.0f * sizeMult), 0.90f * fade, 0.50f);
+                ParticleBlurRenderer.INSTANCE.render(scaledBloomSize, fade, () ->
+                        MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_BLOOM_DEPTH, builtBloom, "egg aura ghosts bloom", BLOOM_TEXTURE));
             }
 
-            BuiltBuffer builtHalo = bufHalo.endNullable();
-            if (builtHalo != null) {
-                MeshDrawUtil.drawLabeled(pipeline, builtHalo, "egg souls halo");
+            // PASS 2: Sharp Luminous Spirit Bodies with AURA_BLOOM_DEPTH (Additive blending)
+            BufferBuilder bufSharp = new BufferBuilder(allocSharp, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+            buildGhosts(bufSharp, quaternionf, targetX, targetY, targetZ, baseR, (float) height, sizeMult, steps, baseColor, 1.0F, false);
+            BuiltBuffer builtSharp = bufSharp.endNullable();
+            if (builtSharp != null) {
+                MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_BLOOM_DEPTH, builtSharp, "egg aura ghosts", BLOOM_TEXTURE);
             }
 
-            BuiltBuffer builtCore = bufCore.endNullable();
-            if (builtCore != null) {
-                MeshDrawUtil.drawLabeled(pipeline, builtCore, "egg souls core");
+            // PASS 3: White-Hot Nuclei for Ghost Heads
+            if (this.coreGlow.get()) {
+                BufferBuilder bufCore = new BufferBuilder(allocCore, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+                int coreAlpha = MathHelper.clamp((int) (255.0f * fade * 0.95f), 0, 255);
+                int whiteCoreCol = (coreAlpha << 24) | 0x00FFFFFF;
+                buildGhosts(bufCore, quaternionf, targetX, targetY, targetZ, baseR, (float) height, sizeMult, Math.min(3, steps), whiteCoreCol, 0.48F, true);
+                BuiltBuffer builtCore = bufCore.endNullable();
+                if (builtCore != null) {
+                    MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_BLOOM_DEPTH, builtCore, "egg aura ghosts core", BLOOM_TEXTURE);
+                }
             }
         }
     }
 
-    private void drawBillboardQuad(VertexConsumer buf, double x, double y, double z,
-                                   Vector3f right, Vector3f up, float radius,
-                                   int r, int g, int b, int a) {
-        if (a <= 0 || radius <= 0.001f) return;
-        float rx = right.x * radius;
-        float ry = right.y * radius;
-        float rz = right.z * radius;
-        float ux = up.x * radius;
-        float uy = up.y * radius;
-        float uz = up.z * radius;
+    private void buildGhosts(BufferBuilder bufferBuilder, Quaternionf quaternionf,
+                             float d, float d2, float d3,
+                             float baseR, float height, float sizeMult, int steps,
+                             int color, float scaleFactor, boolean isCore) {
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int bCol = color & 0xFF;
+        int baseA = (color >> 24) & 0xFF;
 
-        float fx = (float) x;
-        float fy = (float) y;
-        float fz = (float) z;
+        for (byte b = 0; b < 9; b += 3) {
+            int i2 = b * b;
 
-        buf.vertex(fx - rx - ux, fy - ry - uy, fz - rz - uz).texture(0.0f, 1.0f).color(r, g, b, a).light(0x00F000F0);
-        buf.vertex(fx + rx - ux, fy + ry - uy, fz + rz - uz).texture(1.0f, 1.0f).color(r, g, b, a).light(0x00F000F0);
-        buf.vertex(fx + rx + ux, fy + ry + uy, fz + rz + uz).texture(1.0f, 0.0f).color(r, g, b, a).light(0x00F000F0);
-        buf.vertex(fx - rx + ux, fy - ry + uy, fz - rz + uz).texture(0.0f, 0.0f).color(r, g, b, a).light(0x00F000F0);
+            for (int i3 = 0; i3 < steps; i3++) {
+                float trailFactor = 1.0f - ((float) i3 / (float) steps);
+                float f2 = this.ghostsTime * 0.055F + i3 * (0.85F / Math.max(1, steps));
+                float f3 = (0.24F + i3 * (0.28F / Math.max(1, steps))) * sizeMult * scaleFactor;
+                float f4 = d + baseR * MathHelper.sin(f2 + i2);
+                float f5 = d2 + height * 0.5F + 0.28F * height * MathHelper.sin(this.ghostsTime * 0.055F + i3 * 0.2F) + 0.2F * b - 0.1F;
+                float f6 = d3 + baseR * MathHelper.cos(f2 - i2);
+
+                int particleA;
+                if (isCore) {
+                    float coreFade = 1.0f - ((float) i3 / (float) Math.max(1, steps));
+                    particleA = MathHelper.clamp((int) (baseA * coreFade * coreFade), 0, 255);
+                } else {
+                    float alphaMul = (0.20f + 0.80f * trailFactor * trailFactor);
+                    particleA = MathHelper.clamp((int) (baseA * alphaMul), 0, 255);
+                }
+                if (particleA <= 0) continue;
+
+                int pColor = (particleA << 24) | (r << 16) | (g << 8) | bCol;
+                buildGradientQuad(bufferBuilder, quaternionf, f4, f5, f6, f3, 0.0F, pColor);
+            }
+        }
     }
 
-    private void buildSoulMesh(BufferBuilder builder, MatrixStack.Entry entry,
-                               List<Vec3d> path, int r, int g, int b,
-                               float sizeMult, float baseLineWidth, float alphaMult, float taperAmount) {
-        int count = path.size();
-        if (count < 2) return;
+    private void buildGradientQuad(
+            BufferBuilder bufferBuilder,
+            Quaternionf quaternionf,
+            float x, float y, float z,
+            float size, float rollDeg,
+            int color
+    ) {
+        Quaternionf q = rollDeg == 0.0f ? quaternionf : new Quaternionf(quaternionf).rotateZ((float) Math.toRadians(rollDeg));
+        float h = size * 0.5F;
+        Vector3f v0 = new Vector3f(-h, -h, 0.0F).rotate(q).add(x, y, z);
+        Vector3f v1 = new Vector3f(-h, h, 0.0F).rotate(q).add(x, y, z);
+        Vector3f v2 = new Vector3f(h, h, 0.0F).rotate(q).add(x, y, z);
+        Vector3f v3 = new Vector3f(h, -h, 0.0F).rotate(q).add(x, y, z);
 
-        for (int i = 0; i < count - 1; i++) {
-            Vec3d p1 = path.get(i);
-            Vec3d p2 = path.get(i + 1);
-
-            float prog1 = (float) i / (float) (count - 1);
-            float prog2 = (float) (i + 1) / (float) (count - 1);
-
-            float fade1 = (1.0f - prog1) * (1.0f - prog1 * 0.30f);
-            float fade2 = (1.0f - prog2) * (1.0f - prog2 * 0.30f);
-
-            int a1 = MathHelper.clamp((int) (255.0f * alphaMult * fade1), 0, 255);
-            int a2 = MathHelper.clamp((int) (255.0f * alphaMult * fade2), 0, 255);
-            if (a1 <= 0 && a2 <= 0) continue;
-
-            int c1 = (a1 << 24) | (r << 16) | (g << 8) | b;
-            int c2 = (a2 << 24) | (r << 16) | (g << 8) | b;
-
-            float width = baseLineWidth * (1.0f - taperAmount * prog1);
-            if (width < 0.8f) width = 0.8f;
-
-            emitLine(builder, entry, (float) p1.x, (float) p1.y, (float) p1.z,
-                                     (float) p2.x, (float) p2.y, (float) p2.z, c1, c2, width);
-        }
+        bufferBuilder.vertex(v0.x, v0.y, v0.z).texture(0.0F, 1.0F).color(color);
+        bufferBuilder.vertex(v1.x, v1.y, v1.z).texture(0.0F, 0.0F).color(color);
+        bufferBuilder.vertex(v2.x, v2.y, v2.z).texture(1.0F, 0.0F).color(color);
+        bufferBuilder.vertex(v3.x, v3.y, v3.z).texture(1.0F, 1.0F).color(color);
     }
 
     private void renderCubes(DrawContext context, double cx, double cy, double cz, double height,
