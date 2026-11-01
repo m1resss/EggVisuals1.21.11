@@ -237,13 +237,11 @@ public final class CosmeticsConfigManager {
 
         String jsonString = json.toString();
 
-        // Save to instance configs
         try (FileWriter writer = new FileWriter(getConfigFile(), StandardCharsets.UTF_8)) {
             writer.write(jsonString);
         } catch (Throwable ignored) {
         }
 
-        // Save to global user fallback (shared across Lunar / Prism / vanilla)
         try (FileWriter writer = new FileWriter(getGlobalFallbackFile(), StandardCharsets.UTF_8)) {
             writer.write(jsonString);
         } catch (Throwable ignored) {

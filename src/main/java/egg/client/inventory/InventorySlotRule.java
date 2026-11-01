@@ -81,17 +81,14 @@ public class InventorySlotRule {
         Item ruleItem = getItem();
         Item currentItem = stack.getItem();
 
-        // Distinct apples
         if ((ruleItem == Items.GOLDEN_APPLE && currentItem == Items.ENCHANTED_GOLDEN_APPLE) ||
             (ruleItem == Items.ENCHANTED_GOLDEN_APPLE && currentItem == Items.GOLDEN_APPLE)) {
             return false;
         }
 
-        // Potion matching
         if (isPotionItem(ruleItem) || isPotionItem(currentItem)) {
             if (ruleItem != currentItem) return false;
 
-            // 1. If customName was specified (e.g. server custom potion like "Зелье (3 в 1)")
             if (customName != null && !customName.isEmpty()) {
                 String sClean = cleanName(stack.getName().getString());
                 String rClean = cleanName(customName);
@@ -100,13 +97,11 @@ public class InventorySlotRule {
                 }
             }
 
-            // 2. If potionId was specified (vanilla potion effect like swiftness, healing, strength)
             if (potionId != null && !potionId.isEmpty()) {
                 String stackPId = extractPotionId(stack);
                 return potionId.equalsIgnoreCase(stackPId);
             }
 
-            // 3. If neither custom name nor potionId is specified, match empty/water potion
             if (customName == null || customName.isEmpty()) {
                 String stackPId = extractPotionId(stack);
                 return (stackPId == null || stackPId.isEmpty() || stackPId.equals("minecraft:water"));
@@ -114,7 +109,6 @@ public class InventorySlotRule {
             return false;
         }
 
-        // Regular item matching with customName
         if (customName != null && !customName.isEmpty()) {
             String stackName = cleanName(stack.getName().getString());
             String ruleName = cleanName(customName);

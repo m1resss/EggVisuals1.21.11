@@ -27,7 +27,6 @@ public class CosmeticsPanel {
     private static float targetScroll = 0.0f;
     private static float maxScroll = 0.0f;
 
-    // 3D Player Preview state
     private static float playerYaw = 0.0f;
     private static float playerPitch = 0.0f;
     private static boolean isDraggingPlayer = false;
@@ -58,11 +57,7 @@ public class CosmeticsPanel {
         float rightPaneY = y;
         float rightPaneH = h;
 
-        // ----------------------------------------------------
-        // 1. LEFT CATALOG PANEL
-        // ----------------------------------------------------
 
-        // A. CATEGORY FILTER PILLS (Две сбалансированные строки без вылезания текста)
         float navY = y + 2.0f;
         float navH = 17.0f;
         float pillGap = 3.5f;
@@ -99,11 +94,9 @@ public class CosmeticsPanel {
             ClientFont.drawCentered(context, label, pX + pillW * 0.5f, pY + navH * 0.5f, ClientFont.SF_MEDIUM, txtCol);
         }
 
-        // Divider under navigation tabs
                 float gridTop = navY + navH * 2.0f + navRowGap + 5.0f;
         Render2D.drawRect(context, x, gridTop - 2.0f, mainW, 1.0f, 0x12FFFFFF);
 
-        // B. SCROLLABLE COSMETICS CARDS GRID
         context.enableScissor((int) x, (int) gridTop, (int) (x + mainW), (int) (y + h));
 
         float currentCatY = gridTop + 4.0f - scrollOffset;
@@ -140,11 +133,9 @@ public class CosmeticsPanel {
             List<CosmeticsManager.SwordEntry> swordsList = isSwords ? mgr.getSwords(searchQuery) : Collections.emptyList();
             int itemCount = isSwords ? swordsList.size() : assetsList.size();
 
-            // Category Header
             float catHeaderH = 20.0f;
             ClientFont.draw(context, catTitle, x + 2.0f, currentCatY + 4.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
 
-            // Кнопка "Снять" для текущей категории
             String selectedId = isSwords ? mod.selectedSword() : mod.selected(catKey);
             boolean hasEquipped = selectedId != null && !selectedId.isEmpty() && !"None".equalsIgnoreCase(selectedId);
             if (hasEquipped) {
@@ -188,7 +179,6 @@ public class CosmeticsPanel {
                 Render2D.drawRoundedRect(context, cardX, cardY, cardW, cardH, 6.0f, cBg);
                 Render2D.drawRoundedOutline(context, cardX, cardY, cardW, cardH, 6.0f, 0.6f, cBrd);
 
-                // Превью предмета в карточке (ЧИСТЫЙ 3D ПРЕДМЕТ БЕЗ ТЕЛА ИГРОКА)
                 if (isSwords && sword != null) {
                     float iconSize = 46.0f;
                     float iconX = cardX + (cardW - iconSize) * 0.5f;
@@ -201,7 +191,6 @@ public class CosmeticsPanel {
                     net.minecraft.client.gui.ScreenRect cardsScissor = new net.minecraft.client.gui.ScreenRect((int) x, (int) gridTop, Math.max(1, (int) mainW), Math.max(1, (int) (y + h - gridTop))); mgr.renderGuiPreview(context, asset.id(), pX, pY, pSize, 1.0f, cardsScissor);
                 }
 
-                // Нижняя панель карточки: название и тумблер
                 float bottomH = 22.0f;
                 float bottomY = cardY + cardH - bottomH;
 
@@ -219,7 +208,6 @@ public class CosmeticsPanel {
                 float swDotY = swY + 2.0f;
                 Render2D.drawRoundedRect(context, swDotX, swDotY, swDotSz, swDotSz, 3.5f, 0xFFFFFFFF);
 
-                // Название косметики
                 String title = displayName;
                 float maxTitleW = cardW - swW - 16.0f;
                 if (ClientFont.getWidth(title, ClientFont.SF_MEDIUM) > maxTitleW) {
@@ -240,17 +228,12 @@ public class CosmeticsPanel {
 
         context.disableScissor();
 
-        // ----------------------------------------------------
-        // 2. RIGHT PANE: 3D INTERACTIVE PLAYER PREVIEW
-        // ----------------------------------------------------
         Render2D.drawRoundedRect(context, rightPaneX, rightPaneY, rightPaneW, rightPaneH, 6.0f, Theme.CARD_BG);
         Render2D.drawRoundedOutline(context, rightPaneX, rightPaneY, rightPaneW, rightPaneH, 6.0f, 0.6f, Theme.CARD_BORDER);
 
-        // Header inside right pane
         ClientFont.draw(context, "Предпросмотр", rightPaneX + 10.0f, rightPaneY + 10.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
         ClientFont.draw(context, "3D модель игрока", rightPaneX + 10.0f, rightPaneY + 22.0f, ClientFont.SF_REGULAR, 0xFFA0A8B8);
 
-        // Reset button
         float rstW = 46.0f, rstH = 16.0f;
         float rstX = rightPaneX + rightPaneW - rstW - 10.0f;
         float rstY = rightPaneY + 10.0f;
@@ -261,7 +244,6 @@ public class CosmeticsPanel {
 
         Render2D.drawRect(context, rightPaneX + 8.0f, rightPaneY + 34.0f, rightPaneW - 16.0f, 1.0f, 0x15FFFFFF);
 
-        // Render 3D player
         if (mc.player != null) {
             float previewBoxX = rightPaneX + 4.0f;
             float previewBoxY = rightPaneY + 36.0f;
@@ -286,7 +268,6 @@ public class CosmeticsPanel {
             context.disableScissor();
         }
 
-        // Hints at the bottom of the preview panel
         Render2D.drawRect(context, rightPaneX + 8.0f, rightPaneY + rightPaneH - 22.0f, rightPaneW - 16.0f, 1.0f, 0x15FFFFFF);
         ClientFont.drawCentered(context, "ЛКМ: Вращение модели", rightPaneX + rightPaneW * 0.5f, rightPaneY + rightPaneH - 11.0f, ClientFont.SF_REGULAR, 0xFF8A92A2);
     }
@@ -306,9 +287,7 @@ public class CosmeticsPanel {
         float rightPaneY = y;
         float rightPaneH = h;
 
-        // Check clicks on right pane (Preview)
         if (mouseX >= rightPaneX && mouseX <= rightPaneX + rightPaneW && mouseY >= rightPaneY && mouseY <= rightPaneY + rightPaneH) {
-            // Reset button
             float rstW = 46.0f, rstH = 16.0f;
             float rstX = rightPaneX + rightPaneW - rstW - 10.0f;
             float rstY = rightPaneY + 10.0f;
@@ -319,19 +298,16 @@ public class CosmeticsPanel {
                 return true;
             }
 
-            // Start dragging player model
             isDraggingPlayer = true;
             lastDragMouseX = (float) mouseX;
             lastDragMouseY = (float) mouseY;
             return true;
         }
 
-        // Check clicks on left catalog
         if (mouseX < x || mouseX > x + mainW || mouseY < y || mouseY > y + h) {
             return false;
         }
 
-        // Tabs click (2 строки)
         float navY = y + 2.0f;
         float navH = 17.0f;
         float pillGap = 3.5f;
@@ -390,7 +366,6 @@ public class CosmeticsPanel {
 
             float catHeaderH = 20.0f;
 
-            // Кнопка "Снять"
             String selectedId = isSwords ? mod.selectedSword() : mod.selected(catKey);
             boolean hasEquipped = selectedId != null && !selectedId.isEmpty() && !"None".equalsIgnoreCase(selectedId);
             if (hasEquipped) {

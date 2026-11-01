@@ -188,8 +188,6 @@ public class Trajectories extends Module {
                     return old.lerp(targetImpact, smoothFactor);
                 });
 
-                // Flight trajectory path ribbon is STICTLY ONLY shown when projectile is already thrown in flight!
-                // When aiming, check if aimed at an enemy target:
                 if (res.hitEntity instanceof LivingEntity target && target.isAlive() && target != mc.player) {
                     Box targetBox = CustomHitbox.getInterpolatedBoundingBox(target, tickDelta);
                     CustomHitbox.renderHitbox(quadBuffer, targetBox, camPos,

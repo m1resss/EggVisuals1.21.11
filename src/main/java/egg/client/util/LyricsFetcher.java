@@ -118,28 +118,23 @@ public final class LyricsFetcher {
         String cleanT = cleanTitle(title);
         String cleanA = artist != null ? artist.trim() : "";
 
-        // 1. Try artist + clean title on Kugou
         String synced = null;
         if (!cleanA.isEmpty() && !cleanT.isEmpty()) {
             synced = fetchFromKugou(cleanA + " " + cleanT);
         }
 
-        // 2. Try clean title alone on Kugou (crucial for remixes/covers like Epizoon - 505)
         if (synced == null && !cleanT.isEmpty()) {
             synced = fetchFromKugou(cleanT);
         }
 
-        // 3. Try artist + raw title if different
         if (synced == null && !title.equalsIgnoreCase(cleanT) && !cleanA.isEmpty()) {
             synced = fetchFromKugou(cleanA + " " + title);
         }
 
-        // 4. Try raw title alone if different
         if (synced == null && !title.equalsIgnoreCase(cleanT)) {
             synced = fetchFromKugou(title);
         }
 
-        // 5. Fallback to LrcLib API
         if (synced == null) {
             synced = tryGetLrclib(cleanA, cleanT);
         }
@@ -359,15 +354,11 @@ public final class LyricsFetcher {
     public static String cleanTitle(String title) {
         if (title == null) return "";
         String t = title;
-        // Strip parenthesized remixes and modifiers
         t = t.replaceAll("(?i)\\((?:hoodtrap|remix|sped up|slowed|edit|tiktok version|tik tok version|drill|phonk|acoustic|cover|instrumental|bass boosted|nightcore|reverb|radio edit|extended|vip|prod\\.[^)]*)\\)", "");
         t = t.replaceAll("(?i)\\[(?:hoodtrap|remix|sped up|slowed|edit|tiktok version|tik tok version|drill|phonk|acoustic|cover|instrumental|bass boosted|nightcore|reverb|radio edit|extended|vip|prod\\.[^\\]]*)\\]", "");
-        // Strip hyphens with modifiers
         t = t.replaceAll("(?i)-\\s*(?:hoodtrap|remix|sped up|slowed|edit|drill|phonk|acoustic|bass boosted|nightcore|reverb).*$", "");
-        // Strip feat / ft / with / prod
         t = t.replaceAll("(?i)\\((?:feat|ft|with|prod)\\.[^)]+\\)", "");
         t = t.replaceAll("(?i)\\[(?:feat|ft|with|prod)\\.[^\\]]+\\]", "");
-        // Strip remasters and video tags
         t = t.replaceAll("(?i)\\((?:remaster|remastered|official|audio|visualizer|deluxe|bonus track)[^)]*\\)", "");
         t = t.replaceAll("(?i)\\[(?:remaster|remastered|official|audio|visualizer|deluxe|bonus track)[^\\]]*\\]", "");
         t = t.replaceAll("(?i)-\\s*(?:remaster|remastered|deluxe).*$", "");

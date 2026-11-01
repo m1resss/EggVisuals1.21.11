@@ -46,7 +46,6 @@ public class InventoryLayoutManager {
 
         File fileToRead = configFile;
 
-        // If local instance file is missing or empty, check global .minecraft fallback
         if (!fileToRead.exists() || fileToRead.length() < 100) {
             String appdata = System.getenv("APPDATA");
             if (appdata != null) {
@@ -83,7 +82,6 @@ public class InventoryLayoutManager {
                 }
             } catch (Exception e) {
                 EggClient.LOGGER.error("[InventoryLayoutManager] Failed to load inventory presets from " + fileToRead.getAbsolutePath(), e);
-                // Create backup of corrupted file instead of silently wiping it
                 try {
                     File bak = new File(fileToRead.getParentFile(), fileToRead.getName() + ".corrupted");
                     Files.copy(fileToRead.toPath(), bak.toPath(), StandardCopyOption.REPLACE_EXISTING);
@@ -122,7 +120,6 @@ public class InventoryLayoutManager {
                 GSON.toJson(root, writer);
             }
 
-            // Sync copy to global .minecraft/egg/inventory_layouts.json so Prism and other launchers share presets
             String appdata = System.getenv("APPDATA");
             if (appdata != null) {
                 File fallbackDir = new File(appdata, ".minecraft/egg");

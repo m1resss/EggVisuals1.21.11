@@ -64,7 +64,6 @@ public abstract class PlayerEntityRendererMixin extends LivingEntityRenderer<Abs
             at = @At("RETURN")
     )
     private void onUpdateRenderState(PlayerLikeEntity entity, PlayerEntityRenderState state, float tickDelta, CallbackInfo ci) {
-        // Globals: White egg icon before Egg Visuals users' nameplate
         Globals globals = ModuleManager.getInstance().getModule(Globals.class);
         if (globals != null && globals.isEnabled() && ((entity instanceof Entity ent && Globals.isEggUser(ent)) || Globals.isEggUser(state))) {
             Text eggPrefix = Text.literal("§f🥚 ");

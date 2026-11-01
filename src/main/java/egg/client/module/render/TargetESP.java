@@ -640,29 +640,22 @@ public class TargetESP extends Module {
                 }
 
                 if (i == 0) {
-                    // Head: bright luminous spirit nucleus
                     float headSz = 0.36f * sizeMult * soulPulse * scaleMul;
                     float headAlpha = fade * alphaMul;
 
-                    // 1. Broad radiant halo
                     emitBloomQuad(builder, camRot, wx, wy, wz, headSz * 3.2f, ColorUtil.withAlphaFloat(color, headAlpha * 0.50f));
-                    // 2. Dense glowing spirit body
                     emitBloomQuad(builder, camRot, wx, wy, wz, headSz * 2.0f, ColorUtil.withAlphaFloat(color, headAlpha * 0.85f));
 
-                    // 3. White-hot center spark
                     if (this.coreGlow.get()) {
                         emitBloomQuad(builder, camRot, wx, wy, wz, headSz * 1.2f, ColorUtil.withAlphaFloat(0xFFFFFFFF, headAlpha * 0.90f));
                         emitBloomQuad(builder, camRot, wx, wy, wz, headSz * 0.65f, ColorUtil.withAlphaFloat(0xFFFFFFFF, headAlpha * 1.0f));
                     }
                 } else {
-                    // Sleek fading ethereal tail
                     float tailSz = 0.23f * sizeMult * (0.20f + 0.80f * trailFactor) * scaleMul;
                     float tailAlpha = fade * (0.06f + 0.70f * trailFactor * trailFactor) * alphaMul;
 
-                    // Colored tail wisp
                     emitBloomQuad(builder, camRot, wx, wy, wz, tailSz * 2.2f, ColorUtil.withAlphaFloat(color, tailAlpha * 0.65f * trailFactor));
 
-                    // White filament along upper tail
                     if (this.coreGlow.get() && i < steps / 2) {
                         float coreFactor = 1.0f - ((float) i / (steps * 0.5f));
                         emitBloomQuad(builder, camRot, wx, wy, wz, tailSz * 1.0f, ColorUtil.withAlphaFloat(0xFFFFFFFF, tailAlpha * 0.80f * coreFactor));

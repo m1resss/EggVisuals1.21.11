@@ -85,7 +85,6 @@ public final class AudioMeter {
                     if (hr == 0) {
                         currentPeak = Math.max(0.0f, Math.min(1.0f, peakRef.getValue()));
                     } else {
-                        // Audio device might have changed or disconnected
                         pMeter = null;
                         active = false;
                     }
@@ -114,14 +113,13 @@ public final class AudioMeter {
             int hr = coCreate.invokeInt(new Object[]{
                     CLSID_MMDeviceEnumerator.getPointer(),
                     Pointer.NULL,
-                    1, // CLSCTX_INPROC_SERVER
+                    1,
                     IID_IMMDeviceEnumerator.getPointer(),
                     ppEnum
             });
             if (hr != 0 || ppEnum.getValue() == null) return null;
             Pointer pEnum = ppEnum.getValue();
 
-            // IMMDeviceEnumerator::GetDefaultAudioEndpoint(eRender=0, eConsole=0, &pDevice) -> vtable index 4
             Pointer vtblEnum = pEnum.getPointer(0);
             Pointer pGetDefaultEndpoint = vtblEnum.getPointer(4L * Native.POINTER_SIZE);
             Function getDefaultFunc = Function.getFunction(pGetDefaultEndpoint, Function.ALT_CONVENTION);
@@ -130,7 +128,6 @@ public final class AudioMeter {
             if (hr != 0 || ppDevice.getValue() == null) return null;
             Pointer pDevice = ppDevice.getValue();
 
-            // IMMDevice::Activate(IID_IAudioMeterInformation, CLSCTX_ALL=7, NULL, &pMeter) -> vtable index 3
             Pointer vtblDevice = pDevice.getPointer(0);
             Pointer pActivate = vtblDevice.getPointer(3L * Native.POINTER_SIZE);
             Function activateFunc = Function.getFunction(pActivate, Function.ALT_CONVENTION);

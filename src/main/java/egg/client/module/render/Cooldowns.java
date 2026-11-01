@@ -55,7 +55,7 @@ public class Cooldowns extends Module {
         final Identifier id;
         final ItemStack stack;
         final float remainingSec;
-        final float progress; // 0.0 = just started (full cooldown), 1.0 = almost done / finished
+        final float progress;
 
         DisplayEntry(Identifier id, ItemStack stack, float remainingSec, float progress) {
             this.id = id;
@@ -65,8 +65,6 @@ public class Cooldowns extends Module {
         }
     }
 
-    // Blacklist of items requested by user:
-    // "также не показывай кд у элитр , феерверков и блоков слизи и ведра воды"
     private static final Set<Item> BLACKLIST_ITEMS = Set.of(
             Items.ELYTRA,
             Items.FIREWORK_ROCKET,
@@ -120,7 +118,6 @@ public class Cooldowns extends Module {
 
             ItemStack stack = item != null ? new ItemStack(item) : ItemStack.EMPTY;
             int totalTicks = Math.max(1, endTick - startTick);
-            // progress: 1.0 -> 0.0 as time expires, so fraction remaining = remainingTicks / totalTicks
             float remainingFrac = Math.clamp((float) remainingTicks / (float) totalTicks, 0.0f, 1.0f);
             float remainingSec = remainingTicks / 20.0f;
 
@@ -141,7 +138,6 @@ public class Cooldowns extends Module {
 
         if (list.isEmpty()) {
             if (!inChat) return;
-            // In chat GUI editor, show dummy preview so player can drag/position the widget
             list = List.of(
                     new DisplayEntry(Identifier.of("minecraft", "ender_pearl"), new ItemStack(Items.ENDER_PEARL), 9.5f, 0.65f),
                     new DisplayEntry(Identifier.of("minecraft", "chorus_fruit"), new ItemStack(Items.CHORUS_FRUIT), 1.2f, 0.15f),
@@ -158,9 +154,6 @@ public class Cooldowns extends Module {
 
         float s = scale.getValueFloat() * combatScale;
 
-        // Exact pill dimensions according to reference:
-        // Height ~ 32px scaled
-        // Each item slot: icon disc + vertical bar + divider
         float slotH = 32.0f * s;
         float pillRadius = slotH / 2.0f;
         float iconDiscR = 11.5f * s;
@@ -184,10 +177,8 @@ public class Cooldowns extends Module {
         this.lastW = pillW;
         this.lastH = pillH;
 
-        // 1. Soft atmospheric dark drop shadow
         Draw2DProcessor.INSTANCE.drawGlow(null, px, py, pillW, pillH, pillRadius, ColorUtil.withAlphaFloat(ColorUtil.rgba(0, 0, 0, 110), combatAlpha), 8.0f * s);
 
-        // 2. Pill background (customizable, default #C4151515)
         Draw2DProcessor.INSTANCE.drawRect(null, px, py, pillW, pillH, pillRadius, ColorUtil.withAlphaFloat(bgColor.get(), combatAlpha));
 
         if (hudThemeGradient.isEnabled()) {
@@ -201,39 +192,29 @@ public class Cooldowns extends Module {
         }
 
 
-        // Render slots
         for (int i = 0; i < count; i++) {
             DisplayEntry entry = list.get(i);
             float slotStartX = px + padSide + i * slotW;
 
-            // Draw vertical separator line between slots (except before the first slot)
             if (i > 0) {
                 float divX = slotStartX - (1.5f * s);
                 float divY = py + (pillH - 18.0f * s) / 2.0f;
                 Draw2DProcessor.INSTANCE.drawRect(null, divX, divY, 1.0f, 18.0f * s, 0.5f, ColorUtil.withAlphaFloat(ColorUtil.rgba(255, 255, 255, 18), combatAlpha));
             }
 
-            // Circular icon backdrop disc (#2E2E2E / rgba(48, 48, 48, 255))
             float discCx = slotStartX + iconDiscR + (2.0f * s);
             float discCy = py + pillH / 2.0f;
             Draw2DProcessor.INSTANCE.drawRect(null, discCx - iconDiscR, discCy - iconDiscR, iconDiscR * 2.0f, iconDiscR * 2.0f, iconDiscR, ColorUtil.withAlphaFloat(ColorUtil.rgba(46, 46, 46, 240), combatAlpha));
 
-            // Vertical progress bar
             float barX = discCx + iconDiscR + (5.0f * s);
             float barY = py + (pillH - barH) / 2.0f;
 
-            // Dark empty bar track (#2A2A2A)
             Draw2DProcessor.INSTANCE.drawRect(null, barX, barY, barW, barH, barR, ColorUtil.withAlphaFloat(ColorUtil.rgba(42, 42, 42, 255), combatAlpha));
 
-            // Filled progress (from bottom to top)
-            // progress = fraction remaining: 1.0 -> 0.0
             float frac = Math.clamp(entry.progress, 0.0f, 1.0f);
             float fillH = Math.max(barW, barH * frac);
             float fillY = barY + (barH - fillH);
 
-            // Color coding according to remaining fraction:
-            // When < 0.25 (last quarter of cooldown, almost ready): red (RGB 236, 34, 31)
-            // When > 0.25 (running cooldown): vibrant emerald green (RGB 20, 174, 92)
             int fillColor;
             if (frac <= 0.25f) {
                 fillColor = ColorUtil.rgba(236, 34, 31, 255);
@@ -246,7 +227,6 @@ public class Cooldowns extends Module {
 
         DrawBatcher.flushPending();
 
-        // 4. Render 3D item models on top of their circular discs
         for (int i = 0; i < count; i++) {
             DisplayEntry entry = list.get(i);
             float slotStartX = px + padSide + i * slotW;
@@ -270,7 +250,6 @@ public class Cooldowns extends Module {
             onChatMouseDragged(mouseX, mouseY, 0);
         }
 
-        // Render cooldowns widget in chat screen for drag & drop
         render(context, RenderTickCounter.ONE);
 
         if (dragging) {

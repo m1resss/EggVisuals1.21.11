@@ -52,16 +52,12 @@ public class Trail extends Module {
     private float simTimeSec = 0.0f;
 
     private static final AnchorDef[] ANCHORS = new AnchorDef[] {
-            // 1: Head Left & Right
             new AnchorDef(-0.16f, 0.13f, 0.94f, true, 0.0f),
             new AnchorDef(0.16f, 0.13f, 0.94f, true, 0.5f),
-            // 2: Shoulder Left & Right
             new AnchorDef(-0.28f, 0.14f, 0.76f, false, 1.0f),
             new AnchorDef(0.28f, 0.14f, 0.76f, false, 1.5f),
-            // 3: Waist Left & Right (level of belly / waist)
             new AnchorDef(-0.22f, 0.15f, 0.50f, false, 2.0f),
             new AnchorDef(0.22f, 0.15f, 0.50f, false, 2.5f),
-            // 4: Knees Left & Right
             new AnchorDef(-0.17f, 0.12f, 0.25f, false, 3.0f),
             new AnchorDef(0.17f, 0.12f, 0.25f, false, 3.5f)
     };
@@ -119,7 +115,6 @@ public class Trail extends Module {
         float glowIntensity = (float) this.glow.get();
         float waveStrength = (float) this.waveDynamics.get();
 
-        // 1. Audio and music track reactivity
         float audioPeak = 0.0f;
         if (this.audioPulse.isEnabled()) {
             audioPeak = AudioMeter.getPeak();
@@ -127,7 +122,6 @@ public class Trail extends Module {
         float audioGlowScale = 1.0f + audioPeak * 0.45f;
         float audioWaveScale = 1.0f + audioPeak * 0.35f;
 
-        // 2. Base color calculations and smooth track cover transitions
         int baseColor = Theme.getAccent();
         String cMode = this.colorMode.get();
         if ("Кастомный".equals(cMode)) {
@@ -164,7 +158,6 @@ public class Trail extends Module {
             baseColor = ColorUtil.rgb((int) (this.trackColorR * 255.0f), (int) (this.trackColorG * 255.0f), (int) (this.trackColorB * 255.0f));
         }
 
-        // 3. Collect players to render
         List<PlayerEntity> playersToRender = new ArrayList<>();
         if ("Только я".equals(this.targetMode.get())) {
             playersToRender.add(mc.player);
@@ -174,7 +167,6 @@ public class Trail extends Module {
 
         boolean isFirstPerson = mc.options.getPerspective().isFirstPerson();
 
-        // 4. Update and generate curve samples for all players and strands
         List<List<CurveSample>> allStrands = new ArrayList<>();
         List<Integer> strandColors = new ArrayList<>();
 
@@ -214,7 +206,6 @@ public class Trail extends Module {
         RenderPipeline pipeline = Pipelines.LIGHTNING_DEPTH;
         float effectiveGlow = glowIntensity * audioGlowScale;
 
-        // PASS 1: Volumetric Gaussian Bloom via ParticleBlurRenderer (if glow enabled)
         if (effectiveGlow > 0.2f) {
             try (BufferAllocator allocBloom = new BufferAllocator(131072)) {
                 BufferBuilder bufBloom = new BufferBuilder(allocBloom, DrawMode.LINES, VertexFormats.POSITION_COLOR_NORMAL_LINE_WIDTH);
@@ -239,7 +230,6 @@ public class Trail extends Module {
             }
         }
 
-        // PASS 2 & 3: Luminous Colored Halo + Razor-Sharp Laser Filament Core
         try (
                 BufferAllocator allocHalo = new BufferAllocator(131072);
                 BufferAllocator allocCore = new BufferAllocator(131072)
@@ -254,11 +244,9 @@ public class Trail extends Module {
                 int g = (col >> 8) & 0xFF;
                 int b = col & 0xFF;
 
-                // Luminous colored halo: width ~ 6..14px, vibrant color
                 buildStrandLines(bufHalo, entry, samples, camPos, r, g, b,
                         (5.5f + 9.5f * thickScale), 0.45f * effectiveGlow, 0.70f);
 
-                // Laser core: width ~ 1.6..3.5px, white-hot center
                 int coreR = (int) MathHelper.lerp(0.70f, r, 255.0f);
                 int coreG = (int) MathHelper.lerp(0.70f, g, 255.0f);
                 int coreB = (int) MathHelper.lerp(0.70f, b, 255.0f);
@@ -292,7 +280,6 @@ public class Trail extends Module {
             float p1 = s1.progress;
             float p2 = s2.progress;
 
-            // Tail fade (dissipation at end of ribbon)
             float fade1 = p1 < 0.65f ? 1.0f : (1.0f - (p1 - 0.65f) / 0.35f);
             float fade2 = p2 < 0.65f ? 1.0f : (1.0f - (p2 - 0.65f) / 0.35f);
             fade1 = MathHelper.clamp(fade1, 0.0f, 1.0f);
@@ -305,7 +292,6 @@ public class Trail extends Module {
             int c1 = (a1 << 24) | (r << 16) | (g << 8) | b;
             int c2 = (a2 << 24) | (r << 16) | (g << 8) | b;
 
-            // Silk thickness tapering from player to tail
             float width = baseLineWidth * (1.0f - taperAmount * p1 * p1);
             if (width < 0.8f) width = 0.8f;
 
@@ -354,16 +340,13 @@ public class Trail extends Module {
             double cosPitch = Math.cos(radPitch);
             double sinPitch = Math.sin(radPitch);
 
-            // Backward vector aligned with head pitch
             double backX = sinYaw * cosPitch;
             double backY = sinPitch;
             double backZ = -cosYaw * cosPitch;
 
-            // Lateral right vector
             double rightX = cosYaw;
             double rightZ = sinYaw;
 
-            // Up vector tilted with pitch
             double upX = -sinYaw * sinPitch;
             double upY = cosPitch;
             double upZ = cosYaw * sinPitch;
@@ -481,7 +464,6 @@ public class Trail extends Module {
             double dz = anchorPos.z - head.z;
             double distSq = dx * dx + dy * dy + dz * dz;
 
-            // Teleport detection (> 16 blocks)
             if (distSq > 256.0) {
                 points.clear();
                 points.add(new StrandPoint(anchorPos.x, anchorPos.y, anchorPos.z, nowMs));
@@ -533,7 +515,6 @@ public class Trail extends Module {
 
                     float progress = (float) curSampleIdx / (float) (totalExpected - 1);
 
-                    // Fluid silk flutter dynamics
                     if (waveStrength > 0.01f && progress > 0.04f) {
                         float flutterAmp = waveStrength * 0.045f * progress * (float) Math.sqrt(progress);
                         float phi = timeSec * 6.2f - progress * 9.5f + phaseOffset;

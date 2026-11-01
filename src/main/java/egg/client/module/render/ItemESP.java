@@ -78,7 +78,6 @@ public class ItemESP extends Module {
     public boolean renderItem(ItemEntityRenderState state, MatrixStack matrices, OrderedRenderCommandQueue queue, CameraRenderState camera, int light) {
         if (!isEnabled()) return false;
 
-        // Строгая проверка видимости сквозь стену
         if (isOccluded(state, camera)) {
             return false;
         }
@@ -114,7 +113,6 @@ public class ItemESP extends Module {
             RenderLayer renderLayer = layerAcc.getRenderLayer();
             Transformation transform = layerAcc.getTransform();
 
-            // Вычисляем точные границы геометрии предмета по периметру вокселей (исключая пустую 1x1 плоскость)
             float sMinX = 1.0f, sMaxX = 0.0f;
             float sMinY = 1.0f, sMaxY = 0.0f;
             float sMinZ = 0.5f, sMaxZ = -0.5f;
@@ -152,7 +150,6 @@ public class ItemESP extends Module {
                 transform.apply(false, matrices.peek());
             }
 
-            // 1. ВНЕШНЯЯ ОБОЛОЧКА (обтягивает предмет с легким расширением ~8% вокруг центра)
             if (shell.get() && renderLayer != null) {
                 matrices.push();
                 matrices.translate(cx, cy, cz);
@@ -173,7 +170,6 @@ public class ItemESP extends Module {
                 matrices.pop();
             }
 
-            // 2. ТЕЛО ПРЕДМЕТА (внутренний фиолетовый силуэт с альфа-тестом текстуры — строго форма предмета)
             if (renderLayer != null) {
                 queue.submitCustom(matrices, renderLayer, (entry, consumer) -> {
                     float bodyR = r / 255.0f;
@@ -187,8 +183,6 @@ public class ItemESP extends Module {
                 });
             }
 
-            // 3. ПЕРИМЕТР ВОКСЕЛЕЙ, СКАНЛИНИИ И СМЕЩЕНИЕ ГЛИТЧА
-            // Рендерим ТОЛЬКО грани периметра (UP, DOWN, EAST, WEST) — никаких пустых 1x1 квадратов!
             final float fMinY = sMinY;
             final float fHeightSpan = heightSpan;
             final float fCx = cx;
@@ -201,7 +195,6 @@ public class ItemESP extends Module {
                         isGlitching, glitchStrength, glitchSubTick);
             });
 
-            // 4. ГЛИТЧ-РАЗРЫВ ТЕКСТУРЫ ВО ВРЕМЯ ГЛИТЧА (хроматическое смещение слоев)
             if (isGlitching && renderLayer != null) {
                 float glitchDx = (float) Math.sin(glitchProgress * Math.PI) * 0.08f;
 
@@ -224,7 +217,6 @@ public class ItemESP extends Module {
                 matrices.pop();
             }
 
-            // 5. ТРЕЙСЕР И ТОЧНЫЙ 3D БОКС ПО ГРАНИЦАМ ПРЕДМЕТА
             if (box.get() || tracer.get()) {
                 final Box tightBox = new Box(sMinX, sMinY, sMinZ, sMaxX, sMaxY, sMaxZ);
                 queue.submitCustom(matrices, RenderLayers.debugQuads(), (entry, consumer) -> {
@@ -264,7 +256,6 @@ public class ItemESP extends Module {
 
         for (BakedQuad quad : quads) {
             Direction face = quad.face();
-            // ВАЖНО: Исключаем плоские 1x1 плоскости (NORTH и SOUTH), чтобы не было квадрата!
             if (face == Direction.NORTH || face == Direction.SOUTH) {
                 continue;
             }
@@ -292,7 +283,6 @@ public class ItemESP extends Module {
             float x2 = p2.x() + sliceDx, y2 = p2.y(), z2 = p2.z() + sliceDz;
             float x3 = p3.x() + sliceDx, y3 = p3.y(), z3 = p3.z() + sliceDz;
 
-            // Грань воксельного периметра предмета
             drawQuadDoubleSided(consumer, entry,
                     x0, y0, z0,
                     x1, y1, z1,
@@ -300,7 +290,6 @@ public class ItemESP extends Module {
                     x3, y3, z3,
                     r, g, b, bodyA);
 
-            // Оболочка: контурные ребра вокселей, обтягивающие форму предмета
             if (doShell) {
                 float nx = 0.0f, ny = 0.0f, nz = 0.0f;
                 if (face != null) {
@@ -333,7 +322,6 @@ public class ItemESP extends Module {
                 drawLineQuad(consumer, entry, sx3, sy3, sz3, sx0, sy0, sz0, lineThick, shellR, shellG, shellB, shellEdgeA);
             }
 
-            // Сканлинии поперек высоты вокселей
             if (doScanlines) {
                 float qMinY = Math.min(Math.min(y0, y1), Math.min(y2, y3));
                 float qMaxY = Math.max(Math.max(y0, y1), Math.max(y2, y3));
@@ -371,7 +359,6 @@ public class ItemESP extends Module {
         int outA = (int) MathHelper.clamp(120.0f * intensity, 25.0f, 220.0f);
         float t = 0.0022f;
 
-        // Рисуем только аккуратные ребра вокруг реальных габаритов предмета
         drawSolidBox(consumer, entry, x1 - t, y1 - t, z1 - t, x2 + t, y1 + t, z1 + t, r, g, bCol, outA);
         drawSolidBox(consumer, entry, x1 - t, y1 - t, z2 - t, x2 + t, y1 + t, z2 + t, r, g, bCol, outA);
         drawSolidBox(consumer, entry, x1 - t, y2 - t, z1 - t, x2 + t, y2 + t, z1 + t, r, g, bCol, outA);

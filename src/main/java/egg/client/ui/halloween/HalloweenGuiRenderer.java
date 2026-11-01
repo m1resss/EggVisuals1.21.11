@@ -13,16 +13,12 @@ public final class HalloweenGuiRenderer {
     private static float spiderRetractAnim = 0.0f;
     private static long lastFrameTime = System.currentTimeMillis();
 
-    /**
-     * Atmospheric rising embers and particles inside the GUI window.
-     */
     public static void renderEmbers(DrawContext context, float gx, float gy, float w, float h, float alpha) {
         if (!ClientSettings.isHalloweenEmbers() || alpha <= 0.01f) return;
 
         long now = System.currentTimeMillis();
         float timeSec = (now % 10000000L) / 1000.0f;
 
-        // 18 deterministic floating embers
         for (int i = 0; i < 18; i++) {
             float seedX = (float) ((i * 37.19 + 13.7) % 1.0);
             float speed = 10.0f + (i % 5) * 3.5f;
@@ -50,9 +46,6 @@ public final class HalloweenGuiRenderer {
         }
     }
 
-    /**
-     * Intricate organic cobwebs conforming strictly to the rounded corners of the ClickGUI window.
-     */
     public static void renderWebs(DrawContext context, float gx, float gy, float w, float h, float alpha) {
         if (!ClientSettings.isHalloweenWebs() || alpha <= 0.01f) return;
 
@@ -60,37 +53,30 @@ public final class HalloweenGuiRenderer {
         int arcCol = ColorUtil.rgba(215, 210, 245, (int) (85 * alpha));
         int dewCol = ColorUtil.rgba(255, 255, 255, (int) (180 * alpha));
 
-        float cornerRadius = Theme.WINDOW_RADIUS; // 14.0f
+        float cornerRadius = Theme.WINDOW_RADIUS;
 
-        // 1. TOP-LEFT CORNER WEB (compact size ~40px so it fits neatly above 'Main' and logo)
         renderRoundedCornerWeb(context,
                 gx + cornerRadius, gy + cornerRadius, cornerRadius,
                 (float) Math.PI, (float) (3.0 * Math.PI / 2.0),
-                0.0f, 1.0f,   // Ray 0 goes down along left border
-                1.0f, 0.0f,   // Ray N goes right along top border
+                0.0f, 1.0f,
+                1.0f, 0.0f,
                 40.0f, 5, 4, 0.78f, silkCol, arcCol, dewCol);
 
-        // 2. TOP-RIGHT CORNER WEB (~48px along top-right rounded corner)
         renderRoundedCornerWeb(context,
                 gx + w - cornerRadius, gy + cornerRadius, cornerRadius,
                 (float) (3.0 * Math.PI / 2.0), (float) (2.0 * Math.PI),
-                -1.0f, 0.0f,  // Ray 0 goes left along top border
-                0.0f, 1.0f,   // Ray N goes down along right border
+                -1.0f, 0.0f,
+                0.0f, 1.0f,
                 48.0f, 5, 4, 0.78f, silkCol, arcCol, dewCol);
 
-        // 3. BOTTOM-RIGHT CORNER WEB (~40px along bottom-right rounded corner)
         renderRoundedCornerWeb(context,
                 gx + w - cornerRadius, gy + h - cornerRadius, cornerRadius,
                 0.0f, (float) (Math.PI / 2.0),
-                0.0f, -1.0f,  // Ray 0 goes up along right border
-                -1.0f, 0.0f,  // Ray N goes left along bottom border
+                0.0f, -1.0f,
+                -1.0f, 0.0f,
                 40.0f, 5, 3, 0.76f, silkCol, arcCol, dewCol);
     }
 
-    /**
-     * Renders a cobweb originating from a rounded corner boundary arc rather than an impossible sharp 90-degree apex.
-     * All strands stay strictly inside the rounded window bounds.
-     */
     private static void renderRoundedCornerWeb(DrawContext context,
                                                float cornerCenterX, float cornerCenterY, float cornerRadius,
                                                float startArcAngle, float endArcAngle,
@@ -118,19 +104,16 @@ public final class HalloweenGuiRenderer {
             dirY[i] = rawDy / len;
         }
 
-        // Anchor silk thread hugging rounded border
         for (int i = 0; i < rayCount - 1; i++) {
             Render2D.drawLine(context, anchorX[i], anchorY[i], anchorX[i + 1], anchorY[i + 1], silkCol, 1.0f);
         }
 
-        // Radial rays
         for (int i = 0; i < rayCount; i++) {
             float rx = anchorX[i] + dirX[i] * webLength;
             float ry = anchorY[i] + dirY[i] * webLength;
             Render2D.drawLine(context, anchorX[i], anchorY[i], rx, ry, silkCol, 1.0f);
         }
 
-        // Concentric catenary cross-threads
         for (int ring = 1; ring <= arcCount; ring++) {
             float t = (float) ring / arcCount;
             float dist = webLength * t;
@@ -161,9 +144,6 @@ public final class HalloweenGuiRenderer {
         }
     }
 
-    /**
-     * Interactive dangling spider hanging on a silk thread from the top-left web.
-     */
     public static void renderSpider(DrawContext context, float gx, float gy, float mouseX, float mouseY, float alpha) {
         if (!ClientSettings.isHalloweenWebs() || alpha <= 0.01f) return;
 
@@ -232,29 +212,21 @@ public final class HalloweenGuiRenderer {
         context.getMatrices().popMatrix();
     }
 
-    /**
-     * Glowing Jack-o'-Lantern pumpkins perched on the edges of the window.
-     */
     public static void renderPumpkins(DrawContext context, float gx, float gy, float w, float h, float mouseX, float mouseY, float alpha) {
         if (!ClientSettings.isHalloweenPumpkins() || alpha <= 0.01f) return;
 
         long now = System.currentTimeMillis();
         float timeSec = (now % 10000000L) / 1000.0f;
 
-        // PUMPKIN 1: Perched on top-right border near search/title
         float p1X = gx + w - 46.0f;
         float p1Y = gy - 13.0f;
         renderJackOLantern(context, p1X, p1Y, 34.0f, 28.0f, -4.0f, mouseX, mouseY, alpha, timeSec, 0.0f);
 
-        // PUMPKIN 2: Resting snugly on the bottom-left sidebar corner
         float p2X = gx - 8.0f;
         float p2Y = gy + h - 25.0f;
         renderJackOLantern(context, p2X, p2Y, 28.0f, 24.0f, 8.0f, mouseX, mouseY, alpha, timeSec, 2.5f);
     }
 
-    /**
-     * Compact mini Jack-o'-Lantern for HUD elements (Watermark, Dynamic Island, etc.)
-     */
     public static void renderMiniJackOLantern(DrawContext context, float cx, float cy, float width, float height, float tiltDeg, float alpha) {
         if (alpha <= 0.01f) return;
         long now = System.currentTimeMillis();
@@ -285,7 +257,6 @@ public final class HalloweenGuiRenderer {
         int bloomCol = ColorUtil.rgba(255, 120, 0, (int) (48 * flicker * alpha));
         Render2D.drawShadow(context, -width * 0.5f, -height * 0.4f, width, height, height * 0.45f, shadowSpread, bloomCol);
 
-        // Stem
         float stemThick = Math.max(1.1f, width * 0.08f);
         int stemBaseCol = ColorUtil.rgba(46, 92, 32, (int) (240 * alpha));
         int stemHighlight = ColorUtil.rgba(76, 140, 54, (int) (240 * alpha));
@@ -298,7 +269,6 @@ public final class HalloweenGuiRenderer {
             Render2D.drawLine(context, 3.5f, -height * 0.58f, 5.0f, -height * 0.50f, vineCol, 1.1f);
         }
 
-        // Pumpkin 3D multi-lobed body
         int darkCrease = ColorUtil.rgba(165, 42, 0, (int) (245 * alpha));
         int outerLobeCol = ColorUtil.rgba(216, 67, 21, (int) (245 * alpha));
         int midLobeCol = ColorUtil.rgba(245, 124, 0, (int) (245 * alpha));
@@ -322,7 +292,6 @@ public final class HalloweenGuiRenderer {
         Render2D.drawRoundedRect(context, -frontW * 0.5f, -frontH * 0.5f, frontW, frontH, frontH * 0.46f, frontLobeCol);
         Render2D.drawRoundedRect(context, -frontW * 0.32f, -frontH * 0.42f, frontW * 0.64f, frontH * 0.28f, frontH * 0.14f, highlightCol);
 
-        // Carved face
         int flameYellow = ColorUtil.rgba(255, 238, 120, (int) (255 * alpha));
         int flameOrange = ColorUtil.rgba(255, 110, 0, (int) (245 * alpha));
         int carveSocket = ColorUtil.rgba(90, 20, 0, (int) (230 * alpha));
@@ -331,28 +300,24 @@ public final class HalloweenGuiRenderer {
         float eyeMidR = Math.max(0.6f, width * 0.07f);
         float eyeCoreR = Math.max(0.4f, width * 0.04f);
 
-        // Left Eye
         float leX = -width * 0.20f;
         float leY = -height * 0.10f;
         Render2D.drawCircle(context, leX, leY, eyeOuterR, carveSocket);
         Render2D.drawCircle(context, leX + 0.2f, leY + 0.2f, eyeMidR, flameOrange);
         Render2D.drawCircle(context, leX + 0.3f, leY + 0.3f, eyeCoreR, flameYellow);
 
-        // Right Eye
         float reX = width * 0.20f;
         float reY = -height * 0.10f;
         Render2D.drawCircle(context, reX, reY, eyeOuterR, carveSocket);
         Render2D.drawCircle(context, reX - 0.2f, reY + 0.2f, eyeMidR, flameOrange);
         Render2D.drawCircle(context, reX - 0.3f, reY + 0.3f, eyeCoreR, flameYellow);
 
-        // Nose
         float nX = 0.0f;
         float nY = height * 0.04f;
         float noseR = Math.max(0.6f, width * 0.055f);
         Render2D.drawCircle(context, nX, nY, noseR, carveSocket);
         Render2D.drawCircle(context, nX, nY + 0.2f, noseR * 0.65f, flameYellow);
 
-        // Mouth
         float mw = width * 0.62f;
         float mh = height * 0.30f;
         float my = height * 0.22f;
@@ -371,17 +336,11 @@ public final class HalloweenGuiRenderer {
         context.getMatrices().popMatrix();
     }
 
-    /**
-     * Crooked witch hat perched on top of the Egg Client Logo, tilted to the right (+13 degrees).
-     */
     public static void renderWitchHat(DrawContext context, float cx, float cy, float size, float alpha) {
         if (!ClientSettings.isHalloweenStyle() || alpha <= 0.01f) return;
         renderWitchHatDirect(context, cx, cy, size, alpha);
     }
 
-    /**
-     * Crooked witch hat without ClientSettings check (used by HUD elements when Halloween is toggled in Interface).
-     */
     public static void renderWitchHatDirect(DrawContext context, float cx, float cy, float size, float alpha) {
         if (alpha <= 0.01f) return;
 

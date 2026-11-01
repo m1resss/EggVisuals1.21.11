@@ -39,7 +39,6 @@ public class GlobalsNetClient implements Runnable {
         if (this.running.get()) return;
         this.running.set(true);
 
-        // Start UDP listener for LAN auto-discovery with SO_REUSEADDR
         try {
             MulticastSocket mcast = new MulticastSocket(null);
             mcast.setReuseAddress(true);
@@ -225,7 +224,6 @@ public class GlobalsNetClient implements Runnable {
             sendPublish(TOPIC_PREFIX + this.currentServer, payload);
             sendPublish(TOPIC_PREFIX + "all", payload);
 
-            // Also broadcast over UDP LAN (both subnet and local loopback)
             sendUdpBroadcast(payload);
         } catch (Exception ignored) {
         }
@@ -270,22 +268,17 @@ public class GlobalsNetClient implements Runnable {
     private void sendConnect() throws Exception {
         ByteArrayOutputStream variableHeaderAndPayload = new ByteArrayOutputStream();
 
-        // Protocol Name
         variableHeaderAndPayload.write(0x00);
         variableHeaderAndPayload.write(0x04);
         variableHeaderAndPayload.write("MQTT".getBytes(StandardCharsets.UTF_8));
 
-        // Protocol Level (4 = 3.1.1)
         variableHeaderAndPayload.write(0x04);
 
-        // Connect Flags (Clean Session = 0x02)
         variableHeaderAndPayload.write(0x02);
 
-        // Keep Alive (30 seconds)
         variableHeaderAndPayload.write(0x00);
         variableHeaderAndPayload.write(0x1E);
 
-        // Payload: Client ID
         String clientId = "EggVisual_" + UUID.randomUUID().toString().substring(0, 12);
         byte[] clientBytes = clientId.getBytes(StandardCharsets.UTF_8);
         variableHeaderAndPayload.write((clientBytes.length >> 8) & 0xFF);
@@ -294,7 +287,7 @@ public class GlobalsNetClient implements Runnable {
 
         byte[] varBytes = variableHeaderAndPayload.toByteArray();
 
-        this.out.write(0x10); // CONNECT packet type
+        this.out.write(0x10);
         writeRemainingLength(this.out, varBytes.length);
         this.out.write(varBytes);
         this.out.flush();
@@ -303,21 +296,18 @@ public class GlobalsNetClient implements Runnable {
     private void sendSubscribe(String topic) throws Exception {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
 
-        // Packet ID (1)
         buf.write(0x00);
         buf.write(0x01);
 
-        // Topic string
         byte[] topicBytes = topic.getBytes(StandardCharsets.UTF_8);
         buf.write((topicBytes.length >> 8) & 0xFF);
         buf.write(topicBytes.length & 0xFF);
         buf.write(topicBytes);
 
-        // QoS (0)
         buf.write(0x00);
 
         byte[] body = buf.toByteArray();
-        this.out.write(0x82); // SUBSCRIBE with QoS 1 header
+        this.out.write(0x82);
         writeRemainingLength(this.out, body.length);
         this.out.write(body);
         this.out.flush();
@@ -336,7 +326,7 @@ public class GlobalsNetClient implements Runnable {
         buf.write(payloadBytes);
 
         byte[] body = buf.toByteArray();
-        this.out.write(0x30); // PUBLISH (QoS 0)
+        this.out.write(0x30);
         writeRemainingLength(this.out, body.length);
         this.out.write(body);
         this.out.flush();
@@ -344,7 +334,7 @@ public class GlobalsNetClient implements Runnable {
 
     private void sendPing() throws Exception {
         if (this.out == null) return;
-        this.out.write(0xC0); // PINGREQ
+        this.out.write(0xC0);
         this.out.write(0x00);
         this.out.flush();
     }

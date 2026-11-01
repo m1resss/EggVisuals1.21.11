@@ -76,7 +76,6 @@ public class Globals extends Module {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null) return;
 
-        // Auto server detection
         String currentServer = "singleplayer";
         if (mc.world != null && !mc.isInSingleplayer() && mc.getCurrentServerEntry() != null) {
             currentServer = mc.getCurrentServerEntry().address;
@@ -93,14 +92,12 @@ public class Globals extends Module {
             this.netClient.updateServer(currentServer);
         }
 
-        // Local LAN / machine shared state sync (instant discovery for local multi-instance / LAN)
         long now = System.currentTimeMillis();
         if (now - this.lastLocalShareTime > 1000L) {
             this.lastLocalShareTime = now;
             syncLocalShare(mc, now);
         }
 
-        // Prune expired peers (>35 seconds)
         this.peersByName.entrySet().removeIf(entry -> {
             boolean expired = (now - entry.getValue() > 35000L);
             if (expired) {
@@ -147,7 +144,6 @@ public class Globals extends Module {
                 }
             }
 
-            // Write own state
             String myName = mc.player.getNameForScoreboard().toLowerCase(Locale.ROOT);
             JsonObject selfObj = new JsonObject();
             selfObj.addProperty("uuid", mc.player.getUuidAsString());
@@ -166,7 +162,6 @@ public class Globals extends Module {
             }
             mergedRoot.add(myName, selfObj);
 
-            // Read peers
             for (var entry : mergedRoot.entrySet()) {
                 String peerName = entry.getKey().toLowerCase(Locale.ROOT);
                 if (peerName.equals(myName)) continue;
@@ -174,7 +169,7 @@ public class Globals extends Module {
                 if (entry.getValue().isJsonObject()) {
                     JsonObject pObj = entry.getValue().getAsJsonObject();
                     long pTime = pObj.has("time") ? pObj.get("time").getAsLong() : 0L;
-                    if (now - pTime < 25000L) { // active peer within 25 seconds
+                    if (now - pTime < 25000L) {
                         this.peersByName.put(peerName, now);
                         UUID pUuid = null;
                         if (pObj.has("uuid")) {
@@ -221,7 +216,7 @@ public class Globals extends Module {
 
                 MinecraftClient mc = MinecraftClient.getInstance();
                 if (mc.player != null && name.equalsIgnoreCase(mc.player.getNameForScoreboard())) {
-                    return; // Ignore own echoes
+                    return;
                 }
 
                 long now = System.currentTimeMillis();
@@ -297,7 +292,6 @@ public class Globals extends Module {
             }
         }
 
-        // Check by playerName string directly
         if (state.playerName != null) {
             String raw = state.playerName.getString().trim().toLowerCase(Locale.ROOT);
             if (raw.startsWith("🥚")) raw = raw.substring(1).trim();

@@ -170,7 +170,6 @@ public final class HudAnimations {
         float elapsed = Math.min((float) (System.currentTimeMillis() - typedAt) / (130.0f / speed), 1.0f);
         if (elapsed >= 1.0f) return 1.0f;
 
-        // Cubic out easing: 1 - pow(1 - x, 3)
         float f = 1.0f - elapsed;
         return 1.0f - f * f * f;
     }

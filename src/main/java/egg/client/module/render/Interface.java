@@ -989,7 +989,6 @@ public class Interface extends Module {
 
                 int bin = Math.min(binCount - 1, (int) (h * binCount));
 
-                // Anti-flesh penalty: penalize skin/beige hues (14 deg to 44 deg) with low/medium saturation
                 float weight = 1.0f;
                 float deg = h * 360.0f;
                 if (deg >= 14.0f && deg <= 44.0f && s < 0.58f) {
