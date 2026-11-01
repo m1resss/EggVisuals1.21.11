@@ -7,6 +7,8 @@ import egg.client.render.shader.MeshDrawUtil;
 import egg.client.render.shader.ParticleBlurRenderer;
 import egg.client.render.shader.Pipelines;
 import egg.client.render.shader.ProjectionUtil;
+import egg.client.module.ModuleManager;
+import egg.client.util.MediaTracker;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.BuiltBuffer;
 import net.minecraft.client.render.Camera;
@@ -74,7 +76,7 @@ public class TargetESP extends Module {
     private static final float FREE_LIFE = 1.1F;
 
     private final ModeSetting mode = new ModeSetting("Стиль", "Разряд", "Стиль Target ESP",
-            "Разряд", "Молнии", "Снежинки", "Души", "Кубы");
+            "Разряд", "Молнии", "Снежинки", "Души", "Кубы", "Обруч Музыкальный");
 
     private final ModeSetting dischargeColorMode = new ModeSetting("Режим цвета", "Переливание", "Режим окраски цели",
             "Переливание", "Статичный", "Тема");
@@ -84,6 +86,9 @@ public class TargetESP extends Module {
     private final SliderSetting dischargeSpeed = new SliderSetting("Скорость разряда", 2.2, 0.5, 6.0, 0.1, "Скорость перемещения полосы разряда");
 
     private final SliderSetting radius = new SliderSetting("Радиус", 0.95, 0.4, 2.5, 0.05, "Радиус охвата цели");
+    private final SliderSetting hoopHeight = new SliderSetting("Высота", 0.45, 0.1, 1.5, 0.05, "Высота обруча и звуковой волны");
+    private final SliderSetting hoopWaveSpeed = new SliderSetting("Скорость волны", 1.8, 0.2, 5.0, 0.1, "Скорость вращения и колебания волны");
+    private final SliderSetting hoopGlow = new SliderSetting("Яркость свечения", 1.0, 0.2, 2.0, 0.1, "Интенсивность свечения обруча");
     private final SliderSetting speed = new SliderSetting("Скорость", 1.8, 0.5, 8.0, 0.1, "Скорость движения частиц");
     private final SliderSetting particleSize = new SliderSetting("Размер частиц", 1.1, 0.3, 2.5, 0.05, "Масштаб частиц");
     private final SliderSetting tailLength = new SliderSetting("Длина хвоста", 16.0, 4.0, 30.0, 1.0, "Длина следа частиц (режим Души)");
@@ -114,6 +119,11 @@ public class TargetESP extends Module {
     private int lastTargetHurtTime = 0;
     private int trackedTargetId = -1;
     private final DischargeEffect dischargeEffect = new DischargeEffect();
+    private float hoopCurrentR = -1.0f;
+    private float hoopCurrentG = -1.0f;
+    private float hoopCurrentB = -1.0f;
+    private float hoopTime = 0.0f;
+    private long hoopLastNanos = 0L;
 
     public TargetESP() {
         super("Target ESP", "Снежный вихрь и астральные проекции вокруг цели", Category.ESP);
@@ -122,6 +132,11 @@ public class TargetESP extends Module {
         tailLength.setVisible(() -> "Души".equals(mode.get()));
         coreGlow.setVisible(() -> "Души".equals(mode.get()));
         radius.setVisible(() -> true);
+        hoopHeight.setVisible(() -> "Обруч Музыкальный".equals(mode.get()));
+        hoopWaveSpeed.setVisible(() -> "Обруч Музыкальный".equals(mode.get()));
+        hoopGlow.setVisible(() -> "Обруч Музыкальный".equals(mode.get()));
+        speed.setVisible(() -> !"Разряд".equals(mode.get()) && !"Обруч Музыкальный".equals(mode.get()));
+        particleSize.setVisible(() -> "Снежинки".equals(mode.get()) || "Души".equals(mode.get()) || "Кубы".equals(mode.get()));
 
         dischargeColorMode.setVisible(() -> "Разряд".equals(mode.get()));
         dischargeColor1.setVisible(() -> "Разряд".equals(mode.get()) && "Переливание".equals(dischargeColorMode.get()));
@@ -129,7 +144,7 @@ public class TargetESP extends Module {
         dischargeColorStatic.setVisible(() -> "Разряд".equals(mode.get()) && "Статичный".equals(dischargeColorMode.get()));
         dischargeSpeed.setVisible(() -> "Разряд".equals(mode.get()));
 
-        addSettings(mode, radius, speed, particleSize, tailLength, coreGlow,
+        addSettings(mode, radius, hoopHeight, hoopWaveSpeed, hoopGlow, speed, particleSize, tailLength, coreGlow,
                 dischargeColorMode, dischargeColor1, dischargeColor2, dischargeColorStatic, dischargeSpeed,
                 hurtColor, maxDistance, onlyPlayers, retainTime, focusSystem);
     }
@@ -158,6 +173,11 @@ public class TargetESP extends Module {
         this.dischargePulse = 0.0f;
         this.lastTargetHurtTime = 0;
         this.trackedTargetId = -1;
+        this.hoopCurrentR = -1.0f;
+        this.hoopCurrentG = -1.0f;
+        this.hoopCurrentB = -1.0f;
+        this.hoopTime = 0.0f;
+        this.hoopLastNanos = 0L;
     }
 
     public void onTick() {
@@ -329,6 +349,8 @@ public class TargetESP extends Module {
         } else if ("Молнии".equals(curMode)) {
 
         } else if ("Разряд".equals(curMode)) {
+
+        } else if ("Обруч Музыкальный".equals(curMode)) {
 
         } else {
             renderSouls(context, center.x, centerY, center.z, entityHeight, timeSec, baseRadius, spd, sizeMult, steps, activeColor);
@@ -662,6 +684,11 @@ public class TargetESP extends Module {
             curTarget = this.attachedTarget;
         }
 
+        if ("Обруч Музыкальный".equals(curMode)) {
+            renderMusicalHoop(matrices, camera, tickDelta, curTarget, immediate, camPos);
+            return;
+        }
+
         if ("Разряд".equals(curMode)) {
             if (curTarget != null || this.animProgress > 0.01f) {
                 int col = getActiveDischargeColor(0.0f);
@@ -869,4 +896,279 @@ public class TargetESP extends Module {
         boolean flower, orbiting, grounded, dead, placed;
         int textureIdx;
     }
+
+    private void renderMusicalHoop(MatrixStack matrices, Camera camera, float tickDelta, LivingEntity curTarget, VertexConsumerProvider.Immediate immediate, Vec3d camPos) {
+        if (curTarget == null && (this.lastTargetPos == null || this.animProgress <= 0.01f)) {
+            return;
+        }
+
+        long now = System.nanoTime();
+        float dt = this.hoopLastNanos == 0L ? 0.016f : MathHelper.clamp((float) ((now - this.hoopLastNanos) * 1e-9), 0.001f, 0.05f);
+        this.hoopLastNanos = now;
+
+        float animSpd = (float) this.hoopWaveSpeed.get();
+        this.hoopTime += dt * animSpd;
+
+        // 1. Media track cover color and playback status
+        Interface iface = ModuleManager.getInstance().getModule(Interface.class);
+        int targetColor = Theme.getAccent();
+        boolean isMusicPlaying = false;
+        if (iface != null) {
+            iface.ensureMediaUpdated();
+            if (iface.hasCoverArt()) {
+                targetColor = iface.getDominantAccentColor();
+            }
+            if (iface.isMediaPlaying()) {
+                isMusicPlaying = true;
+            }
+        }
+        MediaTracker mt = MediaTracker.getInstance();
+        if (mt != null && mt.isPlaying()) {
+            isMusicPlaying = true;
+        }
+
+        float targetR = ((targetColor >> 16) & 0xFF) / 255.0f;
+        float targetG = ((targetColor >> 8) & 0xFF) / 255.0f;
+        float targetB = (targetColor & 0xFF) / 255.0f;
+
+        // Smooth color transition across tracks
+        if (this.hoopCurrentR < 0.0f) {
+            this.hoopCurrentR = targetR;
+            this.hoopCurrentG = targetG;
+            this.hoopCurrentB = targetB;
+        } else {
+            float colorLerp = Math.min(1.0f, dt * 3.5f);
+            this.hoopCurrentR = MathHelper.lerp(colorLerp, this.hoopCurrentR, targetR);
+            this.hoopCurrentG = MathHelper.lerp(colorLerp, this.hoopCurrentG, targetG);
+            this.hoopCurrentB = MathHelper.lerp(colorLerp, this.hoopCurrentB, targetB);
+        }
+
+        // Damage reaction
+        float hurtFactor = 0.0f;
+        if (curTarget != null && this.hurtColor.get()) {
+            float hurtTimer = Math.max(0.0f, curTarget.hurtTime - tickDelta);
+            hurtFactor = (float) Math.sin(hurtTimer * (Math.PI / 10.0)) * 0.95f;
+            hurtFactor = MathHelper.clamp(hurtFactor, 0.0f, 1.0f);
+        }
+
+        int baseR = MathHelper.clamp((int) (this.hoopCurrentR * 255.0f), 0, 255);
+        int baseG = MathHelper.clamp((int) (this.hoopCurrentG * 255.0f), 0, 255);
+        int baseB = MathHelper.clamp((int) (this.hoopCurrentB * 255.0f), 0, 255);
+
+        int finalR = hurtFactor > 0.01f ? (int) MathHelper.lerp(hurtFactor, (float) baseR, 255.0f) : baseR;
+        int finalG = hurtFactor > 0.01f ? (int) MathHelper.lerp(hurtFactor, (float) baseG, 37.0f) : baseG;
+        int finalB = hurtFactor > 0.01f ? (int) MathHelper.lerp(hurtFactor, (float) baseB, 37.0f) : baseB;
+
+        // Target coordinates in camera space
+        double targetWorldX, targetWorldY, targetWorldZ;
+        if (curTarget != null) {
+            targetWorldX = MathHelper.lerp(tickDelta, curTarget.lastRenderX, curTarget.getX());
+            targetWorldY = MathHelper.lerp(tickDelta, curTarget.lastRenderY, curTarget.getY());
+            targetWorldZ = MathHelper.lerp(tickDelta, curTarget.lastRenderZ, curTarget.getZ());
+        } else {
+            targetWorldX = this.lastTargetPos.x;
+            targetWorldY = this.lastTargetPos.y;
+            targetWorldZ = this.lastTargetPos.z;
+        }
+
+        float relX = (float) (targetWorldX - camPos.x);
+        float relY = (float) (targetWorldY - camPos.y);
+        float relZ = (float) (targetWorldZ - camPos.z);
+
+        float rVal = (float) this.radius.get();
+        float entityWidth = curTarget != null ? curTarget.getWidth() : 0.6f;
+        float hoopR = (entityWidth * 0.75f + 0.20f) * rVal;
+        float hoopH = (float) this.hoopHeight.get();
+        float glowMult = (float) this.hoopGlow.get();
+        float masterAlpha = MathHelper.clamp(this.animProgress * glowMult, 0.0f, 2.0f);
+        if (masterAlpha <= 0.005f) return;
+
+        float baseY = relY + 0.04f;
+
+        // Audio beat simulation & harmonics
+        float t = this.hoopTime;
+        float beatRaw = isMusicPlaying ? (float) Math.sin(t * 3.6f) : 0.0f;
+        float beatPulse = Math.max(0.0f, beatRaw);
+        beatPulse = beatPulse * beatPulse * beatPulse; // sharp kick pulse
+        float snareRaw = isMusicPlaying ? (float) Math.cos(t * 7.2f + 0.3f) : 0.0f;
+        float snarePulse = Math.max(0.0f, snareRaw) * 0.5f;
+        float audioEnergy = isMusicPlaying ? (0.65f + 0.35f * (beatPulse + snarePulse)) : 0.35f;
+
+        int segments = 96;
+        float angleStep = (float) (2.0 * Math.PI / segments);
+
+        // Precompute ring vertices and wave heights
+        float[] vx = new float[segments + 1];
+        float[] vz = new float[segments + 1];
+        float[] waveY = new float[segments + 1];
+        float[] waveSpikes = new float[segments + 1];
+
+        for (int i = 0; i <= segments; i++) {
+            float theta = i * angleStep;
+            float cos = (float) Math.cos(theta);
+            float sin = (float) Math.sin(theta);
+            vx[i] = relX + hoopR * cos;
+            vz[i] = relZ + hoopR * sin;
+
+            float h1 = (float) Math.sin(3.0 * theta - t * 2.6f);
+            float h2 = (float) Math.sin(6.0 * theta + t * 4.1f) * 0.55f;
+            float h3 = (float) Math.cos(10.0 * theta - t * 6.2f) * 0.35f;
+            float h4 = (float) Math.sin(16.0 * theta + t * 9.5f) * (0.15f + 0.40f * beatPulse);
+
+            float waveNorm = (h1 + h2 + h3 + h4) / 2.05f;
+            waveSpikes[i] = waveNorm;
+            float amp = 0.32f * audioEnergy;
+            float waveHFactor = MathHelper.clamp(0.44f + waveNorm * amp, 0.08f, 0.92f);
+            waveY[i] = baseY + hoopH * waveHFactor;
+        }
+
+        VertexConsumer buf = immediate.getBuffer(RenderLayers.debugQuads());
+
+        // 1. Volumetric Cylindrical Aura (Fading upwards)
+        int aCylBottom = (int) MathHelper.clamp(100.0f * masterAlpha, 0.0f, 255.0f);
+        for (int i = 0; i < segments; i++) {
+            float x1 = vx[i], z1 = vz[i];
+            float x2 = vx[i + 1], z2 = vz[i + 1];
+
+            drawGradQuadDoubleSided(buf,
+                    x1, baseY, z1, finalR, finalG, finalB, aCylBottom,
+                    x2, baseY, z2, finalR, finalG, finalB, aCylBottom,
+                    x2, baseY + hoopH, z2, finalR, finalG, finalB, 0,
+                    x1, baseY + hoopH, z1, finalR, finalG, finalB, 0);
+        }
+
+        // 2. Volumetric Under-Wave Curtain
+        int aCurtainBottom = (int) MathHelper.clamp(35.0f * masterAlpha, 0.0f, 255.0f);
+        int aCurtainTop = (int) MathHelper.clamp(135.0f * masterAlpha, 0.0f, 255.0f);
+        for (int i = 0; i < segments; i++) {
+            float x1 = vx[i], z1 = vz[i], y1 = waveY[i];
+            float x2 = vx[i + 1], z2 = vz[i + 1], y2 = waveY[i + 1];
+
+            drawGradQuadDoubleSided(buf,
+                    x1, baseY, z1, finalR, finalG, finalB, aCurtainBottom,
+                    x2, baseY, z2, finalR, finalG, finalB, aCurtainBottom,
+                    x2, y2, z2, finalR, finalG, finalB, aCurtainTop,
+                    x1, y1, z1, finalR, finalG, finalB, aCurtainTop);
+        }
+
+        // 3. Grounded Neon Rim (Floor glow contact ring)
+        float ringPad = 0.08f;
+        int aRimMid = (int) MathHelper.clamp(160.0f * masterAlpha, 0.0f, 255.0f);
+        for (int i = 0; i < segments; i++) {
+            float theta1 = i * angleStep;
+            float theta2 = (i + 1) * angleStep;
+            float cos1 = (float) Math.cos(theta1), sin1 = (float) Math.sin(theta1);
+            float cos2 = (float) Math.cos(theta2), sin2 = (float) Math.sin(theta2);
+
+            float inX1 = relX + (hoopR - ringPad) * cos1, inZ1 = relZ + (hoopR - ringPad) * sin1;
+            float inX2 = relX + (hoopR - ringPad) * cos2, inZ2 = relZ + (hoopR - ringPad) * sin2;
+            float midX1 = vx[i], midZ1 = vz[i];
+            float midX2 = vx[i + 1], midZ2 = vz[i + 1];
+            float outX1 = relX + (hoopR + ringPad) * cos1, outZ1 = relZ + (hoopR + ringPad) * sin1;
+            float outX2 = relX + (hoopR + ringPad) * cos2, outZ2 = relZ + (hoopR + ringPad) * sin2;
+
+            // Inner half
+            drawGradQuadDoubleSided(buf,
+                    inX1, baseY, inZ1, finalR, finalG, finalB, 0,
+                    inX2, baseY, inZ2, finalR, finalG, finalB, 0,
+                    midX2, baseY, midZ2, finalR, finalG, finalB, aRimMid,
+                    midX1, baseY, midZ1, finalR, finalG, finalB, aRimMid);
+
+            // Outer half
+            drawGradQuadDoubleSided(buf,
+                    midX1, baseY, midZ1, finalR, finalG, finalB, aRimMid,
+                    midX2, baseY, midZ2, finalR, finalG, finalB, aRimMid,
+                    outX2, baseY, outZ2, finalR, finalG, finalB, 0,
+                    outX1, baseY, outZ1, finalR, finalG, finalB, 0);
+        }
+
+        // 4. Outer Neon Bloom Ribbon (Waveform line)
+        float bloomThick = hoopH * 0.040f;
+        int aBloom = (int) MathHelper.clamp(210.0f * masterAlpha, 0.0f, 255.0f);
+        for (int i = 0; i < segments; i++) {
+            float x1 = vx[i], z1 = vz[i], y1 = waveY[i];
+            float x2 = vx[i + 1], z2 = vz[i + 1], y2 = waveY[i + 1];
+
+            drawQuadDoubleSided(buf,
+                    x1, y1 - bloomThick, z1,
+                    x2, y2 - bloomThick, z2,
+                    x2, y2 + bloomThick, z2,
+                    x1, y1 + bloomThick, z1,
+                    finalR, finalG, finalB, aBloom);
+        }
+
+        // 5. Inner Laser White Core Line
+        float coreThick = hoopH * 0.015f;
+        int aCore = (int) MathHelper.clamp(255.0f * masterAlpha, 0.0f, 255.0f);
+        int cR = MathHelper.clamp((int) (255 * 0.82f + finalR * 0.18f), 0, 255);
+        int cG = MathHelper.clamp((int) (255 * 0.82f + finalG * 0.18f), 0, 255);
+        int cB = MathHelper.clamp((int) (255 * 0.82f + finalB * 0.18f), 0, 255);
+
+        for (int i = 0; i < segments; i++) {
+            float x1 = vx[i], z1 = vz[i], y1 = waveY[i];
+            float x2 = vx[i + 1], z2 = vz[i + 1], y2 = waveY[i + 1];
+
+            drawQuadDoubleSided(buf,
+                    x1, y1 - coreThick, z1,
+                    x2, y2 - coreThick, z2,
+                    x2, y2 + coreThick, z2,
+                    x1, y1 + coreThick, z1,
+                    cR, cG, cB, aCore);
+        }
+
+        // 6. Audio Peak Spikes / Needles
+        if (isMusicPlaying) {
+            float needleHalfW = 0.0035f;
+            for (int i = 0; i < segments; i++) {
+                if (waveSpikes[i] > 0.55f) {
+                    float spikeIntensity = (waveSpikes[i] - 0.55f) / 0.45f;
+                    float needleTop = Math.min(baseY + hoopH * 0.96f, waveY[i] + hoopH * 0.35f * spikeIntensity);
+                    int aNeedleBase = (int) MathHelper.clamp(180.0f * spikeIntensity * masterAlpha, 0.0f, 255.0f);
+
+                    float x = vx[i], z = vz[i], y = waveY[i];
+                    drawGradQuadDoubleSided(buf,
+                            x - needleHalfW, y, z, cR, cG, cB, aNeedleBase,
+                            x + needleHalfW, y, z, cR, cG, cB, aNeedleBase,
+                            x + needleHalfW, needleTop, z, cR, cG, cB, 0,
+                            x - needleHalfW, needleTop, z, cR, cG, cB, 0);
+                }
+            }
+        }
+    }
+
+    private static void drawQuadDoubleSided(VertexConsumer buf,
+                                           float x1, float y1, float z1,
+                                           float x2, float y2, float z2,
+                                           float x3, float y3, float z3,
+                                           float x4, float y4, float z4,
+                                           int r, int g, int b, int a) {
+        if (a <= 0) return;
+        buf.vertex(x1, y1, z1).color(r, g, b, a);
+        buf.vertex(x2, y2, z2).color(r, g, b, a);
+        buf.vertex(x3, y3, z3).color(r, g, b, a);
+        buf.vertex(x4, y4, z4).color(r, g, b, a);
+
+        buf.vertex(x4, y4, z4).color(r, g, b, a);
+        buf.vertex(x3, y3, z3).color(r, g, b, a);
+        buf.vertex(x2, y2, z2).color(r, g, b, a);
+        buf.vertex(x1, y1, z1).color(r, g, b, a);
+    }
+
+    private static void drawGradQuadDoubleSided(VertexConsumer buf,
+                                               float x1, float y1, float z1, int r1, int g1, int b1, int a1,
+                                               float x2, float y2, float z2, int r2, int g2, int b2, int a2,
+                                               float x3, float y3, float z3, int r3, int g3, int b3, int a3,
+                                               float x4, float y4, float z4, int r4, int g4, int b4, int a4) {
+        if (a1 <= 0 && a2 <= 0 && a3 <= 0 && a4 <= 0) return;
+        buf.vertex(x1, y1, z1).color(r1, g1, b1, a1);
+        buf.vertex(x2, y2, z2).color(r2, g2, b2, a2);
+        buf.vertex(x3, y3, z3).color(r3, g3, b3, a3);
+        buf.vertex(x4, y4, z4).color(r4, g4, b4, a4);
+
+        buf.vertex(x4, y4, z4).color(r4, g4, b4, a4);
+        buf.vertex(x3, y3, z3).color(r3, g3, b3, a3);
+        buf.vertex(x2, y2, z2).color(r2, g2, b2, a2);
+        buf.vertex(x1, y1, z1).color(r1, g1, b1, a1);
+    }
+
 }

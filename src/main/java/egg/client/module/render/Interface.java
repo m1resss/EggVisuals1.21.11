@@ -1177,6 +1177,19 @@ public class Interface extends Module {
         return this.hasActiveMedia;
     }
 
+    public boolean hasCoverArt() {
+        return this.hasCoverArt;
+    }
+
+    public int getDominantAccentColor() {
+        return (this.dominantAccentColor & 0xFFFFFF) != 0 ? this.dominantAccentColor : 0xFF4A7CC4;
+    }
+
+    public void ensureMediaUpdated() {
+        pollMedia();
+        updateCoverTexture();
+    }
+
     public boolean isMediaPlaying() {
         return this.isMediaPlaying;
     }
