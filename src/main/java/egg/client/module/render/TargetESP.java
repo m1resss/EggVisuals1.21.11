@@ -329,12 +329,6 @@ public class TargetESP extends Module {
 
         if ("Кубы".equals(curMode)) {
             renderCubes(context, center.x, centerY, center.z, entityHeight, timeSec, baseRadius, spd, sizeMult, activeColor);
-        } else if ("Молнии".equals(curMode)) {
-
-        } else if ("Разряд".equals(curMode)) {
-
-        } else {
-            renderSouls(context, center.x, centerY, center.z, entityHeight, timeSec, baseRadius, spd, sizeMult, steps, activeColor);
         }
     }
 
@@ -533,61 +527,230 @@ public class TargetESP extends Module {
         return fromY - 1.0;
     }
 
-    private void renderSouls(DrawContext context, double cx, double cy, double cz, double height,
-                             float timeSec, float baseR, float spd, float sizeMult, int steps, int color) {
+    private void renderSouls3D(MatrixStack matrices, Camera camera, float tickDelta, LivingEntity curTarget) {
+        Vec3d camPos = camera.getCameraPos();
+        Vec3d targetPos;
+        double height;
+        if (curTarget != null) {
+            targetPos = curTarget.getLerpedPos(tickDelta);
+            height = curTarget.getHeight();
+            this.lastTargetPos = targetPos;
+            this.lastTargetHeight = height;
+        } else if (this.lastTargetPos != null) {
+            targetPos = this.lastTargetPos;
+            height = this.lastTargetHeight;
+        } else {
+            return;
+        }
+
+        float targetX = (float) (targetPos.x - camPos.x);
+        float targetY = (float) (targetPos.y - camPos.y);
+        float targetZ = (float) (targetPos.z - camPos.z);
+
+        long now = System.currentTimeMillis();
+        float timeSec = (float) (now % 10000000L) / 1000.0f;
         double timeMs = timeSec * 1000.0;
+
         float fade = this.animProgress;
         float expand = (1.0f - fade);
+        float baseR = (float) this.radius.get();
+        float spd = (float) this.speed.get();
+        float sizeMult = (float) this.particleSize.get();
+        int steps = Math.max(6, (int) this.tailLength.get());
+
         float currentR = baseR * (1.0f + expand * 1.6f);
-        double currentCy = cy + expand * 1.35;
+        double centerY = targetY + height * 0.5 + expand * 1.35;
         float hAmp = (float) (height * 0.28) * (1.0f + expand * 0.6f);
 
+        int themeColor = Theme.getAccent();
+        int hurtCol = 0xFFFF2525;
+        float hurtFactor = 0.0f;
+        if (curTarget != null) {
+            float hurtTimer = Math.max(0.0F, curTarget.hurtTime - tickDelta);
+            hurtFactor = this.hurtColor.get() ? (float) Math.sin(hurtTimer * (Math.PI / 10.0)) * 0.95F : 0.0f;
+            hurtFactor = MathHelper.clamp(hurtFactor, 0.0f, 1.0f);
+        }
+        int activeColor = hurtFactor > 0.01f ? ColorUtil.interpolate(themeColor, hurtCol, hurtFactor) : themeColor;
+        int r = (activeColor >> 16) & 0xFF;
+        int g = (activeColor >> 8) & 0xFF;
+        int b = activeColor & 0xFF;
+
+        int coreR = this.coreGlow.get() ? (int) MathHelper.lerp(0.75f, r, 255.0f) : r;
+        int coreG = this.coreGlow.get() ? (int) MathHelper.lerp(0.75f, g, 255.0f) : g;
+        int coreB = this.coreGlow.get() ? (int) MathHelper.lerp(0.75f, b, 255.0f) : b;
+
+        List<List<Vec3d>> soulPaths = new ArrayList<>(3);
+
         for (int soul = 0; soul < 3; soul++) {
+            List<Vec3d> rawPoints = new ArrayList<>(steps);
             for (int i = 0; i < steps; i++) {
-                float trailFactor = 1.0f - ((float) i / (float) steps);
-                double angle = 0.15 * (timeMs - (i * 12.0 / Math.max(0.5, spd))) / 25.0 * spd;
+                double delayMs = (i * 13.5 / Math.max(0.5, spd));
+                double angle = 0.15 * (timeMs - delayMs) / 25.0 * spd;
                 double s = Math.sin(angle) * currentR;
                 double c = Math.cos(angle) * currentR;
                 double yWave = Math.sin(angle * 1.5 + soul * 2.0) * hAmp;
 
                 double wx, wy, wz;
                 if (soul == 0) {
-                    wx = cx + s;
-                    wy = currentCy + (c * 0.25 + yWave * 0.35);
-                    wz = cz - c;
+                    wx = targetX + s;
+                    wy = centerY + (c * 0.25 + yWave * 0.35);
+                    wz = targetZ - c;
                 } else if (soul == 1) {
-                    wx = cx - s;
-                    wy = currentCy + (s * 0.25 - yWave * 0.35);
-                    wz = cz - c;
+                    wx = targetX - s;
+                    wy = centerY + (s * 0.25 - yWave * 0.35);
+                    wz = targetZ - c;
                 } else {
-                    wx = cx - s * 0.7 + c * 0.7;
-                    wy = currentCy - yWave * 0.4;
-                    wz = cz + c * 0.7 + s * 0.7;
+                    wx = targetX - s * 0.7 + c * 0.7;
+                    wy = centerY - yWave * 0.4;
+                    wz = targetZ + c * 0.7 + s * 0.7;
                 }
+                rawPoints.add(new Vec3d(wx, wy, wz));
+            }
 
-                if (i == 0) {
-                    float headSz = 0.35f * sizeMult;
-                    float alpha = this.animProgress * 0.95f;
+            int subDivs = 4;
+            int totalSamples = (steps - 1) * subDivs + 1;
+            List<Vec3d> smoothSamples = new ArrayList<>(totalSamples);
 
-                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, headSz * 3.4f, ColorUtil.withAlphaFloat(color, alpha * 0.60f));
-                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, headSz * 2.2f, ColorUtil.withAlphaFloat(color, alpha * 0.85f));
+            for (int i = 0; i < steps - 1; i++) {
+                Vec3d p0 = (i == 0) ? rawPoints.get(0) : rawPoints.get(i - 1);
+                Vec3d p1 = rawPoints.get(i);
+                Vec3d p2 = rawPoints.get(i + 1);
+                Vec3d p3 = (i + 2 < steps) ? rawPoints.get(i + 2) : rawPoints.get(i + 1);
 
-                    if (this.coreGlow.get()) {
-                        drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, headSz * 1.4f, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha * 0.95f));
-                        drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, headSz * 0.8f, ColorUtil.withAlphaFloat(0xFFFFFFFF, 1.0f));
+                for (int step = 0; step < subDivs; step++) {
+                    float t = (float) step / (float) subDivs;
+                    float t2 = t * t;
+                    float t3 = t2 * t;
+
+                    double sx = 0.5 * ((2.0 * p1.x) + (-p0.x + p2.x) * t + (2.0 * p0.x - 5.0 * p1.x + 4.0 * p2.x - p3.x) * t2 + (-p0.x + 3.0 * p1.x - 3.0 * p2.x + p3.x) * t3);
+                    double sy = 0.5 * ((2.0 * p1.y) + (-p0.y + p2.y) * t + (2.0 * p0.y - 5.0 * p1.y + 4.0 * p2.y - p3.y) * t2 + (-p0.y + 3.0 * p1.y - 3.0 * p2.y + p3.y) * t3);
+                    double sz = 0.5 * ((2.0 * p1.z) + (-p0.z + p2.z) * t + (2.0 * p0.z - 5.0 * p1.z + 4.0 * p2.z - p3.z) * t2 + (-p0.z + 3.0 * p1.z - 3.0 * p2.z + p3.z) * t3);
+
+                    float progress = (float) smoothSamples.size() / (float) (totalSamples - 1);
+                    if (progress > 0.05f) {
+                        float flutterAmp = 0.024f * progress * (float) Math.sqrt(progress) * sizeMult;
+                        float phi = (float) (timeSec * 7.5 - progress * 10.0 + soul * 2.2);
+                        sx += Math.cos(phi) * flutterAmp;
+                        sy += Math.sin(phi * 1.2f) * flutterAmp;
+                        sz += Math.sin(phi + 1.3f) * flutterAmp;
                     }
-                } else {
-                    float tailSz = 0.22f * sizeMult * (0.25f + 0.75f * trailFactor);
-                    float alpha = this.animProgress * (0.08f + 0.65f * trailFactor * trailFactor);
 
-                    drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, tailSz * 2.2f, ColorUtil.withAlphaFloat(color, alpha * 0.60f * trailFactor));
-
-                    if (this.coreGlow.get() && i < steps / 2) {
-                        float coreFactor = 1.0f - ((float) i / (steps * 0.5f));
-                        drawParticle(context, BLOOM_TEXTURE, wx, wy, wz, tailSz * 1.1f, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha * 0.85f * coreFactor));
-                    }
+                    smoothSamples.add(new Vec3d(sx, sy, sz));
                 }
             }
+            smoothSamples.add(rawPoints.get(steps - 1));
+            soulPaths.add(smoothSamples);
+        }
+
+        MatrixStack.Entry entry = matrices.peek();
+        RenderPipeline pipeline = Pipelines.LIGHTNING_DEPTH;
+
+        float dist = (float) Math.sqrt(targetX * targetX + centerY * centerY + targetZ * targetZ);
+        float scaledBloomSize = ProjectionUtil.getScaledSize(0.095F, Math.max(1.0f, dist));
+
+        // PASS 1: Volumetric Gaussian Bloom via ParticleBlurRenderer
+        try (BufferAllocator allocBloom = new BufferAllocator(65536)) {
+            BufferBuilder bufBloom = new BufferBuilder(allocBloom, DrawMode.LINES, VertexFormats.POSITION_COLOR_NORMAL_LINE_WIDTH);
+
+            for (int s = 0; s < 3; s++) {
+                List<Vec3d> path = soulPaths.get(s);
+                buildSoulMesh(bufBloom, entry, path, r, g, b, s, timeSec, sizeMult,
+                        (15.0f + 16.0f * sizeMult), 0.65f * fade, 0.85f, true);
+            }
+
+            BuiltBuffer builtBloom = bufBloom.endNullable();
+            if (builtBloom != null) {
+                ParticleBlurRenderer.INSTANCE.render(scaledBloomSize, fade, () -> MeshDrawUtil.drawLabeled(pipeline, builtBloom, "egg souls bloom"));
+            }
+        }
+
+        // PASS 2 & 3: Colored Halo + Laser Filament Core
+        try (
+                BufferAllocator allocHalo = new BufferAllocator(65536);
+                BufferAllocator allocCore = new BufferAllocator(65536)
+        ) {
+            BufferBuilder bufHalo = new BufferBuilder(allocHalo, DrawMode.LINES, VertexFormats.POSITION_COLOR_NORMAL_LINE_WIDTH);
+            BufferBuilder bufCore = new BufferBuilder(allocCore, DrawMode.LINES, VertexFormats.POSITION_COLOR_NORMAL_LINE_WIDTH);
+
+            for (int s = 0; s < 3; s++) {
+                List<Vec3d> path = soulPaths.get(s);
+
+                // Halo: colored neon aura
+                buildSoulMesh(bufHalo, entry, path, r, g, b, s, timeSec, sizeMult,
+                        (7.0f + 8.5f * sizeMult), 0.50f * fade, 0.70f, true);
+
+                // Core: razor-sharp laser center
+                buildSoulMesh(bufCore, entry, path, coreR, coreG, coreB, s, timeSec, sizeMult,
+                        (1.8f + 2.0f * sizeMult), 1.0f * fade, 0.50f, true);
+            }
+
+            BuiltBuffer builtHalo = bufHalo.endNullable();
+            if (builtHalo != null) {
+                MeshDrawUtil.drawLabeled(pipeline, builtHalo, "egg souls halo");
+            }
+
+            BuiltBuffer builtCore = bufCore.endNullable();
+            if (builtCore != null) {
+                MeshDrawUtil.drawLabeled(pipeline, builtCore, "egg souls core");
+            }
+        }
+    }
+
+    private void buildSoulMesh(BufferBuilder builder, MatrixStack.Entry entry,
+                               List<Vec3d> path, int r, int g, int b,
+                               int soulIndex, float timeSec, float sizeMult,
+                               float baseLineWidth, float alphaMult, float taperAmount,
+                               boolean renderHeadSpark) {
+        int count = path.size();
+        if (count < 2) return;
+
+        for (int i = 0; i < count - 1; i++) {
+            Vec3d p1 = path.get(i);
+            Vec3d p2 = path.get(i + 1);
+
+            float prog1 = (float) i / (float) (count - 1);
+            float prog2 = (float) (i + 1) / (float) (count - 1);
+
+            float fade1 = (1.0f - prog1) * (1.0f - prog1 * 0.35f);
+            float fade2 = (1.0f - prog2) * (1.0f - prog2 * 0.35f);
+
+            int a1 = MathHelper.clamp((int) (255.0f * alphaMult * fade1), 0, 255);
+            int a2 = MathHelper.clamp((int) (255.0f * alphaMult * fade2), 0, 255);
+            if (a1 <= 0 && a2 <= 0) continue;
+
+            int c1 = (a1 << 24) | (r << 16) | (g << 8) | b;
+            int c2 = (a2 << 24) | (r << 16) | (g << 8) | b;
+
+            float width = baseLineWidth * (1.0f - taperAmount * prog1 * prog1);
+            if (width < 0.8f) width = 0.8f;
+
+            emitLine(builder, entry, (float) p1.x, (float) p1.y, (float) p1.z,
+                                     (float) p2.x, (float) p2.y, (float) p2.z, c1, c2, width);
+        }
+
+        if (renderHeadSpark && count > 0) {
+            Vec3d head = path.get(0);
+            float hx = (float) head.x;
+            float hy = (float) head.y;
+            float hz = (float) head.z;
+
+            float sparkR = 0.08f * sizeMult;
+            float spin = (float) (timeSec * 4.2 + soulIndex * 2.094);
+            float cosS = (float) Math.cos(spin);
+            float sinS = (float) Math.sin(spin);
+
+            int headAlpha = MathHelper.clamp((int) (255.0f * alphaMult), 0, 255);
+            int cHead = (headAlpha << 24) | (r << 16) | (g << 8) | b;
+            float sparkWidth = baseLineWidth * 1.35f;
+
+            emitLine(builder, entry, hx - sparkR * cosS, hy, hz - sparkR * sinS,
+                                     hx + sparkR * cosS, hy, hz + sparkR * sinS, cHead, cHead, sparkWidth);
+
+            emitLine(builder, entry, hx, hy - sparkR, hz,
+                                     hx, hy + sparkR, hz, cHead, cHead, sparkWidth);
+
+            emitLine(builder, entry, hx - sparkR * sinS * 0.707f, hy - sparkR * 0.707f, hz + sparkR * cosS * 0.707f,
+                                     hx + sparkR * sinS * 0.707f, hy + sparkR * 0.707f, hz - sparkR * cosS * 0.707f, cHead, cHead, sparkWidth);
         }
     }
 
@@ -673,12 +836,19 @@ public class TargetESP extends Module {
             return;
         }
 
-        if (curTarget == null || this.animProgress <= 0.01f) {
+        if (curTarget == null && this.lastTargetPos == null) {
+            return;
+        }
+        if (this.animProgress <= 0.01f) {
             return;
         }
 
         if ("Молнии".equals(curMode)) {
-            renderLightning(matrices, camera, tickDelta, curTarget);
+            if (curTarget != null) {
+                renderLightning(matrices, camera, tickDelta, curTarget);
+            }
+        } else if ("Души".equals(curMode)) {
+            renderSouls3D(matrices, camera, tickDelta, curTarget);
         }
     }
 
