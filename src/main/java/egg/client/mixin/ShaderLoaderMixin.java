@@ -40,15 +40,15 @@ public class ShaderLoaderMixin {
         }
     }
 
-    @org.spongepowered.asm.mixin.injection.Redirect(
+    @WrapOperation(
             method = "apply(Lnet/minecraft/client/gl/ShaderLoader$Definitions;Lnet/minecraft/resource/ResourceManager;Lnet/minecraft/util/profiler/Profiler;)V",
             at = @At(value = "INVOKE", target = "Ljava/util/List;add(Ljava/lang/Object;)Z")
     )
-    private boolean delta$skipOwnFailedPipeline(java.util.List<Object> objects, Object object) {
+    private boolean delta$skipOwnFailedPipeline(java.util.List<Object> objects, Object object, Operation<Boolean> operation) {
         if (object instanceof Identifier identifier && "egg".equals(identifier.getNamespace())) {
             return false;
         }
-        return objects.add(object);
+        return operation.call(objects, object);
     }
 
     @Inject(method = "getSource", at = @At("HEAD"), cancellable = true)
