@@ -20,6 +20,7 @@ import egg.client.render.Render2D;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Fonts;
 import egg.client.render.msdf.pipeline.DrawBatcher;
+import egg.client.ui.halloween.HalloweenGuiRenderer;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
 import egg.client.util.MediaTracker;
@@ -45,6 +46,10 @@ import java.util.concurrent.Executors;
 
 public class Interface extends Module {
     private static Interface instance;
+
+    public boolean isHalloween() {
+        return this.halloween.isEnabled();
+    }
 
     public static Interface getInstance() {
         return instance;
@@ -93,6 +98,7 @@ public class Interface extends Module {
     private final SliderSetting opacity = new SliderSetting("Непрозрачность", 225.0, 20.0, 255.0, 5.0, "Прозрачность фона интерфейса");
     private final BooleanSetting hudThemeGradient = new BooleanSetting("Градиент HUD", false, "Мягкий градиент на фоне элементов");
     private final SliderSetting hudGradientStrength = new SliderSetting("Сила градиента", 60.0, 5.0, 100.0, 5.0, "Интенсивность градиента");
+    private final BooleanSetting halloween = new BooleanSetting("Хэллоуин", true, "Хеллоуинское оформление элементов интерфейса (мини-тыковка, шляпка и акценты)");
 
     private final SliderSetting posX = new SliderSetting("X", 0.015, 0.0, 1.0, 0.001, "Позиция X");
     private final SliderSetting posY = new SliderSetting("Y", 0.015, 0.0, 1.0, 0.001, "Позиция Y");
@@ -175,6 +181,7 @@ public class Interface extends Module {
                 showDynamicIsland, islandScale,
                 brand, showLogo, showNick, showServer, showFps, showTps, showPing, showTime, showCoords, showSpeed, sideMode,
                 watermarkBgColor, titleColor1, titleColor2, rounding, opacity, hudThemeGradient, hudGradientStrength,
+                halloween,
                 hudScale,
                 combatMode, combatAction, combatElements, combatScale, combatOpacity, combatTimeout
         );
@@ -337,6 +344,9 @@ public class Interface extends Module {
         int borderColor = ColorUtil.rgba(255, 255, 255, (int) (22 * alphaFactor));
 
         Draw2DProcessor.INSTANCE.drawGlow(mat, baseX, baseY, totalW, pillHeight, radius, ColorUtil.rgba(0, 0, 0, (int) (opacityVal * 65.0f)), 6.0f);
+        if (halloween.isEnabled()) {
+            Draw2DProcessor.INSTANCE.drawGlow(mat, baseX, baseY, totalW, pillHeight, radius, ColorUtil.rgba(255, 117, 24, (int) (opacityVal * 42.0f)), 8.0f);
+        }
         Draw2DProcessor.INSTANCE.drawRect(mat, baseX, baseY, totalW, pillHeight, radius, finalBg);
         Draw2DProcessor.INSTANCE.drawOutline(mat, baseX, baseY, totalW, pillHeight, radius, 0.8f, borderColor);
 
@@ -366,6 +376,9 @@ public class Interface extends Module {
             Draw2DProcessor.INSTANCE.drawOutline(mat, badgeX, badgeY, badgeSize, badgeSize, badgeR, 0.8f, ColorUtil.rgba(255, 255, 255, (int) (28 * alphaFactor)));
 
             IconRenderer.drawTextureScaled(context, EGG_LOGO, badgeX + 2.0f, badgeY + 2.0f, 20.0f, 20.0f, 128, 128, tintWithAlpha);
+            if (halloween.isEnabled()) {
+                HalloweenGuiRenderer.renderWitchHatDirect(context, badgeX + badgeSize * 0.5f - 0.5f, badgeY + 1.2f, 13.0f, alphaFactor);
+            }
             cursor += badgeSize + 8.0f;
 
             if (hasBrand || !items.isEmpty()) {
@@ -434,6 +447,9 @@ public class Interface extends Module {
         }
 
         DrawBatcher.flushPending();
+        if (halloween.isEnabled()) {
+            HalloweenGuiRenderer.renderMiniJackOLantern(context, baseX + totalW - 4.0f, baseY - 3.5f, 16.0f, 13.0f, 6.0f, alphaFactor);
+        }
         if (customScale) {
             context.getMatrices().popMatrix();
         }
@@ -511,6 +527,9 @@ public class Interface extends Module {
 
         int baseIslandBg = ColorUtil.withAlphaFloat(0xFF141418, alphaFactor);
         Draw2DProcessor.INSTANCE.drawGlow(mat, x, y, curW, curH, radius, ColorUtil.withAlphaFloat(ColorUtil.rgba(0, 0, 0, 160), alphaFactor), 12.0f);
+        if (halloween.isEnabled()) {
+            Draw2DProcessor.INSTANCE.drawGlow(mat, x, y, curW, curH, radius, ColorUtil.rgba(255, 117, 24, (int) (alphaFactor * 35.0f)), 8.0f);
+        }
         Draw2DProcessor.INSTANCE.drawRect(mat, x, y, curW, curH, radius, baseIslandBg);
 
         int accent = (dominantAccentColor & 0xFFFFFF) != 0 ? dominantAccentColor : 0xFF30D158;
@@ -716,6 +735,9 @@ public class Interface extends Module {
         }
 
         DrawBatcher.flushPending();
+        if (halloween.isEnabled()) {
+            HalloweenGuiRenderer.renderMiniJackOLantern(context, x + curW - 5.0f, y - 3.5f, 15.0f, 12.0f, -5.0f, alphaFactor);
+        }
         if (customIslandScale) {
             context.getMatrices().popMatrix();
         }
