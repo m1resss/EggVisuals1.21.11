@@ -36,33 +36,35 @@ public abstract class PlayerEntityModelMixin extends BipedEntityModel<PlayerEnti
 
             // Apply to opponents (and to self in singleplayer testing)
             if (!isSelf || isAlone) {
-                float basePitch = -1.5707963f; // ~ -90 degrees forward
+                // Straight UP into the air (~180 degrees / -PI)
+                float basePitch = -(float) Math.PI;
 
-                // Running & walking bobbing and sway in sync with stride
-                float armBob = MathHelper.cos(state.limbSwingAnimationProgress * 0.6662f) * 0.25f * state.limbSwingAmplitude;
-                float armSway = MathHelper.sin(state.limbSwingAnimationProgress * 0.6662f) * 0.10f * state.limbSwingAmplitude;
+                // Running & walking bobbing in sync with stride (arms pumping up and down in the air)
+                float armBob = MathHelper.cos(state.limbSwingAnimationProgress * 0.6662f) * 0.35f * state.limbSwingAmplitude;
+                float armSway = MathHelper.sin(state.limbSwingAnimationProgress * 0.6662f) * 0.15f * state.limbSwingAmplitude;
 
                 // Subtle idle breathing when stationary
                 float idlePitch = MathHelper.sin(state.age * 0.067f) * 0.04f;
-                float idleRoll = MathHelper.cos(state.age * 0.09f) * 0.04f + 0.04f;
+                float idleRoll = MathHelper.cos(state.age * 0.09f) * 0.03f;
 
                 this.rightArm.pitch = basePitch + armBob + idlePitch;
                 this.leftArm.pitch = basePitch - armBob + idlePitch;
 
-                this.rightArm.yaw = -0.05f + armSway;
-                this.leftArm.yaw = 0.05f + armSway;
+                // Slight natural outward V-spread above head + walking sway
+                this.rightArm.yaw = armSway * 0.5f;
+                this.leftArm.yaw = armSway * 0.5f;
 
-                this.rightArm.roll = idleRoll;
-                this.leftArm.roll = -idleRoll;
+                this.rightArm.roll = 0.12f + armSway * 0.2f + idleRoll;
+                this.leftArm.roll = -0.12f + armSway * 0.2f - idleRoll;
 
-                // Attack swing integration
+                // Attack swing: overhead downward chop
                 if (state.handSwingProgress > 0.0f) {
                     float swing = state.handSwingProgress;
                     float swingFactor = MathHelper.sin(swing * (float) Math.PI);
                     if (state.mainArm == Arm.RIGHT) {
-                        this.rightArm.pitch -= swingFactor * 0.75f;
+                        this.rightArm.pitch += swingFactor * 1.1f;
                     } else {
-                        this.leftArm.pitch -= swingFactor * 0.75f;
+                        this.leftArm.pitch += swingFactor * 1.1f;
                     }
                 }
 
