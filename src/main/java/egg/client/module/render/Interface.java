@@ -447,9 +447,6 @@ public class Interface extends Module {
         }
 
         DrawBatcher.flushPending();
-        if (halloween.isEnabled()) {
-            HalloweenGuiRenderer.renderMiniJackOLantern(context, baseX + totalW - 4.0f, baseY - 3.5f, 16.0f, 13.0f, 6.0f, alphaFactor);
-        }
         if (customScale) {
             context.getMatrices().popMatrix();
         }
@@ -735,9 +732,6 @@ public class Interface extends Module {
         }
 
         DrawBatcher.flushPending();
-        if (halloween.isEnabled()) {
-            HalloweenGuiRenderer.renderMiniJackOLantern(context, x + curW - 5.0f, y - 3.5f, 15.0f, 12.0f, -5.0f, alphaFactor);
-        }
         if (customIslandScale) {
             context.getMatrices().popMatrix();
         }

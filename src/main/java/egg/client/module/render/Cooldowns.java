@@ -8,6 +8,7 @@ import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ColorSetting;
 import egg.client.module.setting.SliderSetting;
+import egg.client.render.Render2D;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Fonts;
 import egg.client.render.msdf.pipeline.DrawBatcher;
@@ -38,6 +39,8 @@ public class Cooldowns extends Module {
     private final SliderSetting posY = new SliderSetting("Y", 0.76, 0.0, 1.0, 0.001, "Позиция Y");
     private final ColorSetting bgColor = new ColorSetting("Цвет фона", (int) 0xC4151515L, "Цвет фона капсулы кулдаунов");
     private final SliderSetting scale = new SliderSetting("Размер", 1.0, 0.5, 1.5, 0.05, "Масштаб худа");
+    private final BooleanSetting hudThemeGradient = new BooleanSetting("Градиент HUD", true, "Мягкий градиент по бокам капсулы");
+    private final SliderSetting hudGradientStrength = new SliderSetting("Сила градиента", 60.0, 5.0, 100.0, 5.0, "Интенсивность градиента");
 
     private boolean dragging = false;
     private float dragOffsetX = 0.0f;
@@ -75,7 +78,7 @@ public class Cooldowns extends Module {
     public Cooldowns() {
         super("Cooldowns", "Индикатор перезарядки предметов и способностей в виде горизонтальной капсулы", Category.ESP);
         instance = this;
-        addSettings(bgColor, scale);
+        addSettings(bgColor, scale, hudThemeGradient, hudGradientStrength);
         setEnabled(true);
     }
 
@@ -186,6 +189,16 @@ public class Cooldowns extends Module {
 
         // 2. Pill background (customizable, default #C4151515)
         Draw2DProcessor.INSTANCE.drawRect(null, px, py, pillW, pillH, pillRadius, ColorUtil.withAlphaFloat(bgColor.get(), combatAlpha));
+
+        if (hudThemeGradient.isEnabled()) {
+            float str = hudGradientStrength.getValueFloat() / 100.0f;
+            int gradC = ColorUtil.rgba(168, 85, 247, (int) (str * 45.0f * combatAlpha));
+            Draw2DProcessor.INSTANCE.drawGradient(null, px, py, pillW, pillH, pillRadius, gradC, 0x00000000, 0x00000000, gradC);
+        }
+        DrawBatcher.flushPending();
+        if (hudThemeGradient.isEnabled() && combatAlpha > 0.15f) {
+            Render2D.drawDiagonalSheen(context, px, py, pillW, pillH, pillRadius, 1200L);
+        }
 
 
         // Render slots

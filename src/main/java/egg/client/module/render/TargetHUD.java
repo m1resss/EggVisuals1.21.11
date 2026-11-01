@@ -6,8 +6,10 @@ import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
+import egg.client.render.Render2D;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Fonts;
+import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.ui.ClickGuiScreen;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
@@ -47,6 +49,8 @@ public class TargetHUD extends Module {
     private final SliderSetting targetTimeout = new SliderSetting("Таймаут цели", 3.0, 0.5, 8.0, 0.5, "Сколько секунд держать цель после отвода прицела");
     private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", true, "Отображать карточку только для игроков");
     private final BooleanSetting hitParticles = new BooleanSetting("Партиклы при ударе", true, "Отображать вылетающие частицы на полоске здоровья при получении урона");
+    private final BooleanSetting hudThemeGradient = new BooleanSetting("Градиент HUD", true, "Мягкий градиент по бокам карточки");
+    private final SliderSetting hudGradientStrength = new SliderSetting("Сила градиента", 60.0, 5.0, 100.0, 5.0, "Интенсивность градиента");
     private final BooleanSetting showFps = new BooleanSetting("Показывать FPS", true, "Отображать метку FPS на карточке");
     private final BooleanSetting showDistance = new BooleanSetting("Дистанция", true, "Отображать дистанцию до цели");
 
@@ -81,7 +85,7 @@ public class TargetHUD extends Module {
         super("Target HUD", "Информационная карточка цели на экране или в центре противника", Category.ESP);
         instance = this;
 
-        addSettings(mode, hudScale, targetTimeout, onlyPlayers, hitParticles);
+        addSettings(mode, hudScale, targetTimeout, onlyPlayers, hitParticles, hudThemeGradient, hudGradientStrength);
     }
 
     public static TargetHUD getInstance() {
@@ -228,6 +232,16 @@ public class TargetHUD extends Module {
         Draw2DProcessor.INSTANCE.drawRect(mat, x, y, w, h, radius, bgColor);
         // Draw2DProcessor.INSTANCE.drawOutline(mat, x, y, w, h, radius, 0.8f, borderColor);
 
+        if (hudThemeGradient.isEnabled()) {
+            float str = hudGradientStrength.getValueFloat() / 100.0f;
+            int gradC = ColorUtil.rgba(168, 85, 247, (int) (str * 45.0f * alpha));
+            Draw2DProcessor.INSTANCE.drawGradient(mat, x, y, w, h, radius, gradC, 0x00000000, 0x00000000, gradC);
+        }
+        DrawBatcher.flushPending();
+        if (hudThemeGradient.isEnabled() && alpha > 0.15f) {
+            Render2D.drawDiagonalSheen(context, x, y, w, h, radius, 0L);
+        }
+
         float headSize = 30.0f;
         float headX = x + 7.0f;
         float headY = y + 7.0f;
@@ -342,6 +356,7 @@ public class TargetHUD extends Module {
             }
         }
 
+        DrawBatcher.flushPending();
         if (customScale) {
             context.getMatrices().popMatrix();
         }
