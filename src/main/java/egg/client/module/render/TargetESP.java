@@ -547,21 +547,24 @@ public class TargetESP extends Module {
             return;
         }
 
-        long l = System.nanoTime();
-        float dt = this.ghostsLastNanos == 0L ? 0.016666668F : Math.min((float)(l - this.ghostsLastNanos) / 1.0E9F, 0.05F);
-        this.ghostsLastNanos = l;
-        float spd = (float) this.speed.get();
-        this.ghostsTime += dt * 125.0F * spd;
-
         float targetX = (float) (targetPos.x - camPos.x);
         float targetY = (float) (targetPos.y - camPos.y);
         float targetZ = (float) (targetPos.z - camPos.z);
 
+        long now = System.currentTimeMillis();
+        float timeSec = (float) (now % 10000000L) / 1000.0f;
+        double timeMs = timeSec * 1000.0;
+
         float fade = this.animProgress;
         float expand = (1.0f - fade);
-        float baseR = (float) this.radius.get() * (1.0f + expand * 1.6f);
+        float baseR = (float) this.radius.get();
+        float spd = (float) this.speed.get();
         float sizeMult = (float) this.particleSize.get();
-        int steps = Math.max(6, (int) this.tailLength.get());
+        int steps = Math.max(8, (int) this.tailLength.get());
+
+        float currentR = baseR * (1.0f + expand * 1.6f);
+        double centerY = targetY + height * 0.45 + expand * 1.1;
+        float hAmp = (float) (height * 0.28) * (1.0f + expand * 0.6f);
 
         int themeColor = Theme.getAccent();
         int hurtCol = 0xFFFF2525;
@@ -572,108 +575,118 @@ public class TargetESP extends Module {
             hurtFactor = MathHelper.clamp(hurtFactor, 0.0f, 1.0f);
         }
         int activeColor = hurtFactor > 0.01f ? ColorUtil.interpolate(themeColor, hurtCol, hurtFactor) : themeColor;
-        int r = (activeColor >> 16) & 0xFF;
-        int g = (activeColor >> 8) & 0xFF;
-        int b = activeColor & 0xFF;
 
-        int alpha = MathHelper.clamp((int) (255.0f * fade), 0, 255);
-        int baseColor = (alpha << 24) | (r << 16) | (g << 8) | b;
-        int bloomColor = (MathHelper.clamp((int) (255.0f * fade * 0.85f), 0, 255) << 24) | (r << 16) | (g << 8) | b;
-
-        Quaternionf quaternionf = camera.getRotation();
+        Quaternionf camRot = camera.getRotation();
         float dist = (float) Math.sqrt(targetX * targetX + (targetY + height * 0.5) * (targetY + height * 0.5) + targetZ * targetZ);
-        float scaledBloomSize = ProjectionUtil.getScaledSize(0.06F, Math.max(1.0f, dist));
+        float scaledBloomSize = ProjectionUtil.getScaledSize(0.065F, Math.max(1.0f, dist));
 
         try (
-                BufferAllocator allocBloom = new BufferAllocator(16384);
-                BufferAllocator allocSharp = new BufferAllocator(16384);
-                BufferAllocator allocCore = new BufferAllocator(8192)
+                BufferAllocator allocBloom = new BufferAllocator(32768);
+                BufferAllocator allocSharp = new BufferAllocator(32768)
         ) {
-            // PASS 1: Volumetric Gaussian Bloom with AURA_BLOOM_DEPTH
             BufferBuilder bufBloom = new BufferBuilder(allocBloom, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
-            buildGhosts(bufBloom, quaternionf, targetX, targetY, targetZ, baseR, (float) height, sizeMult, steps, bloomColor, 2.0F, false);
+            BufferBuilder bufSharp = new BufferBuilder(allocSharp, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+
+            renderSoulParticles(bufBloom, camRot, targetX, centerY, targetZ, currentR, hAmp,
+                    timeMs, timeSec, spd, sizeMult, steps, activeColor, fade, true);
+            renderSoulParticles(bufSharp, camRot, targetX, centerY, targetZ, currentR, hAmp,
+                    timeMs, timeSec, spd, sizeMult, steps, activeColor, fade, false);
+
             BuiltBuffer builtBloom = bufBloom.endNullable();
             if (builtBloom != null) {
-                ParticleBlurRenderer.INSTANCE.render(scaledBloomSize, fade, () ->
-                        MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_BLOOM_DEPTH, builtBloom, "egg aura ghosts bloom", BLOOM_TEXTURE));
+                ParticleBlurRenderer.INSTANCE.render(scaledBloomSize, fade * 0.70f, () ->
+                        MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_BLOOM_DEPTH, builtBloom, "egg souls bloom", BLOOM_TEXTURE));
             }
 
-            // PASS 2: Sharp Luminous Spirit Bodies with AURA_BLOOM_DEPTH (Additive blending)
-            BufferBuilder bufSharp = new BufferBuilder(allocSharp, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
-            buildGhosts(bufSharp, quaternionf, targetX, targetY, targetZ, baseR, (float) height, sizeMult, steps, baseColor, 1.0F, false);
             BuiltBuffer builtSharp = bufSharp.endNullable();
             if (builtSharp != null) {
-                MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_BLOOM_DEPTH, builtSharp, "egg aura ghosts", BLOOM_TEXTURE);
-            }
-
-            // PASS 3: White-Hot Nuclei for Ghost Heads
-            if (this.coreGlow.get()) {
-                BufferBuilder bufCore = new BufferBuilder(allocCore, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
-                int coreAlpha = MathHelper.clamp((int) (255.0f * fade * 0.95f), 0, 255);
-                int whiteCoreCol = (coreAlpha << 24) | 0x00FFFFFF;
-                buildGhosts(bufCore, quaternionf, targetX, targetY, targetZ, baseR, (float) height, sizeMult, Math.min(3, steps), whiteCoreCol, 0.48F, true);
-                BuiltBuffer builtCore = bufCore.endNullable();
-                if (builtCore != null) {
-                    MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_BLOOM_DEPTH, builtCore, "egg aura ghosts core", BLOOM_TEXTURE);
-                }
+                MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_BLOOM_DEPTH, builtSharp, "egg souls sharp", BLOOM_TEXTURE);
             }
         }
     }
 
-    private void buildGhosts(BufferBuilder bufferBuilder, Quaternionf quaternionf,
-                             float d, float d2, float d3,
-                             float baseR, float height, float sizeMult, int steps,
-                             int color, float scaleFactor, boolean isCore) {
-        int r = (color >> 16) & 0xFF;
-        int g = (color >> 8) & 0xFF;
-        int bCol = color & 0xFF;
-        int baseA = (color >> 24) & 0xFF;
+    private void renderSoulParticles(BufferBuilder builder, Quaternionf camRot,
+                                     float targetX, double centerY, float targetZ,
+                                     float currentR, float hAmp,
+                                     double timeMs, float timeSec, float spd,
+                                     float sizeMult, int steps, int color,
+                                     float fade, boolean isBloomPass) {
+        float scaleMul = isBloomPass ? 1.45f : 1.0f;
+        float alphaMul = isBloomPass ? 0.60f : 1.0f;
 
-        for (byte b = 0; b < 9; b += 3) {
-            int i2 = b * b;
+        for (int soul = 0; soul < 3; soul++) {
+            float soulPulse = 1.0f + 0.07f * (float) Math.sin(timeSec * 5.0 + soul * 2.094);
 
-            for (int i3 = 0; i3 < steps; i3++) {
-                float trailFactor = 1.0f - ((float) i3 / (float) steps);
-                float f2 = this.ghostsTime * 0.055F + i3 * (0.85F / Math.max(1, steps));
-                float f3 = (0.24F + i3 * (0.28F / Math.max(1, steps))) * sizeMult * scaleFactor;
-                float f4 = d + baseR * MathHelper.sin(f2 + i2);
-                float f5 = d2 + height * 0.5F + 0.28F * height * MathHelper.sin(this.ghostsTime * 0.055F + i3 * 0.2F) + 0.2F * b - 0.1F;
-                float f6 = d3 + baseR * MathHelper.cos(f2 - i2);
+            for (int i = 0; i < steps; i++) {
+                float trailFactor = 1.0f - ((float) i / (float) steps);
+                double angle = 0.15 * (timeMs - (i * 12.0 / Math.max(0.5, spd))) / 25.0 * spd;
+                double s = Math.sin(angle) * currentR;
+                double c = Math.cos(angle) * currentR;
+                double yWave = Math.sin(angle * 1.5 + soul * 2.0) * hAmp;
 
-                int particleA;
-                if (isCore) {
-                    float coreFade = 1.0f - ((float) i3 / (float) Math.max(1, steps));
-                    particleA = MathHelper.clamp((int) (baseA * coreFade * coreFade), 0, 255);
+                float wx, wy, wz;
+                if (soul == 0) {
+                    wx = (float) (targetX + s);
+                    wy = (float) (centerY + (c * 0.25 + yWave * 0.35));
+                    wz = (float) (targetZ - c);
+                } else if (soul == 1) {
+                    wx = (float) (targetX - s);
+                    wy = (float) (centerY + (s * 0.25 - yWave * 0.35));
+                    wz = (float) (targetZ - c);
                 } else {
-                    float alphaMul = (0.20f + 0.80f * trailFactor * trailFactor);
-                    particleA = MathHelper.clamp((int) (baseA * alphaMul), 0, 255);
+                    wx = (float) (targetX - s * 0.7 + c * 0.7);
+                    wy = (float) (centerY - yWave * 0.4);
+                    wz = (float) (targetZ + c * 0.7 + s * 0.7);
                 }
-                if (particleA <= 0) continue;
 
-                int pColor = (particleA << 24) | (r << 16) | (g << 8) | bCol;
-                buildGradientQuad(bufferBuilder, quaternionf, f4, f5, f6, f3, 0.0F, pColor);
+                if (i == 0) {
+                    // Head: bright luminous spirit nucleus
+                    float headSz = 0.36f * sizeMult * soulPulse * scaleMul;
+                    float headAlpha = fade * alphaMul;
+
+                    // 1. Broad radiant halo
+                    emitBloomQuad(builder, camRot, wx, wy, wz, headSz * 3.2f, ColorUtil.withAlphaFloat(color, headAlpha * 0.50f));
+                    // 2. Dense glowing spirit body
+                    emitBloomQuad(builder, camRot, wx, wy, wz, headSz * 2.0f, ColorUtil.withAlphaFloat(color, headAlpha * 0.85f));
+
+                    // 3. White-hot center spark
+                    if (this.coreGlow.get()) {
+                        emitBloomQuad(builder, camRot, wx, wy, wz, headSz * 1.2f, ColorUtil.withAlphaFloat(0xFFFFFFFF, headAlpha * 0.90f));
+                        emitBloomQuad(builder, camRot, wx, wy, wz, headSz * 0.65f, ColorUtil.withAlphaFloat(0xFFFFFFFF, headAlpha * 1.0f));
+                    }
+                } else {
+                    // Sleek fading ethereal tail
+                    float tailSz = 0.23f * sizeMult * (0.20f + 0.80f * trailFactor) * scaleMul;
+                    float tailAlpha = fade * (0.06f + 0.70f * trailFactor * trailFactor) * alphaMul;
+
+                    // Colored tail wisp
+                    emitBloomQuad(builder, camRot, wx, wy, wz, tailSz * 2.2f, ColorUtil.withAlphaFloat(color, tailAlpha * 0.65f * trailFactor));
+
+                    // White filament along upper tail
+                    if (this.coreGlow.get() && i < steps / 2) {
+                        float coreFactor = 1.0f - ((float) i / (steps * 0.5f));
+                        emitBloomQuad(builder, camRot, wx, wy, wz, tailSz * 1.0f, ColorUtil.withAlphaFloat(0xFFFFFFFF, tailAlpha * 0.80f * coreFactor));
+                    }
+                }
             }
         }
     }
 
-    private void buildGradientQuad(
-            BufferBuilder bufferBuilder,
-            Quaternionf quaternionf,
-            float x, float y, float z,
-            float size, float rollDeg,
-            int color
-    ) {
-        Quaternionf q = rollDeg == 0.0f ? quaternionf : new Quaternionf(quaternionf).rotateZ((float) Math.toRadians(rollDeg));
-        float h = size * 0.5F;
-        Vector3f v0 = new Vector3f(-h, -h, 0.0F).rotate(q).add(x, y, z);
-        Vector3f v1 = new Vector3f(-h, h, 0.0F).rotate(q).add(x, y, z);
-        Vector3f v2 = new Vector3f(h, h, 0.0F).rotate(q).add(x, y, z);
-        Vector3f v3 = new Vector3f(h, -h, 0.0F).rotate(q).add(x, y, z);
+    private void emitBloomQuad(BufferBuilder builder, Quaternionf camRot,
+                               float x, float y, float z,
+                               float size, int color) {
+        if ((color & 0xFF000000) == 0 || size <= 0.001f) return;
+        float h = size * 0.5f;
 
-        bufferBuilder.vertex(v0.x, v0.y, v0.z).texture(0.0F, 1.0F).color(color);
-        bufferBuilder.vertex(v1.x, v1.y, v1.z).texture(0.0F, 0.0F).color(color);
-        bufferBuilder.vertex(v2.x, v2.y, v2.z).texture(1.0F, 0.0F).color(color);
-        bufferBuilder.vertex(v3.x, v3.y, v3.z).texture(1.0F, 1.0F).color(color);
+        Vector3f v0 = new Vector3f(-h, -h, 0.0f).rotate(camRot).add(x, y, z);
+        Vector3f v1 = new Vector3f(-h,  h, 0.0f).rotate(camRot).add(x, y, z);
+        Vector3f v2 = new Vector3f( h,  h, 0.0f).rotate(camRot).add(x, y, z);
+        Vector3f v3 = new Vector3f( h, -h, 0.0f).rotate(camRot).add(x, y, z);
+
+        builder.vertex(v0.x, v0.y, v0.z).texture(0.0f, 1.0f).color(color);
+        builder.vertex(v1.x, v1.y, v1.z).texture(0.0f, 0.0f).color(color);
+        builder.vertex(v2.x, v2.y, v2.z).texture(1.0f, 0.0f).color(color);
+        builder.vertex(v3.x, v3.y, v3.z).texture(1.0f, 1.0f).color(color);
     }
 
     private void renderCubes(DrawContext context, double cx, double cy, double cz, double height,
