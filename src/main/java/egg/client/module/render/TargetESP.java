@@ -48,6 +48,8 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.world.RaycastContext;
 import org.joml.Vector2f;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -527,8 +529,8 @@ public class TargetESP extends Module {
         return fromY - 1.0;
     }
 
-    private void renderSouls3D(MatrixStack matrices, Camera camera, float tickDelta, LivingEntity curTarget) {
-        Vec3d camPos = camera.getCameraPos();
+    private void renderSouls3D(MatrixStack matrices, Camera camera, float tickDelta,
+                               VertexConsumerProvider.Immediate immediate, LivingEntity curTarget, Vec3d camPos) {
         Vec3d targetPos;
         double height;
         if (curTarget != null) {
@@ -642,6 +644,85 @@ public class TargetESP extends Module {
             soulPaths.add(smoothSamples);
         }
 
+        // 1. BILLBOARD ORBS & WISPS PASS (Depth-tested, smooth spherical heads and fading comet droplets)
+        if (immediate != null) {
+            Quaternionf camRot = camera.getRotation();
+            Vector3f camRight = new Vector3f(1.0f, 0.0f, 0.0f).rotate(camRot);
+            Vector3f camUp = new Vector3f(0.0f, 1.0f, 0.0f).rotate(camRot);
+
+            VertexConsumer bloomBuf = immediate.getBuffer(RenderLayers.weather(BLOOM_TEXTURE, true));
+            for (int s = 0; s < 3; s++) {
+                List<Vec3d> path = soulPaths.get(s);
+                if (path.isEmpty()) continue;
+                Vec3d head = path.get(0);
+                float pulse = 1.0f + 0.08f * (float) Math.sin(timeSec * 5.5 + s * 2.094);
+
+                // Head bloom aura
+                float headBloomR = 0.46f * sizeMult * pulse;
+                int headBloomA = MathHelper.clamp((int) (255.0f * fade * 0.70f), 0, 255);
+                drawBillboardQuad(bloomBuf, head.x, head.y, head.z, camRight, camUp, headBloomR, r, g, b, headBloomA);
+
+                // Upper trail bloom halos
+                int dropletCount = Math.min(14, steps);
+                float stepSamples = (float) (path.size() - 1) / (float) dropletCount;
+                for (int k = 1; k <= 3 && k < dropletCount; k++) {
+                    int sampleIdx = Math.round(k * stepSamples);
+                    if (sampleIdx < path.size()) {
+                        Vec3d pt = path.get(sampleIdx);
+                        float t = (float) k / (float) dropletCount;
+                        float dropBloomR = headBloomR * (1.0f - t * 0.50f);
+                        int dropBloomA = MathHelper.clamp((int) (headBloomA * (1.0f - t) * 0.65f), 0, 255);
+                        drawBillboardQuad(bloomBuf, pt.x, pt.y, pt.z, camRight, camUp, dropBloomR, r, g, b, dropBloomA);
+                    }
+                }
+            }
+
+            VertexConsumer glowBuf = immediate.getBuffer(RenderLayers.weather(GLOWING_TEXTURE, true));
+            for (int s = 0; s < 3; s++) {
+                List<Vec3d> path = soulPaths.get(s);
+                if (path.isEmpty()) continue;
+                Vec3d head = path.get(0);
+                float pulse = 1.0f + 0.08f * (float) Math.sin(timeSec * 5.5 + s * 2.094);
+
+                // Head radiant body
+                float headBodyR = 0.28f * sizeMult * pulse;
+                int headBodyA = MathHelper.clamp((int) (255.0f * fade * 0.95f), 0, 255);
+                drawBillboardQuad(glowBuf, head.x, head.y, head.z, camRight, camUp, headBodyR, r, g, b, headBodyA);
+
+                // Head bright white nucleus
+                if (this.coreGlow.get()) {
+                    float headCoreR = 0.13f * sizeMult * pulse;
+                    int headCoreA = MathHelper.clamp((int) (255.0f * fade * 0.98f), 0, 255);
+                    drawBillboardQuad(glowBuf, head.x, head.y, head.z, camRight, camUp, headCoreR, 255, 255, 255, headCoreA);
+                }
+
+                // Trailing spirit droplets along the comet tail
+                int dropletCount = Math.min(14, steps);
+                float stepSamples = (float) (path.size() - 1) / (float) dropletCount;
+                for (int k = 1; k < dropletCount; k++) {
+                    int sampleIdx = Math.round(k * stepSamples);
+                    if (sampleIdx >= path.size()) continue;
+                    Vec3d pt = path.get(sampleIdx);
+                    float t = (float) k / (float) dropletCount;
+
+                    float dropR = (0.22f * sizeMult) * (1.0f - t * 0.72f);
+                    float dropFade = (1.0f - t) * (1.0f - t * 0.35f);
+                    int dropA = MathHelper.clamp((int) (255.0f * fade * dropFade * 0.85f), 0, 255);
+
+                    drawBillboardQuad(glowBuf, pt.x, pt.y, pt.z, camRight, camUp, dropR, r, g, b, dropA);
+
+                    if (this.coreGlow.get() && k <= 4) {
+                        float coreFactor = 1.0f - (t / 0.35f);
+                        if (coreFactor > 0.0f) {
+                            int coreA = MathHelper.clamp((int) (255.0f * fade * coreFactor * 0.90f), 0, 255);
+                            drawBillboardQuad(glowBuf, pt.x, pt.y, pt.z, camRight, camUp, dropR * 0.45f, 255, 255, 255, coreA);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. LUMINOUS SILK SPINE (Trail shader bloom, halo, and laser core connecting the souls smoothly)
         MatrixStack.Entry entry = matrices.peek();
         RenderPipeline pipeline = Pipelines.LIGHTNING_DEPTH;
 
@@ -654,8 +735,8 @@ public class TargetESP extends Module {
 
             for (int s = 0; s < 3; s++) {
                 List<Vec3d> path = soulPaths.get(s);
-                buildSoulMesh(bufBloom, entry, path, r, g, b, s, timeSec, sizeMult,
-                        (15.0f + 16.0f * sizeMult), 0.65f * fade, 0.85f, true);
+                buildSoulMesh(bufBloom, entry, path, r, g, b, sizeMult,
+                        (14.0f + 15.0f * sizeMult), 0.65f * fade, 0.85f);
             }
 
             BuiltBuffer builtBloom = bufBloom.endNullable();
@@ -676,12 +757,12 @@ public class TargetESP extends Module {
                 List<Vec3d> path = soulPaths.get(s);
 
                 // Halo: colored neon aura
-                buildSoulMesh(bufHalo, entry, path, r, g, b, s, timeSec, sizeMult,
-                        (7.0f + 8.5f * sizeMult), 0.50f * fade, 0.70f, true);
+                buildSoulMesh(bufHalo, entry, path, r, g, b, sizeMult,
+                        (6.5f + 8.0f * sizeMult), 0.45f * fade, 0.70f);
 
                 // Core: razor-sharp laser center
-                buildSoulMesh(bufCore, entry, path, coreR, coreG, coreB, s, timeSec, sizeMult,
-                        (1.8f + 2.0f * sizeMult), 1.0f * fade, 0.50f, true);
+                buildSoulMesh(bufCore, entry, path, coreR, coreG, coreB, sizeMult,
+                        (1.8f + 2.0f * sizeMult), 0.90f * fade, 0.50f);
             }
 
             BuiltBuffer builtHalo = bufHalo.endNullable();
@@ -696,11 +777,30 @@ public class TargetESP extends Module {
         }
     }
 
+    private void drawBillboardQuad(VertexConsumer buf, double x, double y, double z,
+                                   Vector3f right, Vector3f up, float radius,
+                                   int r, int g, int b, int a) {
+        if (a <= 0 || radius <= 0.001f) return;
+        float rx = right.x * radius;
+        float ry = right.y * radius;
+        float rz = right.z * radius;
+        float ux = up.x * radius;
+        float uy = up.y * radius;
+        float uz = up.z * radius;
+
+        float fx = (float) x;
+        float fy = (float) y;
+        float fz = (float) z;
+
+        buf.vertex(fx - rx - ux, fy - ry - uy, fz - rz - uz).texture(0.0f, 1.0f).color(r, g, b, a).light(0x00F000F0);
+        buf.vertex(fx + rx - ux, fy + ry - uy, fz + rz - uz).texture(1.0f, 1.0f).color(r, g, b, a).light(0x00F000F0);
+        buf.vertex(fx + rx + ux, fy + ry + uy, fz + rz + uz).texture(1.0f, 0.0f).color(r, g, b, a).light(0x00F000F0);
+        buf.vertex(fx - rx + ux, fy - ry + uy, fz - rz + uz).texture(0.0f, 0.0f).color(r, g, b, a).light(0x00F000F0);
+    }
+
     private void buildSoulMesh(BufferBuilder builder, MatrixStack.Entry entry,
                                List<Vec3d> path, int r, int g, int b,
-                               int soulIndex, float timeSec, float sizeMult,
-                               float baseLineWidth, float alphaMult, float taperAmount,
-                               boolean renderHeadSpark) {
+                               float sizeMult, float baseLineWidth, float alphaMult, float taperAmount) {
         int count = path.size();
         if (count < 2) return;
 
@@ -711,8 +811,8 @@ public class TargetESP extends Module {
             float prog1 = (float) i / (float) (count - 1);
             float prog2 = (float) (i + 1) / (float) (count - 1);
 
-            float fade1 = (1.0f - prog1) * (1.0f - prog1 * 0.35f);
-            float fade2 = (1.0f - prog2) * (1.0f - prog2 * 0.35f);
+            float fade1 = (1.0f - prog1) * (1.0f - prog1 * 0.30f);
+            float fade2 = (1.0f - prog2) * (1.0f - prog2 * 0.30f);
 
             int a1 = MathHelper.clamp((int) (255.0f * alphaMult * fade1), 0, 255);
             int a2 = MathHelper.clamp((int) (255.0f * alphaMult * fade2), 0, 255);
@@ -721,36 +821,11 @@ public class TargetESP extends Module {
             int c1 = (a1 << 24) | (r << 16) | (g << 8) | b;
             int c2 = (a2 << 24) | (r << 16) | (g << 8) | b;
 
-            float width = baseLineWidth * (1.0f - taperAmount * prog1 * prog1);
+            float width = baseLineWidth * (1.0f - taperAmount * prog1);
             if (width < 0.8f) width = 0.8f;
 
             emitLine(builder, entry, (float) p1.x, (float) p1.y, (float) p1.z,
                                      (float) p2.x, (float) p2.y, (float) p2.z, c1, c2, width);
-        }
-
-        if (renderHeadSpark && count > 0) {
-            Vec3d head = path.get(0);
-            float hx = (float) head.x;
-            float hy = (float) head.y;
-            float hz = (float) head.z;
-
-            float sparkR = 0.08f * sizeMult;
-            float spin = (float) (timeSec * 4.2 + soulIndex * 2.094);
-            float cosS = (float) Math.cos(spin);
-            float sinS = (float) Math.sin(spin);
-
-            int headAlpha = MathHelper.clamp((int) (255.0f * alphaMult), 0, 255);
-            int cHead = (headAlpha << 24) | (r << 16) | (g << 8) | b;
-            float sparkWidth = baseLineWidth * 1.35f;
-
-            emitLine(builder, entry, hx - sparkR * cosS, hy, hz - sparkR * sinS,
-                                     hx + sparkR * cosS, hy, hz + sparkR * sinS, cHead, cHead, sparkWidth);
-
-            emitLine(builder, entry, hx, hy - sparkR, hz,
-                                     hx, hy + sparkR, hz, cHead, cHead, sparkWidth);
-
-            emitLine(builder, entry, hx - sparkR * sinS * 0.707f, hy - sparkR * 0.707f, hz + sparkR * cosS * 0.707f,
-                                     hx + sparkR * sinS * 0.707f, hy + sparkR * 0.707f, hz - sparkR * cosS * 0.707f, cHead, cHead, sparkWidth);
         }
     }
 
@@ -848,7 +923,7 @@ public class TargetESP extends Module {
                 renderLightning(matrices, camera, tickDelta, curTarget);
             }
         } else if ("Души".equals(curMode)) {
-            renderSouls3D(matrices, camera, tickDelta, curTarget);
+            renderSouls3D(matrices, camera, tickDelta, immediate, curTarget, camPos);
         }
     }
 
