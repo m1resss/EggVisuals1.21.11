@@ -103,7 +103,7 @@ public class ModuleManager {
 
         register(new TargetHUD());
 
-        register(new HitSparks());
+        register(new HitParticles());
         register(new Lyrics());
         register(new Trail());
 

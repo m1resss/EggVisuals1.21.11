@@ -1,7 +1,7 @@
 package egg.client;
 
 import egg.client.module.ModuleManager;
-import egg.client.module.render.HitSparks;
+import egg.client.module.render.HitParticles;
 import egg.client.module.render.ItemRadius;
 import egg.client.module.render.TargetESP;
 import egg.client.module.render.Trail;
@@ -79,9 +79,9 @@ public class EggClient implements ClientModInitializer {
                     itemRadius.render(immediate, camPos);
                 }
 
-                HitSparks hitSparks = ModuleManager.getInstance().getModule(HitSparks.class);
-                if (hitSparks != null && hitSparks.isEnabled()) {
-                    hitSparks.render(immediate, camPos);
+                HitParticles hitParticles = ModuleManager.getInstance().getModule(HitParticles.class);
+                if (hitParticles != null && hitParticles.isEnabled()) {
+                    hitParticles.render(immediate, camPos);
                 }
 
                 immediate.draw();

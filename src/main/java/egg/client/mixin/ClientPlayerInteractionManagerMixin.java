@@ -37,9 +37,9 @@ public class ClientPlayerInteractionManagerMixin {
             hitmarker.onAttack(target);
         }
 
-        egg.client.module.render.HitSparks hitSparks = ModuleManager.getInstance().getModule(egg.client.module.render.HitSparks.class);
-        if (hitSparks != null && hitSparks.isEnabled()) {
-            hitSparks.onAttack(player, target);
+        egg.client.module.render.HitParticles hitParticles = ModuleManager.getInstance().getModule(egg.client.module.render.HitParticles.class);
+        if (hitParticles != null && hitParticles.isEnabled()) {
+            hitParticles.onAttack(player, target);
         }
     }
 }
