@@ -136,6 +136,7 @@ public class ModuleManager {
         register(new StreamerMode());
 
         register(new egg.client.module.misc.Globals());
+        register(new egg.client.module.misc.Fun());
 
         register(new egg.client.module.render.WorldTweaks());
 

@@ -37,6 +37,7 @@
     "BlockColorsMixin",
     "ChunkRendererRegionMixin",
     "PlayerEntityRendererMixin",
+    "PlayerEntityModelMixin",
     "FogRendererMixin",
     "ItemModelManagerMixin",
     "DrawContextAccessor",

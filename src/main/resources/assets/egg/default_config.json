@@ -402,6 +402,14 @@
         "Пароль регистрации": ""
       }
     },
+    "Fun": {
+      "enabled": false,
+      "favorite": false,
+      "key": 0,
+      "settings": {
+        "Поднятые руки": true
+      }
+    },
     "ClientSettings": {
       "enabled": true,
       "favorite": false,
