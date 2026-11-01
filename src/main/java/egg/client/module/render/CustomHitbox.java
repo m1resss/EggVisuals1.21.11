@@ -31,6 +31,8 @@ public class CustomHitbox extends Module {
     private final ColorSetting outlineColor = new ColorSetting("Цвет обводки", 0xFFFFFFFF, "Пользовательский цвет контура");
     private final SliderSetting outlineWidth = new SliderSetting("Толщина обводки", 1.5, 0.5, 4.0, 0.5, "Толщина линий контура");
 
+    private final BooleanSetting onlyHover = new BooleanSetting("Только при наведении", false, "Отображать хитбокс только при наведении прицела на цель");
+
     private final BooleanSetting players = new BooleanSetting("Игроки", true, "Отображать хитбоксы других игроков");
     private final BooleanSetting mobs = new BooleanSetting("Мобы", false, "Отображать хитбоксы мобов и существ");
     private final BooleanSetting self = new BooleanSetting("Себя", false, "Отображать свой хитбокс при виде от третьего лица");
@@ -45,7 +47,7 @@ public class CustomHitbox extends Module {
         outlineColor.setVisible(() -> outline.get() && colorMode.is("Кастомный"));
         outlineWidth.setVisible(() -> outline.get());
 
-        addSettings(colorMode, fill, fillAlpha, fillColor, outline, outlineAlpha, outlineColor, outlineWidth, players, mobs, self);
+        addSettings(colorMode, fill, fillAlpha, fillColor, outline, outlineAlpha, outlineColor, outlineWidth, onlyHover, players, mobs, self);
     }
 
     public void render(VertexConsumerProvider consumers, Vec3d camPos, float tickDelta) {
@@ -90,9 +92,24 @@ public class CustomHitbox extends Module {
                 continue;
             }
 
+            if (onlyHover.get() && !isAimingAt(mc, entity, tickDelta)) {
+                continue;
+            }
+
             Box box = getInterpolatedBoundingBox(entity, tickDelta);
             renderHitbox(quadBuffer, box, camPos, doFill, fR, fG, fB, fA, doOutline, oR, oG, oB, oA, width);
         }
+    }
+
+    private boolean isAimingAt(MinecraftClient mc, Entity entity, float tickDelta) {
+        if (mc.player == null || entity == null) return false;
+        if (mc.targetedEntity == entity) return true;
+
+        Vec3d eyePos = mc.player.getEyePos();
+        Vec3d lookVec = mc.player.getRotationVec(tickDelta);
+        Vec3d endPos = eyePos.add(lookVec.multiply(64.0));
+        Box box = getInterpolatedBoundingBox(entity, tickDelta);
+        return box.expand(0.1).raycast(eyePos, endPos).isPresent();
     }
 
     public static Box getInterpolatedBoundingBox(Entity entity, float tickDelta) {

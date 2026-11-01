@@ -16,9 +16,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class ClientFont {
     private ClientFont() {}
 
-    public static final StyleSpriteSource.Font SF_REGULAR = new StyleSpriteSource.Font(Identifier.of("egg", "sf"));
-    public static final StyleSpriteSource.Font SF_MEDIUM = new StyleSpriteSource.Font(Identifier.of("egg", "sf"));
-    public static final StyleSpriteSource.Font SF_SEMIBOLD = new StyleSpriteSource.Font(Identifier.of("egg", "sf_medium"));
+    public static final StyleSpriteSource.Font SF_REGULAR = new StyleSpriteSource.Font(Identifier.of("egg", "sf_regular"));
+    public static final StyleSpriteSource.Font SF_MEDIUM = new StyleSpriteSource.Font(Identifier.of("egg", "sf_medium"));
+    public static final StyleSpriteSource.Font SF_SEMIBOLD = new StyleSpriteSource.Font(Identifier.of("egg", "sf_semibold"));
     public static final StyleSpriteSource.Font SF_BOLD = new StyleSpriteSource.Font(Identifier.of("egg", "sf_bold"));
 
     public static final float FONT_HEIGHT = 9.0f;

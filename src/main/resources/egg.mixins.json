@@ -48,7 +48,8 @@
     "TextFieldWidgetAnimationMixin",
     "WorldRendererProjectionMixin",
     "WorldRendererReflectionMixin",
-    "WorldRendererCloudMixin"
+    "WorldRendererCloudMixin",
+    "GlyphAtlasTextureMixin"
   ],
   "client": [],
   "injectors": {
