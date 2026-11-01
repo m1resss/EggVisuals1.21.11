@@ -41,6 +41,7 @@
     "ItemModelManagerMixin",
     "DrawContextAccessor",
     "ItemRenderStateAccessor",
+    "LayerRenderStateAccessor",
     "ItemCooldownManagerAccessor",
     "ItemCooldownEntryAccessor",
     "PlayerListHudMixin",

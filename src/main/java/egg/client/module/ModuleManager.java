@@ -97,6 +97,8 @@ public class ModuleManager {
 
         register(new CustomHitbox());
 
+        register(new ItemESP());
+
         register(new ItemRadius());
 
         register(new TargetHUD());

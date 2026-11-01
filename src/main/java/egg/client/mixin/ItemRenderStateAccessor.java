@@ -12,4 +12,10 @@ public interface ItemRenderStateAccessor {
 
     @Accessor("displayContext")
     void setDisplayContext(ItemDisplayContext displayContext);
+
+    @Accessor("layers")
+    ItemRenderState.LayerRenderState[] getLayers();
+
+    @Accessor("layerCount")
+    int getLayerCount();
 }
