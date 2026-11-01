@@ -561,7 +561,7 @@ public class ClickGuiScreen extends Screen {
         float size = 26.0f;
         int eggColor = ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, alpha);
         IconRenderer.drawTextureScaled(context, LOGO_TEXTURE, cx - size / 2.0f, cy - size / 2.0f, size, size, 96, 96, eggColor);
-        HalloweenGuiRenderer.renderWitchHat(context, cx + 1.0f, cy - size * 0.32f, size * 0.65f, alpha);
+        HalloweenGuiRenderer.renderWitchHat(context, cx - 0.5f, cy - size * 0.30f, size * 0.65f, alpha);
     }
 
     private void renderHeader(DrawContext context, float x, float y, float width, float height, float mouseX, float mouseY, float alpha) {
