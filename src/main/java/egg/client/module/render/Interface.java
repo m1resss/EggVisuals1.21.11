@@ -891,30 +891,7 @@ public class Interface extends Module {
                             coverTexture.close();
                         }
 
-                        long sumR = 0, sumG = 0, sumB = 0;
-                        int samples = 0;
-                        int stepX = Math.max(1, img.getWidth() / 16);
-                        int stepY = Math.max(1, img.getHeight() / 16);
-                        for (int py = 0; py < img.getHeight(); py += stepY) {
-                            for (int px = 0; px < img.getWidth(); px += stepX) {
-                                int argb = img.getColorArgb(px, py);
-                                int a = (argb >> 24) & 0xFF;
-                                if (a < 128) continue;
-                                int r = (argb >> 16) & 0xFF;
-                                int g = (argb >> 8) & 0xFF;
-                                int b = argb & 0xFF;
-                                int bri = (r + g + b) / 3;
-                                if (bri > 25 && bri < 240) {
-                                    sumR += r;
-                                    sumG += g;
-                                    sumB += b;
-                                    samples++;
-                                }
-                            }
-                        }
-                        if (samples > 0) {
-                            dominantAccentColor = 0xFF000000 | ((int) (sumR / samples) << 16) | ((int) (sumG / samples) << 8) | (int) (sumB / samples);
-                        }
+                        dominantAccentColor = extractVibrantAccent(img);
 
                         coverTexture = new NativeImageBackedTexture(() -> "album_art", img);
                         coverTexture.upload();
@@ -927,6 +904,167 @@ public class Interface extends Module {
                 hasCoverArt = false;
             }
         }
+    }
+
+
+    public static int extractVibrantAccent(net.minecraft.client.texture.NativeImage img) {
+        if (img == null) return 0xFF3888FF;
+
+        int width = img.getWidth();
+        int height = img.getHeight();
+        int stepX = Math.max(1, width / 24);
+        int stepY = Math.max(1, height / 24);
+
+        int binCount = 18;
+        float[] binScores = new float[binCount];
+        long[] binR = new long[binCount];
+        long[] binG = new long[binCount];
+        long[] binB = new long[binCount];
+        int[] binSamples = new int[binCount];
+
+        float maxScore = 0.0f;
+        int bestBin = -1;
+
+        long fallbackR = 0, fallbackG = 0, fallbackB = 0;
+        int fallbackSamples = 0;
+
+        for (int py = 0; py < height; py += stepY) {
+            for (int px = 0; px < width; px += stepX) {
+                int argb = img.getColorArgb(px, py);
+                int a = (argb >> 24) & 0xFF;
+                if (a < 128) continue;
+
+                int r = (argb >> 16) & 0xFF;
+                int g = (argb >> 8) & 0xFF;
+                int b = argb & 0xFF;
+
+                float rf = r / 255.0f;
+                float gf = g / 255.0f;
+                float bf = b / 255.0f;
+
+                float max = Math.max(rf, Math.max(gf, bf));
+                float min = Math.min(rf, Math.min(gf, bf));
+                float delta = max - min;
+
+                float v = max;
+                float s = (max > 1.0e-4f) ? (delta / max) : 0.0f;
+
+                if (v < 0.16f || (v > 0.94f && s < 0.16f)) continue;
+
+                fallbackR += r;
+                fallbackG += g;
+                fallbackB += b;
+                fallbackSamples++;
+
+                if (s < 0.22f) continue;
+
+                float h = 0.0f;
+                if (delta > 1.0e-4f) {
+                    if (max == rf) {
+                        h = ((gf - bf) / delta) % 6.0f;
+                    } else if (max == gf) {
+                        h = ((bf - rf) / delta) + 2.0f;
+                    } else {
+                        h = ((rf - gf) / delta) + 4.0f;
+                    }
+                    h /= 6.0f;
+                    if (h < 0.0f) h += 1.0f;
+                }
+
+                int bin = Math.min(binCount - 1, (int) (h * binCount));
+
+                // Anti-flesh penalty: penalize skin/beige hues (14 deg to 44 deg) with low/medium saturation
+                float weight = 1.0f;
+                float deg = h * 360.0f;
+                if (deg >= 14.0f && deg <= 44.0f && s < 0.58f) {
+                    weight = 0.12f;
+                }
+
+                float score = (s * s) * (float) Math.sqrt(v) * weight;
+                binScores[bin] += score;
+                binR[bin] += r;
+                binG[bin] += g;
+                binB[bin] += b;
+                binSamples[bin]++;
+
+                if (binScores[bin] > maxScore) {
+                    maxScore = binScores[bin];
+                    bestBin = bin;
+                }
+            }
+        }
+
+        int rawR, rawG, rawB;
+        if (bestBin != -1 && binSamples[bestBin] > 0) {
+            rawR = (int) (binR[bestBin] / binSamples[bestBin]);
+            rawG = (int) (binG[bestBin] / binSamples[bestBin]);
+            rawB = (int) (binB[bestBin] / binSamples[bestBin]);
+        } else if (fallbackSamples > 0) {
+            rawR = (int) (fallbackR / fallbackSamples);
+            rawG = (int) (fallbackG / fallbackSamples);
+            rawB = (int) (fallbackB / fallbackSamples);
+        } else {
+            return 0xFF3888FF;
+        }
+
+        return enhanceAccentVibrancy(rawR, rawG, rawB);
+    }
+
+    public static int enhanceAccentVibrancy(int r, int g, int b) {
+        float rf = r / 255.0f;
+        float gf = g / 255.0f;
+        float bf = b / 255.0f;
+
+        float max = Math.max(rf, Math.max(gf, bf));
+        float min = Math.min(rf, Math.min(gf, bf));
+        float delta = max - min;
+
+        float v = max;
+        float s = (max > 1.0e-4f) ? (delta / max) : 0.0f;
+        float h = 0.0f;
+        if (delta > 1.0e-4f) {
+            if (max == rf) {
+                h = ((gf - bf) / delta) % 6.0f;
+            } else if (max == gf) {
+                h = ((bf - rf) / delta) + 2.0f;
+            } else {
+                h = ((rf - gf) / delta) + 4.0f;
+            }
+            h /= 6.0f;
+            if (h < 0.0f) h += 1.0f;
+        }
+
+        if (s < 0.12f) {
+            return 0xFF00E5FF;
+        }
+
+        float boostS = Math.max(s * 1.55f, 0.82f);
+        boostS = Math.min(boostS, 1.0f);
+
+        float boostV = Math.max(v * 1.15f, 0.92f);
+        boostV = Math.min(boostV, 1.0f);
+
+        int hr = (int) (h * 6.0f);
+        float f = h * 6.0f - hr;
+        float p = boostV * (1.0f - boostS);
+        float q = boostV * (1.0f - f * boostS);
+        float t = boostV * (1.0f - (1.0f - f) * boostS);
+
+        float outR = 0, outG = 0, outB = 0;
+        switch (hr % 6) {
+            case 0 -> { outR = boostV; outG = t; outB = p; }
+            case 1 -> { outR = q; outG = boostV; outB = p; }
+            case 2 -> { outR = p; outG = boostV; outB = t; }
+            case 3 -> { outR = p; outG = q; outB = boostV; }
+            case 4 -> { outR = t; outG = p; outB = boostV; }
+            case 5 -> { outR = boostV; outG = p; outB = q; }
+        }
+
+        int finalR = net.minecraft.util.math.MathHelper.clamp((int) (outR * 255.0f), 0, 255);
+        int finalG = net.minecraft.util.math.MathHelper.clamp((int) (outG * 255.0f), 0, 255);
+        int finalB = net.minecraft.util.math.MathHelper.clamp((int) (outB * 255.0f), 0, 255);
+
+        return 0xFF000000 | (finalR << 16) | (finalG << 8) | finalB;
     }
 
     private void drawBrandGradient(Matrix3x2f mat, String text, float x, float y, float size, float alphaFactor) {

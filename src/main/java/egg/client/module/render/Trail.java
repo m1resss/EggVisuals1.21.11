@@ -134,6 +134,12 @@ public class Trail extends Module {
                 iface.ensureMediaUpdated();
                 if (iface.hasCoverArt()) {
                     targetTrackCol = iface.getDominantAccentColor();
+                } else {
+                    targetTrackCol = Interface.enhanceAccentVibrancy(
+                            (targetTrackCol >> 16) & 0xFF,
+                            (targetTrackCol >> 8) & 0xFF,
+                            targetTrackCol & 0xFF
+                    );
                 }
             }
             float trR = ((targetTrackCol >> 16) & 0xFF) / 255.0f;
@@ -203,151 +209,185 @@ public class Trail extends Module {
         if (count < 2) return;
 
         float baseBloomWidth = 0.052f * thickScale;
-        float baseCoreWidth = 0.012f * thickScale;
+        float baseCoreWidth = 0.009f * thickScale;
 
-        for (int i = 0; i < count - 1; i++) {
-            CurveSample sA = samples.get(i);
-            CurveSample sB = samples.get(i + 1);
+        // 1. Precalculate continuous RibbonNode for every curve vertex
+        RibbonNode[] nodes = new RibbonNode[count];
 
-            float ax = (float) (sA.x - camPos.x);
-            float ay = (float) (sA.y - camPos.y);
-            float az = (float) (sA.z - camPos.z);
+        for (int i = 0; i < count; i++) {
+            CurveSample cur = samples.get(i);
 
-            float bx = (float) (sB.x - camPos.x);
-            float by = (float) (sB.y - camPos.y);
-            float bz = (float) (sB.z - camPos.z);
+            // World coords relative to camera
+            float cx = (float) (cur.x - camPos.x);
+            float cy = (float) (cur.y - camPos.y);
+            float cz = (float) (cur.z - camPos.z);
 
-            float tx = bx - ax;
-            float ty = by - ay;
-            float tz = bz - az;
-            float tLen = MathHelper.sqrt(tx * tx + ty * ty + tz * tz);
-            if (tLen < 1.0e-5f) continue;
-            tx /= tLen;
-            ty /= tLen;
-            tz /= tLen;
-
-            // Camera view vector to vertex A
-            float vx = ax;
-            float vy = ay;
-            float vz = az;
-            float vLen = MathHelper.sqrt(vx * vx + vy * vy + vz * vz);
-            if (vLen > 1.0e-5f) {
-                vx /= vLen;
-                vy /= vLen;
-                vz /= vLen;
+            // Smooth central-difference tangent at node i
+            float tx, ty, tz;
+            if (i == 0) {
+                CurveSample next = samples.get(1);
+                tx = (float) (next.x - cur.x);
+                ty = (float) (next.y - cur.y);
+                tz = (float) (next.z - cur.z);
+            } else if (i == count - 1) {
+                CurveSample prev = samples.get(count - 2);
+                tx = (float) (cur.x - prev.x);
+                ty = (float) (cur.y - prev.y);
+                tz = (float) (cur.z - prev.z);
+            } else {
+                CurveSample prev = samples.get(i - 1);
+                CurveSample next = samples.get(i + 1);
+                tx = (float) (next.x - prev.x);
+                ty = (float) (next.y - prev.y);
+                tz = (float) (next.z - prev.z);
             }
 
-            // Primary Camera-Facing Normal (tangent cross view)
+            float tLen = MathHelper.sqrt(tx * tx + ty * ty + tz * tz);
+            if (tLen > 1.0e-5f) {
+                tx /= tLen; ty /= tLen; tz /= tLen;
+            } else {
+                tx = 0.0f; ty = 1.0f; tz = 0.0f;
+            }
+
+            // View vector from camera to node
+            float vx = cx;
+            float vy = cy;
+            float vz = cz;
+            float vLen = MathHelper.sqrt(vx * vx + vy * vy + vz * vz);
+            if (vLen > 1.0e-5f) {
+                vx /= vLen; vy /= vLen; vz /= vLen;
+            }
+
+            // Camera-facing normal: tangent cross view
             float nx = ty * vz - tz * vy;
             float ny = tz * vx - tx * vz;
             float nz = tx * vy - ty * vx;
             float nLen = MathHelper.sqrt(nx * nx + ny * ny + nz * nz);
-            if (nLen < 1.0e-5f) {
-                nx = 0.0f; ny = 1.0f; nz = 0.0f;
-            } else {
+            if (nLen > 1.0e-5f) {
                 nx /= nLen; ny /= nLen; nz /= nLen;
-            }
-
-            // Secondary Orthogonal Cross Normal (tangent cross camera normal)
-            float cx = ty * nz - tz * ny;
-            float cy = tz * nx - tx * nz;
-            float cz = tx * ny - ty * nx;
-            float cLen = MathHelper.sqrt(cx * cx + cy * cy + cz * cz);
-            if (cLen < 1.0e-5f) {
-                cx = 1.0f; cy = 0.0f; cz = 0.0f;
             } else {
-                cx /= cLen; cy /= cLen; cz /= cLen;
+                nx = 0.0f; ny = 1.0f; nz = 0.0f;
             }
 
-            // Dual 45-degree cross diagonals for volumetric substance from all 360-degree angles
-            float d1x = (nx + cx) * 0.7071f;
-            float d1y = (ny + cy) * 0.7071f;
-            float d1z = (nz + cz) * 0.7071f;
+            // Secondary orthogonal normal: tangent cross camera normal (volumetric cross depth)
+            float bx = ty * nz - tz * ny;
+            float by = tz * nx - tx * nz;
+            float bz = tx * ny - ty * nx;
+            float bLen = MathHelper.sqrt(bx * bx + by * by + bz * bz);
+            if (bLen > 1.0e-5f) {
+                bx /= bLen; by /= bLen; bz /= bLen;
+            } else {
+                bx = 1.0f; by = 0.0f; bz = 0.0f;
+            }
 
-            float d2x = (nx - cx) * 0.7071f;
-            float d2y = (ny - cy) * 0.7071f;
-            float d2z = (nz - cz) * 0.7071f;
+            float p = cur.progress;
+            // Width tapering from player to tail
+            float wBloom = baseBloomWidth * (1.0f - 0.75f * (p * p));
+            float wCross = wBloom * 0.60f;
+            float wCore = baseCoreWidth * (1.0f - 0.78f * (p * p));
 
-            float pA = sA.progress;
-            float pB = sB.progress;
+            // Alpha dissipation towards tail tip
+            float fade = p < 0.65f ? (1.0f - 0.12f * (p / 0.65f)) : (0.88f * (1.0f - (p - 0.65f) / 0.35f));
+            fade = MathHelper.clamp(fade, 0.0f, 1.0f);
 
-            // Elegant tapering width profile (anchor -> fine tail)
-            float wBloomA = baseBloomWidth * (1.0f - 0.78f * (pA * pA));
-            float wBloomB = baseBloomWidth * (1.0f - 0.78f * (pB * pB));
-
-            float wCoreA = baseCoreWidth * (1.0f - 0.80f * (pA * pA));
-            float wCoreB = baseCoreWidth * (1.0f - 0.80f * (pB * pB));
-
-            // Smooth dissipation alpha falloff towards the tip
-            float fadeA = pA < 0.65f ? (1.0f - 0.15f * (pA / 0.65f)) : (0.85f * (1.0f - (pA - 0.65f) / 0.35f));
-            float fadeB = pB < 0.65f ? (1.0f - 0.15f * (pB / 0.65f)) : (0.85f * (1.0f - (pB - 0.65f) / 0.35f));
-            fadeA = MathHelper.clamp(fadeA, 0.0f, 1.0f);
-            fadeB = MathHelper.clamp(fadeB, 0.0f, 1.0f);
-
-            // Calculate colors
-            int colA = baseColor;
-            int colB = baseColor;
+            // Color calculation
+            int col = baseColor;
             if ("Радуга".equals(cMode)) {
-                float hueA = (timeSec * 0.35f + pA * 0.75f + strandIdx * 0.125f) % 1.0f;
-                float hueB = (timeSec * 0.35f + pB * 0.75f + strandIdx * 0.125f) % 1.0f;
-                colA = hsvToRgb(hueA, 0.88f, 1.0f);
-                colB = hsvToRgb(hueB, 0.88f, 1.0f);
+                float hue = (timeSec * 0.35f + p * 0.75f + strandIdx * 0.125f) % 1.0f;
+                col = hsvToRgb(hue, 0.88f, 1.0f);
             }
 
-            int rA = (colA >> 16) & 0xFF;
-            int gA = (colA >> 8) & 0xFF;
-            int bA = colA & 0xFF;
+            int r = (col >> 16) & 0xFF;
+            int g = (col >> 8) & 0xFF;
+            int b = col & 0xFF;
 
-            int rB = (colB >> 16) & 0xFF;
-            int gB = (colB >> 8) & 0xFF;
-            int bB = colB & 0xFF;
+            RibbonNode node = new RibbonNode();
+            node.cx = cx; node.cy = cy; node.cz = cz;
 
-            // --- PASS 1: Volumetric Neon Additive Bloom (RenderLayers.lightning) ---
-            int aBloomA = (int) MathHelper.clamp(200.0f * glowScale * fadeA, 0.0f, 255.0f);
-            int aBloomB = (int) MathHelper.clamp(200.0f * glowScale * fadeB, 0.0f, 255.0f);
+            // Camera-facing left and right
+            node.lx = cx - wBloom * nx;
+            node.ly = cy - wBloom * ny;
+            node.lz = cz - wBloom * nz;
 
-            // 1. Camera-aligned bloom ribbon
+            node.rx = cx + wBloom * nx;
+            node.ry = cy + wBloom * ny;
+            node.rz = cz + wBloom * nz;
+
+            // Volumetric top and bottom fins
+            node.ux = cx - wCross * bx;
+            node.uy = cy - wCross * by;
+            node.uz = cz - wCross * bz;
+
+            node.dx = cx + wCross * bx;
+            node.dy = cy + wCross * by;
+            node.dz = cz + wCross * bz;
+
+            // Laser core
+            node.clx = cx - wCore * nx;
+            node.cly = cy - wCore * ny;
+            node.clz = cz - wCore * nz;
+
+            node.crx = cx + wCore * nx;
+            node.cry = cy + wCore * ny;
+            node.crz = cz + wCore * nz;
+
+            node.r = r; node.g = g; node.b = b;
+
+            // Hot laser center
+            node.coreR = (int) MathHelper.lerp(0.35f, r, 255.0f);
+            node.coreG = (int) MathHelper.lerp(0.35f, g, 255.0f);
+            node.coreB = (int) MathHelper.lerp(0.35f, b, 255.0f);
+
+            node.alphaCenter = (int) MathHelper.clamp(230.0f * glowScale * fade, 0.0f, 255.0f);
+            node.alphaCore = (int) MathHelper.clamp(255.0f * fade, 0.0f, 255.0f);
+
+            nodes[i] = node;
+        }
+
+        // 2. Render seamless connected strips sharing identical node vertices
+        for (int i = 0; i < count - 1; i++) {
+            RibbonNode n0 = nodes[i];
+            RibbonNode n1 = nodes[i + 1];
+
+            int aC0 = n0.alphaCenter;
+            int aC1 = n1.alphaCenter;
+
+            // PASS 1A: Camera-aligned soft glow - Left Half (0 alpha at left edge -> max alpha at center)
             drawQuadDoubleSided(glowBuf,
-                    ax - wBloomA * nx, ay - wBloomA * ny, az - wBloomA * nz, rA, gA, bA, aBloomA,
-                    bx - wBloomB * nx, by - wBloomB * ny, bz - wBloomB * nz, rB, gB, bB, aBloomB,
-                    bx + wBloomB * nx, by + wBloomB * ny, bz + wBloomB * nz, rB, gB, bB, aBloomB,
-                    ax + wBloomA * nx, ay + wBloomA * ny, az + wBloomA * nz, rA, gA, bA, aBloomA);
+                    n0.lx, n0.ly, n0.lz, n0.r, n0.g, n0.b, 0,
+                    n0.cx, n0.cy, n0.cz, n0.r, n0.g, n0.b, aC0,
+                    n1.cx, n1.cy, n1.cz, n1.r, n1.g, n1.b, aC1,
+                    n1.lx, n1.ly, n1.lz, n1.r, n1.g, n1.b, 0);
 
-            // 2. Volumetric cross diagonal fin 1 (prevents flat edge collapse)
-            float wCrossA = wBloomA * 0.75f;
-            float wCrossB = wBloomB * 0.75f;
-            int aCrossA = (int) (aBloomA * 0.75f);
-            int aCrossB = (int) (aBloomB * 0.75f);
+            // PASS 1B: Camera-aligned soft glow - Right Half (max alpha at center -> 0 alpha at right edge)
             drawQuadDoubleSided(glowBuf,
-                    ax - wCrossA * d1x, ay - wCrossA * d1y, az - wCrossA * d1z, rA, gA, bA, aCrossA,
-                    bx - wCrossB * d1x, by - wCrossB * d1y, bz - wCrossB * d1z, rB, gB, bB, aCrossB,
-                    bx + wCrossB * d1x, by + wCrossB * d1y, bz + wCrossB * d1z, rB, gB, bB, aCrossB,
-                    ax + wCrossA * d1x, ay + wCrossA * d1y, az + wCrossA * d1z, rA, gA, bA, aCrossA);
+                    n0.cx, n0.cy, n0.cz, n0.r, n0.g, n0.b, aC0,
+                    n0.rx, n0.ry, n0.rz, n0.r, n0.g, n0.b, 0,
+                    n1.rx, n1.ry, n1.rz, n1.r, n1.g, n1.b, 0,
+                    n1.cx, n1.cy, n1.cz, n1.r, n1.g, n1.b, aC1);
 
-            // 3. Volumetric cross diagonal fin 2
+            // PASS 1C: Volumetric 3D depth - Upper Fin (0 alpha at top edge -> max alpha at center)
+            int aV0 = (int) (aC0 * 0.65f);
+            int aV1 = (int) (aC1 * 0.65f);
             drawQuadDoubleSided(glowBuf,
-                    ax - wCrossA * d2x, ay - wCrossA * d2y, az - wCrossA * d2z, rA, gA, bA, aCrossA,
-                    bx - wCrossB * d2x, by - wCrossB * d2y, bz - wCrossB * d2z, rB, gB, bB, aCrossB,
-                    bx + wCrossB * d2x, by + wCrossB * d2y, bz + wCrossB * d2z, rB, gB, bB, aCrossB,
-                    ax + wCrossA * d2x, ay + wCrossA * d2y, az + wCrossA * d2z, rA, gA, bA, aCrossA);
+                    n0.ux, n0.uy, n0.uz, n0.r, n0.g, n0.b, 0,
+                    n0.cx, n0.cy, n0.cz, n0.r, n0.g, n0.b, aV0,
+                    n1.cx, n1.cy, n1.cz, n1.r, n1.g, n1.b, aV1,
+                    n1.ux, n1.uy, n1.uz, n1.r, n1.g, n1.b, 0);
 
-            // --- PASS 2: Hyper-Bright Laser Filament Core (RenderLayers.debugQuads) ---
-            int crA = (int) MathHelper.lerp(0.72f, rA, 255.0f);
-            int cgA = (int) MathHelper.lerp(0.72f, gA, 255.0f);
-            int cbA = (int) MathHelper.lerp(0.72f, bA, 255.0f);
+            // PASS 1D: Volumetric 3D depth - Lower Fin (max alpha at center -> 0 alpha at bottom edge)
+            drawQuadDoubleSided(glowBuf,
+                    n0.cx, n0.cy, n0.cz, n0.r, n0.g, n0.b, aV0,
+                    n0.dx, n0.dy, n0.dz, n0.r, n0.g, n0.b, 0,
+                    n1.dx, n1.dy, n1.dz, n1.r, n1.g, n1.b, 0,
+                    n1.cx, n1.cy, n1.cz, n1.r, n1.g, n1.b, aV1);
 
-            int crB = (int) MathHelper.lerp(0.72f, rB, 255.0f);
-            int cgB = (int) MathHelper.lerp(0.72f, gB, 255.0f);
-            int cbB = (int) MathHelper.lerp(0.72f, bB, 255.0f);
-
-            int aCoreA = (int) MathHelper.clamp(250.0f * fadeA, 0.0f, 255.0f);
-            int aCoreB = (int) MathHelper.clamp(250.0f * fadeB, 0.0f, 255.0f);
-
+            // PASS 2: Continuous Hyper-Bright Laser Core (RenderLayers.debugQuads)
             drawQuadDoubleSided(coreBuf,
-                    ax - wCoreA * nx, ay - wCoreA * ny, az - wCoreA * nz, crA, cgA, cbA, aCoreA,
-                    bx - wCoreB * nx, by - wCoreB * ny, bz - wCoreB * nz, crB, cgB, cbB, aCoreB,
-                    bx + wCoreB * nx, by + wCoreB * ny, bz + wCoreB * nz, crB, cgB, cbB, aCoreB,
-                    ax + wCoreA * nx, ay + wCoreA * ny, az + wCoreA * nz, crA, cgA, cbA, aCoreA);
+                    n0.clx, n0.cly, n0.clz, n0.coreR, n0.coreG, n0.coreB, n0.alphaCore,
+                    n0.crx, n0.cry, n0.crz, n0.coreR, n0.coreG, n0.coreB, n0.alphaCore,
+                    n1.crx, n1.cry, n1.crz, n1.coreR, n1.coreG, n1.coreB, n1.alphaCore,
+                    n1.clx, n1.cly, n1.clz, n1.coreR, n1.coreG, n1.coreB, n1.alphaCore);
         }
     }
 
@@ -471,6 +511,21 @@ public class Trail extends Module {
         }
     }
 
+    private static class RibbonNode {
+        float cx, cy, cz;
+        float lx, ly, lz;
+        float rx, ry, rz;
+        float ux, uy, uz;
+        float dx, dy, dz;
+        float clx, cly, clz;
+        float crx, cry, crz;
+
+        int r, g, b;
+        int coreR, coreG, coreB;
+        int alphaCenter;
+        int alphaCore;
+    }
+
     private static class StrandPoint {
         double x, y, z;
         long time;
@@ -560,7 +615,7 @@ public class Trail extends Module {
             int size = points.size();
             if (size < 2) return samples;
 
-            int subDivs = 3;
+            int subDivs = 5;
             int totalExpected = (size - 1) * subDivs + 1;
             int curSampleIdx = 0;
 
