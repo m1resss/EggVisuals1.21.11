@@ -20,6 +20,13 @@ public final class Theme {
     public static final int SIDEBAR_DIVIDER = ColorUtil.rgba(255, 255, 255, 18);
 
     public static int getAccent() {
+        if (ClientSettings.isHalloweenStyle()) {
+            int custom = ClientSettings.getCustomAccent();
+            if (custom == ColorUtil.rgb(111, 95, 176)) {
+                return ColorUtil.rgb(255, 117, 24);
+            }
+            return custom;
+        }
         return ClientSettings.getCustomAccent();
     }
 

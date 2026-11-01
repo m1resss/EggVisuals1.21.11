@@ -49,7 +49,15 @@ public enum ClientTheme {
             ColorUtil.rgba(245, 158, 11, 55),
             ColorUtil.rgba(36, 28, 20, 235),
             ColorUtil.rgba(48, 38, 28, 255),
-            ColorUtil.rgba(60, 48, 36, 255));
+            ColorUtil.rgba(60, 48, 36, 255)),
+
+    HALLOWEEN("Halloween",
+            ColorUtil.rgb(255, 117, 24),
+            ColorUtil.rgb(255, 149, 64),
+            ColorUtil.rgba(255, 117, 24, 60),
+            ColorUtil.rgba(21, 17, 28, 242),
+            ColorUtil.rgba(30, 24, 40, 255),
+            ColorUtil.rgba(40, 32, 54, 255));
 
     private final String displayName;
     public final int accent;

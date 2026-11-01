@@ -20,9 +20,15 @@ public class ClientSettings extends Module {
     private final BooleanSetting guiBlur = new BooleanSetting("Background Blur", true, "Размытие заднего плана ванильным шейдером");
     private final BooleanSetting guiShadow = new BooleanSetting("Window Shadow", true, "Мягкая тень вокруг окна GUI");
 
+    private final BooleanSetting halloweenStyle = new BooleanSetting("Хеллоуин стиль", true, "Оформление интерфейса в стиле Хеллоуина с тыквами, паутиной и праздничным акцентом");
+    private final BooleanSetting halloweenWebs = new BooleanSetting("Паутина", true, "Отображать паутину и интерактивного паучка по краям окна");
+    private final BooleanSetting halloweenPumpkins = new BooleanSetting("Светящиеся тыквы", true, "Отображать резные светящиеся тыквы с живым мерцанием свечи по краям");
+    private final BooleanSetting halloweenEmbers = new BooleanSetting("Хеллоуинские частицы", true, "Парящие атмосферные искры и частицы на фоне окна");
+
     public ClientSettings() {
         super("ClientSettings", "Основные настройки интерфейса и эффектов клиента", Category.SETTINGS);
-        addSettings(accentColor, openAnimMode, lensCenterMode, smoothAnimations, animSpeed, openSoundVolume, guiBlur, guiShadow);
+        addSettings(accentColor, openAnimMode, lensCenterMode, smoothAnimations, animSpeed, openSoundVolume, guiBlur, guiShadow,
+                halloweenStyle, halloweenWebs, halloweenPumpkins, halloweenEmbers);
     }
 
     public ColorSetting getAccentColorSetting() {
@@ -38,6 +44,9 @@ public class ClientSettings extends Module {
     }
 
     public static ClientTheme getActiveTheme() {
+        if (isHalloweenStyle()) {
+            return ClientTheme.HALLOWEEN;
+        }
         return ClientTheme.GRAPHITE;
     }
 
@@ -81,5 +90,29 @@ public class ClientSettings extends Module {
         if (EggClient.getInstance() == null || EggClient.getInstance().getModuleManager() == null) return true;
         ClientSettings s = EggClient.getInstance().getModuleManager().getModule(ClientSettings.class);
         return s == null || s.guiShadow.get();
+    }
+
+    public static boolean isHalloweenStyle() {
+        if (EggClient.getInstance() == null || EggClient.getInstance().getModuleManager() == null) return true;
+        ClientSettings s = EggClient.getInstance().getModuleManager().getModule(ClientSettings.class);
+        return s == null || s.halloweenStyle.get();
+    }
+
+    public static boolean isHalloweenWebs() {
+        if (!isHalloweenStyle()) return false;
+        ClientSettings s = EggClient.getInstance().getModuleManager().getModule(ClientSettings.class);
+        return s == null || s.halloweenWebs.get();
+    }
+
+    public static boolean isHalloweenPumpkins() {
+        if (!isHalloweenStyle()) return false;
+        ClientSettings s = EggClient.getInstance().getModuleManager().getModule(ClientSettings.class);
+        return s == null || s.halloweenPumpkins.get();
+    }
+
+    public static boolean isHalloweenEmbers() {
+        if (!isHalloweenStyle()) return false;
+        ClientSettings s = EggClient.getInstance().getModuleManager().getModule(ClientSettings.class);
+        return s == null || s.halloweenEmbers.get();
     }
 }

@@ -421,7 +421,11 @@
         "Smooth Animations": true,
         "Anim Speed": 1.6,
         "Background Blur": false,
-        "Window Shadow": true
+        "Window Shadow": true,
+        "Хеллоуин стиль": true,
+        "Паутина": true,
+        "Светящиеся тыквы": true,
+        "Хеллоуинские частицы": true
       }
     },
     "StreamerMode": {

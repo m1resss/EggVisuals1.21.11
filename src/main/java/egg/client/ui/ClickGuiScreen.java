@@ -21,6 +21,7 @@ import egg.client.render.font.ClientFont;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Fonts;
 import egg.client.render.msdf.pipeline.DrawBatcher;
+import egg.client.ui.halloween.HalloweenGuiRenderer;
 import egg.client.ui.lens.LensParams;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
@@ -402,9 +403,16 @@ public class ClickGuiScreen extends Screen {
 
             float contentAlpha = LensParams.smoothstep(0.55f, 0.90f, p) * p;
             if (contentAlpha > 0.01f) {
+                HalloweenGuiRenderer.renderEmbers(context, curX, curY, curW, curH, contentAlpha);
                 context.enableScissor((int) curX, (int) curY, (int) (curX + curW), (int) (curY + curH));
                 renderWindowContent(context, gx, gy, guiWidth, guiHeight, mouseX, mouseY, contentAlpha);
+                HalloweenGuiRenderer.renderWebs(context, curX, curY, curW, curH, contentAlpha);
+                HalloweenGuiRenderer.renderSpider(context, curX, curY, (float) mouseX, (float) mouseY, contentAlpha);
                 context.disableScissor();
+
+                if (p > 0.85f) {
+                    HalloweenGuiRenderer.renderPumpkins(context, curX, curY, curW, curH, (float) mouseX, (float) mouseY, contentAlpha);
+                }
             }
         } else {
 
@@ -439,9 +447,15 @@ public class ClickGuiScreen extends Screen {
         Render2D.drawRoundedOutline(context, gx, gy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 1.0f, mainBorder);
         Render2D.drawDiagonalSheen(context, gx, gy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 1200L);
 
+        HalloweenGuiRenderer.renderEmbers(context, gx, gy, guiWidth, guiHeight, contentAlpha);
+
         context.enableScissor((int) gx, (int) gy, (int) (gx + guiWidth), (int) (gy + guiHeight));
         renderWindowContent(context, gx, gy, guiWidth, guiHeight, mouseX, mouseY, contentAlpha);
+        HalloweenGuiRenderer.renderWebs(context, gx, gy, guiWidth, guiHeight, contentAlpha);
+        HalloweenGuiRenderer.renderSpider(context, gx, gy, (float) mouseX, (float) mouseY, contentAlpha);
         context.disableScissor();
+
+        HalloweenGuiRenderer.renderPumpkins(context, gx, gy, guiWidth, guiHeight, (float) mouseX, (float) mouseY, contentAlpha);
     }
 
     private void renderWindowContent(DrawContext context, float gx, float gy, float guiWidth, float guiHeight, float mouseX, float mouseY, float alpha) {
@@ -547,6 +561,7 @@ public class ClickGuiScreen extends Screen {
         float size = 26.0f;
         int eggColor = ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, alpha);
         IconRenderer.drawTextureScaled(context, LOGO_TEXTURE, cx - size / 2.0f, cy - size / 2.0f, size, size, 96, 96, eggColor);
+        HalloweenGuiRenderer.renderWitchHat(context, cx + 1.0f, cy - size * 0.32f, size * 0.65f, alpha);
     }
 
     private void renderHeader(DrawContext context, float x, float y, float width, float height, float mouseX, float mouseY, float alpha) {
