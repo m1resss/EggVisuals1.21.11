@@ -130,7 +130,7 @@ public class MouseMixin {
 
     @Inject(method = "onMouseScroll", at = @At("HEAD"), cancellable = true)
     private void onMouseScrollInject(long window, double horizontal, double vertical, CallbackInfo ci) {
-        if (client != null && client.currentScreen != null && client.getWindow() != null) {
+        if (client != null && client.currentScreen instanceof ChatScreen && client.getWindow() != null) {
             float mouseX = (float) client.mouse.getX() * (float) client.getWindow().getScaledWidth() / (float) client.getWindow().getWidth();
             float mouseY = (float) client.mouse.getY() * (float) client.getWindow().getScaledHeight() / (float) client.getWindow().getHeight();
 

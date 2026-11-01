@@ -6,7 +6,6 @@ import egg.client.module.Module;
 import egg.client.module.ModuleManager;
 import egg.client.module.misc.ClientSettings;
 import egg.client.module.render.WorldTweaks;
-import egg.client.module.render.TargetHUD;
 
 import egg.client.ui.widget.WorldTweaksUI;
 import egg.client.module.setting.BooleanSetting;
@@ -1554,10 +1553,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         float mouseY = (float) click.y();
         int button = click.button();
 
-        TargetHUD targetHUD = ModuleManager.getInstance().getModule(TargetHUD.class);
-        if (targetHUD != null && targetHUD.mouseClicked(mouseX, mouseY, button)) {
-            return true;
-        }
+
 
         if (listeningKeybindModule != null) {
             listeningKeybindModule.setKey(1000 + button);
@@ -2004,8 +2000,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         } else if (selectedCategory == Category.COSMETICS) {
             egg.client.ui.section.CosmeticsPanel.mouseReleased();
         }
-        TargetHUD targetHUD = ModuleManager.getInstance().getModule(TargetHUD.class);
-        if (targetHUD != null) targetHUD.mouseReleased(click.x(), click.y(), click.button());
+
         searchSelecting = false;
         if (colorDragMode != ColorDragMode.NONE) {
             colorDragMode = ColorDragMode.NONE;
@@ -2016,8 +2011,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
     @Override
     public boolean mouseDragged(Click click, double dx, double dy) {
-        TargetHUD targetHUD = ModuleManager.getInstance().getModule(TargetHUD.class);
-        if (targetHUD != null) targetHUD.mouseDragged(click.x(), click.y());
+
         if (searchFocused && searchSelecting) {
             float gWidth = Math.clamp(this.width * 0.58f, 520.0f, 580.0f);
             float gX = (float) Math.round((this.width - gWidth) / 2.0f);
