@@ -59,17 +59,27 @@ public enum AmbienceRenderer {
     }
 
     public void captureOpaque(Framebuffer framebuffer) {
-        Framebuffer mcFbo = MinecraftClient.getInstance().getFramebuffer();
-        this.opaqueDepth.copyFrom(framebuffer == null ? null : framebuffer.getDepthAttachment());
-        this.sceneColor.copyFrom(mcFbo == null ? null : mcFbo.getColorAttachment());
-        this.opaqueCaptured = (this.opaqueDepth.getView() != null && this.sceneColor.getView() != null);
+        GlStateSnapshot gl = GlStateSnapshot.capture();
+        try {
+            Framebuffer mcFbo = MinecraftClient.getInstance().getFramebuffer();
+            this.opaqueDepth.copyFrom(framebuffer == null ? null : framebuffer.getDepthAttachment());
+            this.sceneColor.copyFrom(mcFbo == null ? null : mcFbo.getColorAttachment());
+            this.opaqueCaptured = (this.opaqueDepth.getView() != null && this.sceneColor.getView() != null);
+        } finally {
+            gl.restore();
+        }
     }
 
     public void captureWorldDepth(Framebuffer framebuffer) {
         if (this.opaqueCaptured) {
-            this.worldDepth.copyFrom(framebuffer == null ? null : framebuffer.getDepthAttachment());
-            this.opaqueCaptured = false;
-            this.reflectionReady = (this.worldDepth.getView() != null);
+            GlStateSnapshot gl = GlStateSnapshot.capture();
+            try {
+                this.worldDepth.copyFrom(framebuffer == null ? null : framebuffer.getDepthAttachment());
+                this.opaqueCaptured = false;
+                this.reflectionReady = (this.worldDepth.getView() != null);
+            } finally {
+                gl.restore();
+            }
         }
     }
 
@@ -190,6 +200,15 @@ public enum AmbienceRenderer {
                     GpuSampler linearSampler = RenderSystem.getSamplerCache().get(FilterMode.LINEAR);
                     GpuSampler nearestSampler = RenderSystem.getSamplerCache().get(FilterMode.NEAREST);
 
+                    if (doReflections
+                        && (
+                            !this.opaqueDepth.matchesSize(w, h)
+                                || !this.worldDepth.matchesSize(w, h)
+                                || !this.sceneColor.matchesSize(w, h)
+                        )) {
+                        doReflections = false;
+                    }
+
                     if (doReflections || doColorGrade) {
                         this.captureTarget = ensureTarget(this.captureTarget, "egg_ambience_post_capture", w, h);
                     } else if (this.captureTarget != null) {
@@ -197,22 +216,25 @@ public enum AmbienceRenderer {
                         this.captureTarget = null;
                     }
 
-                    if (this.captureTarget != null) {
-                        this.captureScene(framebuffer, w, h, linearSampler);
+                    if (doBloom) {
+                        try (FullscreenPass.RenderStateGuard guard = FullscreenPass.guardState()) {
+                            this.renderBloom(framebuffer, ubo, linearSampler);
+                        }
                     }
 
                     if (doReflections && noSubmersion) {
-                        this.renderReflections(framebuffer, ubo, linearSampler, nearestSampler);
-                    }
-
-                    if (doBloom) {
-                        this.renderBloom(framebuffer, ubo, linearSampler);
+                        try (FullscreenPass.RenderStateGuard guard = FullscreenPass.guardState()) {
+                            this.renderReflections(framebuffer, ubo, linearSampler, nearestSampler);
+                        }
                     }
 
                     if (doColorGrade && this.captureTarget != null) {
-                        FullscreenPass.drawAmbiencePass(
-                            Pipelines.AMBIENCE_COLOR_GRADE, framebuffer, this.captureTarget.getColorAttachmentView(), linearSampler, ubo
-                        );
+                        this.captureScene(framebuffer, w, h, linearSampler);
+                        try (FullscreenPass.RenderStateGuard guard = FullscreenPass.guardState()) {
+                            FullscreenPass.drawAmbiencePass(
+                                Pipelines.AMBIENCE_COLOR_GRADE, framebuffer, this.captureTarget.getColorAttachmentView(), linearSampler, ubo
+                            );
+                        }
                     }
                 }
             } else {
@@ -221,13 +243,19 @@ public enum AmbienceRenderer {
         } else {
             this.releaseIfUnused();
         }
+        AmbiencePostUniformStorage.clear();
     }
 
     private void captureScene(Framebuffer framebuffer, int i, int i2, GpuSampler gpuSampler) {
         if (isOpenGl()) {
-            RenderSystem.getDevice()
-                .createCommandEncoder()
-                .copyTextureToTexture(framebuffer.getColorAttachment(), this.captureTarget.getColorAttachment(), 0, 0, 0, 0, 0, i, i2);
+            GlStateSnapshot gl = GlStateSnapshot.capture();
+            try {
+                RenderSystem.getDevice()
+                    .createCommandEncoder()
+                    .copyTextureToTexture(framebuffer.getColorAttachment(), this.captureTarget.getColorAttachment(), 0, 0, 0, 0, 0, i, i2);
+            } finally {
+                gl.restore();
+            }
         }
     }
 
@@ -442,6 +470,10 @@ public enum AmbienceRenderer {
 
         GpuTextureView getView() {
             return this.textureView;
+        }
+
+        boolean matchesSize(int i, int i2) {
+            return this.texture != null && this.texture.getWidth(0) == i && this.texture.getHeight(0) == i2;
         }
 
         void copyFrom(GpuTexture gpuTexture) {

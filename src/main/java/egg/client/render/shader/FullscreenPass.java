@@ -191,7 +191,7 @@ public final class FullscreenPass {
 
                 try (RenderPass renderPass = RenderSystem.getDevice()
                         .createCommandEncoder()
-                        .createRenderPass(() -> "egg ambience reflection", framebuffer.getColorAttachmentView(), OptionalInt.empty())) {
+                        .createRenderPass(() -> "egg ambience reflection", framebuffer.getColorAttachmentView(), OptionalInt.of(0))) {
                     renderPass.setPipeline(renderPipeline);
                     renderPass.bindTexture("Sampler0", gpuTextureView, gpuSampler);
                     renderPass.bindTexture("Sampler1", gpuTextureView2, gpuSampler2);
