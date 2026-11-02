@@ -1251,6 +1251,7 @@ public class Interface extends Module {
         }
 
         if (contextMenu.isOpen()) {
+            contextMenu.setScale(hudScale.getValueFloat());
             contextMenu.render(context, mouseX, mouseY);
         }
 
@@ -1474,6 +1475,7 @@ public class Interface extends Module {
         }
 
         if (contextMenu.isOpen()) {
+            contextMenu.setScale(hudScale.getValueFloat());
             if (contextMenu.mouseClicked(mouseX, mouseY, button)) {
                 return true;
             }
@@ -1482,6 +1484,7 @@ public class Interface extends Module {
         boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
         if (inside) {
             if (button == 1) {
+                contextMenu.setScale(hudScale.getValueFloat());
                 contextMenu.open((float) mouseX, (float) mouseY);
                 return true;
             } else if (button == 0) {

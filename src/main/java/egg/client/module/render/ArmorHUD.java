@@ -446,6 +446,7 @@ public class ArmorHUD extends Module {
         }
 
         if (contextMenu.isOpen()) {
+            contextMenu.setScale(scale.getValueFloat());
             contextMenu.render(context, mouseX, mouseY);
         }
         DrawBatcher.flushPending();
@@ -469,6 +470,7 @@ public class ArmorHUD extends Module {
         if (!isEnabled()) return false;
 
         if (contextMenu.isOpen()) {
+            contextMenu.setScale(scale.getValueFloat());
             if (contextMenu.mouseClicked(mouseX, mouseY, button)) {
                 return true;
             }
@@ -477,6 +479,7 @@ public class ArmorHUD extends Module {
         boolean inside = mouseX >= lastX - 3.0f && mouseX <= lastX + lastW + 3.0f && mouseY >= lastY - 3.0f && mouseY <= lastY + lastH + 3.0f;
         if (inside) {
             if (button == 1) {
+                contextMenu.setScale(scale.getValueFloat());
                 contextMenu.open((float) mouseX, (float) mouseY);
                 return true;
             } else if (button == 0) {

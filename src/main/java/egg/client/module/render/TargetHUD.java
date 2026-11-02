@@ -180,7 +180,7 @@ public class TargetHUD extends Module {
         float cardX;
         float cardY;
 
-        if (isWorldMode && renderTarget != mc.player) {
+        if (isWorldMode && renderTarget != mc.player && !inGui) {
 
             double wx = MathHelper.lerp(tickDelta, renderTarget.lastRenderX, renderTarget.getX());
             double wy = MathHelper.lerp(tickDelta, renderTarget.lastRenderY, renderTarget.getY()) + renderTarget.getHeight() * 0.5;
@@ -559,36 +559,42 @@ public class TargetHUD extends Module {
     }
 
     public void renderChatOverlay(DrawContext context, int mouseX, int mouseY) {
-        if (!isEnabled() || !mode.is("Экран")) return;
+        if (!isEnabled()) return;
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc == null || mc.getWindow() == null) return;
         int screenW = mc.getWindow().getScaledWidth();
         int screenH = mc.getWindow().getScaledHeight();
 
         float rad = 12.0f * hudScale.getValueFloat();
+        boolean isScreenMode = mode.is("Экран");
 
-        if (dragging) {
+        if (dragging && isScreenMode) {
             mouseDragged(mouseX, mouseY);
             HudSnapHelper.renderGridAndGuides(context, currentSnap, screenW, screenH,
                     new HudSnapHelper.HudElementBounds("target", "Target HUD", lastRenderX, lastRenderY, lastRenderW, lastRenderH),
                     "Target HUD", Math.round(hudScale.getValueFloat() * 100.0f), rad);
         } else {
+            if (dragging && !isScreenMode) {
+                dragging = false;
+            }
             boolean inside = mouseX >= lastRenderX - 2.0f && mouseX <= lastRenderX + lastRenderW + 2.0f
                     && mouseY >= lastRenderY - 2.0f && mouseY <= lastRenderY + lastRenderH + 2.0f;
             if (inside) {
-                String scaleBadge = "Target HUD: " + Math.round(hudScale.getValueFloat() * 100.0f) + "%";
+                String modeTag = isScreenMode ? "" : " [В мире]";
+                String scaleBadge = "Target HUD" + modeTag + ": " + Math.round(hudScale.getValueFloat() * 100.0f) + "%";
                 HudSnapHelper.renderHoverBadge(context, lastRenderX, lastRenderY, lastRenderW, lastRenderH, rad, scaleBadge);
             }
         }
 
         if (contextMenu.isOpen()) {
+            contextMenu.setScale(hudScale.getValueFloat());
             contextMenu.render(context, mouseX, mouseY);
         }
         DrawBatcher.flushPending();
     }
 
     public boolean onMouseScrolled(double mouseX, double mouseY, double amount) {
-        if (!isEnabled() || !mode.is("Экран")) return false;
+        if (!isEnabled()) return false;
         boolean inside = mouseX >= lastRenderX - 4.0f && mouseX <= lastRenderX + lastRenderW + 4.0f
                 && mouseY >= lastRenderY - 4.0f && mouseY <= lastRenderY + lastRenderH + 4.0f;
         if (inside) {
@@ -602,9 +608,10 @@ public class TargetHUD extends Module {
     }
 
     public boolean onChatMouseClicked(double mx, double my, int button) {
-        if (!isEnabled() || !mode.is("Экран")) return false;
+        if (!isEnabled()) return false;
 
         if (contextMenu.isOpen()) {
+            contextMenu.setScale(hudScale.getValueFloat());
             if (contextMenu.mouseClicked(mx, my, button)) {
                 return true;
             }
@@ -614,9 +621,10 @@ public class TargetHUD extends Module {
                 && my >= lastRenderY - 3.0f && my <= lastRenderY + lastRenderH + 3.0f;
         if (inside) {
             if (button == 1) {
+                contextMenu.setScale(hudScale.getValueFloat());
                 contextMenu.open((float) mx, (float) my);
                 return true;
-            } else if (button == 0) {
+            } else if (button == 0 && mode.is("Экран")) {
                 this.dragging = true;
                 this.dragOffsetX = (float) mx - lastRenderX;
                 this.dragOffsetY = (float) my - lastRenderY;
