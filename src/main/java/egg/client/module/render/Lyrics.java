@@ -2,13 +2,11 @@ package egg.client.module.render;
 
 import egg.client.module.Category;
 import egg.client.module.Module;
-import egg.client.module.ModuleManager;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Fonts;
-import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.render.shader.ProjectionUtil;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
@@ -19,86 +17,92 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.RenderTickCounter;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.RaycastContext;
 import org.joml.Vector2f;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.*;
 
 public class Lyrics extends Module {
-    private final BooleanSetting demoMode = new BooleanSetting("Демо трек", false, "Воспроизведение демо-трека Queen - Bohemian Rhapsody");
-    private final SliderSetting distance = new SliderSetting("Дистанция", 32.0, 10.0, 80.0, 1.0, "Расстояние до текста в скайбоксе");
-    private final SliderSetting elevation = new SliderSetting("Высота", 14.0, 0.0, 50.0, 1.0, "Высота над горизонтом");
-    private final SliderSetting size = new SliderSetting("Размер", 1.2, 0.6, 2.5, 0.05, "Масштаб шрифта");
-    private final BooleanSetting glow = new BooleanSetting("Неоновое свечение", true, "Свечение в цвет темы клиента");
-    private final BooleanSetting background = new BooleanSetting("Тёмная подложка", true, "Фон для контраста в небе");
-    private final BooleanSetting trackBadge = new BooleanSetting("Инфо о треке", false, "Название трека и исполнитель над текстом");
-    private final BooleanSetting karaoke = new BooleanSetting("Караоке анимация", true, "Анимация проявления слов по мере пения трека");
-    private final ModeSetting colorMode = new ModeSetting("Цвет текста", "Белый", "Белый", "Тема", "Градиент");
+    // 3D Capsule and positioning settings matching the reference design
+    private final ModeSetting splitMode = new ModeSetting("Разбивка", "По фразам", "По фразам", "По запятой", "Вся строка");
+    private final SliderSetting wordsPerCapsule = new SliderSetting("Слов в капсуле", 2.0, 1.0, 4.0, 1.0, "Количество слов на одну 3D плашку");
+    private final SliderSetting distance = new SliderSetting("Дистанция", 4.0, 2.0, 12.0, 0.5, "Базовая дистанция появления в мире (в блоках)");
+    private final SliderSetting scatterH = new SliderSetting("Разброс X", 3.0, 0.5, 8.0, 0.5, "Разброс капсул влево/вправо");
+    private final SliderSetting scatterV = new SliderSetting("Разброс Y", 1.5, 0.2, 5.0, 0.2, "Разброс капсул вверх/вниз");
+    private final SliderSetting size = new SliderSetting("Размер", 1.1, 0.5, 2.5, 0.05, "Масштаб капсул");
+    private final SliderSetting lifetime = new SliderSetting("Время жизни", 5.5, 2.0, 15.0, 0.5, "Сколько секунд капсула держится в мире");
+    private final ModeSetting colorStyle = new ModeSetting("Стиль цвета", "Коралловый", "Коралловый", "Белый", "Тема", "Лавандовый");
+    private final BooleanSetting background = new BooleanSetting("Фон плашки", true, "Полупрозрачная 3D плашка капсулы");
+    private final BooleanSetting glow = new BooleanSetting("Неоновый контур", true, "Тонкая неоновая обводка вокруг капсулы");
+    private final BooleanSetting gentleWave = new BooleanSetting("Живое покачивание", true, "Плавный физический дрейф капсул в 3D пространстве");
+    private final BooleanSetting noOverlap = new BooleanSetting("Не накладывать", true, "Умный поиск свободного сектора во избежание перекрытия");
+    private final BooleanSetting demoMode = new BooleanSetting("Демо-режим", false, "Предпросмотр капсул из референса без Spotify");
 
-    private Vec3d activeSkyDirection = null;
-    private Vec3d prevSkyDirection = null;
+    // 3D Active World Capsule representation
+    public static class Capsule3D {
+        public final Vec3d worldPos;
+        public final String text;
+        public final long spawnTime;
+        public final long lifeDurationMs;
+        public final float seed;
+        public boolean disappearing = false;
+        public long disappearStartTime = 0L;
+
+        public Capsule3D(Vec3d worldPos, String text, long spawnTime, long lifeDurationMs, float seed) {
+            this.worldPos = worldPos;
+            this.text = text;
+            this.spawnTime = spawnTime;
+            this.lifeDurationMs = lifeDurationMs;
+            this.seed = seed;
+        }
+    }
+
+    // Scheduled chunk for staggered phrase emergence
+    private static class ScheduledChunk {
+        final String text;
+        final long spawnAtTimeMs;
+        final long lifeMs;
+
+        ScheduledChunk(String text, long spawnAtTimeMs, long lifeMs) {
+            this.text = text;
+            this.spawnAtTimeMs = spawnAtTimeMs;
+            this.lifeMs = lifeMs;
+        }
+    }
+
+    private final List<Capsule3D> activeCapsules = new ArrayList<>();
+    private final List<ScheduledChunk> pendingQueue = new ArrayList<>();
+    private final Random rng = new Random();
 
     private List<LyricLine> activeLyrics = null;
     private String lastSongKey = "";
     private int currentLineIndex = -1;
-    private int prevLineIndex = -1;
-    private long lineChangeTimeMs = 0L;
+    private float lastSide = 1.0f;
     private float overallAlpha = 0.0f;
-    private float occlusionAlpha = 1.0f;
-    private long lastFrameNanos = 0L;
-    private long demoPlayTimeMs = 0L;
-
-    public static class TimedWord {
-        public final String word;
-        public final float width;
-        public final float xOffset;
-        public final long startOffsetMs;
-        public final long durationMs;
-
-        public TimedWord(String word, float width, float xOffset, long startOffsetMs, long durationMs) {
-            this.word = word;
-            this.width = width;
-            this.xOffset = xOffset;
-            this.startOffsetMs = startOffsetMs;
-            this.durationMs = durationMs;
-        }
-    }
-
-    private int cachedWordsLineIndex = -1;
-    private float cachedWordScale = -1.0f;
-    private List<TimedWord> cachedWords = null;
-    private float cachedLineWidth = 0.0f;
-    private static final Pattern SYLLABLE_PATTERN = Pattern.compile("<(?:(\\d+):)?(\\d+(?:\\.\\d+)?)>([^<]+)");
 
     private boolean manualPlayback = false;
     private String manualArtist = "";
     private String manualTitle = "";
     private long manualStartTime = 0L;
     private long manualOffsetMs = 0L;
+    private long demoPlayTimeMs = 0L;
+    private long lastFrameNanos = 0L;
 
     public Lyrics() {
-        super("Lyrics", "Отображает текст играющей музыки в скайбоксе с плавной анимацией", Category.ESP);
-        addSettings(demoMode, distance, elevation, size, glow, background, trackBadge, karaoke, colorMode);
+        super("Lyrics", "3D капсулы с текстом песни в мире", Category.ESP);
+        addSettings(
+                splitMode, wordsPerCapsule, distance, scatterH, scatterV, size,
+                lifetime, colorStyle, background, glow, gentleWave, noOverlap, demoMode
+        );
     }
 
     @Override
     public void onEnable() {
         overallAlpha = 1.0f;
-        occlusionAlpha = 1.0f;
-        activeSkyDirection = null;
-        prevSkyDirection = null;
+        activeCapsules.clear();
+        pendingQueue.clear();
+        currentLineIndex = -1;
         if (demoMode.isEnabled()) {
             playDemo();
         }
@@ -106,499 +110,381 @@ public class Lyrics extends Module {
 
     @Override
     public void onDisable() {
-        activeSkyDirection = null;
-        prevSkyDirection = null;
+        activeCapsules.clear();
+        pendingQueue.clear();
         activeLyrics = null;
         lastSongKey = "";
         currentLineIndex = -1;
-        prevLineIndex = -1;
-        cachedWordsLineIndex = -1;
-        cachedWords = null;
-        cachedLineWidth = 0.0f;
         overallAlpha = 0.0f;
     }
 
     public void render2D(DrawContext context, RenderTickCounter tickCounter) {
         if (!isEnabled()) return;
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc == null || mc.player == null || mc.world == null) return;
-        Camera camera = mc.gameRenderer != null ? mc.gameRenderer.getCamera() : null;
+        if (mc.player == null || mc.world == null || mc.gameRenderer == null) return;
+        Camera camera = mc.gameRenderer.getCamera();
         if (camera == null) return;
 
-        long now = System.nanoTime();
-        float dt = (lastFrameNanos == 0L) ? 0.016f : MathHelper.clamp((now - lastFrameNanos) / 1.0E9f, 0.001f, 0.05f);
-        lastFrameNanos = now;
+        long nowNanos = System.nanoTime();
+        if (lastFrameNanos == 0L) lastFrameNanos = nowNanos;
+        float dt = (float) ((nowNanos - lastFrameNanos) / 1_000_000_000.0);
+        lastFrameNanos = nowNanos;
+        dt = MathHelper.clamp(dt, 0.001f, 0.1f);
 
-        Interface iface = ModuleManager.getInstance().getModule(Interface.class);
-        boolean hasInterfaceMedia = iface != null && iface.hasActiveMedia() && iface.isMediaPlaying()
-                && iface.getCurrentMediaTitle() != null && !iface.getCurrentMediaTitle().isBlank();
+        long now = System.currentTimeMillis();
 
-        MediaTracker mt = MediaTracker.getInstance();
-        boolean hasTrackerMedia = mt != null && mt.isPlaying()
-                && mt.getTrackTitle() != null && !mt.getTrackTitle().isBlank();
-
-        boolean isRealMusic = hasInterfaceMedia || hasTrackerMedia;
-        boolean isDemo = !isRealMusic && demoMode.isEnabled();
-
-        String currentArtist;
-        String currentTitle;
-        long playTimeMs;
-        float targetAlpha;
-
-        if (manualPlayback && !manualTitle.isEmpty()) {
-            currentTitle = manualTitle;
-            currentArtist = manualArtist;
-            playTimeMs = Math.max(0L, (System.currentTimeMillis() - manualStartTime) + manualOffsetMs);
-            targetAlpha = 1.0f;
-        } else if (hasInterfaceMedia) {
-            currentTitle = iface.getCurrentMediaTitle().trim();
-            currentArtist = iface.getCurrentMediaArtist() != null ? iface.getCurrentMediaArtist().trim() : "";
-            playTimeMs = iface.getCurrentPositionMs();
-            targetAlpha = 1.0f;
-        } else if (hasTrackerMedia) {
-            currentTitle = mt.getTrackTitle().trim();
-            currentArtist = mt.getTrackArtist() != null ? mt.getTrackArtist().trim() : "";
-            playTimeMs = mt.getTrackElapsedMs();
-            targetAlpha = 1.0f;
-        } else if (isDemo) {
-            demoPlayTimeMs += (long) (dt * 1000f);
-            if (demoPlayTimeMs > 90000L) demoPlayTimeMs = 0L;
-            currentArtist = "Queen";
-            currentTitle = "Bohemian Rhapsody";
-            playTimeMs = demoPlayTimeMs;
-            if (activeLyrics == null || activeLyrics.isEmpty()) {
-                activeLyrics = LyricsFetcher.getInstance().getDemoLyrics();
-            }
-            targetAlpha = 1.0f;
-        } else {
-            currentArtist = "";
-            currentTitle = "";
-            playTimeMs = 0L;
-            targetAlpha = 0.0f;
+        // Check demo mode toggle
+        if (demoMode.isEnabled() && (!manualPlayback || !"demo".equals(lastSongKey))) {
+            playDemo();
+        } else if (!demoMode.isEnabled() && manualPlayback && "demo".equals(lastSongKey)) {
+            stopManual();
         }
 
-        overallAlpha += (targetAlpha - overallAlpha) * Math.min(1.0f, dt * 6.0f);
-        if (overallAlpha <= 0.01f) return;
+        // 1. Determine playback position and active lyrics
+        long currentPosMs;
+        if (manualPlayback) {
+            if ("demo".equals(lastSongKey)) {
+                demoPlayTimeMs += (long) (dt * 1000.0f);
+                long totalDemoLen = 25000L;
+                currentPosMs = demoPlayTimeMs % totalDemoLen;
+            } else {
+                currentPosMs = (now - manualStartTime) + manualOffsetMs;
+            }
+        } else {
+            MediaTracker mt = MediaTracker.getInstance();
+            if (!mt.isPlaying()) {
+                overallAlpha = Math.max(0.0f, overallAlpha - dt * 2.0f);
+            } else {
+                overallAlpha = Math.min(1.0f, overallAlpha + dt * 3.0f);
+            }
 
-        if (!isDemo && !currentTitle.isEmpty()) {
-            String songKey = LyricsFetcher.makeKey(currentArtist, currentTitle);
+            String curArtist = mt.getTrackArtist();
+            String curTitle = mt.getTrackTitle();
+            String songKey = LyricsFetcher.makeKey(curArtist, curTitle);
             if (!songKey.equals(lastSongKey)) {
                 lastSongKey = songKey;
-                currentLineIndex = -1;
-                prevLineIndex = -1;
-                activeLyrics = LyricsFetcher.getInstance().getCachedLyrics(currentArtist, currentTitle);
+                activeLyrics = LyricsFetcher.getInstance().getCachedLyrics(curArtist, curTitle);
                 if (activeLyrics == null) {
-                    LyricsFetcher.getInstance().fetchLyricsAsync(currentArtist, currentTitle).thenAccept(lines -> {
-                        if (lines != null && songKey.equals(lastSongKey)) {
-                            activeLyrics = lines;
-                        }
-                    });
+                    LyricsFetcher.getInstance().fetchLyricsAsync(curArtist, curTitle)
+                            .thenAccept(lines -> {
+                                if (lines != null && !lines.isEmpty()) {
+                                    activeLyrics = lines;
+                                }
+                            });
                 }
+                currentLineIndex = -1;
+                activeCapsules.clear();
+                pendingQueue.clear();
             }
+            currentPosMs = mt.getTrackElapsedMs();
         }
 
+        // 2. Track current line and spawn new phrases
         if (activeLyrics != null && !activeLyrics.isEmpty()) {
-            int found = -1;
+            int lineIdx = -1;
             for (int i = 0; i < activeLyrics.size(); i++) {
-                if (activeLyrics.get(i).timeMs() <= playTimeMs) {
-                    found = i;
+                if (activeLyrics.get(i).timeMs() <= currentPosMs) {
+                    lineIdx = i;
                 } else {
                     break;
                 }
             }
-            if (found != currentLineIndex) {
-                prevLineIndex = currentLineIndex;
-                prevSkyDirection = activeSkyDirection;
-                currentLineIndex = found;
-                lineChangeTimeMs = System.currentTimeMillis();
 
-                activeSkyDirection = calculateSkyDirection(camera);
+            if (lineIdx >= 0 && lineIdx != currentLineIndex) {
+                currentLineIndex = lineIdx;
+                LyricLine currentLine = activeLyrics.get(lineIdx);
+                long nextTime = lineIdx + 1 < activeLyrics.size() ? activeLyrics.get(lineIdx + 1).timeMs() : currentLine.timeMs() + 4500L;
+                long lineDuration = Math.max(1200L, nextTime - currentLine.timeMs());
+                breakAndSchedulePhrases(currentLine.text(), now, lineDuration);
             }
         }
 
-        if (activeSkyDirection == null) {
-            activeSkyDirection = calculateSkyDirection(camera);
-        }
-
-        Vec3d camPos = camera.getCameraPos();
-        Vec3d lookVec = getCameraLookVector(camera);
-
-        boolean occluded = checkOcclusion(mc, camPos, activeSkyDirection);
-        float targetOcc = occluded ? 0.0f : 1.0f;
-        this.occlusionAlpha += (targetOcc - this.occlusionAlpha) * Math.min(1.0f, dt * 14.0f);
-        if (this.occlusionAlpha <= 0.01f) {
-            return;
-        }
-
-        double dot = lookVec.dotProduct(activeSkyDirection);
-        float lookFactor = (float) MathHelper.clamp((dot - 0.72) / (0.90 - 0.72), 0.0, 1.0);
-        if (lookFactor <= 0.01f) {
-            return;
-        }
-
-        Vec3d targetWorldPos = camPos.add(activeSkyDirection.multiply(distance.getValue()));
-        Vector2f currentScreenPos = ProjectionUtil.worldToScreen(targetWorldPos);
-        int screenW = mc.getWindow().getScaledWidth();
-        int screenH = mc.getWindow().getScaledHeight();
-
-        boolean currentVisible = currentScreenPos != null
-                && currentScreenPos.x >= 10 && currentScreenPos.x <= screenW - 10
-                && currentScreenPos.y >= 10 && currentScreenPos.y <= screenH - 10;
-
-        Vector2f prevScreenPos = null;
-        float prevLookFactor = 0.0f;
-        if (prevSkyDirection != null) {
-            double prevDot = lookVec.dotProduct(prevSkyDirection);
-            prevLookFactor = (float) MathHelper.clamp((prevDot - 0.72) / (0.90 - 0.72), 0.0, 1.0);
-            if (prevLookFactor > 0.01f) {
-                Vec3d prevWorldPos = camPos.add(prevSkyDirection.multiply(distance.getValue()));
-                prevScreenPos = ProjectionUtil.worldToScreen(prevWorldPos);
+        // 3. Process pending phrase queue
+        Iterator<ScheduledChunk> queueIter = pendingQueue.iterator();
+        while (queueIter.hasNext()) {
+            ScheduledChunk chunk = queueIter.next();
+            if (now >= chunk.spawnAtTimeMs) {
+                spawnCapsuleInWorld(chunk.text, now, chunk.lifeMs, camera);
+                queueIter.remove();
             }
         }
 
-        if (!currentVisible && prevScreenPos == null) {
-            return;
-        }
-
-        long elapsedSinceChange = System.currentTimeMillis() - lineChangeTimeMs;
-        float animProgress = MathHelper.clamp(elapsedSinceChange / 450.0f, 0.0f, 1.0f);
-        float ease = 1.0f - (float) Math.pow(1.0f - animProgress, 3);
-
-        int accentColor = Theme.getAccent();
-        int activeTextColor = switch (colorMode.get()) {
-            case "Тема" -> accentColor;
-            case "Градиент" -> ColorUtil.lerp(0xFFFFFFFF, accentColor, 0.40f);
-            default -> 0xFFFFFFFF;
-        };
-
-        float userScale = size.getValueFloat();
-        float mainFontSize = 21.0f * userScale;
-        float nextFontSize = 15.0f * userScale;
-        float badgeFontSize = 11.0f * userScale;
-
-        if (activeLyrics == null || activeLyrics.isEmpty()) {
-            return;
-        }
-
-        int mainIdx = currentLineIndex >= 0 ? currentLineIndex : 0;
-        String currentText = activeLyrics.get(mainIdx).text();
-        String nextText = (mainIdx + 1 < activeLyrics.size()) ? activeLyrics.get(mainIdx + 1).text() : null;
-
-        float effectiveAlpha = overallAlpha * lookFactor * this.occlusionAlpha;
-
-        if (currentVisible && currentScreenPos != null) {
-            float cx = currentScreenPos.x;
-            float cy = currentScreenPos.y;
-
-            // Safe clearance against top HUD (Dynamic Island, Watermark) and bottom hotbar
-            float topClearanceY = 64.0f * userScale;
-            float topFade = MathHelper.clamp((cy - topClearanceY) / (22.0f * userScale), 0.0f, 1.0f);
-            float bottomClearanceY = screenH - 52.0f * userScale;
-            float bottomFade = MathHelper.clamp((bottomClearanceY - cy) / (22.0f * userScale), 0.0f, 1.0f);
-            float hudClearanceFade = topFade * bottomFade;
-
-            float lineEffectiveAlpha = effectiveAlpha * hudClearanceFade;
-
-            if (lineEffectiveAlpha > 0.01f) {
-                if (trackBadge.isEnabled() && !currentTitle.isEmpty()) {
-                    String badgeText = (currentArtist.isEmpty() ? "" : currentArtist + " — ") + currentTitle;
-                    float bw = Fonts.d.a(badgeText, badgeFontSize) + 16.0f * userScale;
-                    float bh = Fonts.d.a(badgeFontSize) + 7.0f * userScale;
-                    float bx = cx - bw / 2.0f;
-                    float by = cy - 32.0f * userScale;
-
-                    if (background.isEnabled()) {
-                        Draw2DProcessor.INSTANCE.drawRect(null, bx, by, bw, bh, 4.0f * userScale, ColorUtil.rgba(14, 15, 20, (int) (180 * lineEffectiveAlpha)));
-                        Draw2DProcessor.INSTANCE.drawOutline(null, bx, by, bw, bh, 4.0f * userScale, 0.8f, ColorUtil.withAlphaFloat(accentColor, 0.50f * lineEffectiveAlpha));
-                    }
-                    float tx = cx - Fonts.d.a(badgeText, badgeFontSize) / 2.0f;
-                    float ty = by + (bh - Fonts.d.a(badgeFontSize)) / 2.0f - 0.5f;
-                    Fonts.d.a(null, badgeText, tx, ty, badgeFontSize, ColorUtil.withAlphaFloat(accentColor, 0.95f * lineEffectiveAlpha));
-                }
-
-                float line1Y = cy + (1.0f - ease) * 14.0f;
-                float line1Alpha = (0.50f + 0.50f * ease) * lineEffectiveAlpha;
-
-                if (karaoke.isEnabled() && activeLyrics != null && !activeLyrics.isEmpty()) {
-                    LyricLine curLine = activeLyrics.get(mainIdx);
-                    LyricLine nxtLine = (mainIdx + 1 < activeLyrics.size()) ? activeLyrics.get(mainIdx + 1) : null;
-                    renderKaraokeLine(cx, line1Y, mainIdx, curLine, nxtLine, playTimeMs, mainFontSize, line1Alpha, activeTextColor, accentColor, userScale);
-                } else {
-                    renderVectorLine(cx, line1Y, currentText, mainFontSize, line1Alpha, activeTextColor, accentColor, true, userScale);
-                }
-
-                if (nextText != null && !nextText.isBlank()) {
-                    float line2Y = cy + Fonts.d.a(mainFontSize) + 10.0f * userScale;
-                    float line2Alpha = (0.35f + 0.15f * ease) * lineEffectiveAlpha;
-                    int upcomingGrey = ColorUtil.rgba(140, 145, 160, (int) (180 * line2Alpha));
-                    renderVectorLine(cx, line2Y, nextText, nextFontSize, line2Alpha, upcomingGrey, accentColor, false, userScale);
-                }
+        // 4. Update and prune active capsules
+        Iterator<Capsule3D> capIter = activeCapsules.iterator();
+        while (capIter.hasNext()) {
+            Capsule3D cap = capIter.next();
+            long age = now - cap.spawnTime;
+            if (age >= cap.lifeDurationMs && !cap.disappearing) {
+                cap.disappearing = true;
+                cap.disappearStartTime = now;
+            }
+            if (cap.disappearing && now - cap.disappearStartTime >= 700L) {
+                capIter.remove();
             }
         }
 
-        if (prevScreenPos != null && prevLineIndex >= 0 && activeLyrics != null && prevLineIndex < activeLyrics.size() && animProgress < 1.0f) {
-            String prevText = activeLyrics.get(prevLineIndex).text();
-            float prevAlpha = (1.0f - ease) * 0.70f * overallAlpha * prevLookFactor * this.occlusionAlpha;
-            if (prevAlpha > 0.01f) {
-                float px = prevScreenPos.x;
-                float py = prevScreenPos.y - ease * 12.0f;
-                renderVectorLine(px, py, prevText, mainFontSize, prevAlpha, activeTextColor, accentColor, true, userScale);
-            }
-        }
+        if (activeCapsules.isEmpty()) return;
 
-        DrawBatcher.flushPending();
+        // 5. Render 3D World Capsules
+        render3DCapsules(camera, now, dt);
     }
 
-    private void updateWordCache(LyricLine line, LyricLine nextLine, float fontSize) {
-        cachedWords = new ArrayList<>();
-        if (line == null || line.text().isBlank()) {
-            cachedLineWidth = 0.0f;
-            return;
-        }
+    private void breakAndSchedulePhrases(String rawText, long now, long lineDuration) {
+        if (rawText == null || rawText.isBlank()) return;
+        String text = rawText.replaceAll("<[^>]+>", "").trim();
+        if (text.isEmpty()) return;
 
-        String rawText = line.text().trim();
-        long lineStartTime = line.timeMs();
+        List<String> chunks = new ArrayList<>();
+        String mode = splitMode.get();
 
-        if (rawText.contains("<") && rawText.contains(">")) {
-            Matcher m = SYLLABLE_PATTERN.matcher(rawText);
-            float curX = 0.0f;
-            float spaceW = Fonts.d.a(" ", fontSize);
-            long prevTagTime = lineStartTime;
-
-            while (m.find()) {
-                try {
-                    String minStr = m.group(1);
-                    int minutes = minStr != null ? Integer.parseInt(minStr) : 0;
-                    float seconds = Float.parseFloat(m.group(2));
-                    long tagTime = (long) ((minutes * 60 + seconds) * 1000);
-                    String wordText = m.group(3).trim();
-                    if (!wordText.isEmpty()) {
-                        float wWidth = Fonts.d.a(wordText, fontSize);
-                        long startOffset = Math.max(0L, tagTime - lineStartTime);
-                        long dur = Math.max(180L, tagTime - prevTagTime);
-                        cachedWords.add(new TimedWord(wordText, wWidth, curX, startOffset, dur));
-                        curX += wWidth + spaceW;
-                        prevTagTime = tagTime;
-                    }
-                } catch (Exception ignored) {}
+        if ("По запятой".equals(mode)) {
+            for (String p : text.split("[,;—–]")) {
+                String trimmed = p.trim();
+                if (!trimmed.isEmpty()) chunks.add(trimmed);
             }
-            if (!cachedWords.isEmpty()) {
-                cachedLineWidth = Math.max(0.0f, curX - spaceW);
-                return;
-            }
-        }
-
-        String[] rawWords = rawText.split("\\s+");
-        if (rawWords.length == 0) {
-            cachedLineWidth = 0.0f;
-            return;
-        }
-
-        long rawDuration;
-        if (nextLine != null && nextLine.timeMs() > lineStartTime) {
-            rawDuration = nextLine.timeMs() - lineStartTime;
+        } else if ("Вся строка".equals(mode)) {
+            chunks.add(text);
         } else {
-            rawDuration = Math.max(2500L, rawWords.length * 500L);
-        }
-
-        long singingDuration = Math.min(rawDuration, Math.max(2000L, rawWords.length * 480L));
-        long usableDuration = (long) (singingDuration * 0.90f);
-
-        float totalWeight = 0.0f;
-        for (String w : rawWords) {
-            totalWeight += Math.max(1.5f, (float) w.length());
-        }
-
-        float curX = 0.0f;
-        float spaceW = Fonts.d.a(" ", fontSize);
-        float accWeight = 0.0f;
-
-        for (int i = 0; i < rawWords.length; i++) {
-            String w = rawWords[i];
-            float wWidth = Fonts.d.a(w, fontSize);
-            float weight = Math.max(1.5f, (float) w.length());
-
-            long startOffsetMs = (long) ((accWeight / totalWeight) * usableDuration);
-            long wordDurMs = Math.max(180L, (long) ((weight / totalWeight) * usableDuration));
-
-            cachedWords.add(new TimedWord(w, wWidth, curX, startOffsetMs, wordDurMs));
-            curX += wWidth + spaceW;
-            accWeight += weight;
-        }
-
-        cachedLineWidth = Math.max(0.0f, curX - spaceW);
-    }
-
-    private void renderKaraokeLine(float cx, float cy, int lineIndex, LyricLine line, LyricLine nextLine,
-                                   long playTimeMs, float fontSize, float alpha,
-                                   int activeTextColor, int accentColor, float userScale) {
-        if (line == null || line.text().isBlank() || alpha <= 0.01f) return;
-
-        if (cachedWordsLineIndex != lineIndex || Math.abs(cachedWordScale - userScale) > 0.01f || cachedWords == null) {
-            cachedWordsLineIndex = lineIndex;
-            cachedWordScale = userScale;
-            updateWordCache(line, nextLine, fontSize);
-        }
-
-        if (cachedWords == null || cachedWords.isEmpty()) {
-            renderVectorLine(cx, cy, line.text(), fontSize, alpha, activeTextColor, accentColor, true, userScale);
-            return;
-        }
-
-        float totalW = cachedLineWidth;
-        float lineH = Fonts.d.a(fontSize) + 8.0f * userScale;
-        float padX = 14.0f * userScale;
-        float boxW = totalW + padX * 2.0f;
-
-        float bx = cx - boxW / 2.0f;
-        float by = cy - lineH / 2.0f;
-
-        if (background.isEnabled()) {
-            int bgCol = ColorUtil.rgba(12, 14, 20, (int) (180 * alpha));
-            Draw2DProcessor.INSTANCE.drawRect(null, bx, by, boxW, lineH, 5.0f * userScale, bgCol);
-
-            if (glow.isEnabled()) {
-                int outlineCol = ColorUtil.withAlphaFloat(accentColor, 0.45f * alpha);
-                Draw2DProcessor.INSTANCE.drawOutline(null, bx, by, boxW, lineH, 5.0f * userScale, 1.0f, outlineCol);
+            // "По фразам" (2-3 words per capsule, as seen in screenshots)
+            String[] words = text.split("\\s+");
+            int groupSize = Math.max(1, (int) wordsPerCapsule.getValue());
+            StringBuilder sb = new StringBuilder();
+            int count = 0;
+            for (String w : words) {
+                if (sb.length() > 0) sb.append(' ');
+                sb.append(w);
+                count++;
+                if (count >= groupSize) {
+                    chunks.add(sb.toString());
+                    sb.setLength(0);
+                    count = 0;
+                }
+            }
+            if (sb.length() > 0) {
+                chunks.add(sb.toString());
             }
         }
 
-        float lineStartX = cx - totalW / 2.0f;
-        float textY = cy - Fonts.d.a(fontSize) / 2.0f - 0.5f;
+        if (chunks.isEmpty()) return;
 
-        long lineStartTime = line.timeMs();
-        long lineElapsedMs = playTimeMs - lineStartTime;
-        final long DURATION_MS = 180L;
+        long capLifeMs = (long) (lifetime.getValue() * 1000.0);
+        long stepMs = chunks.size() <= 1 ? 0L : Math.min(1800L, Math.max(600L, lineDuration / chunks.size()));
 
-        for (TimedWord tw : cachedWords) {
-            float wordBaseX = lineStartX + tw.xOffset;
-            long wordElapsed = lineElapsedMs - tw.startOffsetMs;
+        for (int i = 0; i < chunks.size(); i++) {
+            long spawnAt = now + i * stepMs;
+            pendingQueue.add(new ScheduledChunk(chunks.get(i), spawnAt, capLifeMs));
+        }
+    }
 
-            if (wordElapsed < 0) {
-                int greyCol = ColorUtil.rgba(140, 145, 160, (int) (165 * alpha));
-                Fonts.d.a(null, tw.word, wordBaseX, textY, fontSize, greyCol);
-            } else if (wordElapsed < DURATION_MS) {
-                float t = (float) wordElapsed / (float) DURATION_MS;
-                float ease = 1.0f - (float) Math.pow(1.0f - t, 3);
+    private void spawnCapsuleInWorld(String text, long now, long lifeMs, Camera camera) {
+        Vec3d eye = camera.getCameraPos();
+        float yaw = camera.getYaw();
+        float pitch = camera.getPitch();
 
-                float oldY = textY - ease * 5.0f * userScale;
-                int oldA = Math.round(165 * (1.0f - ease) * alpha);
-                if (oldA > 5) {
-                    int oldCol = ColorUtil.rgba(140, 145, 160, oldA);
-                    Fonts.d.a(null, tw.word, wordBaseX, oldY, fontSize, oldCol);
+        float yawRad = (float) Math.toRadians(yaw);
+        float pitchRad = (float) Math.toRadians(pitch);
+        float cosP = MathHelper.cos(pitchRad);
+        float sinP = MathHelper.sin(pitchRad);
+        float cosY = MathHelper.cos(yawRad);
+        float sinY = MathHelper.sin(yawRad);
+
+        Vec3d F = new Vec3d(-sinY * cosP, -sinP, cosY * cosP).normalize();
+        Vec3d R = new Vec3d(-cosY, 0.0, -sinY).normalize();
+        Vec3d U = R.crossProduct(F).normalize();
+
+        float baseDist = (float) distance.getValue();
+        float hScatter = (float) scatterH.getValue();
+        float vScatter = (float) scatterV.getValue();
+
+        // Alternate sides to balance composition
+        lastSide = -lastSide;
+        float side = lastSide;
+        if (rng.nextFloat() < 0.20f) {
+            side = -side;
+        }
+
+        // Candidate positions with staggered depth & non-overlapping search
+        List<Vec3d> candidates = new ArrayList<>();
+        float[] depths = {baseDist, baseDist * 0.90f, baseDist * 1.15f, baseDist * 0.80f};
+
+        for (float d : depths) {
+            float ox1 = side * (0.35f + rng.nextFloat() * 0.65f) * hScatter;
+            float oy1 = (rng.nextFloat() - 0.5f) * 2.0f * vScatter;
+            candidates.add(eye.add(F.multiply(d)).add(R.multiply(ox1)).add(U.multiply(oy1)));
+
+            float ox2 = -side * (0.35f + rng.nextFloat() * 0.65f) * hScatter;
+            float oy2 = (rng.nextFloat() - 0.5f) * 2.0f * vScatter;
+            candidates.add(eye.add(F.multiply(d)).add(R.multiply(ox2)).add(U.multiply(oy2)));
+
+            float ox3 = side * 0.15f * hScatter;
+            float oy3 = (rng.nextFloat() - 0.5f) * 2.0f * vScatter;
+            candidates.add(eye.add(F.multiply(d)).add(R.multiply(ox3)).add(U.multiply(oy3)));
+        }
+
+        Vec3d bestPos = candidates.get(0);
+        float lowestPenalty = Float.MAX_VALUE;
+
+        if (noOverlap.isEnabled() && !activeCapsules.isEmpty()) {
+            for (Vec3d cand : candidates) {
+                Vector2f candScreen = ProjectionUtil.worldToScreen(cand);
+                if (candScreen == null) continue;
+
+                float penalty = 0.0f;
+                for (Capsule3D other : activeCapsules) {
+                    Vector2f otherScreen = ProjectionUtil.worldToScreen(other.worldPos);
+                    if (otherScreen == null) continue;
+
+                    float dx = Math.abs(candScreen.x - otherScreen.x);
+                    float dy = Math.abs(candScreen.y - otherScreen.y);
+                    float minSpacingX = 90.0f;
+                    float minSpacingY = 40.0f;
+
+                    if (dx < minSpacingX && dy < minSpacingY) {
+                        penalty += (minSpacingX - dx) * 1.2f + (minSpacingY - dy) * 2.0f;
+                    }
                 }
 
-                float newY = textY + (1.0f - ease) * 5.0f * userScale;
-                int newA = Math.round(255 * ease * alpha);
-                if (newA > 5) {
-                    int brightCol = ColorUtil.withAlphaFloat(activeTextColor, (float) newA / 255.0f);
-                    Fonts.d.a(null, tw.word, wordBaseX, newY, fontSize, brightCol);
+                if (penalty < lowestPenalty) {
+                    lowestPenalty = penalty;
+                    bestPos = cand;
+                    if (penalty <= 0.01f) break;
                 }
+            }
+        } else {
+            bestPos = candidates.get(rng.nextInt(Math.min(candidates.size(), 3)));
+        }
+
+        Capsule3D capsule = new Capsule3D(bestPos, text, now, lifeMs, rng.nextFloat() * 100.0f);
+        activeCapsules.add(capsule);
+
+        // Cap max simultaneous capsules to avoid screen clutter
+        if (activeCapsules.size() > 10) {
+            activeCapsules.get(0).disappearing = true;
+            activeCapsules.get(0).disappearStartTime = now;
+        }
+    }
+
+    private void render3DCapsules(Camera camera, long now, float dt) {
+        Vec3d eye = camera.getCameraPos();
+        float yaw = camera.getYaw();
+        float pitch = camera.getPitch();
+
+        float yawRad = (float) Math.toRadians(yaw);
+        float pitchRad = (float) Math.toRadians(pitch);
+        float cosP = MathHelper.cos(pitchRad);
+        float sinP = MathHelper.sin(pitchRad);
+        float cosY = MathHelper.cos(yawRad);
+        float sinY = MathHelper.sin(yawRad);
+
+        Vec3d F = new Vec3d(-sinY * cosP, -sinP, cosY * cosP).normalize();
+        Vec3d R = new Vec3d(-cosY, 0.0, -sinY).normalize();
+        Vec3d U = R.crossProduct(F).normalize();
+
+        // 3D Depth Sorting: Farthest first, closest last (correct painter's algorithm)
+        activeCapsules.sort((c1, c2) -> Double.compare(eye.squaredDistanceTo(c2.worldPos), eye.squaredDistanceTo(c1.worldPos)));
+
+        float userScale = (float) size.getValue();
+
+        for (Capsule3D cap : activeCapsules) {
+            // Gentle physical bobbing & drift in 3D
+            float timeSec = (now - cap.spawnTime) / 1000.0f;
+            float waveY = gentleWave.isEnabled() ? (float) Math.sin(timeSec * 2.0f + cap.seed) * 0.07f : 0.0f;
+            float waveX = gentleWave.isEnabled() ? (float) Math.cos(timeSec * 1.5f + cap.seed * 1.3f) * 0.04f : 0.0f;
+            Vec3d currentPos = cap.worldPos.add(R.multiply(waveX)).add(U.multiply(waveY));
+
+            Vector2f screenPos = ProjectionUtil.worldToScreen(currentPos);
+            if (screenPos == null) continue;
+
+            double dist = eye.distanceTo(currentPos);
+            float distFactor = (float) (4.0 / Math.max(dist, 0.7));
+            float pxScale = MathHelper.clamp(userScale * distFactor, 0.55f, 2.3f);
+
+            // Appear bounce & fade in (first 250ms)
+            float appear = MathHelper.clamp((now - cap.spawnTime) / 250.0f, 0.0f, 1.0f);
+            appear = appear * appear * (3.0f - 2.0f * appear);
+            float popScale = 0.88f + 0.12f * appear;
+
+            // Disappear fade out (last 700ms)
+            long elapsed = now - cap.spawnTime;
+            long remaining = cap.lifeDurationMs - elapsed;
+            float fade = 1.0f;
+            if (cap.disappearing) {
+                fade = 1.0f - MathHelper.clamp((now - cap.disappearStartTime) / 700.0f, 0.0f, 1.0f);
+            } else if (remaining < 700L) {
+                fade = MathHelper.clamp(remaining / 700.0f, 0.0f, 1.0f);
+            }
+
+            float alpha = appear * fade * (manualPlayback ? 1.0f : overallAlpha);
+            if (alpha <= 0.015f) continue;
+
+            // Measure capsule dimensions
+            float fontSize = 13.5f * pxScale * popScale;
+            float textW = Fonts.d.a(cap.text, fontSize);
+            float textH = Fonts.d.a(fontSize);
+            float padX = 14.0f * pxScale;
+            float padY = 7.5f * pxScale;
+            float boxW = textW + padX * 2.0f;
+            float boxH = textH + padY * 2.0f;
+            float radius = boxH / 2.0f; // Rounded capsule / pill shape
+
+            float bx = screenPos.x - boxW / 2.0f;
+            float by = screenPos.y - boxH / 2.0f;
+
+            // Colors based on style
+            int textColor;
+            int glowColor;
+            int bgCol;
+
+            String style = colorStyle.get();
+            if ("Белый".equals(style)) {
+                // Photo 2 reference: Clean monochrome / white
+                textColor = ColorUtil.rgba(240, 242, 248, (int) (255 * alpha));
+                glowColor = ColorUtil.rgba(255, 255, 255, (int) (130 * alpha));
+                bgCol = ColorUtil.rgba(14, 15, 20, (int) (190 * alpha));
+            } else if ("Тема".equals(style)) {
+                int accent = Theme.getAccent();
+                textColor = ColorUtil.withAlphaFloat(accent, alpha);
+                glowColor = ColorUtil.withAlphaFloat(accent, 0.55f * alpha);
+                bgCol = ColorUtil.rgba(12, 14, 20, (int) (185 * alpha));
+            } else if ("Лавандовый".equals(style)) {
+                textColor = ColorUtil.rgba(215, 185, 255, (int) (255 * alpha));
+                glowColor = ColorUtil.rgba(195, 160, 255, (int) (150 * alpha));
+                bgCol = ColorUtil.rgba(16, 14, 24, (int) (185 * alpha));
             } else {
-                int brightCol = ColorUtil.withAlphaFloat(activeTextColor, alpha);
-                Fonts.d.a(null, tw.word, wordBaseX, textY, fontSize, brightCol);
+                // Photo 1 reference: Soft coral / salmon pink
+                textColor = ColorUtil.rgba(255, 158, 170, (int) (255 * alpha));
+                glowColor = ColorUtil.rgba(255, 135, 155, (int) (150 * alpha));
+                bgCol = ColorUtil.rgba(15, 16, 22, (int) (185 * alpha));
             }
-        }
-    }
 
-    private void renderVectorLine(float cx, float cy, String text, float fontSize, float alpha,
-                                  int textColor, int glowColor, boolean bold, float userScale) {
-        if (text == null || text.isBlank() || alpha <= 0.01f) return;
+            // Draw pill capsule background
+            if (background.isEnabled()) {
+                Draw2DProcessor.INSTANCE.drawRect(null, bx, by, boxW, boxH, radius, bgCol);
 
-        float textW = Fonts.d.a(text, fontSize);
-        float lineH = Fonts.d.a(fontSize) + 8.0f * userScale;
-        float padX = 14.0f * userScale;
-        float boxW = textW + padX * 2.0f;
-
-        float bx = cx - boxW / 2.0f;
-        float by = cy - lineH / 2.0f;
-
-        if (background.isEnabled()) {
-            int bgCol = ColorUtil.rgba(12, 14, 20, (int) (180 * alpha));
-            Draw2DProcessor.INSTANCE.drawRect(null, bx, by, boxW, lineH, 5.0f * userScale, bgCol);
-
-            if (glow.isEnabled() && bold) {
-                int outlineCol = ColorUtil.withAlphaFloat(glowColor, 0.45f * alpha);
-                Draw2DProcessor.INSTANCE.drawOutline(null, bx, by, boxW, lineH, 5.0f * userScale, 1.0f, outlineCol);
-            }
-        }
-
-        float textX = cx - textW / 2.0f;
-        float textY = cy - Fonts.d.a(fontSize) / 2.0f - 0.5f;
-        int finalCol = ColorUtil.withAlphaFloat(textColor, alpha);
-        Fonts.d.a(null, text, textX, textY, fontSize, finalCol);
-    }
-
-    private boolean checkOcclusion(MinecraftClient mc, Vec3d camPos, Vec3d skyDir) {
-        if (mc.world == null) return false;
-        double rayDist = Math.max(10.0, distance.getValue());
-        Vec3d rayEnd = camPos.add(skyDir.multiply(rayDist));
-
-        BlockHitResult blockHit = mc.world.raycast(new RaycastContext(
-                camPos,
-                rayEnd,
-                RaycastContext.ShapeType.COLLIDER,
-                RaycastContext.FluidHandling.NONE,
-                mc.player
-        ));
-        if (blockHit != null && blockHit.getType() != HitResult.Type.MISS) {
-            return true;
-        }
-
-        Box checkRange = new Box(camPos, rayEnd).expand(0.5);
-        for (Entity candidate : mc.world.getOtherEntities(mc.player, checkRange)) {
-            if (candidate.isAlive() && !candidate.isSpectator()) {
-                Box box = candidate.getBoundingBox().expand(0.15);
-                if (box.contains(camPos) || box.raycast(camPos, rayEnd).isPresent()) {
-                    return true;
+                // Draw pill outline / neon glow
+                if (glow.isEnabled()) {
+                    float outW = Math.max(1.0f, 1.0f * pxScale);
+                    Draw2DProcessor.INSTANCE.drawOutline(null, bx, by, boxW, boxH, radius, outW, glowColor);
                 }
             }
+
+            // Draw centered text inside the 3D capsule
+            float textX = bx + padX;
+            float textY = by + padY - 0.5f;
+            Fonts.d.a(null, cap.text, textX, textY, fontSize, textColor);
         }
-        return false;
-    }
-
-    private Vec3d calculateSkyDirection(Camera camera) {
-        float pitch = camera.getPitch();
-        float yaw = camera.getYaw();
-
-        float skyPitch = (float) -elevation.getValue();
-        if (pitch < -5.0f) {
-            skyPitch = pitch;
-        }
-
-        double radP = Math.toRadians(skyPitch);
-        double radY = Math.toRadians(yaw);
-        double lx = -Math.sin(radY) * Math.cos(radP);
-        double ly = -Math.sin(radP);
-        double lz = Math.cos(radY) * Math.cos(radP);
-
-        return new Vec3d(lx, ly, lz).normalize();
-    }
-
-    private Vec3d getCameraLookVector(Camera camera) {
-        float pitch = camera.getPitch();
-        float yaw = camera.getYaw();
-        double radP = Math.toRadians(pitch);
-        double radY = Math.toRadians(yaw);
-        double lx = -Math.sin(radY) * Math.cos(radP);
-        double ly = -Math.sin(radP);
-        double lz = Math.cos(radY) * Math.cos(radP);
-        return new Vec3d(lx, ly, lz).normalize();
     }
 
     public void playDemo() {
         this.demoMode.setEnabled(true);
-        this.manualPlayback = false;
+        this.manualPlayback = true;
         this.demoPlayTimeMs = 0L;
         this.activeLyrics = LyricsFetcher.getInstance().getDemoLyrics();
         this.currentLineIndex = -1;
-        this.prevLineIndex = -1;
         this.lastSongKey = "demo";
-        this.activeSkyDirection = null;
-        this.cachedWordsLineIndex = -1;
-        this.cachedWords = null;
+        this.activeCapsules.clear();
+        this.pendingQueue.clear();
         this.overallAlpha = 1.0f;
-        this.occlusionAlpha = 1.0f;
     }
 
     public void playManual(String artist, String title) {
@@ -609,14 +495,20 @@ public class Lyrics extends Module {
         this.manualStartTime = System.currentTimeMillis();
         this.manualOffsetMs = 0L;
         this.currentLineIndex = -1;
-        this.prevLineIndex = -1;
-        this.activeSkyDirection = null;
-        this.activeLyrics = null;
-        this.lastSongKey = "";
-        this.cachedWordsLineIndex = -1;
-        this.cachedWords = null;
+        this.lastSongKey = LyricsFetcher.makeKey(artist, title);
+        this.activeCapsules.clear();
+        this.pendingQueue.clear();
         this.overallAlpha = 1.0f;
-        this.occlusionAlpha = 1.0f;
+
+        this.activeLyrics = LyricsFetcher.getInstance().getCachedLyrics(artist, title);
+        if (this.activeLyrics == null) {
+            LyricsFetcher.getInstance().fetchLyricsAsync(artist, title)
+                    .thenAccept(lines -> {
+                        if (lines != null && !lines.isEmpty()) {
+                            this.activeLyrics = lines;
+                        }
+                    });
+        }
     }
 
     public void stopManual() {
@@ -624,15 +516,17 @@ public class Lyrics extends Module {
         this.demoMode.setEnabled(false);
         this.overallAlpha = 0.0f;
         this.activeLyrics = null;
-        this.activeSkyDirection = null;
+        this.lastSongKey = "";
         this.currentLineIndex = -1;
-        this.prevLineIndex = -1;
+        this.activeCapsules.clear();
+        this.pendingQueue.clear();
     }
 
     public void seekManual(long seconds) {
         this.manualOffsetMs = seconds * 1000L;
         this.manualStartTime = System.currentTimeMillis();
         this.currentLineIndex = -1;
-        this.prevLineIndex = -1;
+        this.activeCapsules.clear();
+        this.pendingQueue.clear();
     }
 }
