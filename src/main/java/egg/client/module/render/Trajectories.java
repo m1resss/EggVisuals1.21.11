@@ -43,6 +43,7 @@ import java.util.*;
 public class Trajectories extends Module {
 
     private final SliderSetting circleRadius = new SliderSetting("Радиус круга", 0.45, 0.20, 1.00, 0.05, "Радиус светящегося круга приземления");
+    private final SliderSetting cubeSize = new SliderSetting("Размер куба", 0.32, 0.15, 0.80, 0.05, "Размер куба прицеливания (1-е лицо)");
     private final SliderSetting smoothSpeed = new SliderSetting("Плавность", 18.0, 5.0, 35.0, 1.0, "Скорость плавного следования круга за камерой");
     private final BooleanSetting showLine = new BooleanSetting("Линия полета", true, "Отображать траекторию полета снаряда");
     private final SliderSetting pullThreshold = new SliderSetting("При натяжении", 0.0, 0.0, 1.0, 0.05, "Порог силы натяжения для отображения (0 - всегда)");
@@ -56,7 +57,7 @@ public class Trajectories extends Module {
     public Trajectories() {
         super("Trajectories", "Прогнозирует траекторию и точку падения стрел, зелий, жемчуга и снарядов", Category.ESP);
         pullThreshold.setVisible(() -> showLine.get());
-        addSettings(circleRadius, smoothSpeed, showLine, pullThreshold, glowEffect, inFlight);
+        addSettings(circleRadius, cubeSize, smoothSpeed, showLine, pullThreshold, glowEffect, inFlight);
     }
 
     public void render(VertexConsumerProvider consumers, Vec3d camPos) {
@@ -188,14 +189,22 @@ public class Trajectories extends Module {
                     return old.lerp(targetImpact, smoothFactor);
                 });
 
+                if (showLine.isEnabled()) {
+                    renderPathRibbon(quadBuffer, res.path, camPos, r, g, b);
+                }
+
                 if (res.hitEntity instanceof LivingEntity target && target.isAlive() && target != mc.player) {
                     Box targetBox = CustomHitbox.getInterpolatedBoundingBox(target, tickDelta);
                     CustomHitbox.renderHitbox(quadBuffer, targetBox, camPos,
-                            true, r, g, b, 128,
-                            true, r, g, b, 255,
-                            1.8f);
+                            true, r, g, b, (int) Math.round(255 * 0.15),
+                            true, r, g, b, 240,
+                            1.0f);
                 } else {
-                    renderGlowingLandingCircle(quadBuffer, smoothPos, camPos, res.impactSide, r, g, b);
+                    if (mc.options.getPerspective().isFirstPerson()) {
+                        renderLandingCube(quadBuffer, smoothPos, camPos, res.impactSide, r, g, b);
+                    } else {
+                        renderGlowingLandingCircle(quadBuffer, smoothPos, camPos, res.impactSide, r, g, b);
+                    }
                 }
             }
         }
@@ -366,6 +375,69 @@ public class Trajectories extends Module {
             }
         }
         return closest;
+    }
+
+    private void renderLandingCube(VertexConsumer buf, Vec3d pos, Vec3d camPos, Direction side, int r, int g, int b) {
+        if (buf == null || pos == null || camPos == null) return;
+        Direction s = side != null ? side : Direction.UP;
+        double size = cubeSize.get();
+        double half = size / 2.0;
+        double cx = pos.x;
+        double cy = pos.y;
+        double cz = pos.z;
+
+        double minX, maxX, minY, maxY, minZ, maxZ;
+        int nx = s.getOffsetX();
+        int ny = s.getOffsetY();
+        int nz = s.getOffsetZ();
+
+        if (nx != 0) {
+            if (nx > 0) {
+                minX = cx + 0.002;
+                maxX = cx + size + 0.002;
+            } else {
+                minX = cx - size - 0.002;
+                maxX = cx - 0.002;
+            }
+            minY = cy - half;
+            maxY = cy + half;
+            minZ = cz - half;
+            maxZ = cz + half;
+        } else if (ny != 0) {
+            if (ny > 0) {
+                minY = cy + 0.002;
+                maxY = cy + size + 0.002;
+            } else {
+                minY = cy - size - 0.002;
+                maxY = cy - 0.002;
+            }
+            minX = cx - half;
+            maxX = cx + half;
+            minZ = cz - half;
+            maxZ = cz + half;
+        } else {
+            if (nz > 0) {
+                minZ = cz + 0.002;
+                maxZ = cz + size + 0.002;
+            } else {
+                minZ = cz - size - 0.002;
+                maxZ = cz - 0.002;
+            }
+            minX = cx - half;
+            maxX = cx + half;
+            minY = cy - half;
+            maxY = cy + half;
+        }
+
+        Box box = new Box(minX, minY, minZ, maxX, maxY, maxZ);
+        int fillA = (int) Math.round(255 * 0.15);
+        int outlineA = 240;
+        float outlineThickness = 1.0f;
+
+        CustomHitbox.renderHitbox(buf, box, camPos,
+                true, r, g, b, fillA,
+                true, r, g, b, outlineA,
+                outlineThickness);
     }
 
     private void renderGlowingLandingCircle(VertexConsumer buf, Vec3d center, Vec3d camPos, Direction side, int cr, int cg, int cb) {
