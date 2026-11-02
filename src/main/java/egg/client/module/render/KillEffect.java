@@ -90,6 +90,27 @@ public class KillEffect extends Module {
     public KillEffect() {
         super("KillEffect", "Кастомные 3D килл-эффекты при смерти противника (Статуя, Обелиск, Чернила, Стекло)", Category.ESP);
         instance = this;
+
+        // Фильтрация настроек: отображаются только параметры активного режима
+        statueSpeed.setVisible(() -> "Статуя".equals(mode.get()));
+        meltDuration.setVisible(() -> "Статуя".equals(mode.get()));
+
+        monolithHeight.setVisible(() -> "Обелиск".equals(mode.get()));
+        monolithScale.setVisible(() -> "Обелиск".equals(mode.get()));
+        monolithRunes.setVisible(() -> "Обелиск".equals(mode.get()));
+
+        slashScale.setVisible(() -> "Чернила".equals(mode.get()));
+        inkDrops.setVisible(() -> "Чернила".equals(mode.get()));
+
+        amount.setVisible(() -> "Стекло".equals(mode.get()));
+        size.setVisible(() -> "Стекло".equals(mode.get()));
+        speed.setVisible(() -> "Стекло".equals(mode.get()));
+        lifetime.setVisible(() -> "Стекло".equals(mode.get()));
+        bounce.setVisible(() -> "Стекло".equals(mode.get()));
+        sparkle.setVisible(() -> "Стекло".equals(mode.get()));
+
+        color.setVisible(() -> !syncColor.isEnabled());
+
         addSettings(mode, onlyTarget, onlyPlayers, sound, syncColor, color,
                 statueSpeed, meltDuration,
                 monolithHeight, monolithScale, monolithRunes,
