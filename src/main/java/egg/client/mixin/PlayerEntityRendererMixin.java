@@ -21,7 +21,6 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.PlayerLikeEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
-import net.minecraft.text.Text;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -45,16 +44,12 @@ public abstract class PlayerEntityRendererMixin extends LivingEntityRenderer<Abs
     )
     private void onRenderLabelIfPresent(PlayerEntityRenderState state, MatrixStack matrices, OrderedRenderCommandQueue queue, CameraRenderState camera, CallbackInfo ci) {
         Globals globals = ModuleManager.getInstance().getModule(Globals.class);
-        if (globals != null && globals.isEnabled() && Globals.isEggUser(state)) {
-            Text eggPrefix = Text.literal("§f🥚 ");
+        if (globals != null && globals.isEnabled() && globals.isInNametag() && Globals.isEggUser(state)) {
+            String cleanName = Globals.extractCleanName(state);
             if (state.displayName != null) {
-                if (!state.displayName.getString().contains("🥚")) {
-                    state.displayName = Text.empty().append(eggPrefix).append(state.displayName);
-                }
+                state.displayName = globals.formatPlayerName(state.displayName, cleanName);
             } else if (state.playerName != null) {
-                if (!state.playerName.getString().contains("🥚")) {
-                    state.playerName = Text.empty().append(eggPrefix).append(state.playerName);
-                }
+                state.playerName = globals.formatPlayerName(state.playerName, cleanName);
             }
         }
     }
@@ -65,16 +60,12 @@ public abstract class PlayerEntityRendererMixin extends LivingEntityRenderer<Abs
     )
     private void onUpdateRenderState(PlayerLikeEntity entity, PlayerEntityRenderState state, float tickDelta, CallbackInfo ci) {
         Globals globals = ModuleManager.getInstance().getModule(Globals.class);
-        if (globals != null && globals.isEnabled() && ((entity instanceof Entity ent && Globals.isEggUser(ent)) || Globals.isEggUser(state))) {
-            Text eggPrefix = Text.literal("§f🥚 ");
+        if (globals != null && globals.isEnabled() && globals.isInNametag() && ((entity instanceof Entity ent && Globals.isEggUser(ent)) || Globals.isEggUser(state))) {
+            String cleanName = (entity != null) ? entity.getNameForScoreboard() : Globals.extractCleanName(state);
             if (state.displayName != null) {
-                if (!state.displayName.getString().contains("🥚")) {
-                    state.displayName = Text.empty().append(eggPrefix).append(state.displayName);
-                }
+                state.displayName = globals.formatPlayerName(state.displayName, cleanName);
             } else if (state.playerName != null) {
-                if (!state.playerName.getString().contains("🥚")) {
-                    state.playerName = Text.empty().append(eggPrefix).append(state.playerName);
-                }
+                state.playerName = globals.formatPlayerName(state.playerName, cleanName);
             }
         }
 

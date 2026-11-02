@@ -3,6 +3,7 @@ package egg.client.command.impl;
 import egg.client.command.Command;
 import egg.client.command.CommandManager;
 import egg.client.module.misc.Globals;
+import net.minecraft.client.MinecraftClient;
 
 public class GlobalsCommand extends Command {
     public GlobalsCommand() {
@@ -38,11 +39,11 @@ public class GlobalsCommand extends Command {
             }
             case "list" -> {
                 var users = Globals.getEggUsers();
-                if (users.isEmpty()) {
-                    CommandManager.sendClientMessage("Список пользователей Egg Visuals пуст (локальный игрок добавляется автоматически).");
-                    return;
+                CommandManager.sendClientMessage("Пользователи Egg Visuals:");
+                MinecraftClient mc = MinecraftClient.getInstance();
+                if (mc.player != null) {
+                    CommandManager.sendClientMessage(" - §e" + mc.player.getNameForScoreboard() + " §7(вы)");
                 }
-                CommandManager.sendClientMessage("Пользователи Egg Visuals (" + users.size() + "):");
                 for (String u : users) {
                     CommandManager.sendClientMessage(" - §e" + u);
                 }

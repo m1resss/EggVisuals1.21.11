@@ -7,11 +7,16 @@ import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.cosmetic.CosmeticsModule;
 import egg.client.module.setting.BooleanSetting;
+import egg.client.module.setting.ModeSetting;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.client.render.entity.state.PlayerEntityRenderState;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.text.MutableText;
+import net.minecraft.text.PlainTextContent;
 import net.minecraft.text.Text;
+import net.minecraft.text.TextContent;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -21,6 +26,10 @@ import java.util.concurrent.ConcurrentHashMap;
 public class Globals extends Module {
     private static Globals instance;
 
+    private final BooleanSetting showSelf = new BooleanSetting("Отображать себе", true, "Отображать яйцо перед своим ником");
+    private final BooleanSetting inTab = new BooleanSetting("В табе", true, "Отображать яйцо перед никами в табе");
+    private final BooleanSetting inNametag = new BooleanSetting("Над головой", true, "Отображать яйцо в неймтегах над головой");
+    private final ModeSetting iconPosition = new ModeSetting("Позиция яйца", "Перед ником", "Где отображать значок яйца", "Перед ником", "В начале строки");
     private final BooleanSetting cosmetics = new BooleanSetting("Косметика", true, "Отображать косметику других пользователей Egg Visuals");
 
     private final GlobalsNetClient netClient;
@@ -38,11 +47,27 @@ public class Globals extends Module {
         super("Globals", "Отображает белое яйцо перед никами других пользователей Egg Visuals и их косметику", Category.MISC);
         instance = this;
         this.netClient = new GlobalsNetClient(this);
-        addSettings(cosmetics);
+        addSettings(showSelf, inTab, inNametag, iconPosition, cosmetics);
     }
 
     public static Globals getInstance() {
         return instance;
+    }
+
+    public boolean isShowSelf() {
+        return showSelf.get();
+    }
+
+    public boolean isInTab() {
+        return inTab.get();
+    }
+
+    public boolean isInNametag() {
+        return inNametag.get();
+    }
+
+    public String getIconPosition() {
+        return iconPosition.get();
     }
 
     public boolean isCosmeticsEnabled() {
@@ -251,6 +276,56 @@ public class Globals extends Module {
         }
     }
 
+    public static boolean containsUsername(String text, String username) {
+        if (text == null || username == null || username.isEmpty()) return false;
+        int idx = text.indexOf(username);
+        while (idx >= 0) {
+            boolean startOk = (idx == 0 || !Character.isLetterOrDigit(text.charAt(idx - 1)));
+            int endIdx = idx + username.length();
+            boolean endOk = (endIdx == text.length() || !Character.isLetterOrDigit(text.charAt(endIdx)));
+            if (startOk && endOk) {
+                return true;
+            }
+            idx = text.indexOf(username, idx + 1);
+        }
+        return false;
+    }
+
+    public static boolean isEggUser(PlayerListEntry entry) {
+        Globals g = getInstance();
+        if (g == null || !g.isEnabled() || entry == null) return false;
+
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc.player != null && entry.getProfile() != null) {
+            if (mc.player.getUuid().equals(entry.getProfile().id()) ||
+                    mc.player.getNameForScoreboard().equalsIgnoreCase(entry.getProfile().name())) {
+                return g.showSelf.get();
+            }
+        }
+
+        if (entry.getProfile() != null) {
+            String name = entry.getProfile().name();
+            if (name != null && g.peersByName.containsKey(name.trim().toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+            UUID uuid = entry.getProfile().id();
+            if (uuid != null && g.peersByUuid.containsKey(uuid)) {
+                return true;
+            }
+        }
+
+        if (entry.getDisplayName() != null) {
+            String text = entry.getDisplayName().getString().toLowerCase(Locale.ROOT);
+            for (String peerName : g.peersByName.keySet()) {
+                if (containsUsername(text, peerName)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     public static boolean isEggUser(Entity entity) {
         Globals g = getInstance();
         if (g == null || !g.isEnabled()) return false;
@@ -258,7 +333,7 @@ public class Globals extends Module {
 
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player != null && (player == mc.player || player.getUuid().equals(mc.player.getUuid()))) {
-            return false;
+            return g.showSelf.get();
         }
 
         String name = player.getNameForScoreboard();
@@ -282,7 +357,7 @@ public class Globals extends Module {
 
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player != null && state.id == mc.player.getId()) {
-            return false;
+            return g.showSelf.get();
         }
 
         if (mc.world != null) {
@@ -296,24 +371,124 @@ public class Globals extends Module {
             String raw = state.playerName.getString().trim().toLowerCase(Locale.ROOT);
             if (raw.startsWith("🥚")) raw = raw.substring(1).trim();
             if (mc.player != null && raw.equalsIgnoreCase(mc.player.getNameForScoreboard())) {
-                return false;
+                return g.showSelf.get();
             }
             if (g.peersByName.containsKey(raw)) {
                 return true;
+            }
+            for (String peerName : g.peersByName.keySet()) {
+                if (containsUsername(raw, peerName)) {
+                    return true;
+                }
             }
         }
         if (state.displayName != null) {
             String raw = state.displayName.getString().trim().toLowerCase(Locale.ROOT);
             if (raw.startsWith("🥚")) raw = raw.substring(1).trim();
-            if (mc.player != null && raw.equalsIgnoreCase(mc.player.getNameForScoreboard())) {
-                return false;
+            if (mc.player != null && (raw.equalsIgnoreCase(mc.player.getNameForScoreboard()) || containsUsername(raw, mc.player.getNameForScoreboard().toLowerCase(Locale.ROOT)))) {
+                return g.showSelf.get();
             }
             if (g.peersByName.containsKey(raw)) {
                 return true;
             }
+            for (String peerName : g.peersByName.keySet()) {
+                if (containsUsername(raw, peerName)) {
+                    return true;
+                }
+            }
         }
 
         return false;
+    }
+
+    public static String extractCleanName(PlayerEntityRenderState state) {
+        if (state == null) return null;
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc.player != null && state.id == mc.player.getId()) {
+            return mc.player.getNameForScoreboard();
+        }
+        if (mc.world != null) {
+            Entity ent = mc.world.getEntityById(state.id);
+            if (ent instanceof PlayerEntity player) {
+                return player.getNameForScoreboard();
+            }
+        }
+        if (state.playerName != null) {
+            String raw = state.playerName.getString().trim();
+            if (raw.startsWith("🥚")) raw = raw.substring(1).trim();
+            return raw;
+        }
+        return null;
+    }
+
+    public Text formatPlayerName(Text original, String cleanName) {
+        if (original == null) return null;
+        if (original.getString().contains("🥚")) {
+            return original;
+        }
+
+        String pos = iconPosition.get();
+        if ("В начале строки".equalsIgnoreCase(pos) || cleanName == null || cleanName.trim().isEmpty()) {
+            return Text.empty().append(Text.literal("§f🥚§r ")).append(original);
+        }
+
+        String fullStr = original.getString();
+        String lowerFull = fullStr.toLowerCase(Locale.ROOT);
+        String lowerTarget = cleanName.trim().toLowerCase(Locale.ROOT);
+        int targetIdx = lowerFull.indexOf(lowerTarget);
+        if (targetIdx < 0) {
+            return Text.empty().append(Text.literal("§f🥚§r ")).append(original);
+        }
+
+        boolean needLeadingSpace = targetIdx > 0 && fullStr.charAt(targetIdx - 1) != ' ';
+        String eggStr = needLeadingSpace ? " §f🥚§r " : "§f🥚§r ";
+
+        boolean[] inserted = new boolean[]{false};
+        Text formatted = insertEggBeforeTarget(original, lowerTarget, eggStr, inserted);
+        if (inserted[0] && formatted != null && formatted.getString().contains("🥚")) {
+            return formatted;
+        }
+
+        return Text.empty().append(Text.literal(eggStr)).append(original);
+    }
+
+    private Text insertEggBeforeTarget(Text node, String lowerTarget, String eggStr, boolean[] inserted) {
+        if (inserted[0]) {
+            return node;
+        }
+
+        TextContent content = node.getContent();
+        if (content instanceof PlainTextContent pt) {
+            String str = pt.string();
+            String lower = str.toLowerCase(Locale.ROOT);
+            int idx = lower.indexOf(lowerTarget);
+            if (idx >= 0) {
+                inserted[0] = true;
+                String before = str.substring(0, idx);
+                String matched = str.substring(idx, idx + lowerTarget.length());
+                String after = str.substring(idx + lowerTarget.length());
+
+                MutableText result = Text.empty();
+                if (!before.isEmpty()) {
+                    result.append(Text.literal(before).setStyle(node.getStyle()));
+                }
+                result.append(Text.literal(eggStr));
+                result.append(Text.literal(matched).setStyle(node.getStyle()));
+                if (!after.isEmpty()) {
+                    result.append(Text.literal(after).setStyle(node.getStyle()));
+                }
+                for (Text sibling : node.getSiblings()) {
+                    result.append(sibling);
+                }
+                return result;
+            }
+        }
+
+        MutableText copy = node.copyContentOnly().setStyle(node.getStyle());
+        for (Text sibling : node.getSiblings()) {
+            copy.append(insertEggBeforeTarget(sibling, lowerTarget, eggStr, inserted));
+        }
+        return copy;
     }
 
     public static Map<String, String> getPlayerCosmetics(PlayerEntity player) {
@@ -388,7 +563,6 @@ public class Globals extends Module {
     }
 
     public Text formatLabel(Text original) {
-        Text eggPrefix = Text.literal("🥚 ").styled(s -> s.withColor(0xFFFFFF));
-        return Text.empty().append(eggPrefix).append(original);
+        return formatPlayerName(original, null);
     }
 }
