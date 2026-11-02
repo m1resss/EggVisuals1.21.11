@@ -6,9 +6,11 @@
   "category": "ГОЛОВНЫЕ_УБОРЫ",
   "scale": 1.0,
   "x": 0.0,
-  "y": -0.45,
-  "z": 0.0,
-  "preview_scale": 1.15,
+  "y": 0.65,
+  "z": -0.12,
+  "preview_scale": 1.35,
   "preview_yaw": 192,
+  "preview_y": 0.05,
+  "preview_pitch": 6,
   "raw_offset": true
 }
