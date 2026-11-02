@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import egg.client.command.CommandManager;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -30,74 +31,59 @@ public final class LyricsFetcher {
 
     private final Map<String, List<LyricLine>> cache = new ConcurrentHashMap<>();
     private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
-    private final ExecutorService pool = Executors.newFixedThreadPool(2, r -> {
+    private final ExecutorService executor = Executors.newFixedThreadPool(2, r -> {
         Thread t = new Thread(r, "Egg-LyricsFetcher");
         t.setDaemon(true);
         return t;
     });
 
-    // Demo lyrics matching the visual style in the reference screenshots
-    private final List<LyricLine> demoLyrics = List.of(
-            new LyricLine(0, "whats wrong im sick"),
-            new LyricLine(2200, "with and twisted"),
-            new LyricLine(4600, "i confess"),
-            new LyricLine(7200, "fuck the"),
-            new LyricLine(9400, "don't ever opps"),
-            new LyricLine(11800, "Haunte fuck with"),
-            new LyricLine(14200, "world, we"),
-            new LyricLine(16800, "whats wrong im sick"),
-            new LyricLine(19200, "and twisted i confess"),
-            new LyricLine(22000, "don't ever fuck with world, we opps")
-    );
+    private LyricsFetcher() {}
 
-    private LyricsFetcher() {
-        cache.put("demo", demoLyrics);
-    }
-
-    public List<LyricLine> getDemoLyrics() {
-        return demoLyrics;
+    public static String makeKey(String artist, String title) {
+        String a = artist != null ? artist.trim().toLowerCase(Locale.ROOT) : "";
+        String t = title != null ? title.trim().toLowerCase(Locale.ROOT) : "";
+        return a + " - " + t;
     }
 
     public List<LyricLine> getCachedLyrics(String artist, String title) {
         if (title == null || title.isBlank()) return null;
-        String rawKey = makeKey(artist, title);
-        List<LyricLine> found = cache.get(rawKey);
-        if (found != null) return found;
-
-        String clean = cleanTitle(title);
-        String cleanKey = makeKey(artist, clean);
-        found = cache.get(cleanKey);
-        if (found != null) return found;
-
-        String bareTitleKey = clean.toLowerCase().trim();
-        return cache.get(bareTitleKey);
+        String key = makeKey(artist, title);
+        List<LyricLine> lines = cache.get(key);
+        if (lines != null) return lines;
+        return cache.get(title.trim().toLowerCase(Locale.ROOT));
     }
 
     public CompletableFuture<List<LyricLine>> fetchLyricsAsync(String artist, String title) {
-        String key = makeKey(artist, title);
-        List<LyricLine> cached = getCachedLyrics(artist, title);
+        String[] parsed = parseArtistAndTitle(artist, title);
+        String finalArtist = parsed[0];
+        String finalTitle = parsed[1];
+
+        if (finalTitle.isBlank()) {
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        }
+
+        String key = makeKey(finalArtist, finalTitle);
+        List<LyricLine> cached = cache.get(key);
         if (cached != null) {
             return CompletableFuture.completedFuture(cached);
         }
 
         if (!inFlight.add(key)) {
-            return CompletableFuture.completedFuture(null);
+            return CompletableFuture.completedFuture(Collections.emptyList());
         }
 
         CompletableFuture<List<LyricLine>> future = new CompletableFuture<>();
-        pool.submit(() -> {
+        executor.submit(() -> {
             try {
-                List<LyricLine> result = fetchFromApiCascade(artist, title);
-                if (result != null && !result.isEmpty()) {
-                    String clean = cleanTitle(title);
-                    cache.put(key, result);
-                    cache.put(makeKey(artist, clean), result);
-                    cache.put(clean.toLowerCase().trim(), result);
-                    if (cache.size() > 64) {
-                        cache.clear();
-                    }
-                    future.complete(result);
+                CommandManager.sendClientMessage("§7[Lyrics] Поиск текста: §f" + (finalArtist.isEmpty() ? "" : finalArtist + " - ") + finalTitle + "...", false);
+                List<LyricLine> lines = fetchFromApiCascade(finalArtist, finalTitle);
+                if (lines != null && !lines.isEmpty()) {
+                    cache.put(key, lines);
+                    cache.put(finalTitle.toLowerCase(Locale.ROOT), lines);
+                    CommandManager.sendClientMessage("§d[Lyrics] §aНайден текст: §f" + (finalArtist.isEmpty() ? "" : finalArtist + " - ") + finalTitle + " §7(" + lines.size() + " строк)", false);
+                    future.complete(lines);
                 } else {
+                    CommandManager.sendClientMessage("§d[Lyrics] §cТекст не найден: §f" + (finalArtist.isEmpty() ? "" : finalArtist + " - ") + finalTitle, false);
                     future.complete(Collections.emptyList());
                 }
             } catch (Throwable t) {
@@ -109,80 +95,45 @@ public final class LyricsFetcher {
         return future;
     }
 
+    private static String[] parseArtistAndTitle(String artist, String title) {
+        String a = artist != null ? artist.trim() : "";
+        String t = title != null ? title.trim() : "";
+        if (a.isEmpty()) {
+            for (String sep : new String[]{" - ", " — ", " – ", " / ", " | "}) {
+                int idx = t.indexOf(sep);
+                if (idx > 0 && idx + sep.length() < t.length()) {
+                    a = t.substring(0, idx).trim();
+                    t = t.substring(idx + sep.length()).trim();
+                    break;
+                }
+            }
+        }
+        return new String[]{a, t};
+    }
+
     private List<LyricLine> fetchFromApiCascade(String artist, String title) {
         String cleanA = cleanArtist(artist);
         String cleanT = cleanTitle(title);
 
-        // 1. LRCLIB Search (Tier 1)
-        List<LyricLine> lrclibRes = searchLrclib(artist, cleanA, title, cleanT);
-        if (lrclibRes != null && !lrclibRes.isEmpty()) {
-            return lrclibRes;
-        }
-
-        // 2. NetEase Cloud Music Search (Tier 2)
+        // 1. Primary: NetEase Cloud Music (fast, reliable, millisecond timestamps)
         List<LyricLine> neteaseRes = searchNetEase(artist, cleanA, title, cleanT);
         if (neteaseRes != null && !neteaseRes.isEmpty()) {
             return neteaseRes;
         }
 
-        // 3. Genius Fallback (Tier 3)
+        // 2. Secondary: LRCLIB (LRC format)
+        List<LyricLine> lrclibRes = searchLrclib(artist, cleanA, title, cleanT);
+        if (lrclibRes != null && !lrclibRes.isEmpty()) {
+            return lrclibRes;
+        }
+
+        // 3. Fallback: Genius API
         List<LyricLine> geniusRes = searchGenius(artist, cleanT);
         if (geniusRes != null && !geniusRes.isEmpty()) {
             return geniusRes;
         }
 
         return Collections.emptyList();
-    }
-
-    // --- LRCLIB ---
-    private List<LyricLine> searchLrclib(String artist, String cleanArtist, String title, String cleanTitle) {
-        Map<String, String> headers = Map.of("User-Agent", "Rockstar/2.0 (https://github.com/rockstar)");
-        List<String> queryList = new ArrayList<>();
-        queryList.add("track_name=" + urlEncode(title) + "&artist_name=" + urlEncode(artist));
-        if (!cleanArtist.isEmpty() && !cleanArtist.equalsIgnoreCase(artist.trim())) {
-            queryList.add("track_name=" + urlEncode(title) + "&artist_name=" + urlEncode(cleanArtist));
-        }
-        queryList.add("track_name=" + urlEncode(title));
-        queryList.add("q=" + urlEncode((cleanArtist.isEmpty() ? artist : cleanArtist) + " " + title));
-
-        String bestLrc = null;
-        double bestScore = Double.NEGATIVE_INFINITY;
-
-        for (String q : queryList) {
-            String url = LRCLIB_BASE + "/search?" + q;
-            String json = httpGet(url, headers);
-            if (json == null || json.isBlank()) continue;
-            try {
-                JsonElement elem = JsonParser.parseString(json);
-                if (elem.isJsonArray()) {
-                    for (JsonElement item : elem.getAsJsonArray()) {
-                        if (!item.isJsonObject()) continue;
-                        JsonObject obj = item.getAsJsonObject();
-                        if (obj.has("syncedLyrics") && !obj.get("syncedLyrics").isJsonNull()) {
-                            String synced = obj.get("syncedLyrics").getAsString();
-                            if (synced != null && !synced.isBlank()) {
-                                String candTrack = obj.has("trackName") && !obj.get("trackName").isJsonNull() ? obj.get("trackName").getAsString() : "";
-                                String candArtist = obj.has("artistName") && !obj.get("artistName").isJsonNull() ? obj.get("artistName").getAsString() : "";
-                                double candDur = obj.has("duration") && !obj.get("duration").isJsonNull() ? obj.get("duration").getAsDouble() : 0.0;
-
-                                double score = scoreCandidate(candTrack, candArtist, candDur, artist, title, 0.0);
-                                if (score > bestScore) {
-                                    bestScore = score;
-                                    bestLrc = synced;
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (Throwable ignored) {}
-            if (bestLrc != null) break;
-        }
-
-        if (bestLrc != null) {
-            List<LyricLine> parsed = parseLrc(bestLrc);
-            if (!parsed.isEmpty()) return parsed;
-        }
-        return null;
     }
 
     // --- NetEase Cloud Music ---
@@ -193,13 +144,20 @@ public final class LyricsFetcher {
         );
 
         List<String> queries = new ArrayList<>();
-        queries.add(artist + " " + title);
-        if (!cleanArtist.isEmpty() && !cleanArtist.equalsIgnoreCase(artist.trim())) {
-            queries.add(cleanArtist + " " + title);
+        if (!artist.isEmpty()) {
+            queries.add((artist + " " + title).trim());
+            if (!cleanArtist.isEmpty() && !cleanArtist.equalsIgnoreCase(artist.trim())) {
+                queries.add((cleanArtist + " " + cleanTitle).trim());
+            }
+        }
+        queries.add(title.trim());
+        if (!cleanTitle.isEmpty() && !cleanTitle.equalsIgnoreCase(title.trim())) {
+            queries.add(cleanTitle.trim());
         }
 
         long bestSongId = -1L;
         double bestScore = Double.NEGATIVE_INFINITY;
+        long firstSongIdFallback = -1L;
 
         for (String q : queries) {
             String url = NETEASE_BASE + "/search/get?type=1&limit=10&s=" + urlEncode(q);
@@ -207,39 +165,50 @@ public final class LyricsFetcher {
             if (json == null || json.isBlank()) continue;
             try {
                 JsonObject root = JsonParser.parseString(json).getAsJsonObject();
-                if (root.has("result") && root.get("result").isJsonObject()) {
-                    JsonObject res = root.getAsJsonObject("result");
-                    if (res.has("songs") && res.get("songs").isJsonArray()) {
-                        for (JsonElement se : res.getAsJsonArray("songs")) {
-                            if (!se.isJsonObject()) continue;
-                            JsonObject s = se.getAsJsonObject();
-                            long id = s.has("id") && !s.get("id").isJsonNull() ? s.get("id").getAsLong() : -1L;
-                            if (id < 0) continue;
+                if (!root.has("result") || !root.get("result").isJsonObject()) continue;
+                JsonObject resObj = root.getAsJsonObject("result");
+                if (!resObj.has("songs") || !resObj.get("songs").isJsonArray()) continue;
+                JsonArray songs = resObj.getAsJsonArray("songs");
+                if (songs.size() == 0) continue;
 
-                            String candTrack = s.has("name") && !s.get("name").isJsonNull() ? s.get("name").getAsString() : "";
-                            StringBuilder sb = new StringBuilder();
-                            if (s.has("artists") && s.get("artists").isJsonArray()) {
-                                for (JsonElement ae : s.getAsJsonArray("artists")) {
-                                    if (ae.isJsonObject()) {
-                                        String an = ae.getAsJsonObject().has("name") ? ae.getAsJsonObject().get("name").getAsString() : "";
-                                        if (!an.isBlank()) {
-                                            if (sb.length() > 0) sb.append(", ");
-                                            sb.append(an);
-                                        }
-                                    }
+                if (firstSongIdFallback < 0 && songs.get(0).isJsonObject()) {
+                    JsonObject first = songs.get(0).getAsJsonObject();
+                    if (first.has("id") && !first.get("id").isJsonNull()) {
+                        firstSongIdFallback = first.get("id").getAsLong();
+                    }
+                }
+
+                for (JsonElement item : songs) {
+                    if (!item.isJsonObject()) continue;
+                    JsonObject sobj = item.getAsJsonObject();
+                    if (!sobj.has("id") || sobj.get("id").isJsonNull()) continue;
+                    long sid = sobj.get("id").getAsLong();
+                    String sname = sobj.has("name") && !sobj.get("name").isJsonNull() ? sobj.get("name").getAsString() : "";
+                    StringBuilder arts = new StringBuilder();
+                    if (sobj.has("artists") && sobj.get("artists").isJsonArray()) {
+                        for (JsonElement ae : sobj.getAsJsonArray("artists")) {
+                            if (ae.isJsonObject()) {
+                                JsonObject aobj = ae.getAsJsonObject();
+                                if (aobj.has("name") && !aobj.get("name").isJsonNull()) {
+                                    if (arts.length() > 0) arts.append(", ");
+                                    arts.append(aobj.get("name").getAsString());
                                 }
-                            }
-                            double candDur = s.has("duration") && !s.get("duration").isJsonNull() ? s.get("duration").getAsLong() / 1000.0 : 0.0;
-                            double score = scoreCandidate(candTrack, sb.toString(), candDur, artist, title, 0.0);
-                            if (score > bestScore) {
-                                bestScore = score;
-                                bestSongId = id;
                             }
                         }
                     }
+                    double dur = sobj.has("duration") && !sobj.get("duration").isJsonNull() ? sobj.get("duration").getAsDouble() / 1000.0 : 0.0;
+                    double score = scoreCandidate(sname, arts.toString(), dur, artist, title, 0.0);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestSongId = sid;
+                    }
                 }
             } catch (Throwable ignored) {}
-            if (bestSongId >= 0) break;
+            if (bestSongId >= 0 && bestScore > 500.0) break;
+        }
+
+        if (bestSongId < 0 && firstSongIdFallback >= 0) {
+            bestSongId = firstSongIdFallback;
         }
 
         if (bestSongId >= 0) {
@@ -258,6 +227,67 @@ public final class LyricsFetcher {
                     }
                 } catch (Throwable ignored) {}
             }
+        }
+        return null;
+    }
+
+    // --- LRCLIB ---
+    private List<LyricLine> searchLrclib(String artist, String cleanArtist, String title, String cleanTitle) {
+        Map<String, String> headers = Map.of("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0");
+        List<String> queryList = new ArrayList<>();
+        if (!artist.isEmpty()) {
+            queryList.add("track_name=" + urlEncode(title) + "&artist_name=" + urlEncode(artist));
+            if (!cleanArtist.isEmpty() && !cleanArtist.equalsIgnoreCase(artist.trim())) {
+                queryList.add("track_name=" + urlEncode(title) + "&artist_name=" + urlEncode(cleanArtist));
+            }
+        }
+        queryList.add("track_name=" + urlEncode(cleanTitle.isEmpty() ? title : cleanTitle));
+        queryList.add("q=" + urlEncode((cleanArtist.isEmpty() ? artist : cleanArtist) + " " + title));
+
+        String bestLrc = null;
+        String bestPlain = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+
+        for (String q : queryList) {
+            String url = LRCLIB_BASE + "/search?" + q;
+            String json = httpGet(url, headers);
+            if (json == null || json.isBlank()) continue;
+            try {
+                JsonElement elem = JsonParser.parseString(json);
+                if (elem.isJsonArray()) {
+                    for (JsonElement item : elem.getAsJsonArray()) {
+                        if (!item.isJsonObject()) continue;
+                        JsonObject obj = item.getAsJsonObject();
+                        String candTrack = obj.has("trackName") && !obj.get("trackName").isJsonNull() ? obj.get("trackName").getAsString() : "";
+                        String candArtist = obj.has("artistName") && !obj.get("artistName").isJsonNull() ? obj.get("artistName").getAsString() : "";
+                        double candDur = obj.has("duration") && !obj.get("duration").isJsonNull() ? obj.get("duration").getAsDouble() : 0.0;
+
+                        double score = scoreCandidate(candTrack, candArtist, candDur, artist, title, 0.0);
+                        if (obj.has("syncedLyrics") && !obj.get("syncedLyrics").isJsonNull()) {
+                            String synced = obj.get("syncedLyrics").getAsString();
+                            if (synced != null && !synced.isBlank() && score > bestScore) {
+                                bestScore = score;
+                                bestLrc = synced;
+                            }
+                        } else if (bestLrc == null && obj.has("plainLyrics") && !obj.get("plainLyrics").isJsonNull()) {
+                            String plain = obj.get("plainLyrics").getAsString();
+                            if (plain != null && !plain.isBlank()) {
+                                bestPlain = plain;
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {}
+            if (bestLrc != null) break;
+        }
+
+        if (bestLrc != null) {
+            List<LyricLine> parsed = parseLrc(bestLrc);
+            if (!parsed.isEmpty()) return parsed;
+        }
+        if (bestPlain != null) {
+            List<LyricLine> parsed = parsePlainLyrics(bestPlain);
+            if (!parsed.isEmpty()) return parsed;
         }
         return null;
     }
@@ -312,6 +342,11 @@ public final class LyricsFetcher {
         }
         if (full.length() == 0) return list;
         String text = full.toString().replaceAll("<br\\s*/?>", "\n").replaceAll("<[^>]+>", "");
+        return parsePlainLyrics(text);
+    }
+
+    private static List<LyricLine> parsePlainLyrics(String text) {
+        List<LyricLine> list = new ArrayList<>();
         long t = 0L;
         for (String s : text.split("\n")) {
             String trimmed = s.trim();
@@ -323,14 +358,13 @@ public final class LyricsFetcher {
         return list;
     }
 
-    // --- Scoring & Normalization (from ConfigInternal037) ---
     public static double scoreCandidate(String candTrack, String candArtist, double candDur,
                                         String targetArtist, String targetTitle, double targetDur) {
         String tTrack = normalizeText(targetTitle);
         String cTrack = normalizeText(candTrack);
         double trackSim = levenshteinSim(tTrack, cTrack);
         boolean isPrefix = cTrack.equals(tTrack) || cTrack.startsWith(tTrack + " ") || tTrack.startsWith(cTrack + " ");
-        if (!isPrefix && trackSim < 0.55) {
+        if (!isPrefix && trackSim < 0.40) {
             return Double.NEGATIVE_INFINITY;
         }
         if (cTrack.equals(tTrack)) {
@@ -339,19 +373,8 @@ public final class LyricsFetcher {
             trackSim += 0.85;
         }
 
-        double durDiff = -1.0;
-        double durScore = 0.0;
-        if (targetDur > 0 && candDur > 0) {
-            durDiff = Math.abs(candDur - targetDur);
-            durScore = durDiff <= 2.0 ? 2.0 : Math.max(-1.0, 1.0 - durDiff / 15.0);
-        }
-
-        double artScore = artistSim(targetArtist, candArtist);
-        if (artScore < 0.62 && !(durDiff >= 0.0 && durDiff <= 2.0)) {
-            return Double.NEGATIVE_INFINITY;
-        }
-
-        return trackSim * 1000.0 + artScore * 900.0 + durScore * 1200.0;
+        double artScore = targetArtist.isBlank() ? 1.0 : artistSim(targetArtist, candArtist);
+        return trackSim * 1000.0 + artScore * 900.0;
     }
 
     public static String cleanArtist(String artist) {
@@ -362,7 +385,7 @@ public final class LyricsFetcher {
 
     public static String cleanTitle(String title) {
         if (title == null || title.isBlank()) return "";
-        String s = title.replaceAll("(?i)\\s*[\\[(](?:feat\\.?|ft\\.?|featuring|prod\\.?|with|official\\s+(?:audio|video|music\\s+video)|remaster(?:ed)?|live|radio\\s+edit)\\b.*?[\\Item\\])]", "");
+        String s = title.replaceAll("(?i)\\s*[\\[(](?:feat\\.?|ft\\.?|featuring|prod\\.?|with|official\\s+(?:audio|video|music\\s+video)|remaster(?:ed)?|live|radio\\s+edit)\\b.*?[Item\\])]", "");
         s = s.replaceAll("(?i)\\s*[-–—]\\s*(?:remaster(?:ed)?|live|radio edit|single version|official audio).*$", "");
         return s.trim();
     }
@@ -377,8 +400,7 @@ public final class LyricsFetcher {
     public static double levenshteinSim(String s1, String s2) {
         if (s1.equals(s2)) return 1.0;
         if (s1.isEmpty() || s2.isEmpty()) return 0.0;
-        int l1 = s1.length();
-        int l2 = s2.length();
+        int l1 = s1.length(), l2 = s2.length();
         int[] dp = new int[l2 + 1];
         for (int j = 0; j <= l2; j++) dp[j] = j;
         for (int i = 1; i <= l1; i++) {
@@ -422,8 +444,8 @@ public final class LyricsFetcher {
             URI uri = URI.create(urlStr);
             conn = (HttpURLConnection) uri.toURL().openConnection();
             conn.setRequestMethod("GET");
-            conn.setConnectTimeout(3500);
-            conn.setReadTimeout(4000);
+            conn.setConnectTimeout(3000);
+            conn.setReadTimeout(3500);
             if (headers != null) {
                 for (Map.Entry<String, String> e : headers.entrySet()) {
                     conn.setRequestProperty(e.getKey(), e.getValue());
@@ -449,34 +471,27 @@ public final class LyricsFetcher {
 
     public static List<LyricLine> parseLrc(String lrcContent) {
         if (lrcContent == null || lrcContent.isBlank()) return Collections.emptyList();
-        lrcContent = lrcContent.replace("\uFEFF", "").replace("\u200B", "");
         List<LyricLine> list = new ArrayList<>();
-        String[] rawLines = lrcContent.split("\\r?\\n");
-        for (String raw : rawLines) {
-            String line = raw.trim().replace("\uFEFF", "");
+        String[] lines = lrcContent.split("\n");
+
+        for (String raw : lines) {
+            String line = raw.trim();
             if (line.isEmpty()) continue;
+
             Matcher m = LRC_PATTERN.matcher(line);
             if (m.matches()) {
-                try {
-                    int minutes = Integer.parseInt(m.group(1));
-                    float seconds = Float.parseFloat(m.group(2));
-                    long timeMs = (long) ((minutes * 60 + seconds) * 1000);
-                    String text = m.group(3).trim();
-                    // Strip inline karaoke tags <mm:ss.xx> for clean text
-                    text = text.replaceAll("<\\d{1,3}:\\d{2}[.,]\\d{2,3}>", "").trim();
-                    if (!text.isEmpty()) {
-                        list.add(new LyricLine(timeMs, text));
-                    }
-                } catch (NumberFormatException ignored) {}
+                long minutes = Long.parseLong(m.group(1));
+                double seconds = Double.parseDouble(m.group(2));
+                long timeMs = minutes * 60000L + (long) (seconds * 1000.0);
+                String text = m.group(3).replaceAll("<[^>]+>", "").trim();
+
+                if (!text.isEmpty() && !text.startsWith("作词") && !text.startsWith("作曲") && !text.startsWith("编曲")) {
+                    list.add(new LyricLine(timeMs, text));
+                }
             }
         }
-        Collections.sort(list);
-        return list;
-    }
 
-    public static String makeKey(String artist, String title) {
-        String a = artist != null ? artist.trim().toLowerCase() : "";
-        String t = title != null ? cleanTitle(title).toLowerCase() : "";
-        return a + " - " + t;
+        list.sort(Comparator.comparingLong(LyricLine::timeMs));
+        return list;
     }
 }

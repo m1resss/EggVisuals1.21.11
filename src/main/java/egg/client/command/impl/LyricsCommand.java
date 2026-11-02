@@ -4,12 +4,13 @@ import egg.client.command.Command;
 import egg.client.command.CommandManager;
 import egg.client.module.ModuleManager;
 import egg.client.module.render.Lyrics;
+import egg.client.util.MediaTracker;
 
 import java.util.Arrays;
 
 public class LyricsCommand extends Command {
     public LyricsCommand() {
-        super("lyrics", "Управление модулем отображения текста песен в скайбоксе", ".lyrics <play/stop/pos/demo>", "lyr", "lrc");
+        super("lyrics", "Управление модулем отображения текста песен в мире", ".lyrics <play/stop/pos/demo/status>", "lyr", "lrc");
     }
 
     @Override
@@ -20,11 +21,16 @@ public class LyricsCommand extends Command {
             return;
         }
 
-        if (args.length == 0) {
-            CommandManager.sendClientMessage("§d.lyrics play <исполнитель> - <трек> §7- запуск текста для любого трека");
-            CommandManager.sendClientMessage("§d.lyrics demo §7- включить демонстрационный трек");
-            CommandManager.sendClientMessage("§d.lyrics stop §7- остановить ручной трек");
-            CommandManager.sendClientMessage("§d.lyrics pos <секунды> §7- перемотка позиции трека");
+        MediaTracker mt = MediaTracker.getInstance();
+
+        if (args.length == 0 || "status".equalsIgnoreCase(args[0])) {
+            CommandManager.sendClientMessage("§d=== Lyrics Status ===");
+            CommandManager.sendClientMessage("§7Модуль: " + (lyrics.isEnabled() ? "§aВключен" : "§cВыключен"));
+            CommandManager.sendClientMessage("§7Плеер GSMTC / Окно: " + (mt.isPlaying() ? "§aИграет" : "§eОстановлен"));
+            CommandManager.sendClientMessage("§7Трек: §f" + (mt.getTrackTitle().isEmpty() ? "§8(не определен)" : (mt.getTrackArtist().isEmpty() ? "" : mt.getTrackArtist() + " - ") + mt.getTrackTitle()));
+            CommandManager.sendClientMessage("§7Позиция: §f" + (mt.getTrackElapsedMs() / 1000) + " сек / " + mt.getTrackDurationSec() + " сек");
+            CommandManager.sendClientMessage("§7Загружено строк: §f" + (lyrics.getActiveLyrics() != null ? lyrics.getActiveLyrics().size() : 0));
+            CommandManager.sendClientMessage("§7Команды: §d.lyrics play <автор> - <трек> §7| §d.lyrics demo §7| §d.lyrics stop §7| §d.lyrics pos <сек>");
             return;
         }
 
@@ -35,11 +41,9 @@ public class LyricsCommand extends Command {
                     lyrics.toggle();
                 }
                 lyrics.playDemo();
-                CommandManager.sendClientMessage("§aДемонстрационный трек Queen - Bohemian Rhapsody запущен в скайбоксе!");
             }
             case "stop" -> {
                 lyrics.stopManual();
-                CommandManager.sendClientMessage("§eВоспроизведение текста остановлено.");
             }
             case "pos", "seek" -> {
                 if (args.length < 2) {
@@ -49,7 +53,6 @@ public class LyricsCommand extends Command {
                 try {
                     long sec = Long.parseLong(args[1]);
                     lyrics.seekManual(sec);
-                    CommandManager.sendClientMessage("§aПозиция воспроизведения установлена на: §f" + sec + " сек.");
                 } catch (NumberFormatException e) {
                     CommandManager.sendClientMessage("§cУкажите число секунд!");
                 }
@@ -77,7 +80,6 @@ public class LyricsCommand extends Command {
                     lyrics.toggle();
                 }
                 lyrics.playManual(artist, title);
-                CommandManager.sendClientMessage("§aЗапущен поиск и показ текста для: §f" + (artist.isEmpty() ? "" : artist + " — ") + title);
             }
             default -> {
                 String fullQuery = String.join(" ", args).trim();
@@ -93,7 +95,6 @@ public class LyricsCommand extends Command {
                     lyrics.toggle();
                 }
                 lyrics.playManual(artist, title);
-                CommandManager.sendClientMessage("§aЗапущен поиск текста для: §f" + fullQuery);
             }
         }
     }

@@ -1,5 +1,6 @@
 package egg.client.module.render;
 
+import egg.client.command.CommandManager;
 import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
@@ -24,41 +25,41 @@ import org.joml.Vector2f;
 import java.util.*;
 
 public class Lyrics extends Module {
-    // 3D Capsule and positioning settings matching the reference design
     private final ModeSetting splitMode = new ModeSetting("Разбивка", "По фразам", "По фразам", "По запятой", "Вся строка");
-    private final SliderSetting wordsPerCapsule = new SliderSetting("Слов в капсуле", 2.0, 1.0, 4.0, 1.0, "Количество слов на одну 3D плашку");
-    private final SliderSetting distance = new SliderSetting("Дистанция", 4.0, 2.0, 12.0, 0.5, "Базовая дистанция появления в мире (в блоках)");
-    private final SliderSetting scatterH = new SliderSetting("Разброс X", 3.0, 0.5, 8.0, 0.5, "Разброс капсул влево/вправо");
-    private final SliderSetting scatterV = new SliderSetting("Разброс Y", 1.5, 0.2, 5.0, 0.2, "Разброс капсул вверх/вниз");
-    private final SliderSetting size = new SliderSetting("Размер", 1.1, 0.5, 2.5, 0.05, "Масштаб капсул");
-    private final SliderSetting lifetime = new SliderSetting("Время жизни", 5.5, 2.0, 15.0, 0.5, "Сколько секунд капсула держится в мире");
-    private final ModeSetting colorStyle = new ModeSetting("Стиль цвета", "Коралловый", "Коралловый", "Белый", "Тема", "Лавандовый");
-    private final BooleanSetting background = new BooleanSetting("Фон плашки", true, "Полупрозрачная 3D плашка капсулы");
-    private final BooleanSetting glow = new BooleanSetting("Неоновый контур", true, "Тонкая неоновая обводка вокруг капсулы");
-    private final BooleanSetting gentleWave = new BooleanSetting("Живое покачивание", true, "Плавный физический дрейф капсул в 3D пространстве");
-    private final BooleanSetting noOverlap = new BooleanSetting("Не накладывать", true, "Умный поиск свободного сектора во избежание перекрытия");
-    private final BooleanSetting demoMode = new BooleanSetting("Демо-режим", false, "Предпросмотр капсул из референса без Spotify");
+    private final SliderSetting wordsPerCapsule = new SliderSetting("Слов в плашке", 2.0, 1.0, 4.0, 1.0, "Количество слов на одну 3D плашку");
+    private final SliderSetting distance = new SliderSetting("Дистанция", 4.0, 2.0, 10.0, 0.5, "Базовая дальность плашек в мире (блоки)");
+    private final SliderSetting scatterH = new SliderSetting("Разброс X", 5.5, 1.0, 9.0, 0.5, "Ширина разброса влево/вправо");
+    private final SliderSetting scatterV = new SliderSetting("Разброс Y", 2.2, 0.5, 6.0, 0.2, "Разброс по высоте");
+    private final SliderSetting size = new SliderSetting("Масштаб", 1.0, 0.4, 2.5, 0.1, "Базовый размер плашек");
+    private final SliderSetting lifetime = new SliderSetting("Время жизни", 6.0, 2.0, 14.0, 0.5, "Время отображения фразы в секундах");
 
-    // 3D Active World Capsule representation
-    public static class Capsule3D {
-        public final Vec3d worldPos;
-        public final String text;
-        public final long spawnTime;
-        public final long lifeDurationMs;
-        public final float seed;
-        public boolean disappearing = false;
-        public long disappearStartTime = 0L;
+    private final ModeSetting colorStyle = new ModeSetting("Цвет текста", "Коралловый", "Коралловый", "Белый", "Лавандовый", "Тема");
+    private final BooleanSetting background = new BooleanSetting("Фон плашки", true, "Отображать темную полупрозрачную подложку");
+    private final BooleanSetting glow = new BooleanSetting("Неоновое свечение", true, "Свечение контура капсулы");
+    private final BooleanSetting gentleWave = new BooleanSetting("Живое покачивание", true, "Плавное 3D покачивание плашек в пространстве");
+    private final BooleanSetting noOverlap = new BooleanSetting("Не накладывать", true, "Умное распределение позиций без перекрытия");
+    private final BooleanSetting demoMode = new BooleanSetting("Демо режим", false, "Принудительный показ тестовых фраз");
 
-        public Capsule3D(Vec3d worldPos, String text, long spawnTime, long lifeDurationMs, float seed) {
+    private static class Capsule3D {
+        Vec3d worldPos;
+        final String text;
+        final long spawnTime;
+        final long lifeDurationMs;
+        final float seed;
+        final float depthTier;
+        boolean disappearing = false;
+        long disappearStartTime = 0L;
+
+        Capsule3D(Vec3d worldPos, String text, long spawnTime, long lifeDurationMs, float seed, float depthTier) {
             this.worldPos = worldPos;
             this.text = text;
             this.spawnTime = spawnTime;
             this.lifeDurationMs = lifeDurationMs;
             this.seed = seed;
+            this.depthTier = depthTier;
         }
     }
 
-    // Scheduled chunk for staggered phrase emergence
     private static class ScheduledChunk {
         final String text;
         final long spawnAtTimeMs;
@@ -79,7 +80,7 @@ public class Lyrics extends Module {
     private String lastSongKey = "";
     private int currentLineIndex = -1;
     private float lastSide = 1.0f;
-    private float overallAlpha = 0.0f;
+    private float overallAlpha = 1.0f;
 
     private boolean manualPlayback = false;
     private String manualArtist = "";
@@ -133,53 +134,55 @@ public class Lyrics extends Module {
 
         long now = System.currentTimeMillis();
 
-        // Check demo mode toggle
         if (demoMode.isEnabled() && (!manualPlayback || !"demo".equals(lastSongKey))) {
             playDemo();
         } else if (!demoMode.isEnabled() && manualPlayback && "demo".equals(lastSongKey)) {
             stopManual();
         }
 
-        // 1. Determine playback position and active lyrics
         long currentPosMs;
         if (manualPlayback) {
+            overallAlpha = 1.0f;
             if ("demo".equals(lastSongKey)) {
                 demoPlayTimeMs += (long) (dt * 1000.0f);
-                long totalDemoLen = 25000L;
+                long totalDemoLen = 24000L;
                 currentPosMs = demoPlayTimeMs % totalDemoLen;
             } else {
                 currentPosMs = (now - manualStartTime) + manualOffsetMs;
             }
         } else {
             MediaTracker mt = MediaTracker.getInstance();
-            if (!mt.isPlaying()) {
-                overallAlpha = Math.max(0.0f, overallAlpha - dt * 2.0f);
-            } else {
-                overallAlpha = Math.min(1.0f, overallAlpha + dt * 3.0f);
-            }
-
             String curArtist = mt.getTrackArtist();
             String curTitle = mt.getTrackTitle();
-            String songKey = LyricsFetcher.makeKey(curArtist, curTitle);
-            if (!songKey.equals(lastSongKey)) {
-                lastSongKey = songKey;
-                activeLyrics = LyricsFetcher.getInstance().getCachedLyrics(curArtist, curTitle);
-                if (activeLyrics == null) {
-                    LyricsFetcher.getInstance().fetchLyricsAsync(curArtist, curTitle)
-                            .thenAccept(lines -> {
-                                if (lines != null && !lines.isEmpty()) {
-                                    activeLyrics = lines;
-                                }
-                            });
+            boolean hasTrack = !curTitle.isEmpty();
+
+            if (mt.isPlaying() || hasTrack) {
+                overallAlpha = Math.min(1.0f, overallAlpha + dt * 3.0f);
+            } else {
+                overallAlpha = Math.max(0.0f, overallAlpha - dt * 0.8f);
+            }
+
+            if (hasTrack) {
+                String songKey = LyricsFetcher.makeKey(curArtist, curTitle);
+                if (!songKey.equals(lastSongKey)) {
+                    lastSongKey = songKey;
+                    activeLyrics = LyricsFetcher.getInstance().getCachedLyrics(curArtist, curTitle);
+                    if (activeLyrics == null) {
+                        LyricsFetcher.getInstance().fetchLyricsAsync(curArtist, curTitle)
+                                .thenAccept(lines -> {
+                                    if (lines != null && !lines.isEmpty()) {
+                                        activeLyrics = lines;
+                                    }
+                                });
+                    }
+                    currentLineIndex = -1;
+                    activeCapsules.clear();
+                    pendingQueue.clear();
                 }
-                currentLineIndex = -1;
-                activeCapsules.clear();
-                pendingQueue.clear();
             }
             currentPosMs = mt.getTrackElapsedMs();
         }
 
-        // 2. Track current line and spawn new phrases
         if (activeLyrics != null && !activeLyrics.isEmpty()) {
             int lineIdx = -1;
             for (int i = 0; i < activeLyrics.size(); i++) {
@@ -193,13 +196,12 @@ public class Lyrics extends Module {
             if (lineIdx >= 0 && lineIdx != currentLineIndex) {
                 currentLineIndex = lineIdx;
                 LyricLine currentLine = activeLyrics.get(lineIdx);
-                long nextTime = lineIdx + 1 < activeLyrics.size() ? activeLyrics.get(lineIdx + 1).timeMs() : currentLine.timeMs() + 4500L;
-                long lineDuration = Math.max(1200L, nextTime - currentLine.timeMs());
+                long nextTime = lineIdx + 1 < activeLyrics.size() ? activeLyrics.get(lineIdx + 1).timeMs() : currentLine.timeMs() + 5000L;
+                long lineDuration = Math.max(1400L, nextTime - currentLine.timeMs());
                 breakAndSchedulePhrases(currentLine.text(), now, lineDuration);
             }
         }
 
-        // 3. Process pending phrase queue
         Iterator<ScheduledChunk> queueIter = pendingQueue.iterator();
         while (queueIter.hasNext()) {
             ScheduledChunk chunk = queueIter.next();
@@ -209,7 +211,6 @@ public class Lyrics extends Module {
             }
         }
 
-        // 4. Update and prune active capsules
         Iterator<Capsule3D> capIter = activeCapsules.iterator();
         while (capIter.hasNext()) {
             Capsule3D cap = capIter.next();
@@ -218,14 +219,13 @@ public class Lyrics extends Module {
                 cap.disappearing = true;
                 cap.disappearStartTime = now;
             }
-            if (cap.disappearing && now - cap.disappearStartTime >= 700L) {
+            if (cap.disappearing && now - cap.disappearStartTime >= 750L) {
                 capIter.remove();
             }
         }
 
         if (activeCapsules.isEmpty()) return;
 
-        // 5. Render 3D World Capsules
         render3DCapsules(camera, now, dt);
     }
 
@@ -245,7 +245,6 @@ public class Lyrics extends Module {
         } else if ("Вся строка".equals(mode)) {
             chunks.add(text);
         } else {
-            // "По фразам" (2-3 words per capsule, as seen in screenshots)
             String[] words = text.split("\\s+");
             int groupSize = Math.max(1, (int) wordsPerCapsule.getValue());
             StringBuilder sb = new StringBuilder();
@@ -268,7 +267,7 @@ public class Lyrics extends Module {
         if (chunks.isEmpty()) return;
 
         long capLifeMs = (long) (lifetime.getValue() * 1000.0);
-        long stepMs = chunks.size() <= 1 ? 0L : Math.min(1800L, Math.max(600L, lineDuration / chunks.size()));
+        long stepMs = chunks.size() <= 1 ? 0L : Math.min(1600L, Math.max(600L, lineDuration / chunks.size()));
 
         for (int i = 0; i < chunks.size(); i++) {
             long spawnAt = now + i * stepMs;
@@ -296,29 +295,28 @@ public class Lyrics extends Module {
         float hScatter = (float) scatterH.getValue();
         float vScatter = (float) scatterV.getValue();
 
-        // Alternate sides to balance composition
         lastSide = -lastSide;
         float side = lastSide;
-        if (rng.nextFloat() < 0.20f) {
+        if (rng.nextFloat() < 0.15f) {
             side = -side;
         }
 
-        // Candidate positions with staggered depth & non-overlapping search
+        float[] depthMultipliers = {0.62f, 1.0f, 1.45f, 0.85f, 1.25f};
+        float pickedDepthMult = depthMultipliers[rng.nextInt(depthMultipliers.length)];
+        float d = baseDist * pickedDepthMult;
+
         List<Vec3d> candidates = new ArrayList<>();
-        float[] depths = {baseDist, baseDist * 0.90f, baseDist * 1.15f, baseDist * 0.80f};
+        float[] xOffsets = {
+                side * (0.45f + rng.nextFloat() * 0.55f) * hScatter,
+                -side * (0.40f + rng.nextFloat() * 0.60f) * hScatter,
+                side * 0.20f * hScatter,
+                -side * 0.85f * hScatter,
+                0.0f
+        };
 
-        for (float d : depths) {
-            float ox1 = side * (0.35f + rng.nextFloat() * 0.65f) * hScatter;
-            float oy1 = (rng.nextFloat() - 0.5f) * 2.0f * vScatter;
-            candidates.add(eye.add(F.multiply(d)).add(R.multiply(ox1)).add(U.multiply(oy1)));
-
-            float ox2 = -side * (0.35f + rng.nextFloat() * 0.65f) * hScatter;
-            float oy2 = (rng.nextFloat() - 0.5f) * 2.0f * vScatter;
-            candidates.add(eye.add(F.multiply(d)).add(R.multiply(ox2)).add(U.multiply(oy2)));
-
-            float ox3 = side * 0.15f * hScatter;
-            float oy3 = (rng.nextFloat() - 0.5f) * 2.0f * vScatter;
-            candidates.add(eye.add(F.multiply(d)).add(R.multiply(ox3)).add(U.multiply(oy3)));
+        for (float ox : xOffsets) {
+            float oy = (rng.nextFloat() - 0.5f) * 2.0f * vScatter;
+            candidates.add(eye.add(F.multiply(d)).add(R.multiply(ox)).add(U.multiply(oy)));
         }
 
         Vec3d bestPos = candidates.get(0);
@@ -336,11 +334,11 @@ public class Lyrics extends Module {
 
                     float dx = Math.abs(candScreen.x - otherScreen.x);
                     float dy = Math.abs(candScreen.y - otherScreen.y);
-                    float minSpacingX = 90.0f;
-                    float minSpacingY = 40.0f;
+                    float minSpacingX = 110.0f;
+                    float minSpacingY = 46.0f;
 
                     if (dx < minSpacingX && dy < minSpacingY) {
-                        penalty += (minSpacingX - dx) * 1.2f + (minSpacingY - dy) * 2.0f;
+                        penalty += (minSpacingX - dx) * 1.5f + (minSpacingY - dy) * 2.5f;
                     }
                 }
 
@@ -354,11 +352,10 @@ public class Lyrics extends Module {
             bestPos = candidates.get(rng.nextInt(Math.min(candidates.size(), 3)));
         }
 
-        Capsule3D capsule = new Capsule3D(bestPos, text, now, lifeMs, rng.nextFloat() * 100.0f);
+        Capsule3D capsule = new Capsule3D(bestPos, text, now, lifeMs, rng.nextFloat() * 100.0f, pickedDepthMult);
         activeCapsules.add(capsule);
 
-        // Cap max simultaneous capsules to avoid screen clutter
-        if (activeCapsules.size() > 10) {
+        if (activeCapsules.size() > 12) {
             activeCapsules.get(0).disappearing = true;
             activeCapsules.get(0).disappearStartTime = now;
         }
@@ -380,95 +377,84 @@ public class Lyrics extends Module {
         Vec3d R = new Vec3d(-cosY, 0.0, -sinY).normalize();
         Vec3d U = R.crossProduct(F).normalize();
 
-        // 3D Depth Sorting: Farthest first, closest last (correct painter's algorithm)
         activeCapsules.sort((c1, c2) -> Double.compare(eye.squaredDistanceTo(c2.worldPos), eye.squaredDistanceTo(c1.worldPos)));
 
         float userScale = (float) size.getValue();
 
         for (Capsule3D cap : activeCapsules) {
-            // Gentle physical bobbing & drift in 3D
             float timeSec = (now - cap.spawnTime) / 1000.0f;
-            float waveY = gentleWave.isEnabled() ? (float) Math.sin(timeSec * 2.0f + cap.seed) * 0.07f : 0.0f;
-            float waveX = gentleWave.isEnabled() ? (float) Math.cos(timeSec * 1.5f + cap.seed * 1.3f) * 0.04f : 0.0f;
+            float waveY = gentleWave.isEnabled() ? (float) Math.sin(timeSec * 1.8f + cap.seed) * 0.08f : 0.0f;
+            float waveX = gentleWave.isEnabled() ? (float) Math.cos(timeSec * 1.4f + cap.seed * 1.2f) * 0.05f : 0.0f;
             Vec3d currentPos = cap.worldPos.add(R.multiply(waveX)).add(U.multiply(waveY));
 
             Vector2f screenPos = ProjectionUtil.worldToScreen(currentPos);
             if (screenPos == null) continue;
 
             double dist = eye.distanceTo(currentPos);
-            float distFactor = (float) (4.0 / Math.max(dist, 0.7));
-            float pxScale = MathHelper.clamp(userScale * distFactor, 0.55f, 2.3f);
+            float distFactor = (float) (4.2 / Math.max(dist, 0.8));
+            float pxScale = MathHelper.clamp(userScale * distFactor, 0.50f, 2.6f);
 
-            // Appear bounce & fade in (first 250ms)
-            float appear = MathHelper.clamp((now - cap.spawnTime) / 250.0f, 0.0f, 1.0f);
+            float appear = MathHelper.clamp((now - cap.spawnTime) / 280.0f, 0.0f, 1.0f);
             appear = appear * appear * (3.0f - 2.0f * appear);
-            float popScale = 0.88f + 0.12f * appear;
+            float popScale = 0.85f + 0.15f * appear;
 
-            // Disappear fade out (last 700ms)
             long elapsed = now - cap.spawnTime;
             long remaining = cap.lifeDurationMs - elapsed;
             float fade = 1.0f;
             if (cap.disappearing) {
-                fade = 1.0f - MathHelper.clamp((now - cap.disappearStartTime) / 700.0f, 0.0f, 1.0f);
-            } else if (remaining < 700L) {
-                fade = MathHelper.clamp(remaining / 700.0f, 0.0f, 1.0f);
+                fade = 1.0f - MathHelper.clamp((now - cap.disappearStartTime) / 750.0f, 0.0f, 1.0f);
+            } else if (remaining < 750L) {
+                fade = MathHelper.clamp(remaining / 750.0f, 0.0f, 1.0f);
             }
 
             float alpha = appear * fade * (manualPlayback ? 1.0f : overallAlpha);
             if (alpha <= 0.015f) continue;
 
-            // Measure capsule dimensions
             float fontSize = 13.5f * pxScale * popScale;
             float textW = Fonts.d.a(cap.text, fontSize);
             float textH = Fonts.d.a(fontSize);
-            float padX = 14.0f * pxScale;
+            float padX = 14.5f * pxScale;
             float padY = 7.5f * pxScale;
             float boxW = textW + padX * 2.0f;
             float boxH = textH + padY * 2.0f;
-            float radius = boxH / 2.0f; // Rounded capsule / pill shape
+            float radius = boxH / 2.0f;
 
             float bx = screenPos.x - boxW / 2.0f;
             float by = screenPos.y - boxH / 2.0f;
 
-            // Colors based on style
             int textColor;
             int glowColor;
             int bgCol;
 
             String style = colorStyle.get();
             if ("Белый".equals(style)) {
-                // Photo 2 reference: Clean monochrome / white
-                textColor = ColorUtil.rgba(240, 242, 248, (int) (255 * alpha));
+                textColor = ColorUtil.rgba(242, 244, 250, (int) (255 * alpha));
                 glowColor = ColorUtil.rgba(255, 255, 255, (int) (130 * alpha));
-                bgCol = ColorUtil.rgba(14, 15, 20, (int) (190 * alpha));
+                bgCol = ColorUtil.rgba(14, 15, 20, (int) (185 * alpha));
             } else if ("Тема".equals(style)) {
                 int accent = Theme.getAccent();
                 textColor = ColorUtil.withAlphaFloat(accent, alpha);
-                glowColor = ColorUtil.withAlphaFloat(accent, 0.55f * alpha);
+                glowColor = ColorUtil.withAlphaFloat(accent, 0.60f * alpha);
                 bgCol = ColorUtil.rgba(12, 14, 20, (int) (185 * alpha));
             } else if ("Лавандовый".equals(style)) {
                 textColor = ColorUtil.rgba(215, 185, 255, (int) (255 * alpha));
                 glowColor = ColorUtil.rgba(195, 160, 255, (int) (150 * alpha));
                 bgCol = ColorUtil.rgba(16, 14, 24, (int) (185 * alpha));
             } else {
-                // Photo 1 reference: Soft coral / salmon pink
                 textColor = ColorUtil.rgba(255, 158, 170, (int) (255 * alpha));
                 glowColor = ColorUtil.rgba(255, 135, 155, (int) (150 * alpha));
                 bgCol = ColorUtil.rgba(15, 16, 22, (int) (185 * alpha));
             }
 
-            // Draw pill capsule background
             if (background.isEnabled()) {
                 Draw2DProcessor.INSTANCE.drawRect(null, bx, by, boxW, boxH, radius, bgCol);
 
-                // Draw pill outline / neon glow
                 if (glow.isEnabled()) {
                     float outW = Math.max(1.0f, 1.0f * pxScale);
                     Draw2DProcessor.INSTANCE.drawOutline(null, bx, by, boxW, boxH, radius, outW, glowColor);
                 }
             }
 
-            // Draw centered text inside the 3D capsule
             float textX = bx + padX;
             float textY = by + padY - 0.5f;
             Fonts.d.a(null, cap.text, textX, textY, fontSize, textColor);
@@ -478,48 +464,57 @@ public class Lyrics extends Module {
     public void playDemo() {
         this.demoMode.setEnabled(true);
         this.manualPlayback = true;
-        this.demoPlayTimeMs = 0L;
-        this.activeLyrics = LyricsFetcher.getInstance().getDemoLyrics();
-        this.currentLineIndex = -1;
         this.lastSongKey = "demo";
+        this.demoPlayTimeMs = 0L;
+        this.currentLineIndex = -1;
         this.activeCapsules.clear();
         this.pendingQueue.clear();
         this.overallAlpha = 1.0f;
+
+        List<LyricLine> demo = new ArrayList<>();
+        demo.add(new LyricLine(0L, "whats wrong im sick"));
+        demo.add(new LyricLine(2800L, "with and twisted"));
+        demo.add(new LyricLine(5800L, "i confess"));
+        demo.add(new LyricLine(8800L, "fuck the opps"));
+        demo.add(new LyricLine(12000L, "don't ever fuck with world"));
+        demo.add(new LyricLine(15500L, "we Haunte"));
+        demo.add(new LyricLine(19000L, "whats wrong im sick"));
+
+        this.activeLyrics = demo;
+        CommandManager.sendClientMessage("§d[Lyrics] §fЗапущен демонстрационный трек 3D капсул", false);
     }
 
     public void playManual(String artist, String title) {
-        this.manualPlayback = true;
         this.demoMode.setEnabled(false);
-        this.manualArtist = artist != null ? artist.trim() : "";
-        this.manualTitle = title != null ? title.trim() : "";
+        this.manualPlayback = true;
+        this.manualArtist = artist != null ? artist : "";
+        this.manualTitle = title != null ? title : "";
         this.manualStartTime = System.currentTimeMillis();
         this.manualOffsetMs = 0L;
+        this.lastSongKey = LyricsFetcher.makeKey(this.manualArtist, this.manualTitle);
         this.currentLineIndex = -1;
-        this.lastSongKey = LyricsFetcher.makeKey(artist, title);
         this.activeCapsules.clear();
         this.pendingQueue.clear();
         this.overallAlpha = 1.0f;
 
-        this.activeLyrics = LyricsFetcher.getInstance().getCachedLyrics(artist, title);
-        if (this.activeLyrics == null) {
-            LyricsFetcher.getInstance().fetchLyricsAsync(artist, title)
-                    .thenAccept(lines -> {
-                        if (lines != null && !lines.isEmpty()) {
-                            this.activeLyrics = lines;
-                        }
-                    });
-        }
+        CommandManager.sendClientMessage("§d[Lyrics] §fПоиск текста для: §e" + (this.manualArtist.isEmpty() ? "" : this.manualArtist + " - ") + this.manualTitle, false);
+        LyricsFetcher.getInstance().fetchLyricsAsync(this.manualArtist, this.manualTitle)
+                .thenAccept(lines -> {
+                    if (lines != null && !lines.isEmpty()) {
+                        this.activeLyrics = lines;
+                    }
+                });
     }
 
     public void stopManual() {
-        this.manualPlayback = false;
         this.demoMode.setEnabled(false);
-        this.overallAlpha = 0.0f;
-        this.activeLyrics = null;
+        this.manualPlayback = false;
         this.lastSongKey = "";
+        this.activeLyrics = null;
         this.currentLineIndex = -1;
         this.activeCapsules.clear();
         this.pendingQueue.clear();
+        CommandManager.sendClientMessage("§d[Lyrics] §7Ручной режим выключен (автоопределение плеера активно)", false);
     }
 
     public void seekManual(long seconds) {
@@ -528,5 +523,14 @@ public class Lyrics extends Module {
         this.currentLineIndex = -1;
         this.activeCapsules.clear();
         this.pendingQueue.clear();
+        CommandManager.sendClientMessage("§d[Lyrics] §7Перемотка на §f" + seconds + " §7сек", false);
+    }
+
+    public boolean isManualPlayback() {
+        return manualPlayback;
+    }
+
+    public List<LyricLine> getActiveLyrics() {
+        return activeLyrics;
     }
 }
