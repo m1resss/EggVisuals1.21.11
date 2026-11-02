@@ -14,9 +14,9 @@ import egg.client.render.shader.FrameBufferPool;
 import egg.client.render.shader.GlStateSnapshot;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.Camera;
+import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.Vec3d;
@@ -41,77 +41,77 @@ public class EggClient implements ClientModInitializer {
             ModuleManager.getInstance().onTick(client);
         });
 
-        WorldRenderEvents.END_MAIN.register(context -> {
-            MinecraftClient mc = MinecraftClient.getInstance();
-            if (mc == null || mc.player == null || mc.world == null) return;
-            Camera camera = mc.gameRenderer != null ? mc.gameRenderer.getCamera() : null;
-            if (camera == null) return;
-
-            float tickDelta = mc.getRenderTickCounter() != null ? mc.getRenderTickCounter().getTickProgress(false) : 1.0f;
-            MatrixStack matrices = context.matrices();
-            Vec3d camPos = camera.getCameraPos();
-            VertexConsumerProvider.Immediate immediate = mc.getBufferBuilders().getEntityVertexConsumers();
-
-            GlStateSnapshot snapshot = GlStateSnapshot.capture();
-            try {
-                WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
-                if (wt != null && wt.isEnabled()) {
-                    wt.renderWorld3D(immediate, camPos);
-                    wt.renderWeatherPass(immediate, camPos);
-                }
-
-                TotemPopConfetti confetti = ModuleManager.getInstance().getModule(TotemPopConfetti.class);
-                if (confetti != null && confetti.isEnabled()) {
-                    confetti.render(immediate, camPos);
-                }
-
-                Trajectories traj = ModuleManager.getInstance().getModule(Trajectories.class);
-                if (traj != null && traj.isEnabled()) {
-                    traj.render(immediate, camPos, tickDelta);
-                }
-
-                CustomHitbox customHitbox = ModuleManager.getInstance().getModule(CustomHitbox.class);
-                if (customHitbox != null && customHitbox.isEnabled()) {
-                    customHitbox.render(immediate, camPos, tickDelta);
-                }
-
-                ItemRadius itemRadius = ModuleManager.getInstance().getModule(ItemRadius.class);
-                if (itemRadius != null && itemRadius.isEnabled()) {
-                    itemRadius.render(immediate, camPos);
-                }
-
-                HitParticles hitParticles = ModuleManager.getInstance().getModule(HitParticles.class);
-                if (hitParticles != null && hitParticles.isEnabled()) {
-                    hitParticles.render(immediate, camPos);
-                }
-
-                KillEffect killEffect = ModuleManager.getInstance().getModule(KillEffect.class);
-                if (killEffect != null && killEffect.isEnabled()) {
-                    killEffect.render(immediate, camPos);
-                }
-
-                immediate.draw();
-
-                TargetESP targetESP = ModuleManager.getInstance().getModule(TargetESP.class);
-                if (targetESP != null && targetESP.isEnabled()) {
-                    targetESP.renderWorld3D(matrices, camera, tickDelta, immediate, camPos);
-                }
-
-                Trail trail = ModuleManager.getInstance().getModule(Trail.class);
-                if (trail != null && trail.isEnabled()) {
-                    trail.render(matrices, camera, tickDelta, immediate, camPos);
-                }
-
-
-
-                immediate.draw();
-            } finally {
-                snapshot.restore();
-                FrameBufferPool.endFrame();
-            }
-        });
-
         LOGGER.info("[Egg Visual] Successfully loaded! Press Right Shift to open ClickGUI.");
+    }
+
+    public static void renderWorld3DPostClouds(RenderTickCounter tickCounter, Camera camera) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc == null || mc.player == null || mc.world == null) return;
+        if (camera == null) {
+            camera = mc.gameRenderer != null ? mc.gameRenderer.getCamera() : null;
+        }
+        if (camera == null) return;
+
+        float tickDelta = tickCounter != null ? tickCounter.getTickProgress(false) : 1.0f;
+        MatrixStack matrices = new MatrixStack();
+        Vec3d camPos = camera.getCameraPos();
+        VertexConsumerProvider.Immediate immediate = mc.getBufferBuilders().getEntityVertexConsumers();
+
+        GlStateSnapshot snapshot = GlStateSnapshot.capture();
+        try {
+            WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
+            if (wt != null && wt.isEnabled()) {
+                wt.renderWorld3D(immediate, camPos);
+                wt.renderWeatherPass(immediate, camPos);
+            }
+
+            TotemPopConfetti confetti = ModuleManager.getInstance().getModule(TotemPopConfetti.class);
+            if (confetti != null && confetti.isEnabled()) {
+                confetti.render(immediate, camPos);
+            }
+
+            Trajectories traj = ModuleManager.getInstance().getModule(Trajectories.class);
+            if (traj != null && traj.isEnabled()) {
+                traj.render(immediate, camPos, tickDelta);
+            }
+
+            CustomHitbox customHitbox = ModuleManager.getInstance().getModule(CustomHitbox.class);
+            if (customHitbox != null && customHitbox.isEnabled()) {
+                customHitbox.render(immediate, camPos, tickDelta);
+            }
+
+            ItemRadius itemRadius = ModuleManager.getInstance().getModule(ItemRadius.class);
+            if (itemRadius != null && itemRadius.isEnabled()) {
+                itemRadius.render(immediate, camPos);
+            }
+
+            HitParticles hitParticles = ModuleManager.getInstance().getModule(HitParticles.class);
+            if (hitParticles != null && hitParticles.isEnabled()) {
+                hitParticles.render(immediate, camPos);
+            }
+
+            KillEffect killEffect = ModuleManager.getInstance().getModule(KillEffect.class);
+            if (killEffect != null && killEffect.isEnabled()) {
+                killEffect.render(immediate, camPos);
+            }
+
+            immediate.draw();
+
+            TargetESP targetESP = ModuleManager.getInstance().getModule(TargetESP.class);
+            if (targetESP != null && targetESP.isEnabled()) {
+                targetESP.renderWorld3D(matrices, camera, tickDelta, immediate, camPos);
+            }
+
+            Trail trail = ModuleManager.getInstance().getModule(Trail.class);
+            if (trail != null && trail.isEnabled()) {
+                trail.render(matrices, camera, tickDelta, immediate, camPos);
+            }
+
+            immediate.draw();
+        } finally {
+            snapshot.restore();
+            FrameBufferPool.endFrame();
+        }
     }
 
     public static EggClient getInstance() {
