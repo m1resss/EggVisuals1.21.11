@@ -190,10 +190,6 @@ public class Trajectories extends Module {
                     return old.lerp(targetImpact, smoothFactor);
                 });
 
-                if (showLine.isEnabled()) {
-                    renderPathRibbon(quadBuffer, res.path, camPos, r, g, b);
-                }
-
                 if (res.hitEntity instanceof LivingEntity target && target.isAlive() && target != mc.player) {
                     Box targetBox = CustomHitbox.getInterpolatedBoundingBox(target, tickDelta);
                     CustomHitbox.renderHitbox(quadBuffer, targetBox, camPos,
