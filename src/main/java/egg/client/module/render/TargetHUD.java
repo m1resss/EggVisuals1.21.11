@@ -7,6 +7,8 @@ import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.render.Render2D;
+import egg.client.render.hud.HudContextMenu;
+import egg.client.render.hud.HudSnapHelper;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Fonts;
 import egg.client.render.msdf.pipeline.DrawBatcher;
@@ -53,9 +55,8 @@ public class TargetHUD extends Module {
     private final SliderSetting hudGradientStrength = new SliderSetting("Сила градиента", 60.0, 5.0, 100.0, 5.0, "Интенсивность градиента");
     private final BooleanSetting showFps = new BooleanSetting("Показывать FPS", true, "Отображать метку FPS на карточке");
     private final BooleanSetting showDistance = new BooleanSetting("Дистанция", true, "Отображать дистанцию до цели");
-
-    private float posX = 0.52f;
-    private float posY = 0.68f;
+    private final SliderSetting posX = new SliderSetting("X", 0.52, 0.0, 1.0, 0.001, "Позиция X");
+    private final SliderSetting posY = new SliderSetting("Y", 0.68, 0.0, 1.0, 0.001, "Позиция Y");
 
     private LivingEntity currentTarget = null;
     private float targetTimer = 0.0f;
@@ -71,10 +72,19 @@ public class TargetHUD extends Module {
     private boolean dragging = false;
     private float dragOffsetX = 0.0f;
     private float dragOffsetY = 0.0f;
+    private final HudContextMenu contextMenu = new HudContextMenu("Target HUD");
+    private HudSnapHelper.SnapResult currentSnap = null;
+
     private float lastRenderX = 0.0f;
     private float lastRenderY = 0.0f;
     private float lastRenderW = 152.0f;
     private float lastRenderH = 44.0f;
+
+    public ModeSetting getMode() { return mode; }
+    public float getLastX() { return lastRenderX; }
+    public float getLastY() { return lastRenderY; }
+    public float getLastW() { return lastRenderW; }
+    public float getLastH() { return lastRenderH; }
 
     private final List<HitParticle> particles = new ArrayList<>();
     private LivingEntity lastDamageTarget = null;
@@ -85,7 +95,17 @@ public class TargetHUD extends Module {
         super("Target HUD", "Информационная карточка цели на экране или в центре противника", Category.ESP);
         instance = this;
 
-        addSettings(mode, hudScale, targetTimeout, onlyPlayers, hitParticles, hudThemeGradient, hudGradientStrength);
+        posX.setVisible(() -> false);
+        posY.setVisible(() -> false);
+
+        contextMenu.addMode("Режим", () -> mode.get(), () -> mode.cycle());
+        contextMenu.addToggle("Только игроки", () -> onlyPlayers.isEnabled(), () -> onlyPlayers.toggle());
+        contextMenu.addToggle("Частицы удара", () -> hitParticles.isEnabled(), () -> hitParticles.toggle());
+        contextMenu.addToggle("Градиент HUD", () -> hudThemeGradient.isEnabled(), () -> hudThemeGradient.toggle());
+        contextMenu.addToggle("Дистанция", () -> showDistance.isEnabled(), () -> showDistance.toggle());
+        contextMenu.addToggle("Показывать FPS", () -> showFps.isEnabled(), () -> showFps.toggle());
+
+        addSettings(mode, hudScale, targetTimeout, onlyPlayers, hitParticles, hudThemeGradient, hudGradientStrength, showFps, showDistance, posX, posY);
     }
 
     public static TargetHUD getInstance() {
@@ -190,8 +210,8 @@ public class TargetHUD extends Module {
             float screenW = mc.getWindow().getScaledWidth();
             float screenH = mc.getWindow().getScaledHeight();
 
-            float rawX = posX * (screenW - cardW * scale);
-            float rawY = posY * (screenH - cardH * scale);
+            float rawX = posX.getValueFloat() * (screenW - cardW * scale);
+            float rawY = posY.getValueFloat() * (screenH - cardH * scale);
             cardX = Math.clamp(rawX, 4.0f, screenW - cardW * scale - 4.0f);
             cardY = Math.clamp(rawY, 4.0f, screenH - cardH * scale - 4.0f);
         }
@@ -540,56 +560,108 @@ public class TargetHUD extends Module {
 
     public void renderChatOverlay(DrawContext context, int mouseX, int mouseY) {
         if (!isEnabled() || !mode.is("Экран")) return;
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc == null || mc.getWindow() == null) return;
+        int screenW = mc.getWindow().getScaledWidth();
+        int screenH = mc.getWindow().getScaledHeight();
+
+        float rad = 12.0f * hudScale.getValueFloat();
+
         if (dragging) {
             mouseDragged(mouseX, mouseY);
-            Draw2DProcessor.INSTANCE.drawOutline(null, lastRenderX - 2.0f, lastRenderY - 2.0f, lastRenderW + 4.0f, lastRenderH + 4.0f, 13.0f, 1.2f, Theme.getAccent());
+            HudSnapHelper.renderGridAndGuides(context, currentSnap, screenW, screenH,
+                    new HudSnapHelper.HudElementBounds("target", "Target HUD", lastRenderX, lastRenderY, lastRenderW, lastRenderH),
+                    "Target HUD", Math.round(hudScale.getValueFloat() * 100.0f), rad);
+        } else {
+            boolean inside = mouseX >= lastRenderX - 2.0f && mouseX <= lastRenderX + lastRenderW + 2.0f
+                    && mouseY >= lastRenderY - 2.0f && mouseY <= lastRenderY + lastRenderH + 2.0f;
+            if (inside) {
+                String scaleBadge = "Target HUD: " + Math.round(hudScale.getValueFloat() * 100.0f) + "%";
+                HudSnapHelper.renderHoverBadge(context, lastRenderX, lastRenderY, lastRenderW, lastRenderH, rad, scaleBadge);
+            }
         }
+
+        if (contextMenu.isOpen()) {
+            contextMenu.render(context, mouseX, mouseY);
+        }
+        DrawBatcher.flushPending();
     }
 
-    public boolean onChatMouseClicked(double mx, double my, int button) {
-        return mouseClicked(mx, my, button);
-    }
-
-    public boolean onChatMouseReleased(double mx, double my, int button) {
-        mouseReleased(mx, my, button);
-        return false;
-    }
-
-    public boolean onChatMouseDragged(double mx, double my, int button) {
-        mouseDragged(mx, my);
-        return false;
-    }
-
-    public boolean mouseClicked(double mx, double my, int button) {
+    public boolean onMouseScrolled(double mouseX, double mouseY, double amount) {
         if (!isEnabled() || !mode.is("Экран")) return false;
-        if (button == 0 && mx >= lastRenderX && mx <= lastRenderX + lastRenderW
-                && my >= lastRenderY && my <= lastRenderY + lastRenderH) {
-            this.dragging = true;
-            this.dragOffsetX = (float) mx - lastRenderX;
-            this.dragOffsetY = (float) my - lastRenderY;
+        boolean inside = mouseX >= lastRenderX - 4.0f && mouseX <= lastRenderX + lastRenderW + 4.0f
+                && mouseY >= lastRenderY - 4.0f && mouseY <= lastRenderY + lastRenderH + 4.0f;
+        if (inside) {
+            double cur = hudScale.getValue();
+            double step = amount > 0 ? 0.05 : -0.05;
+            hudScale.setValue(Math.clamp(Math.round((cur + step) * 100.0) / 100.0, 0.5, 2.0));
+            ConfigManager.save();
             return true;
         }
         return false;
     }
 
-    public void mouseReleased(double mx, double my, int button) {
+    public boolean onChatMouseClicked(double mx, double my, int button) {
+        if (!isEnabled() || !mode.is("Экран")) return false;
+
+        if (contextMenu.isOpen()) {
+            if (contextMenu.mouseClicked(mx, my, button)) {
+                return true;
+            }
+        }
+
+        boolean inside = mx >= lastRenderX - 3.0f && mx <= lastRenderX + lastRenderW + 3.0f
+                && my >= lastRenderY - 3.0f && my <= lastRenderY + lastRenderH + 3.0f;
+        if (inside) {
+            if (button == 1) {
+                contextMenu.open((float) mx, (float) my);
+                return true;
+            } else if (button == 0) {
+                this.dragging = true;
+                this.dragOffsetX = (float) mx - lastRenderX;
+                this.dragOffsetY = (float) my - lastRenderY;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean onChatMouseReleased(double mx, double my, int button) {
         if (button == 0 && this.dragging) {
             this.dragging = false;
+            this.currentSnap = null;
             ConfigManager.save();
+            return true;
         }
+        return false;
+    }
+
+    public boolean onChatMouseDragged(double mx, double my, int button) {
+        if (this.dragging && button == 0) {
+            mouseDragged(mx, my);
+            return true;
+        }
+        return false;
     }
 
     public void mouseDragged(double mx, double my) {
         if (this.dragging && mode.is("Экран")) {
             MinecraftClient mc = MinecraftClient.getInstance();
-            if (mc.getWindow() == null) return;
+            if (mc == null || mc.getWindow() == null) return;
             float screenW = mc.getWindow().getScaledWidth();
             float screenH = mc.getWindow().getScaledHeight();
 
-            float newX = ((float) mx - dragOffsetX) / Math.max(1.0f, screenW - lastRenderW);
-            float newY = ((float) my - dragOffsetY) / Math.max(1.0f, screenH - lastRenderH);
-            this.posX = Math.clamp(newX, 0.0f, 1.0f);
-            this.posY = Math.clamp(newY, 0.0f, 1.0f);
+            float proposedX = (float) mx - dragOffsetX;
+            float proposedY = (float) my - dragOffsetY;
+
+            HudSnapHelper.SnapResult snap = HudSnapHelper.calculateSnap("target", proposedX, proposedY, lastRenderW, lastRenderH, screenW, screenH);
+            this.currentSnap = snap;
+
+            float maxAvailX = Math.max(1.0f, screenW - lastRenderW);
+            float maxAvailY = Math.max(1.0f, screenH - lastRenderH);
+
+            posX.setValue(Math.clamp(snap.snappedX / maxAvailX, 0.0, 1.0));
+            posY.setValue(Math.clamp(snap.snappedY / maxAvailY, 0.0, 1.0));
         }
     }
 }

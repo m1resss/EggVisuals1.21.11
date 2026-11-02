@@ -115,31 +115,32 @@ publishing {
     }
 }
 
-tasks.register('copyToLunar', Copy) {
+tasks.register('copyToLunar') {
     dependsOn 'remapJar'
-    doFirst {
-        delete fileTree("C:/Users/admin/.lunarclient/profiles/1.21/mods/fabric-1.21.11") {
-            include "EggVisual*.jar"
-        }
-    }
-    from remapJar.archiveFile
-    into file("C:/Users/admin/.lunarclient/profiles/1.21/mods/fabric-1.21.11")
     doLast {
-        delete fileTree("C:/Users/admin/AppData/Roaming/.minecraft/mods") {
-            include "EggVisual*.jar"
-        }
-        copy {
-            from remapJar.archiveFile
-            into file("C:/Users/admin/AppData/Roaming/.minecraft/mods")
-        }
-        def prismMods = file("C:/Users/admin/AppData/Roaming/PrismLauncher/instances/Fabulously Optimized/minecraft/mods")
-        if (prismMods.exists()) {
-            delete fileTree(prismMods) {
-                include "EggVisual*.jar"
-            }
-            copy {
-                from remapJar.archiveFile
-                into prismMods
+        def jarFile = remapJar.archiveFile.get().asFile
+        def targetDirs = [
+            file("C:/Users/admin/.lunarclient/profiles/1.21/mods/fabric-1.21.11"),
+            file("C:/Users/admin/AppData/Roaming/.minecraft/mods"),
+            file("C:/Users/admin/AppData/Roaming/PrismLauncher/instances/Fabulously Optimized/minecraft/mods")
+        ]
+        targetDirs.each { dir ->
+            if (dir.exists()) {
+                try {
+                    def files = dir.listFiles()
+                    if (files != null) {
+                        for (def f : files) {
+                            if (f.name.startsWith("EggVisual") && f.name.endsWith(".jar")) {
+                                f.delete()
+                            }
+                        }
+                    }
+                    def dest = new File(dir, jarFile.name)
+                    java.nio.file.Files.copy(jarFile.toPath(), dest.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                    println("Successfully deployed ${jarFile.name} to ${dir}")
+                } catch (Exception e) {
+                    println("Note: could not copy to ${dir}: ${e.message}")
+                }
             }
         }
     }

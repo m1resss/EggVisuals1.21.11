@@ -9,6 +9,7 @@ import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ColorSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.render.Render2D;
+import egg.client.render.hud.HudSnapHelper;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Fonts;
 import egg.client.render.msdf.pipeline.DrawBatcher;
@@ -45,11 +46,17 @@ public class Cooldowns extends Module {
     private boolean dragging = false;
     private float dragOffsetX = 0.0f;
     private float dragOffsetY = 0.0f;
+    private HudSnapHelper.SnapResult currentSnap = null;
 
     private float lastX = 200.0f;
     private float lastY = 300.0f;
     private float lastW = 100.0f;
     private float lastH = 34.0f;
+
+    public float getLastX() { return lastX; }
+    public float getLastY() { return lastY; }
+    public float getLastW() { return lastW; }
+    public float getLastH() { return lastH; }
 
     private static class DisplayEntry {
         final Identifier id;
@@ -246,48 +253,21 @@ public class Cooldowns extends Module {
         int screenW = mc.getWindow().getScaledWidth();
         int screenH = mc.getWindow().getScaledHeight();
 
+        float rad = (lastH + 4.0f) / 2.0f;
+
         if (dragging) {
             onChatMouseDragged(mouseX, mouseY, 0);
-        }
-
-        render(context, RenderTickCounter.ONE);
-
-        if (dragging) {
-            int gridStep = 25;
-            int gridColor = ColorUtil.rgba(255, 255, 255, 14);
-            for (int gx = gridStep; gx < screenW; gx += gridStep) {
-                Draw2DProcessor.INSTANCE.drawRect(null, gx, 0, 1.0f, screenH, 0.0f, gridColor);
+            HudSnapHelper.renderGridAndGuides(context, currentSnap, screenW, screenH,
+                    new HudSnapHelper.HudElementBounds("cooldowns", "Кулдауны", lastX, lastY, lastW, lastH),
+                    "HUD — Кулдауны", Math.round(scale.getValueFloat() * 100.0f), rad);
+        } else {
+            boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
+            if (inside) {
+                String scaleBadge = "КД: " + Math.round(scale.getValueFloat() * 100.0f) + "%";
+                HudSnapHelper.renderHoverBadge(context, lastX, lastY, lastW, lastH, rad, scaleBadge);
             }
-            for (int gy = gridStep; gy < screenH; gy += gridStep) {
-                Draw2DProcessor.INSTANCE.drawRect(null, 0, gy, screenW, 1.0f, 0.0f, gridColor);
-            }
-
-            float midX = screenW / 2.0f;
-            float midY = screenH / 2.0f;
-            int centerColor = ColorUtil.rgba(168, 85, 247, 60);
-            Draw2DProcessor.INSTANCE.drawRect(null, midX, 0, 1.0f, screenH, 0.0f, centerColor);
-            Draw2DProcessor.INSTANCE.drawRect(null, 0, midY, screenW, 1.0f, 0.0f, centerColor);
-
-            String label = "HUD - Кулдауны";
-            float lw = Fonts.b.a(label, 11.5f);
-            float lx = lastX + (lastW - lw) / 2.0f;
-            float ly = lastY + lastH + 6.0f;
-            Fonts.b.a(null, label, lx, ly, 11.5f, ColorUtil.rgba(255, 255, 255, 160));
         }
-
-        boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
-        if (inside || dragging) {
-            float rad = (lastH + 4.0f) / 2.0f;
-            Draw2DProcessor.INSTANCE.drawOutline(null, lastX - 2.0f, lastY - 2.0f, lastW + 4.0f, lastH + 4.0f, rad, 1.0f, Theme.getAccent());
-
-            String scaleBadge = "КД: " + Math.round(scale.getValueFloat() * 100.0f) + "%";
-            float bw = Fonts.b.a(scaleBadge, 9.5f) + 8.0f;
-            float bx = lastX + (lastW - bw) / 2.0f;
-            float by = lastY + lastH + 5.0f;
-            Draw2DProcessor.INSTANCE.drawRect(null, bx, by, bw, 13.0f, 3.0f, ColorUtil.rgba(14, 15, 20, 220));
-            Fonts.b.a(null, scaleBadge, bx + 4.0f, by + 2.5f, 9.5f, Theme.getAccentHover());
-            DrawBatcher.flushPending();
-        }
+        DrawBatcher.flushPending();
     }
 
     public boolean onChatMouseClicked(double mouseX, double mouseY, int button) {
@@ -305,6 +285,7 @@ public class Cooldowns extends Module {
     public boolean onChatMouseReleased(double mouseX, double mouseY, int button) {
         if (button == 0 && dragging) {
             dragging = false;
+            currentSnap = null;
             ConfigManager.save();
             return true;
         }
@@ -318,32 +299,17 @@ public class Cooldowns extends Module {
             int screenW = mc.getWindow().getScaledWidth();
             int screenH = mc.getWindow().getScaledHeight();
 
-            float newX = (float) mouseX - dragOffsetX;
-            float newY = (float) mouseY - dragOffsetY;
+            float proposedX = (float) mouseX - dragOffsetX;
+            float proposedY = (float) mouseY - dragOffsetY;
 
-            float midX = (screenW - lastW) / 2.0f;
-            if (Math.abs(newX - midX) < 8.0f) {
-                newX = midX;
-            }
-            float midY = (screenH - lastH) / 2.0f;
-            if (Math.abs(newY - midY) < 8.0f) {
-                newY = midY;
-            }
-
-            float nearestGridX = Math.round(newX / 25.0f) * 25.0f;
-            if (Math.abs(newX - nearestGridX) < 5.0f) {
-                newX = nearestGridX;
-            }
-            float nearestGridY = Math.round(newY / 25.0f) * 25.0f;
-            if (Math.abs(newY - nearestGridY) < 5.0f) {
-                newY = nearestGridY;
-            }
+            HudSnapHelper.SnapResult snap = HudSnapHelper.calculateSnap("cooldowns", proposedX, proposedY, lastW, lastH, screenW, screenH);
+            this.currentSnap = snap;
 
             float maxAvailX = Math.max(1.0f, screenW - lastW);
             float maxAvailY = Math.max(1.0f, screenH - lastH);
 
-            posX.setValue(Math.clamp(newX / maxAvailX, 0.0, 1.0));
-            posY.setValue(Math.clamp(newY / maxAvailY, 0.0, 1.0));
+            posX.setValue(Math.clamp(snap.snappedX / maxAvailX, 0.0, 1.0));
+            posY.setValue(Math.clamp(snap.snappedY / maxAvailY, 0.0, 1.0));
             return true;
         }
         return false;

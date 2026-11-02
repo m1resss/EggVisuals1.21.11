@@ -135,6 +135,13 @@ public class ChatScreenMixin {
         if (armorHUD != null && armorHUD.isEnabled()) {
             if (armorHUD.onMouseScrolled(mouseX, mouseY, verticalAmount)) {
                 cir.setReturnValue(true);
+                return;
+            }
+        }
+        TargetHUD targetHUD = ModuleManager.getInstance().getModule(TargetHUD.class);
+        if (targetHUD != null && targetHUD.isEnabled()) {
+            if (targetHUD.onMouseScrolled(mouseX, mouseY, verticalAmount)) {
+                cir.setReturnValue(true);
             }
         }
     }

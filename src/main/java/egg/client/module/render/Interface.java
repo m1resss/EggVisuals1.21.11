@@ -17,6 +17,8 @@ import egg.client.module.setting.SliderSetting;
 import egg.client.render.DynamicGuiTextures;
 import egg.client.render.IconRenderer;
 import egg.client.render.Render2D;
+import egg.client.render.hud.HudContextMenu;
+import egg.client.render.hud.HudSnapHelper;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Fonts;
 import egg.client.render.msdf.pipeline.DrawBatcher;
@@ -165,18 +167,35 @@ public class Interface extends Module {
     private boolean dragging = false;
     private float dragOffsetX = 0.0f;
     private float dragOffsetY = 0.0f;
-    private boolean contextMenuOpen = false;
-    private float contextMenuX = 0.0f;
-    private float contextMenuY = 0.0f;
+    private final HudContextMenu contextMenu = new HudContextMenu("Элементы HUD");
+    private HudSnapHelper.SnapResult currentSnap = null;
 
     private float lastX = 0.0f;
     private float lastY = 0.0f;
     private float lastW = 100.0f;
     private float lastH = 28.0f;
 
+    public float getLastX() { return lastX; }
+    public float getLastY() { return lastY; }
+    public float getLastW() { return lastW; }
+    public float getLastH() { return lastH; }
+
     public Interface() {
         super("Interface", "Отображает выбранные элементы интерфейса на экране", Category.ESP);
         instance = this;
+
+        contextMenu.addToggle("Айленд", () -> showDynamicIsland.isEnabled(), () -> showDynamicIsland.toggle());
+        contextMenu.addToggle("Иконка", () -> showLogo.isEnabled(), () -> showLogo.toggle());
+        contextMenu.addToggle("Логин", () -> showNick.isEnabled(), () -> showNick.toggle());
+        contextMenu.addToggle("Сервер", () -> showServer.isEnabled(), () -> showServer.toggle());
+        contextMenu.addToggle("FPS", () -> showFps.isEnabled(), () -> showFps.toggle());
+        contextMenu.addToggle("TPS", () -> showTps.isEnabled(), () -> showTps.toggle());
+        contextMenu.addToggle("Ping", () -> showPing.isEnabled(), () -> showPing.toggle());
+        contextMenu.addToggle("Время", () -> showTime.isEnabled(), () -> showTime.toggle());
+        contextMenu.addToggle("Координаты", () -> showCoords.isEnabled(), () -> showCoords.toggle());
+        contextMenu.addToggle("Скорость", () -> showSpeed.isEnabled(), () -> showSpeed.toggle());
+        contextMenu.addToggle("Боковой режим", () -> sideMode.isEnabled(), () -> sideMode.toggle());
+
         addSettings(
                 showDynamicIsland, islandScale,
                 brand, showLogo, showNick, showServer, showFps, showTps, showPing, showTime, showCoords, showSpeed, sideMode,
@@ -1182,44 +1201,19 @@ public class Interface extends Module {
         int screenW = mc.getWindow().getScaledWidth();
         int screenH = mc.getWindow().getScaledHeight();
 
+        float rad = rounding.getValueFloat() * hudScale.getValueFloat() + 2.0f;
+
         if (dragging) {
             onChatMouseDragged(mouseX, mouseY, 0);
-        }
-
-        if (dragging) {
-            int gridStep = 25;
-            int gridColor = ColorUtil.rgba(255, 255, 255, 14);
-            for (int gx = gridStep; gx < screenW; gx += gridStep) {
-                Draw2DProcessor.INSTANCE.drawRect(null, gx, 0, 1.0f, screenH, 0.0f, gridColor);
+            HudSnapHelper.renderGridAndGuides(context, currentSnap, screenW, screenH,
+                    new HudSnapHelper.HudElementBounds("interface", "Интерфейс", lastX, lastY, lastW, lastH),
+                    "HUD — Интерфейс", Math.round(hudScale.getValueFloat() * 100.0f), rad);
+        } else {
+            boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
+            if (inside) {
+                String scaleBadge = "HUD: " + Math.round(hudScale.getValueFloat() * 100.0f) + "%";
+                HudSnapHelper.renderHoverBadge(context, lastX, lastY, lastW, lastH, rad, scaleBadge);
             }
-            for (int gy = gridStep; gy < screenH; gy += gridStep) {
-                Draw2DProcessor.INSTANCE.drawRect(null, 0, gy, screenW, 1.0f, 0.0f, gridColor);
-            }
-
-            float midX = screenW / 2.0f;
-            float midY = screenH / 2.0f;
-            int centerColor = ColorUtil.rgba(168, 85, 247, 60);
-            Draw2DProcessor.INSTANCE.drawRect(null, midX, 0, 1.0f, screenH, 0.0f, centerColor);
-            Draw2DProcessor.INSTANCE.drawRect(null, 0, midY, screenW, 1.0f, 0.0f, centerColor);
-
-            String label = "HUD — сетка";
-            float lw = Fonts.b.a(label, 11.5f);
-            float lx = lastX + (lastW - lw) / 2.0f;
-            float ly = lastY + lastH + 6.0f;
-            Fonts.b.a(null, label, lx, ly, 11.5f, ColorUtil.rgba(255, 255, 255, 160));
-        }
-
-        boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
-        if (inside || dragging) {
-            float rad = rounding.getValueFloat() * hudScale.getValueFloat() + 2.0f;
-            Draw2DProcessor.INSTANCE.drawOutline(null, lastX - 2.0f, lastY - 2.0f, lastW + 4.0f, lastH + 4.0f, rad, 1.0f, Theme.getAccent());
-
-            String scaleBadge = "HUD: " + Math.round(hudScale.getValueFloat() * 100.0f) + "%";
-            float bw = Fonts.b.a(scaleBadge, 9.5f) + 8.0f;
-            float bx = lastX + (lastW - bw) / 2.0f;
-            float by = lastY + lastH + 5.0f;
-            Draw2DProcessor.INSTANCE.drawRect(null, bx, by, bw, 13.0f, 3.0f, ColorUtil.rgba(14, 15, 20, 220));
-            Fonts.b.a(null, scaleBadge, bx + 4.0f, by + 2.5f, 9.5f, Theme.getAccentHover());
         }
 
         boolean insideIsland = showDynamicIsland.isEnabled() && hasActiveMedia
@@ -1256,8 +1250,8 @@ public class Interface extends Module {
             }
         }
 
-        if (contextMenuOpen) {
-            renderContextMenu(context, mouseX, mouseY);
+        if (contextMenu.isOpen()) {
+            contextMenu.render(context, mouseX, mouseY);
         }
 
         DrawBatcher.flushPending();
@@ -1479,43 +1473,16 @@ public class Interface extends Module {
             }
         }
 
-        if (contextMenuOpen) {
-            float mw = 130.0f;
-            float mh = 195.0f;
-            if (mouseX >= contextMenuX && mouseX <= contextMenuX + mw && mouseY >= contextMenuY && mouseY <= contextMenuY + mh) {
-                float iy = contextMenuY + 22.0f;
-                if (mouseY >= iy && mouseY <= iy + 14.0f) { showDynamicIsland.toggle(); ConfigManager.save(); return true; }
-                iy += 15.0f;
-                if (mouseY >= iy && mouseY <= iy + 14.0f) { showLogo.toggle(); ConfigManager.save(); return true; }
-                iy += 15.0f;
-                if (mouseY >= iy && mouseY <= iy + 14.0f) { showNick.toggle(); ConfigManager.save(); return true; }
-                iy += 15.0f;
-                if (mouseY >= iy && mouseY <= iy + 14.0f) { showServer.toggle(); ConfigManager.save(); return true; }
-                iy += 15.0f;
-                if (mouseY >= iy && mouseY <= iy + 14.0f) { showFps.toggle(); ConfigManager.save(); return true; }
-                iy += 15.0f;
-                if (mouseY >= iy && mouseY <= iy + 14.0f) { showTps.toggle(); ConfigManager.save(); return true; }
-                iy += 15.0f;
-                if (mouseY >= iy && mouseY <= iy + 14.0f) { showPing.toggle(); ConfigManager.save(); return true; }
-                iy += 15.0f;
-                if (mouseY >= iy && mouseY <= iy + 14.0f) { showTime.toggle(); ConfigManager.save(); return true; }
-                iy += 15.0f;
-                if (mouseY >= iy && mouseY <= iy + 14.0f) { showCoords.toggle(); ConfigManager.save(); return true; }
-                iy += 15.0f;
-                if (mouseY >= iy && mouseY <= iy + 14.0f) { showSpeed.toggle(); ConfigManager.save(); return true; }
-                iy += 15.0f;
-                if (mouseY >= iy && mouseY <= iy + 14.0f) { sideMode.toggle(); ConfigManager.save(); return true; }
+        if (contextMenu.isOpen()) {
+            if (contextMenu.mouseClicked(mouseX, mouseY, button)) {
                 return true;
             }
-            contextMenuOpen = false;
         }
 
         boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
         if (inside) {
             if (button == 1) {
-                contextMenuOpen = true;
-                contextMenuX = (float) Math.clamp(mouseX, 10.0, screenW - 140.0);
-                contextMenuY = (float) Math.clamp(mouseY, 10.0, screenH - 220.0);
+                contextMenu.open((float) mouseX, (float) mouseY);
                 return true;
             } else if (button == 0) {
                 dragging = true;
@@ -1536,6 +1503,7 @@ public class Interface extends Module {
             }
             if (dragging) {
                 dragging = false;
+                currentSnap = null;
                 ConfigManager.save();
                 return true;
             }
@@ -1550,79 +1518,20 @@ public class Interface extends Module {
             int screenW = mc.getWindow().getScaledWidth();
             int screenH = mc.getWindow().getScaledHeight();
 
-            float newX = (float) mouseX - dragOffsetX;
-            float newY = (float) mouseY - dragOffsetY;
+            float proposedX = (float) mouseX - dragOffsetX;
+            float proposedY = (float) mouseY - dragOffsetY;
 
-            float midX = (screenW - lastW) / 2.0f;
-            if (Math.abs(newX - midX) < 8.0f) {
-                newX = midX;
-            }
-            float midY = (screenH - lastH) / 2.0f;
-            if (Math.abs(newY - midY) < 8.0f) {
-                newY = midY;
-            }
-
-            float nearestGridX = Math.round(newX / 25.0f) * 25.0f;
-            if (Math.abs(newX - nearestGridX) < 5.0f) {
-                newX = nearestGridX;
-            }
-            float nearestGridY = Math.round(newY / 25.0f) * 25.0f;
-            if (Math.abs(newY - nearestGridY) < 5.0f) {
-                newY = nearestGridY;
-            }
+            HudSnapHelper.SnapResult snap = HudSnapHelper.calculateSnap("interface", proposedX, proposedY, lastW, lastH, screenW, screenH);
+            this.currentSnap = snap;
 
             float maxAvailX = Math.max(1.0f, screenW - lastW);
             float maxAvailY = Math.max(1.0f, screenH - lastH);
 
-            posX.setValue(Math.clamp(newX / maxAvailX, 0.0, 1.0));
-            posY.setValue(Math.clamp(newY / maxAvailY, 0.0, 1.0));
+            posX.setValue(Math.clamp(snap.snappedX / maxAvailX, 0.0, 1.0));
+            posY.setValue(Math.clamp(snap.snappedY / maxAvailY, 0.0, 1.0));
             return true;
         }
         return false;
-    }
-
-    private void renderContextMenu(DrawContext context, float mouseX, float mouseY) {
-        float mw = 130.0f;
-        float mh = 195.0f;
-        float mx = contextMenuX;
-        float my = contextMenuY;
-
-        Draw2DProcessor.INSTANCE.drawGlow(null, mx, my, mw, mh, 6.0f, ColorUtil.rgba(0, 0, 0, 190), 10.0f);
-        Draw2DProcessor.INSTANCE.drawRect(null, mx, my, mw, mh, 6.0f, ColorUtil.rgba(22, 23, 30, 248));
-        Draw2DProcessor.INSTANCE.drawOutline(null, mx, my, mw, mh, 6.0f, 1.0f, ColorUtil.rgba(255, 255, 255, 24));
-
-        Fonts.d.a(null, "Элементы HUD", mx + 8.0f, my + 6.0f, 12.0f, Theme.getAccentHover());
-        Draw2DProcessor.INSTANCE.drawRect(null, mx + 6.0f, my + 18.0f, mw - 12.0f, 1.0f, 0.0f, ColorUtil.rgba(255, 255, 255, 15));
-
-        float itemY = my + 22.0f;
-        renderContextItem(context, mx, itemY, mw, "Айленд", showDynamicIsland.isEnabled(), mouseX, mouseY); itemY += 15.0f;
-        renderContextItem(context, mx, itemY, mw, "Иконка", showLogo.isEnabled(), mouseX, mouseY); itemY += 15.0f;
-        renderContextItem(context, mx, itemY, mw, "Логин", showNick.isEnabled(), mouseX, mouseY); itemY += 15.0f;
-        renderContextItem(context, mx, itemY, mw, "Сервер", showServer.isEnabled(), mouseX, mouseY); itemY += 15.0f;
-        renderContextItem(context, mx, itemY, mw, "FPS", showFps.isEnabled(), mouseX, mouseY); itemY += 15.0f;
-        renderContextItem(context, mx, itemY, mw, "TPS", showTps.isEnabled(), mouseX, mouseY); itemY += 15.0f;
-        renderContextItem(context, mx, itemY, mw, "Ping", showPing.isEnabled(), mouseX, mouseY); itemY += 15.0f;
-        renderContextItem(context, mx, itemY, mw, "Время", showTime.isEnabled(), mouseX, mouseY); itemY += 15.0f;
-        renderContextItem(context, mx, itemY, mw, "Координаты", showCoords.isEnabled(), mouseX, mouseY); itemY += 15.0f;
-        renderContextItem(context, mx, itemY, mw, "Скорость", showSpeed.isEnabled(), mouseX, mouseY); itemY += 15.0f;
-        renderContextItem(context, mx, itemY, mw, "Боковой режим", sideMode.isEnabled(), mouseX, mouseY);
-    }
-
-    private void renderContextItem(DrawContext context, float mx, float iy, float mw, String label, boolean checked, float mouseX, float mouseY) {
-        boolean hov = mouseX >= mx + 4.0f && mouseX <= mx + mw - 4.0f && mouseY >= iy - 1.0f && mouseY <= iy + 13.0f;
-        if (hov) {
-            Draw2DProcessor.INSTANCE.drawRect(null, mx + 4.0f, iy - 1.0f, mw - 8.0f, 13.0f, 2.5f, ColorUtil.rgba(255, 255, 255, 14));
-        }
-
-        float cbX = mx + 8.0f;
-        float cbY = iy + 1.0f;
-        float cbSize = 9.0f;
-        Draw2DProcessor.INSTANCE.drawRect(null, cbX, cbY, cbSize, cbSize, 2.0f, checked ? Theme.getAccent() : ColorUtil.rgba(255, 255, 255, 22));
-        if (checked) {
-            Draw2DProcessor.INSTANCE.drawRect(null, cbX + cbSize / 2.0f - 1.5f, cbY + cbSize / 2.0f - 1.5f, 3.0f, 3.0f, 1.5f, 0xFFFFFFFF);
-        }
-
-        Fonts.b.a(null, label, cbX + cbSize + 6.0f, iy + 1.0f, 11.5f, checked ? 0xFFFFFFFF : Theme.TEXT_SUB);
     }
 
     public static class RollingNumber {

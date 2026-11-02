@@ -6,6 +6,8 @@ import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
+import egg.client.render.hud.HudContextMenu;
+import egg.client.render.hud.HudSnapHelper;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Fonts;
 import egg.client.render.msdf.pipeline.DrawBatcher;
@@ -45,20 +47,30 @@ public class ArmorHUD extends Module {
     private boolean dragging = false;
     private float dragOffsetX = 0.0f;
     private float dragOffsetY = 0.0f;
-    private boolean contextMenuOpen = false;
-    private float contextMenuX = 0.0f;
-    private float contextMenuY = 0.0f;
+    private final HudContextMenu contextMenu = new HudContextMenu("Настройки брони");
+    private HudSnapHelper.SnapResult currentSnap = null;
 
     private float lastX = 20.0f;
     private float lastY = 150.0f;
     private float lastW = 75.0f;
     private float lastH = 115.0f;
 
+    public float getLastX() { return lastX; }
+    public float getLastY() { return lastY; }
+    public float getLastW() { return lastW; }
+    public float getLastH() { return lastH; }
+
     public ArmorHUD() {
         super("ArmorHUD", "Индикатор надетой брони и её прочности", Category.ESP);
         instance = this;
         posX.setVisible(() -> false);
         posY.setVisible(() -> false);
+
+        contextMenu.addMode("Вид", () -> style.get(), () -> style.cycle());
+        contextMenu.addMode("Ориентация", () -> orientation.get(), () -> orientation.cycle());
+        contextMenu.addMode("Прочность", () -> durabilityFormat.get(), () -> durabilityFormat.cycle());
+        contextMenu.addToggle("Шапка", () -> showHeader.isEnabled(), () -> showHeader.toggle());
+
         addSettings(style, orientation, durabilityFormat, showHeader, hideEmpty, warningColor, rounding, opacity, scale, posX, posY);
         setEnabled(true);
     }
@@ -420,46 +432,21 @@ public class ArmorHUD extends Module {
 
         if (dragging) {
             onChatMouseDragged(mouseX, mouseY, 0);
-        }
-
-        if (dragging) {
-            int gridStep = 25;
-            int gridColor = ColorUtil.rgba(255, 255, 255, 14);
-            for (int gx = gridStep; gx < screenW; gx += gridStep) {
-                Draw2DProcessor.INSTANCE.drawRect(null, gx, 0, 1.0f, screenH, 0.0f, gridColor);
+            HudSnapHelper.renderGridAndGuides(context, currentSnap, screenW, screenH,
+                    new HudSnapHelper.HudElementBounds("armor", "Броня", lastX, lastY, lastW, lastH),
+                    "HUD — Броня", Math.round(scale.getValueFloat() * 100.0f),
+                    rounding.getValueFloat() * scale.getValueFloat());
+        } else {
+            boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
+            if (inside) {
+                float rad = rounding.getValueFloat() * scale.getValueFloat();
+                String scaleBadge = "Броня: " + Math.round(scale.getValueFloat() * 100.0f) + "%";
+                HudSnapHelper.renderHoverBadge(context, lastX, lastY, lastW, lastH, rad, scaleBadge);
             }
-            for (int gy = gridStep; gy < screenH; gy += gridStep) {
-                Draw2DProcessor.INSTANCE.drawRect(null, 0, gy, screenW, 1.0f, 0.0f, gridColor);
-            }
-
-            float midX = screenW / 2.0f;
-            float midY = screenH / 2.0f;
-            int centerColor = ColorUtil.rgba(168, 85, 247, 60);
-            Draw2DProcessor.INSTANCE.drawRect(null, midX, 0, 1.0f, screenH, 0.0f, centerColor);
-            Draw2DProcessor.INSTANCE.drawRect(null, 0, midY, screenW, 1.0f, 0.0f, centerColor);
-
-            String label = "HUD — Броня";
-            float lw = Fonts.b.a(label, 11.5f);
-            float lx = lastX + (lastW - lw) / 2.0f;
-            float ly = lastY + lastH + 6.0f;
-            Fonts.b.a(null, label, lx, ly, 11.5f, ColorUtil.rgba(255, 255, 255, 160));
         }
 
-        boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
-        if (inside || dragging) {
-            float rad = rounding.getValueFloat() * scale.getValueFloat();
-            Draw2DProcessor.INSTANCE.drawOutline(null, lastX - 2.0f, lastY - 2.0f, lastW + 4.0f, lastH + 4.0f, rad, 1.0f, Theme.getAccent());
-
-            String scaleBadge = "Броня: " + Math.round(scale.getValueFloat() * 100.0f) + "%";
-            float bw = Fonts.b.a(scaleBadge, 9.5f) + 8.0f;
-            float bx = lastX + (lastW - bw) / 2.0f;
-            float by = lastY + lastH + 5.0f;
-            Draw2DProcessor.INSTANCE.drawRect(null, bx, by, bw, 13.0f, 3.0f, ColorUtil.rgba(14, 15, 20, 220));
-            Fonts.b.a(null, scaleBadge, bx + 4.0f, by + 2.5f, 9.5f, Theme.getAccentHover());
-        }
-
-        if (contextMenuOpen) {
-            renderContextMenu(context, mouseX, mouseY);
+        if (contextMenu.isOpen()) {
+            contextMenu.render(context, mouseX, mouseY);
         }
         DrawBatcher.flushPending();
     }
@@ -480,50 +467,17 @@ public class ArmorHUD extends Module {
 
     public boolean onChatMouseClicked(double mouseX, double mouseY, int button) {
         if (!isEnabled()) return false;
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc == null || mc.getWindow() == null) return false;
-        int screenW = mc.getWindow().getScaledWidth();
-        int screenH = mc.getWindow().getScaledHeight();
 
-        if (contextMenuOpen) {
-            float mw = 140.0f;
-            float mh = 94.0f;
-            if (mouseX >= contextMenuX && mouseX <= contextMenuX + mw && mouseY >= contextMenuY && mouseY <= contextMenuY + mh) {
-                float iy = contextMenuY + 22.0f;
-                if (mouseY >= iy && mouseY <= iy + 14.0f) {
-                    style.cycle();
-                    ConfigManager.save();
-                    return true;
-                }
-                iy += 16.0f;
-                if (mouseY >= iy && mouseY <= iy + 14.0f) {
-                    orientation.cycle();
-                    ConfigManager.save();
-                    return true;
-                }
-                iy += 16.0f;
-                if (mouseY >= iy && mouseY <= iy + 14.0f) {
-                    durabilityFormat.cycle();
-                    ConfigManager.save();
-                    return true;
-                }
-                iy += 16.0f;
-                if (mouseY >= iy && mouseY <= iy + 14.0f) {
-                    showHeader.toggle();
-                    ConfigManager.save();
-                    return true;
-                }
+        if (contextMenu.isOpen()) {
+            if (contextMenu.mouseClicked(mouseX, mouseY, button)) {
                 return true;
             }
-            contextMenuOpen = false;
         }
 
         boolean inside = mouseX >= lastX - 3.0f && mouseX <= lastX + lastW + 3.0f && mouseY >= lastY - 3.0f && mouseY <= lastY + lastH + 3.0f;
         if (inside) {
             if (button == 1) {
-                contextMenuOpen = true;
-                contextMenuX = (float) Math.clamp(mouseX, 10.0, screenW - 150.0);
-                contextMenuY = (float) Math.clamp(mouseY, 10.0, screenH - 120.0);
+                contextMenu.open((float) mouseX, (float) mouseY);
                 return true;
             } else if (button == 0) {
                 dragging = true;
@@ -539,6 +493,7 @@ public class ArmorHUD extends Module {
     public boolean onChatMouseReleased(double mouseX, double mouseY, int button) {
         if (button == 0 && dragging) {
             dragging = false;
+            currentSnap = null;
             ConfigManager.save();
             return true;
         }
@@ -552,71 +507,19 @@ public class ArmorHUD extends Module {
             int screenW = mc.getWindow().getScaledWidth();
             int screenH = mc.getWindow().getScaledHeight();
 
-            float newX = (float) mouseX - dragOffsetX;
-            float newY = (float) mouseY - dragOffsetY;
+            float proposedX = (float) mouseX - dragOffsetX;
+            float proposedY = (float) mouseY - dragOffsetY;
 
-            float midX = (screenW - lastW) / 2.0f;
-            if (Math.abs(newX - midX) < 8.0f) {
-                newX = midX;
-            }
-            float midY = (screenH - lastH) / 2.0f;
-            if (Math.abs(newY - midY) < 8.0f) {
-                newY = midY;
-            }
-
-            float nearestGridX = Math.round(newX / 25.0f) * 25.0f;
-            if (Math.abs(newX - nearestGridX) < 5.0f) {
-                newX = nearestGridX;
-            }
-            float nearestGridY = Math.round(newY / 25.0f) * 25.0f;
-            if (Math.abs(newY - nearestGridY) < 5.0f) {
-                newY = nearestGridY;
-            }
+            HudSnapHelper.SnapResult snap = HudSnapHelper.calculateSnap("armor", proposedX, proposedY, lastW, lastH, screenW, screenH);
+            this.currentSnap = snap;
 
             float maxAvailX = Math.max(1.0f, screenW - lastW);
             float maxAvailY = Math.max(1.0f, screenH - lastH);
 
-            posX.setValue(Math.clamp(newX / maxAvailX, 0.0, 1.0));
-            posY.setValue(Math.clamp(newY / maxAvailY, 0.0, 1.0));
+            posX.setValue(Math.clamp(snap.snappedX / maxAvailX, 0.0, 1.0));
+            posY.setValue(Math.clamp(snap.snappedY / maxAvailY, 0.0, 1.0));
             return true;
         }
         return false;
-    }
-
-    private void renderContextMenu(DrawContext context, float mouseX, float mouseY) {
-        float mw = 140.0f;
-        float mh = 94.0f;
-        float mx = contextMenuX;
-        float my = contextMenuY;
-
-        Draw2DProcessor.INSTANCE.drawGlow(null, mx, my, mw, mh, 6.0f, ColorUtil.rgba(0, 0, 0, 190), 10.0f);
-        Draw2DProcessor.INSTANCE.drawRect(null, mx, my, mw, mh, 6.0f, ColorUtil.rgba(22, 23, 30, 248));
-        Draw2DProcessor.INSTANCE.drawOutline(null, mx, my, mw, mh, 6.0f, 1.0f, ColorUtil.rgba(255, 255, 255, 24));
-
-        Fonts.d.a(null, "Настройки брони", mx + 8.0f, my + 6.0f, 12.0f, Theme.getAccentHover());
-        Draw2DProcessor.INSTANCE.drawRect(null, mx + 6.0f, my + 18.0f, mw - 12.0f, 1.0f, 0.0f, ColorUtil.rgba(255, 255, 255, 15));
-
-        float itemY = my + 22.0f;
-        renderContextItem(context, mx, itemY, mw, "Вид: " + style.get(), true, mouseX, mouseY); itemY += 16.0f;
-        renderContextItem(context, mx, itemY, mw, "Ориентация: " + orientation.get(), true, mouseX, mouseY); itemY += 16.0f;
-        renderContextItem(context, mx, itemY, mw, "Прочность: " + durabilityFormat.get(), true, mouseX, mouseY); itemY += 16.0f;
-        renderContextItem(context, mx, itemY, mw, "Шапка", showHeader.isEnabled(), mouseX, mouseY);
-    }
-
-    private void renderContextItem(DrawContext context, float mx, float iy, float mw, String label, boolean checked, float mouseX, float mouseY) {
-        boolean hov = mouseX >= mx + 4.0f && mouseX <= mx + mw - 4.0f && mouseY >= iy - 1.0f && mouseY <= iy + 13.0f;
-        if (hov) {
-            Draw2DProcessor.INSTANCE.drawRect(null, mx + 4.0f, iy - 1.0f, mw - 8.0f, 13.0f, 2.5f, ColorUtil.rgba(255, 255, 255, 14));
-        }
-
-        float cbX = mx + 8.0f;
-        float cbY = iy + 1.0f;
-        float cbSize = 9.0f;
-        Draw2DProcessor.INSTANCE.drawRect(null, cbX, cbY, cbSize, cbSize, 2.0f, checked ? Theme.getAccent() : ColorUtil.rgba(255, 255, 255, 22));
-        if (checked) {
-            Draw2DProcessor.INSTANCE.drawRect(null, cbX + cbSize / 2.0f - 1.5f, cbY + cbSize / 2.0f - 1.5f, 3.0f, 3.0f, 1.5f, 0xFFFFFFFF);
-        }
-
-        Fonts.b.a(null, label, cbX + cbSize + 6.0f, iy + 1.0f, 11.0f, checked ? 0xFFFFFFFF : Theme.TEXT_SUB);
     }
 }
