@@ -170,9 +170,6 @@ public class ConfigManager {
 
             currentConfig = cleanName;
             persistActiveConfig(cleanName);
-            try {
-                egg.client.inventory.InventoryLayoutManager.getInstance().save();
-            } catch (Throwable ignored) {}
             return true;
         } catch (Exception e) {
             EggClient.LOGGER.error("[Egg Visual] Failed to save config: " + file.getName(), e);

@@ -20,12 +20,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class InventoryLayoutManager {
-    private static final InventoryLayoutManager INSTANCE = new InventoryLayoutManager();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
+    private static final InventoryLayoutManager INSTANCE = new InventoryLayoutManager();
 
     private final List<InventoryPreset> presets = new ArrayList<>();
     private int activeIndex = 0;
     private final File configFile;
+
+    private static Gson getGson() {
+        if (GSON != null) return GSON;
+        return new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
+    }
 
     private InventoryLayoutManager() {
         Path gameDir = FabricLoader.getInstance().getGameDir();
@@ -46,11 +51,23 @@ public class InventoryLayoutManager {
 
         File fileToRead = configFile;
 
-        if (!fileToRead.exists() || fileToRead.length() < 100) {
+        // If configFile doesn't exist or is empty, check if .corrupted backup exists
+        if (!fileToRead.exists() || fileToRead.length() == 0) {
+            File corrupted = new File(fileToRead.getParentFile(), fileToRead.getName() + ".corrupted");
+            if (corrupted.exists() && corrupted.length() > 100) {
+                try {
+                    Files.copy(corrupted.toPath(), fileToRead.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                    EggClient.LOGGER.info("[InventoryLayoutManager] Recovered presets from corrupted backup: " + corrupted.getAbsolutePath());
+                } catch (Throwable ignored) {}
+            }
+        }
+
+        // If still empty or missing, check global fallback (.minecraft/egg/inventory_layouts.json)
+        if (!fileToRead.exists() || fileToRead.length() == 0) {
             String appdata = System.getenv("APPDATA");
             if (appdata != null) {
                 File fallback = new File(appdata, ".minecraft/egg/inventory_layouts.json");
-                if (fallback.exists() && fallback.length() >= 100) {
+                if (fallback.exists() && fallback.length() > 0 && !fallback.getAbsolutePath().equalsIgnoreCase(fileToRead.getAbsolutePath())) {
                     try {
                         Files.copy(fallback.toPath(), configFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
                         EggClient.LOGGER.info("[InventoryLayoutManager] Restored presets from global fallback: " + fallback.getAbsolutePath());
@@ -63,7 +80,7 @@ public class InventoryLayoutManager {
 
         if (fileToRead.exists() && fileToRead.length() > 0) {
             try (Reader reader = Files.newBufferedReader(fileToRead.toPath(), StandardCharsets.UTF_8)) {
-                JsonObject root = GSON.fromJson(reader, JsonObject.class);
+                JsonObject root = getGson().fromJson(reader, JsonObject.class);
                 if (root != null && root.has("presets") && root.get("presets").isJsonArray()) {
                     for (JsonElement el : root.getAsJsonArray("presets")) {
                         if (el.isJsonObject()) {
@@ -82,17 +99,16 @@ public class InventoryLayoutManager {
                 }
             } catch (Exception e) {
                 EggClient.LOGGER.error("[InventoryLayoutManager] Failed to load inventory presets from " + fileToRead.getAbsolutePath(), e);
-                try {
-                    File bak = new File(fileToRead.getParentFile(), fileToRead.getName() + ".corrupted");
-                    Files.copy(fileToRead.toPath(), bak.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                } catch (Throwable ignored) {}
             }
         }
 
         if (presets.isEmpty()) {
             presets.add(new InventoryPreset("1"));
             activeIndex = 0;
-            save();
+            // Only write file if it didn't exist or was empty
+            if (!configFile.exists() || configFile.length() == 0) {
+                save();
+            }
         }
 
         if (activeIndex < 0 || activeIndex >= presets.size()) {
@@ -101,13 +117,14 @@ public class InventoryLayoutManager {
     }
 
     public synchronized void save() {
+        if (presets.isEmpty()) return;
         try {
             if (configFile.getParentFile() != null && !configFile.getParentFile().exists()) {
                 configFile.getParentFile().mkdirs();
             }
 
             JsonObject root = new JsonObject();
-            if (!presets.isEmpty() && activeIndex >= 0 && activeIndex < presets.size()) {
+            if (activeIndex >= 0 && activeIndex < presets.size()) {
                 root.addProperty("active", presets.get(activeIndex).getName());
             }
             JsonArray arr = new JsonArray();
@@ -116,8 +133,14 @@ public class InventoryLayoutManager {
             }
             root.add("presets", arr);
 
-            try (Writer writer = Files.newBufferedWriter(configFile.toPath(), StandardCharsets.UTF_8)) {
-                GSON.toJson(root, writer);
+            File tmpFile = new File(configFile.getParentFile(), configFile.getName() + ".tmp");
+            try (Writer writer = Files.newBufferedWriter(tmpFile.toPath(), StandardCharsets.UTF_8)) {
+                getGson().toJson(root, writer);
+            }
+            try {
+                Files.move(tmpFile.toPath(), configFile.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (Throwable fallbackMove) {
+                Files.move(tmpFile.toPath(), configFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
             }
 
             String appdata = System.getenv("APPDATA");
@@ -127,7 +150,7 @@ public class InventoryLayoutManager {
                     File fallbackFile = new File(fallbackDir, "inventory_layouts.json");
                     if (!fallbackFile.getAbsolutePath().equalsIgnoreCase(configFile.getAbsolutePath())) {
                         try (Writer fallbackWriter = Files.newBufferedWriter(fallbackFile.toPath(), StandardCharsets.UTF_8)) {
-                            GSON.toJson(root, fallbackWriter);
+                            getGson().toJson(root, fallbackWriter);
                         } catch (Throwable ignored) {}
                     }
                 }

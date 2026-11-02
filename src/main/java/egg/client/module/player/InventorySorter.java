@@ -40,7 +40,7 @@ public class InventorySorter extends Module {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player != null) {
             InventoryPreset active = InventoryLayoutManager.getInstance().getActivePreset();
-            String targetName = (active != null) ? active.getName() : "КФГ 1";
+            String targetName = (active != null) ? active.getName() : "1";
             InventoryLayoutManager.getInstance().saveCurrentAsPreset(
                     targetName,
                     mc.player.getInventory()
@@ -126,6 +126,9 @@ public class InventorySorter extends Module {
     }
 
     private void buildTaskQueue(PlayerEntity player) {
+        if (presetMode != null && !presetMode.get().isEmpty()) {
+            InventoryLayoutManager.getInstance().setActivePreset(presetMode.get());
+        }
         InventoryPreset preset = InventoryLayoutManager.getInstance().getActivePreset();
         if (preset == null) return;
         PlayerScreenHandler handler = player.playerScreenHandler;
