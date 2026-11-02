@@ -43,7 +43,8 @@ import java.util.*;
 public class Trajectories extends Module {
 
     private final SliderSetting circleRadius = new SliderSetting("Радиус круга", 0.45, 0.20, 1.00, 0.05, "Радиус светящегося круга приземления");
-    private final SliderSetting cubeSize = new SliderSetting("Размер куба", 0.32, 0.15, 0.80, 0.05, "Размер куба прицеливания (1-е лицо)");
+    private final SliderSetting cubeSize = new SliderSetting("Размер куба", 0.26, 0.10, 0.60, 0.02, "Размер куба прицеливания (1-е лицо)");
+    private final SliderSetting cubeOutlineWidth = new SliderSetting("Толщина контура", 0.7, 0.2, 2.0, 0.1, "Толщина контурных линий куба прицеливания");
     private final SliderSetting smoothSpeed = new SliderSetting("Плавность", 18.0, 5.0, 35.0, 1.0, "Скорость плавного следования круга за камерой");
     private final BooleanSetting showLine = new BooleanSetting("Линия полета", true, "Отображать траекторию полета снаряда");
     private final SliderSetting pullThreshold = new SliderSetting("При натяжении", 0.0, 0.0, 1.0, 0.05, "Порог силы натяжения для отображения (0 - всегда)");
@@ -57,7 +58,7 @@ public class Trajectories extends Module {
     public Trajectories() {
         super("Trajectories", "Прогнозирует траекторию и точку падения стрел, зелий, жемчуга и снарядов", Category.ESP);
         pullThreshold.setVisible(() -> showLine.get());
-        addSettings(circleRadius, cubeSize, smoothSpeed, showLine, pullThreshold, glowEffect, inFlight);
+        addSettings(circleRadius, cubeSize, cubeOutlineWidth, smoothSpeed, showLine, pullThreshold, glowEffect, inFlight);
     }
 
     public void render(VertexConsumerProvider consumers, Vec3d camPos) {
@@ -430,14 +431,72 @@ public class Trajectories extends Module {
         }
 
         Box box = new Box(minX, minY, minZ, maxX, maxY, maxZ);
-        int fillA = (int) Math.round(255 * 0.15);
-        int outlineA = 240;
-        float outlineThickness = 1.0f;
+        int fillA = (int) Math.round(255 * 0.15); // 15% fill transparency
+        int outlineA = 220;
 
-        CustomHitbox.renderHitbox(buf, box, camPos,
-                true, r, g, b, fillA,
-                true, r, g, b, outlineA,
-                outlineThickness);
+        float x1 = (float) (box.minX - camPos.x);
+        float y1 = (float) (box.minY - camPos.y);
+        float z1 = (float) (box.minZ - camPos.z);
+        float x2 = (float) (box.maxX - camPos.x);
+        float y2 = (float) (box.maxY - camPos.y);
+        float z2 = (float) (box.maxZ - camPos.z);
+
+        if (x1 > x2) { float tmp = x1; x1 = x2; x2 = tmp; }
+        if (y1 > y2) { float tmp = y1; y1 = y2; y2 = tmp; }
+        if (z1 > z2) { float tmp = z1; z1 = z2; z2 = tmp; }
+
+        drawQuadDoubleSided(buf, x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, r, g, b, fillA);
+        drawQuadDoubleSided(buf, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, r, g, b, fillA);
+        drawQuadDoubleSided(buf, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, r, g, b, fillA);
+        drawQuadDoubleSided(buf, x1, y1, z2, x2, y1, z2, x2, y2, z2, x1, y2, z2, r, g, b, fillA);
+        drawQuadDoubleSided(buf, x1, y1, z1, x1, y1, z2, x1, y2, z2, x1, y2, z1, r, g, b, fillA);
+        drawQuadDoubleSided(buf, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, fillA);
+
+        float t = Math.max(0.0006f, (float) (cubeOutlineWidth.get() * 0.0014f));
+
+        drawSolidBox(buf, x1 - t, y1 - t, z1 - t, x2 + t, y1 + t, z1 + t, r, g, b, outlineA);
+        drawSolidBox(buf, x1 - t, y1 - t, z2 - t, x2 + t, y1 + t, z2 + t, r, g, b, outlineA);
+        drawSolidBox(buf, x1 - t, y2 - t, z1 - t, x2 + t, y2 + t, z1 + t, r, g, b, outlineA);
+        drawSolidBox(buf, x1 - t, y2 - t, z2 - t, x2 + t, y2 + t, z2 + t, r, g, b, outlineA);
+
+        drawSolidBox(buf, x1 - t, y1, z1 - t, x1 + t, y2, z1 + t, r, g, b, outlineA);
+        drawSolidBox(buf, x2 - t, y1, z1 - t, x2 + t, y2, z1 + t, r, g, b, outlineA);
+        drawSolidBox(buf, x1 - t, y1, z2 - t, x1 + t, y2, z2 + t, r, g, b, outlineA);
+        drawSolidBox(buf, x2 - t, y1, z2 - t, x2 + t, y2, z2 + t, r, g, b, outlineA);
+
+        drawSolidBox(buf, x1 - t, y1 - t, z1, x1 + t, y1 + t, z2, r, g, b, outlineA);
+        drawSolidBox(buf, x2 - t, y1 - t, z1, x2 + t, y1 + t, z2, r, g, b, outlineA);
+        drawSolidBox(buf, x1 - t, y2 - t, z1, x1 + t, y2 + t, z2, r, g, b, outlineA);
+        drawSolidBox(buf, x2 - t, y2 - t, z1, x2 + t, y2 + t, z2, r, g, b, outlineA);
+    }
+
+    private static void drawSolidBox(VertexConsumer buf,
+                                     float x1, float y1, float z1,
+                                     float x2, float y2, float z2,
+                                     int r, int g, int b, int a) {
+        drawQuadDoubleSided(buf, x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, r, g, b, a);
+        drawQuadDoubleSided(buf, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, r, g, b, a);
+        drawQuadDoubleSided(buf, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, r, g, b, a);
+        drawQuadDoubleSided(buf, x1, y1, z2, x2, y1, z2, x2, y2, z2, x1, y2, z2, r, g, b, a);
+        drawQuadDoubleSided(buf, x1, y1, z1, x1, y1, z2, x1, y2, z2, x1, y2, z1, r, g, b, a);
+        drawQuadDoubleSided(buf, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, a);
+    }
+
+    private static void drawQuadDoubleSided(VertexConsumer buf,
+                                            float x1, float y1, float z1,
+                                            float x2, float y2, float z2,
+                                            float x3, float y3, float z3,
+                                            float x4, float y4, float z4,
+                                            int r, int g, int b, int a) {
+        buf.vertex(x1, y1, z1).color(r, g, b, a);
+        buf.vertex(x2, y2, z2).color(r, g, b, a);
+        buf.vertex(x3, y3, z3).color(r, g, b, a);
+        buf.vertex(x4, y4, z4).color(r, g, b, a);
+
+        buf.vertex(x4, y4, z4).color(r, g, b, a);
+        buf.vertex(x3, y3, z3).color(r, g, b, a);
+        buf.vertex(x2, y2, z2).color(r, g, b, a);
+        buf.vertex(x1, y1, z1).color(r, g, b, a);
     }
 
     private void renderGlowingLandingCircle(VertexConsumer buf, Vec3d center, Vec3d camPos, Direction side, int cr, int cg, int cb) {
