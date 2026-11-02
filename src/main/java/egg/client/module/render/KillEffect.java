@@ -48,12 +48,16 @@ public class KillEffect extends Module {
 
     private static KillEffect instance;
 
-    private final ModeSetting mode = new ModeSetting("Эффект", "Чернила", "Тип эффекта при смерти противника", "Чернила", "Стекло", "Лотос");
+    private final ModeSetting mode = new ModeSetting("Эффект", "Статуя", "Тип эффекта при смерти противника", "Статуя", "Чернила", "Стекло");
     private final BooleanSetting onlyTarget = new BooleanSetting("Только цель", true, "Создавать эффект только для атакованных вами врагов");
     private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", false, "Создавать эффект только при смерти игроков");
     private final BooleanSetting sound = new BooleanSetting("Звуки", true, "Звуковые эффекты при убийстве");
-    private final BooleanSetting syncColor = new BooleanSetting("Синхр. цвета", true, "Использовать цвет темы клиента");
-    private final ColorSetting color = new ColorSetting("Цвет", 0xFFFF2555, "Пользовательский цвет эффекта");
+    private final BooleanSetting syncColor = new BooleanSetting("Синхр. цвета", false, "Использовать цвет темы клиента для эффекта");
+    private final ColorSetting color = new ColorSetting("Цвет", 0xFFFFD700, "Пользовательский цвет эффекта (по умолч. золото)");
+
+    // Настройки для режима Статуя
+    private final SliderSetting statueSpeed = new SliderSetting("Скорость льда", 5.2, 1.0, 12.0, 0.5, "Скорость скольжения золотой статуи по земле");
+    private final SliderSetting meltDuration = new SliderSetting("Время плавления", 2.6, 1.5, 5.0, 0.1, "Длительность плавления статуи в лужу (сек)");
 
     // Настройки для режима Чернила (Суми-э)
     private final SliderSetting slashScale = new SliderSetting("Масштаб среза", 1.0, 0.5, 2.0, 0.1, "Масштаб каллиграфического среза и модели");
@@ -67,25 +71,21 @@ public class KillEffect extends Module {
     private final BooleanSetting bounce = new BooleanSetting("Отскок стекла", true, "Отскок осколков стекла от блоков и пола");
     private final BooleanSetting sparkle = new BooleanSetting("Блики стекла", true, "Яркие вспышки и отблески на гранях стекла");
 
-    // Настройки для режима Лотос
-    private final SliderSetting vineCount = new SliderSetting("Ветви лотоса", 6, 4, 8, 1, "Количество обвивающих ветвей лотоса");
-    private final SliderSetting lotusScale = new SliderSetting("Масштаб лотоса", 1.0, 0.5, 2.0, 0.1, "Общий масштаб цветка и ветвей");
-
-    private final List<DeathGlassShard> particles = new ArrayList<>();
-    private final List<LotusKillInstance> lotusInstances = new ArrayList<>();
+    private final List<GoldenStatueInstance> statueInstances = new ArrayList<>();
     private final List<InkSlashInstance> inkSlashInstances = new ArrayList<>();
+    private final List<DeathGlassShard> particles = new ArrayList<>();
     private final Map<Integer, Long> recentAttacks = new ConcurrentHashMap<>();
     private final Set<Integer> deadEntities = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Random random = new Random();
     private long lastFrameNanos = 0L;
 
     public KillEffect() {
-        super("KillEffect", "Кастомные 3D килл-эффекты при смерти противника (Чернила, Стекло, Лотос)", Category.ESP);
+        super("KillEffect", "Кастомные 3D килл-эффекты при смерти противника (Статуя, Чернила, Стекло)", Category.ESP);
         instance = this;
         addSettings(mode, onlyTarget, onlyPlayers, sound, syncColor, color,
+                statueSpeed, meltDuration,
                 slashScale, inkDrops,
-                amount, size, speed, lifetime, bounce, sparkle,
-                vineCount, lotusScale);
+                amount, size, speed, lifetime, bounce, sparkle);
     }
 
     public static KillEffect getInstance() {
@@ -117,13 +117,91 @@ public class KillEffect extends Module {
         if (deadEntities.add(entityId)) {
             recentAttacks.remove(entityId);
             String curMode = mode.get();
-            if ("Чернила".equals(curMode)) {
+            if ("Статуя".equals(curMode)) {
+                spawnStatueEffect(entity);
+            } else if ("Чернила".equals(curMode)) {
                 spawnInkSlashEffect(entity);
-            } else if ("Лотос".equals(curMode)) {
-                spawnLotusEffect(entity);
             } else {
                 spawnGlassBurst(entity);
             }
+        }
+    }
+
+    // =========================================================================
+    // Режим: Золотая Статуя (Golden Statue Melt & Ice Slide)
+    // =========================================================================
+    public void spawnStatueEffect(Entity entity) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        double bx = entity.getX();
+        double by = entity.getY();
+        double bz = entity.getZ();
+        float yaw = entity.getYaw();
+        float pitch = entity.getPitch();
+        float headYaw = entity.getHeadYaw();
+        boolean isSneaking = entity.isSneaking();
+        Vec3d vel = entity.getVelocity();
+
+        float limbProgress = 0.0f;
+        float limbSpeed = 0.0f;
+        float swingProgress = 0.0f;
+        if (entity instanceof LivingEntity living) {
+            limbProgress = living.limbAnimator.getAnimationProgress();
+            limbSpeed = living.limbAnimator.getSpeed();
+            swingProgress = living.getHandSwingProgress(1.0f);
+        }
+
+        // Вычисление точных углов суставов на момент смерти
+        float rLegPitch = (float) Math.cos(limbProgress * 0.6662f) * 1.4f * limbSpeed;
+        float lLegPitch = (float) Math.cos(limbProgress * 0.6662f + (float) Math.PI) * 1.4f * limbSpeed;
+        float rArmPitch = (float) Math.cos(limbProgress * 0.6662f + (float) Math.PI) * 1.8f * limbSpeed;
+        float lArmPitch = (float) Math.cos(limbProgress * 0.6662f) * 1.8f * limbSpeed;
+        float rArmRoll = 0.0f;
+        if (swingProgress > 0.01f) {
+            rArmPitch -= swingProgress * 1.4f;
+            rArmRoll += swingProgress * 0.35f;
+        }
+
+        // Вектор скольжения по льду (отдача / инерция удара)
+        double hSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+        double slideVx;
+        double slideVz;
+        float speedSetting = (float) statueSpeed.get();
+
+        if (hSpeed > 0.06) {
+            slideVx = (vel.x / hSpeed) * speedSetting;
+            slideVz = (vel.z / hSpeed) * speedSetting;
+        } else {
+            // Если стоял неподвижно — скользит назад от удара
+            float rad = (float) Math.toRadians(yaw);
+            slideVx = Math.sin(rad) * speedSetting * 0.8;
+            slideVz = -Math.cos(rad) * speedSetting * 0.8;
+        }
+
+        int tint = syncColor.isEnabled() ? Theme.getAccent() : color.get();
+        float maxLife = (float) meltDuration.get();
+
+        if (sound.isEnabled() && mc.world != null) {
+            // Звон мгновенной кристаллизации в монолитное золото
+            mc.world.playSoundClient(bx, by + 1.0, bz,
+                    SoundEvents.BLOCK_AMETHYST_BLOCK_RESONATE, SoundCategory.PLAYERS,
+                    1.4f, 0.82f, false);
+            mc.world.playSoundClient(bx, by + 1.0, bz,
+                    SoundEvents.BLOCK_ANVIL_PLACE, SoundCategory.PLAYERS,
+                    0.85f, 1.75f, false);
+            // Скольжение по льду
+            mc.world.playSoundClient(bx, by, bz,
+                    SoundEvents.BLOCK_GLASS_STEP, SoundCategory.PLAYERS,
+                    1.3f, 0.70f, false);
+        }
+
+        statueInstances.add(new GoldenStatueInstance(
+                bx, by, bz, yaw, pitch, headYaw, isSneaking,
+                rLegPitch, lLegPitch, rArmPitch, lArmPitch, rArmRoll,
+                slideVx, slideVz, tint, maxLife
+        ));
+
+        while (statueInstances.size() > 8) {
+            statueInstances.remove(0);
         }
     }
 
@@ -155,7 +233,6 @@ public class KillEffect extends Module {
         }
 
         if (sound.isEnabled() && mc.world != null) {
-            // Резкий звук рассекающего клинка катаны + глухой резонанс
             mc.world.playSoundClient(bx, by + 1.1, bz,
                     SoundEvents.ENTITY_PLAYER_ATTACK_SWEEP, SoundCategory.PLAYERS,
                     1.5f, 0.65f, false);
@@ -167,34 +244,6 @@ public class KillEffect extends Module {
         inkSlashInstances.add(new InkSlashInstance(bx, by, bz, yaw, pitch, headYaw, skin, isSlim, tint, scale, dropCount));
         while (inkSlashInstances.size() > 8) {
             inkSlashInstances.remove(0);
-        }
-    }
-
-    // =========================================================================
-    // Режим: Лотос (Spider Lily & Entangling Vines)
-    // =========================================================================
-    public void spawnLotusEffect(Entity entity) {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        double bx = entity.getX();
-        double by = entity.getY();
-        double bz = entity.getZ();
-        double h = Math.max(1.2, entity.getHeight());
-        int tint = syncColor.isEnabled() ? Theme.getAccent() : color.get();
-        int vines = (int) vineCount.get();
-        float scale = (float) lotusScale.get();
-
-        if (sound.isEnabled() && mc.world != null) {
-            mc.world.playSoundClient(bx, by, bz,
-                    SoundEvents.BLOCK_ROOTED_DIRT_BREAK, SoundCategory.PLAYERS,
-                    1.4f, 0.85f + random.nextFloat() * 0.15f, false);
-            mc.world.playSoundClient(bx, by, bz,
-                    SoundEvents.BLOCK_VINE_PLACE, SoundCategory.PLAYERS,
-                    1.2f, 0.8f, false);
-        }
-
-        lotusInstances.add(new LotusKillInstance(bx, by, bz, h, tint, vines, scale));
-        while (lotusInstances.size() > 10) {
-            lotusInstances.remove(0);
         }
     }
 
@@ -274,9 +323,9 @@ public class KillEffect extends Module {
 
     public void render(VertexConsumerProvider immediate, Vec3d camPos) {
         if (!isEnabled()) {
-            if (!particles.isEmpty()) particles.clear();
-            if (!lotusInstances.isEmpty()) lotusInstances.clear();
+            if (!statueInstances.isEmpty()) statueInstances.clear();
             if (!inkSlashInstances.isEmpty()) inkSlashInstances.clear();
+            if (!particles.isEmpty()) particles.clear();
             recentAttacks.clear();
             deadEntities.clear();
             return;
@@ -312,20 +361,305 @@ public class KillEffect extends Module {
         VertexConsumer lightBuffer = immediate.getBuffer(RenderLayers.lightning());
         Vector3f lightDir = new Vector3f(0.35f, 0.90f, 0.25f).normalize();
 
-        // 1. Отрисовка эффекта Чернила Суми-э
+        // 1. Отрисовка Золотой Статуи (скольжение + плавление + лужа)
+        if (!statueInstances.isEmpty()) {
+            renderGoldenStatues(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
+        }
+
+        // 2. Отрисовка эффекта Чернила Суми-э
         if (!inkSlashInstances.isEmpty()) {
             renderInkSlashInstances(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
         }
 
-        // 2. Отрисовка осколков стекла
+        // 3. Отрисовка осколков стекла
         if (!particles.isEmpty()) {
             renderGlassParticles(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
         }
+    }
 
-        // 3. Отрисовка эффекта Лотоса
-        if (!lotusInstances.isEmpty()) {
-            renderLotusInstances(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
+    // =========================================================================
+    // Отрисовка и физика Золотой Статуи
+    // =========================================================================
+    private void renderGoldenStatues(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                     Vec3d camPos, Vector3f lightDir, float dt, MinecraftClient mc) {
+        Iterator<GoldenStatueInstance> it = statueInstances.iterator();
+        while (it.hasNext()) {
+            GoldenStatueInstance inst = it.next();
+            inst.age += dt;
+            if (inst.age >= inst.maxLife) {
+                it.remove();
+                continue;
+            }
+
+            // Физика скольжения по льду: пока статуя не расплавилась до конца (первые 1.2 сек)
+            if (inst.age < 1.25f) {
+                inst.x += inst.slideVx * dt;
+                inst.z += inst.slideVz * dt;
+
+                // Трение льда
+                float friction = (float) Math.exp(-1.35f * dt);
+                inst.slideVx *= friction;
+                inst.slideVz *= friction;
+
+                // Запоминаем финальное местоположение лужи, пока скользим
+                inst.puddleX = inst.x;
+                inst.puddleY = inst.y;
+                inst.puddleZ = inst.z;
+
+                // Срыв капель расплавленного золота на ходу
+                if (random.nextFloat() < 0.65f) {
+                    inst.spawnMeltingDroplet(random);
+                }
+            }
+
+            // Звук шипения тающего золота
+            if (inst.age >= 0.35f && !inst.soundPlayedMelt) {
+                inst.soundPlayedMelt = true;
+                if (sound.isEnabled() && mc.world != null) {
+                    mc.world.playSoundClient(inst.x, inst.y, inst.z,
+                            SoundEvents.BLOCK_CANDLE_EXTINGUISH, SoundCategory.PLAYERS,
+                            1.1f, 1.4f, false);
+                }
+            }
+
+            // Коэффициент плавления (от 0.0 до 1.0)
+            float meltProg = MathHelper.clamp((inst.age - 0.20f) / 1.05f, 0.0f, 1.0f);
+            // Высота сжимается вниз, ширина у основания растекается
+            float yScale = (float) (Math.pow(1.0f - meltProg, 1.4) * 0.96f + 0.04f);
+            float xzSpread = 1.0f + meltProg * 0.40f;
+
+            // 1. Отрисовка самой тающей 3D золотой статуи
+            if (meltProg < 0.98f) {
+                renderMeltingStatueModel(quadBuf, lightBuf, inst, camPos, lightDir, yScale, xzSpread);
+            }
+
+            // 2. Отрисовка неподвижной золотой лужи на земле
+            renderGoldenPuddle(quadBuf, lightBuf, inst, camPos, meltProg);
+
+            // 3. Обновление и отрисовка капель жидкого золота
+            inst.updateAndRenderDroplets(quadBuf, lightBuf, camPos, dt);
         }
+    }
+
+    private void renderMeltingStatueModel(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                         GoldenStatueInstance inst, Vec3d camPos, Vector3f lightDir,
+                                         float yScale, float xzSpread) {
+        // Положение и поворот тела
+        Matrix4f bodyMat = new Matrix4f()
+                .rotateY((float) Math.toRadians(-inst.yaw));
+
+        // Матрица трансформации торса
+        Matrix4f torsoMat = new Matrix4f(bodyMat);
+        if (inst.isSneaking) {
+            torsoMat.rotateX((float) Math.toRadians(25.0f));
+        }
+
+        // Цвета золота: 24K золотой отлив с глубоким амбровым затемнением
+        int baseCol = inst.tintColor;
+
+        // Торс (ширина 0.5, высота 0.75, глубина 0.25)
+        float torsoBaseY = 0.70f * yScale;
+        float torsoTopY = torsoBaseY + 0.75f * yScale;
+        emitGoldBox(quadBuf, camPos, inst.x, inst.y, inst.z, torsoMat,
+                -0.25f * xzSpread, torsoBaseY, -0.125f * xzSpread,
+                0.25f * xzSpread, torsoTopY, 0.125f * xzSpread,
+                baseCol, lightDir, 255);
+
+        // Голова (0.5 x 0.5 x 0.5), поворачивается по headYaw и pitch
+        Matrix4f headMat = new Matrix4f(bodyMat);
+        headMat.translate(0, torsoTopY, 0);
+        headMat.rotateY((float) Math.toRadians(-(inst.headYaw - inst.yaw)));
+        headMat.rotateX((float) Math.toRadians(-inst.pitch));
+
+        float headH = 0.50f * yScale;
+        emitGoldBox(quadBuf, camPos, inst.x, inst.y, inst.z, headMat,
+                -0.25f * xzSpread, 0, -0.25f * xzSpread,
+                0.25f * xzSpread, headH, 0.25f * xzSpread,
+                baseCol, lightDir, 255);
+
+        // Правая рука (сохраняет зафиксированный угол атаки/бега)
+        Matrix4f rArmMat = new Matrix4f(bodyMat);
+        rArmMat.translate(-0.375f * xzSpread, torsoTopY - 0.08f * yScale, 0);
+        rArmMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.rArmPitch)));
+        rArmMat.rotateZ((float) Math.toRadians(-Math.toDegrees(inst.rArmRoll)));
+
+        emitGoldBox(quadBuf, camPos, inst.x, inst.y, inst.z, rArmMat,
+                -0.125f * xzSpread, -0.72f * yScale, -0.125f * xzSpread,
+                0.125f * xzSpread, 0.03f * yScale, 0.125f * xzSpread,
+                baseCol, lightDir, 255);
+
+        // Левая рука
+        Matrix4f lArmMat = new Matrix4f(bodyMat);
+        lArmMat.translate(0.375f * xzSpread, torsoTopY - 0.08f * yScale, 0);
+        lArmMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.lArmPitch)));
+
+        emitGoldBox(quadBuf, camPos, inst.x, inst.y, inst.z, lArmMat,
+                -0.125f * xzSpread, -0.72f * yScale, -0.125f * xzSpread,
+                0.125f * xzSpread, 0.03f * yScale, 0.125f * xzSpread,
+                baseCol, lightDir, 255);
+
+        // Правая нога (зафиксированная в шаге)
+        Matrix4f rLegMat = new Matrix4f(bodyMat);
+        rLegMat.translate(-0.125f * xzSpread, torsoBaseY, 0);
+        rLegMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.rLegPitch)));
+
+        emitGoldBox(quadBuf, camPos, inst.x, inst.y, inst.z, rLegMat,
+                -0.125f * xzSpread, -0.70f * yScale, -0.125f * xzSpread,
+                0.125f * xzSpread, 0, 0.125f * xzSpread,
+                baseCol, lightDir, 255);
+
+        // Левая нога
+        Matrix4f lLegMat = new Matrix4f(bodyMat);
+        lLegMat.translate(0.125f * xzSpread, torsoBaseY, 0);
+        lLegMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.lLegPitch)));
+
+        emitGoldBox(quadBuf, camPos, inst.x, inst.y, inst.z, lLegMat,
+                -0.125f * xzSpread, -0.70f * yScale, -0.125f * xzSpread,
+                0.125f * xzSpread, 0, 0.125f * xzSpread,
+                baseCol, lightDir, 255);
+    }
+
+    private void renderGoldenPuddle(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                    GoldenStatueInstance inst, Vec3d camPos, float meltProg) {
+        if (meltProg < 0.15f) return;
+
+        // Плавное появление лужи по мере таяния статуи
+        float puddleAppear = MathHelper.clamp((meltProg - 0.15f) / 0.85f, 0.0f, 1.0f);
+
+        // Плавное исчезновение лужи после завершения таяния (после 1.4 сек)
+        float fade = 1.0f;
+        if (inst.age > 1.45f) {
+            fade = MathHelper.clamp(1.0f - (inst.age - 1.45f) / (inst.maxLife - 1.45f), 0.0f, 1.0f);
+        }
+        if (fade <= 0.005f) return;
+
+        // Лужа НЕ ДВИГАЕТСЯ: зафиксирована в inst.puddleX, inst.puddleY, inst.puddleZ
+        float px = (float) (inst.puddleX - camPos.x);
+        float py = (float) (inst.puddleY + 0.015 - camPos.y);
+        float pz = (float) (inst.puddleZ - camPos.z);
+
+        float radius = (0.55f + puddleAppear * 0.40f);
+        int segments = 22;
+
+        int tint = inst.tintColor;
+        int tr = (tint >> 16) & 0xFF;
+        int tg = (tint >> 8) & 0xFF;
+        int tb = tint & 0xFF;
+
+        int centerAlpha = (int) (245 * fade);
+        int rimAlpha = (int) (220 * fade);
+
+        // Отрисовка жидкого зеркального золота на земле
+        for (int i = 0; i < segments; i++) {
+            double a0 = (i / (double) segments) * Math.PI * 2.0;
+            double a1 = ((i + 1) / (double) segments) * Math.PI * 2.0;
+
+            // Волнообразная кромка лужи
+            float r0 = radius * (1.0f + 0.08f * (float) Math.sin(a0 * 5.0 + inst.age * 3.0));
+            float r1 = radius * (1.0f + 0.08f * (float) Math.sin(a1 * 5.0 + inst.age * 3.0));
+
+            float x0 = px + (float) Math.cos(a0) * r0;
+            float z0 = pz + (float) Math.sin(a0) * r0;
+            float x1 = px + (float) Math.cos(a1) * r1;
+            float z1 = pz + (float) Math.sin(a1) * r1;
+
+            // Центр лужи (яркое полированное золото)
+            quadBuf.vertex(px, py, pz).color(255, 235, 120, centerAlpha);
+            quadBuf.vertex(x0, py, z0).color(tr, tg, tb, rimAlpha);
+            quadBuf.vertex(x1, py, z1).color(tr, tg, tb, rimAlpha);
+            quadBuf.vertex(px, py, pz).color(255, 235, 120, centerAlpha);
+
+            // Светящаяся кромка расплавленного золота
+            float glowR0 = r0 * 1.10f;
+            float glowR1 = r1 * 1.10f;
+            float gx0 = px + (float) Math.cos(a0) * glowR0;
+            float gz0 = pz + (float) Math.sin(a0) * glowR0;
+            float gx1 = px + (float) Math.cos(a1) * glowR1;
+            float gz1 = pz + (float) Math.sin(a1) * glowR1;
+
+            lightBuf.vertex(x0, py + 0.005f, z0).color(tr, tg, tb, (int) (180 * fade));
+            lightBuf.vertex(gx0, py + 0.005f, gz0).color(tr, tg, tb, 0);
+            lightBuf.vertex(gx1, py + 0.005f, gz1).color(tr, tg, tb, 0);
+            lightBuf.vertex(x1, py + 0.005f, z1).color(tr, tg, tb, (int) (180 * fade));
+        }
+    }
+
+    private static void emitGoldBox(VertexConsumer buf, Vec3d camPos,
+                                    double wx, double wy, double wz, Matrix4f mat,
+                                    float x0, float y0, float z0, float x1, float y1, float z1,
+                                    int tintColor, Vector3f lightDir, int alpha) {
+        // Front (+Z)
+        emitGoldFace(buf, camPos, wx, wy, wz, mat, lightDir, tintColor, alpha,
+                x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1, 0, 0, 1);
+        // Back (-Z)
+        emitGoldFace(buf, camPos, wx, wy, wz, mat, lightDir, tintColor, alpha,
+                x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0, 0, 0, -1);
+        // Top (+Y)
+        emitGoldFace(buf, camPos, wx, wy, wz, mat, lightDir, tintColor, alpha,
+                x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0, 0, 1, 0);
+        // Bottom (-Y)
+        emitGoldFace(buf, camPos, wx, wy, wz, mat, lightDir, tintColor, alpha,
+                x0, y0, z1, x0, y0, z0, x1, y0, z0, x1, y0, z1, 0, -1, 0);
+        // Left (-X)
+        emitGoldFace(buf, camPos, wx, wy, wz, mat, lightDir, tintColor, alpha,
+                x0, y0, z0, x0, y0, z1, x0, y1, z1, x0, y1, z0, -1, 0, 0);
+        // Right (+X)
+        emitGoldFace(buf, camPos, wx, wy, wz, mat, lightDir, tintColor, alpha,
+                x1, y0, z1, x1, y0, z0, x1, y1, z0, x1, y1, z1, 1, 0, 0);
+    }
+
+    private static void emitGoldFace(VertexConsumer buf, Vec3d camPos,
+                                     double wx, double wy, double wz, Matrix4f mat,
+                                     Vector3f lightDir, int tintColor, int alpha,
+                                     float lx0, float ly0, float lz0,
+                                     float lx1, float ly1, float lz1,
+                                     float lx2, float ly2, float lz2,
+                                     float lx3, float ly3, float lz3,
+                                     float nx, float ny, float nz) {
+        Vector3f p0 = new Vector3f(lx0, ly0, lz0).mulPosition(mat);
+        Vector3f p1 = new Vector3f(lx1, ly1, lz1).mulPosition(mat);
+        Vector3f p2 = new Vector3f(lx2, ly2, lz2).mulPosition(mat);
+        Vector3f p3 = new Vector3f(lx3, ly3, lz3).mulPosition(mat);
+
+        Vector3f normal = new Vector3f(nx, ny, nz).mulDirection(mat).normalize();
+
+        float vx0 = (float) (wx + p0.x - camPos.x);
+        float vy0 = (float) (wy + p0.y - camPos.y);
+        float vz0 = (float) (wz + p0.z - camPos.z);
+
+        float vx1 = (float) (wx + p1.x - camPos.x);
+        float vy1 = (float) (wy + p1.y - camPos.y);
+        float vz1 = (float) (wz + p1.z - camPos.z);
+
+        float vx2 = (float) (wx + p2.x - camPos.x);
+        float vy2 = (float) (wy + p2.y - camPos.y);
+        float vz2 = (float) (wz + p2.z - camPos.z);
+
+        float vx3 = (float) (wx + p3.x - camPos.x);
+        float vy3 = (float) (wy + p3.y - camPos.y);
+        float vz3 = (float) (wz + p3.z - camPos.z);
+
+        // Металлический расчет Блинна-Фонга и диффузного золота
+        float dotLight = Math.max(0.0f, normal.dot(lightDir));
+        float diff = 0.52f + 0.48f * dotLight;
+
+        Vector3f toCam = new Vector3f(-vx0, -vy0, -vz0).normalize();
+        Vector3f halfVec = new Vector3f(lightDir).add(toCam).normalize();
+        float spec = (float) Math.pow(Math.max(0.0f, normal.dot(halfVec)), 16.0);
+        float fresnel = (float) Math.pow(1.0f - Math.abs(normal.dot(toCam)), 2.5);
+
+        int tr = (tintColor >> 16) & 0xFF;
+        int tg = (tintColor >> 8) & 0xFF;
+        int tb = tintColor & 0xFF;
+
+        int r = MathHelper.clamp((int) (tr * diff + 240.0f * spec + 130.0f * fresnel), 0, 255);
+        int g = MathHelper.clamp((int) (tg * diff + 210.0f * spec + 90.0f * fresnel), 0, 255);
+        int b = MathHelper.clamp((int) (tb * diff + 110.0f * spec + 30.0f * fresnel), 0, 255);
+
+        buf.vertex(vx0, vy0, vz0).color(r, g, b, alpha);
+        buf.vertex(vx1, vy1, vz1).color(r, g, b, alpha);
+        buf.vertex(vx2, vy2, vz2).color(r, g, b, alpha);
+        buf.vertex(vx3, vy3, vz3).color(r, g, b, alpha);
     }
 
     // =========================================================================
@@ -342,7 +676,6 @@ public class KillEffect extends Module {
                 continue;
             }
 
-            // Звук разрубания плоти и всплеска туши
             if (inst.age >= 0.12f && !inst.soundPlayedImpact) {
                 inst.soundPlayedImpact = true;
                 if (sound.isEnabled() && mc.world != null) {
@@ -356,16 +689,9 @@ public class KillEffect extends Module {
                 inst.spawnInkSplatter(random);
             }
 
-            // 1. Отрисовка 1:1 распадающейся текстурированной модельки игрока
             render1to1PlayerModel(inst, camPos);
-
-            // 2. Отрисовка среза (чернильная поверхность раны)
             renderSeveredWoundSurfaces(quadBuf, lightBuf, inst, camPos);
-
-            // 3. Отрисовка динамического каллиграфического мазка-разреза в воздухе
             renderCalligraphicBrushSlash(quadBuf, lightBuf, inst, camPos);
-
-            // 4. Обновление и отрисовка капель туши и дымки
             inst.updateAndRenderInkParticles(quadBuf, lightBuf, camPos, dt);
         }
     }
@@ -380,78 +706,59 @@ public class KillEffect extends Module {
         }
         if (fade <= 0.01f) return;
 
-        // Эффект растекания туши по текстуре: тело чернеет перед растворением
         int baseR = (int) MathHelper.lerp(dissolve, 255.0f, 25.0f);
         int baseG = (int) MathHelper.lerp(dissolve, 255.0f, 15.0f);
         int baseB = (int) MathHelper.lerp(dissolve, 255.0f, 20.0f);
         int alpha = (int) (255 * fade);
 
-        // Расчет смещения верхней рассеченной половины
         float slideProgress = MathHelper.clamp((age - 0.12f) / 0.80f, 0.0f, 1.0f);
-        // Кубическое плавное соскальзывание
         float slideEase = (float) Math.pow(slideProgress, 1.6);
         float upperSlideX = slideEase * 0.42f * inst.scale;
         float upperSlideY = -slideEase * 0.28f * inst.scale;
         float upperSlideZ = slideEase * 0.12f * inst.scale;
-        float upperTilt = slideEase * 18.0f; // Наклон верхней части тела в градусах
-
-        // Легкое оседание нижней половины тела на колени
+        float upperTilt = slideEase * 18.0f;
         float lowerDropY = -slideEase * 0.08f * inst.scale;
 
-        // Построение вертексов модельки
         try (BufferAllocator alloc = new BufferAllocator(16384)) {
             BufferBuilder buf = new BufferBuilder(alloc, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
 
-            // -------------------------------------------------------------
-            // ВЕРХНЯЯ ПОЛОВИНА (Голова, верх груди, левая и правая рука)
-            // -------------------------------------------------------------
             Matrix4f upperMat = new Matrix4f()
                     .translate(upperSlideX, upperSlideY, upperSlideZ)
                     .rotateZ((float) Math.toRadians(-upperTilt))
                     .rotateY((float) Math.toRadians(-inst.yaw));
 
-            // Голова (8x8x8 px)
             emitStandardBox(buf, camPos, inst.x, inst.y, inst.z, upperMat,
                     -0.25f, 1.42f, -0.25f, 0.25f, 1.92f, 0.25f,
                     0, 0, 8, 8, 8, baseR, baseG, baseB, alpha);
 
-            // Верхняя часть торса (срезанная по диагонали, 8x6x4 px)
             emitStandardBox(buf, camPos, inst.x, inst.y, inst.z, upperMat,
                     -0.25f, 1.05f, -0.125f, 0.25f, 1.42f, 0.125f,
                     16, 16, 8, 6, 4, baseR, baseG, baseB, alpha);
 
-            // Правая рука (4x12x4 px)
             float armW = inst.isSlim ? 0.1875f : 0.25f;
             float rArmMinX = -0.25f - armW;
             emitStandardBox(buf, camPos, inst.x, inst.y, inst.z, upperMat,
                     rArmMinX, 0.70f, -0.125f, -0.25f, 1.42f, 0.125f,
                     40, 16, 4, 12, 4, baseR, baseG, baseB, alpha);
 
-            // Левая рука (4x12x4 px)
             float lArmMaxX = 0.25f + armW;
             emitStandardBox(buf, camPos, inst.x, inst.y, inst.z, upperMat,
                     0.25f, 0.70f, -0.125f, lArmMaxX, 1.42f, 0.125f,
                     32, 48, 4, 12, 4, baseR, baseG, baseB, alpha);
 
-            // -------------------------------------------------------------
-            // НИЖНЯЯ ПОЛОВИНА (Низ торса, левая и правая нога)
-            // -------------------------------------------------------------
             Matrix4f lowerMat = new Matrix4f()
                     .translate(0, lowerDropY, 0)
                     .rotateX((float) Math.toRadians(slideEase * 4.0f))
                     .rotateY((float) Math.toRadians(-inst.yaw));
 
-            // Нижняя часть торса (8x6x4 px)
             emitStandardBox(buf, camPos, inst.x, inst.y, inst.z, lowerMat,
                     -0.25f, 0.70f, -0.125f, 0.25f, 1.05f, 0.125f,
                     16, 22, 8, 6, 4, baseR, baseG, baseB, alpha);
 
-            // Правая нога (4x12x4 px)
             emitStandardBox(buf, camPos, inst.x, inst.y, inst.z, lowerMat,
                     -0.25f, 0.00f, -0.125f, 0.00f, 0.70f, 0.125f,
                     0, 16, 4, 12, 4, baseR, baseG, baseB, alpha);
 
-            // Левая нога (4x12x4 px)
             emitStandardBox(buf, camPos, inst.x, inst.y, inst.z, lowerMat,
                     0.00f, 0.00f, -0.125f, 0.25f, 0.70f, 0.125f,
                     16, 48, 4, 12, 4, baseR, baseG, baseB, alpha);
@@ -484,7 +791,6 @@ public class KillEffect extends Module {
         int tb = tint & 0xFF;
         int alpha = (int) (255 * fade);
 
-        // 1. Поверхность среза на верхней соскальзывающей половине (залитая смолянисто-черной тушью)
         Matrix4f upperMat = new Matrix4f()
                 .translate(upperSlideX, upperSlideY, upperSlideZ)
                 .rotateZ((float) Math.toRadians(-upperTilt))
@@ -494,7 +800,6 @@ public class KillEffect extends Module {
                 -0.25f, 1.05f, -0.125f, 0.25f, 1.05f, 0.125f,
                 tr, tg, tb, alpha);
 
-        // 2. Поверхность среза на нижней половине тела
         Matrix4f lowerMat = new Matrix4f()
                 .translate(0, -slideEase * 0.08f * inst.scale, 0)
                 .rotateX((float) Math.toRadians(slideEase * 4.0f))
@@ -530,13 +835,11 @@ public class KillEffect extends Module {
         float vy3 = (float) (wy + p3.y - camPos.y);
         float vz3 = (float) (wz + p3.z - camPos.z);
 
-        // Чернильная плоть
         quadBuf.vertex(vx0, vy0, vz0).color(12, 4, 8, a);
         quadBuf.vertex(vx1, vy1, vz1).color(12, 4, 8, a);
         quadBuf.vertex(vx2, vy2, vz2).color(12, 4, 8, a);
         quadBuf.vertex(vx3, vy3, vz3).color(12, 4, 8, a);
 
-        // Пульсирующая алая каемка раны
         lightBuf.vertex(vx0, vy0 + 0.005f, vz0).color(tr, tg, tb, a);
         lightBuf.vertex(vx1, vy1 + 0.005f, vz1).color(tr, tg, tb, a);
         lightBuf.vertex(vx2, vy2 + 0.005f, vz2).color(tr, tg, tb, a);
@@ -575,15 +878,13 @@ public class KillEffect extends Module {
         int count = Math.max(2, (int) (segs * maxU));
 
         for (int i = 0; i <= count; i++) {
-            float u = (i / (float) segs) * 2.0f - 1.0f; // от -1.0 до +1.0
+            float u = (i / (float) segs) * 2.0f - 1.0f;
             float s = u * (totalLen * 0.5f);
 
-            // Диагональная дуга каллиграфического мазка
             float lx = s;
             float ly = 1.05f * inst.scale - s * 0.32f + (1.0f - u * u) * 0.14f * inst.scale;
             float lz = (float) Math.sin(u * 2.5) * 0.18f * inst.scale;
 
-            // Поворот по направлению взгляда врага
             float rx = lx * cosYaw - lz * sinYaw;
             float rz = lx * sinYaw + lz * cosYaw;
 
@@ -591,7 +892,6 @@ public class KillEffect extends Module {
             float wy = (float) (inst.y + ly - camPos.y);
             float wz = (float) (inst.z + rz - camPos.z);
 
-            // Ширина каллиграфической кисти (широкая в центре, тонкий хвостик на концах)
             float brushW = (float) (0.22f * Math.pow(Math.max(0.0, 1.0 - u * u), 0.65) * inst.scale);
             float glintW = brushW * 0.18f;
 
@@ -604,13 +904,11 @@ public class KillEffect extends Module {
             if (prevCoreL != null) {
                 int inkAlpha = (int) (240 * fade);
 
-                // Черный шлейф туши
                 quadBuf.vertex(prevCoreL.x, prevCoreL.y, prevCoreL.z).color(10, 4, 8, inkAlpha);
                 quadBuf.vertex(coreL.x, coreL.y, coreL.z).color(10, 4, 8, inkAlpha);
                 quadBuf.vertex(coreR.x, coreR.y, coreR.z).color(10, 4, 8, inkAlpha);
                 quadBuf.vertex(prevCoreR.x, prevCoreR.y, prevCoreR.z).color(10, 4, 8, inkAlpha);
 
-                // Светящаяся алая линия клинка в сердцевине
                 int bladeAlpha = (int) (255 * fade);
                 lightBuf.vertex(prevGlintL.x, prevGlintL.y, prevGlintL.z).color(tr, tg, tb, bladeAlpha);
                 lightBuf.vertex(glintL.x, glintL.y, glintL.z).color(tr, tg, tb, bladeAlpha);
@@ -624,7 +922,6 @@ public class KillEffect extends Module {
             prevGlintR = glintR;
         }
 
-        // Вспышка в точке соприкосновения клинка
         if (age < 0.25f) {
             float flashAlpha = (1.0f - age / 0.25f);
             float fx = (float) (inst.x - camPos.x);
@@ -639,14 +936,12 @@ public class KillEffect extends Module {
         }
     }
 
-    // Вспомогательный метод для генерации точных полигонов коробки модели со скином
     private static void emitStandardBox(BufferBuilder buf, Vec3d camPos,
                                         double wx, double wy, double wz, Matrix4f mat,
                                         float minX, float minY, float minZ, float maxX, float maxY, float maxZ,
                                         int u, int v, int w, int h, int d,
                                         int cr, int cg, int cb, int ca) {
         float f = 64.0f;
-        // UV грани:
         float uRight0 = u / f;
         float uRight1 = (u + d) / f;
         float uFront0 = (u + d) / f;
@@ -713,299 +1008,6 @@ public class KillEffect extends Module {
         float y = (float) (wy + p.y - camPos.y);
         float z = (float) (wz + p.z - camPos.z);
         buf.vertex(x, y, z).texture(u, v).color(r, g, b, a);
-    }
-
-    // =========================================================================
-    // Отрисовка и обновление Лотоса
-    // =========================================================================
-    private void renderLotusInstances(VertexConsumer quadBuf, VertexConsumer lightBuf,
-                                      Vec3d camPos, Vector3f lightDir, float dt, MinecraftClient mc) {
-        Iterator<LotusKillInstance> it = lotusInstances.iterator();
-        while (it.hasNext()) {
-            LotusKillInstance inst = it.next();
-            inst.age += dt;
-            if (inst.age >= inst.duration) {
-                it.remove();
-                continue;
-            }
-
-            if (inst.age >= 0.45f && !inst.soundPlayedPhase2) {
-                inst.soundPlayedPhase2 = true;
-                if (sound.isEnabled() && mc.world != null) {
-                    mc.world.playSoundClient(inst.x, inst.y + inst.entityHeight * 0.5, inst.z,
-                            SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME, SoundCategory.PLAYERS,
-                            1.3f, 0.70f, false);
-                    mc.world.playSoundClient(inst.x, inst.y + inst.entityHeight * 0.5, inst.z,
-                            SoundEvents.BLOCK_VINE_PLACE, SoundCategory.PLAYERS,
-                            1.1f, 0.75f, false);
-                }
-            }
-
-            if (inst.age >= 0.85f && !inst.soundPlayedPhase3) {
-                inst.soundPlayedPhase3 = true;
-                if (sound.isEnabled() && mc.world != null) {
-                    mc.world.playSoundClient(inst.x, inst.y, inst.z,
-                            SoundEvents.ENTITY_WARDEN_DIG, SoundCategory.PLAYERS,
-                            1.2f, 1.35f, false);
-                    mc.world.playSoundClient(inst.x, inst.y, inst.z,
-                            SoundEvents.BLOCK_ROOTED_DIRT_BREAK, SoundCategory.PLAYERS,
-                            1.1f, 0.55f, false);
-                }
-                inst.spawnBurstPetals(random);
-            }
-
-            float dragDown = 0.0f;
-            if (inst.age >= 0.85f) {
-                float dragProg = MathHelper.clamp((inst.age - 0.85f) / 0.85f, 0.0f, 1.0f);
-                dragDown = (float) (Math.pow(dragProg, 2.4) * (inst.entityHeight + 1.6) * inst.scale);
-            }
-            inst.currentDrag = dragDown;
-
-            renderAbyssalRift(quadBuf, lightBuf, inst, camPos);
-            renderEntanglingVines(quadBuf, inst, camPos, lightDir);
-            renderLotusFlower(quadBuf, lightBuf, inst, camPos, lightDir);
-            inst.updateAndRenderParticles(quadBuf, lightBuf, camPos, lightDir, dt);
-        }
-    }
-
-    private void renderAbyssalRift(VertexConsumer quadBuf, VertexConsumer lightBuf, LotusKillInstance inst, Vec3d camPos) {
-        float age = inst.age;
-        float openFactor = MathHelper.clamp(age / 0.40f, 0.0f, 1.0f);
-        float fade = 1.0f;
-        if (age > 1.8f) {
-            fade = MathHelper.clamp(1.0f - (age - 1.8f) / 0.6f, 0.0f, 1.0f);
-        }
-        if (fade <= 0.01f || openFactor <= 0.01f) return;
-
-        float radius = 0.95f * inst.scale * openFactor;
-        float groundY = (float) (inst.y + 0.02 - camPos.y);
-        float cx = (float) (inst.x - camPos.x);
-        float cz = (float) (inst.z - camPos.z);
-
-        int tint = inst.tintColor;
-        int tr = (tint >> 16) & 0xFF;
-        int tg = (tint >> 8) & 0xFF;
-        int tb = tint & 0xFF;
-
-        int segments = 18;
-        float pulse = 0.85f + 0.15f * (float) Math.sin(age * 12.0);
-        int alphaVoid = (int) (220 * fade * pulse);
-        int alphaEdge = (int) (255 * fade * pulse);
-
-        for (int i = 0; i < segments; i++) {
-            double a0 = (i / (double) segments) * Math.PI * 2.0;
-            double a1 = ((i + 1) / (double) segments) * Math.PI * 2.0;
-
-            float x0 = cx + (float) Math.cos(a0) * radius;
-            float z0 = cz + (float) Math.sin(a0) * radius;
-            float x1 = cx + (float) Math.cos(a1) * radius;
-            float z1 = cz + (float) Math.sin(a1) * radius;
-
-            quadBuf.vertex(cx, groundY, cz).color(20, 4, 8, alphaVoid);
-            quadBuf.vertex(x0, groundY, z0).color(tr / 3, tg / 3, tb / 3, alphaEdge);
-            quadBuf.vertex(x1, groundY, z1).color(tr / 3, tg / 3, tb / 3, alphaEdge);
-            quadBuf.vertex(cx, groundY, cz).color(20, 4, 8, alphaVoid);
-
-            float edgeR = radius * 1.14f;
-            float ex0 = cx + (float) Math.cos(a0) * edgeR;
-            float ez0 = cz + (float) Math.sin(a0) * edgeR;
-            float ex1 = cx + (float) Math.cos(a1) * edgeR;
-            float ez1 = cz + (float) Math.sin(a1) * edgeR;
-
-            lightBuf.vertex(x0, groundY + 0.005f, z0).color(tr, tg, tb, alphaEdge);
-            lightBuf.vertex(ex0, groundY + 0.005f, ez0).color(tr, tg, tb, 0);
-            lightBuf.vertex(ex1, groundY + 0.005f, ez1).color(tr, tg, tb, 0);
-            lightBuf.vertex(x1, groundY + 0.005f, z1).color(tr, tg, tb, alphaEdge);
-        }
-    }
-
-    private void renderEntanglingVines(VertexConsumer quadBuf, LotusKillInstance inst, Vec3d camPos, Vector3f lightDir) {
-        float age = inst.age;
-        float grow = MathHelper.clamp(age / 0.45f, 0.0f, 1.0f);
-        grow = (float) Math.sin(grow * Math.PI * 0.5);
-
-        float fade = 1.0f;
-        if (age > 1.8f) {
-            fade = MathHelper.clamp(1.0f - (age - 1.8f) / 0.6f, 0.0f, 1.0f);
-        }
-        if (fade <= 0.01f || grow <= 0.01f) return;
-
-        int numVines = inst.vineCount;
-        int segCount = 26;
-        int tint = inst.tintColor;
-        int tr = (tint >> 16) & 0xFF;
-        int tg = (tint >> 8) & 0xFF;
-        int tb = tint & 0xFF;
-
-        float targetH = (float) inst.entityHeight * inst.scale;
-
-        for (int v = 0; v < numVines; v++) {
-            float baseAngle = (float) ((v / (double) numVines) * Math.PI * 2.0);
-            float dir = (v % 2 == 0) ? 1.0f : -1.0f;
-            float maxU = grow;
-
-            Vector3f prevPos = null;
-            Vector3f prevSide1 = null;
-            Vector3f prevSide2 = null;
-
-            int visibleSegs = Math.max(2, (int) (segCount * maxU));
-
-            for (int i = 0; i <= visibleSegs; i++) {
-                float u = (i / (float) segCount);
-                if (u > maxU) u = maxU;
-
-                float theta = baseAngle + u * (2.8f * (float) Math.PI) * dir;
-                float r;
-                if (u < 0.18f) {
-                    float t0 = u / 0.18f;
-                    r = MathHelper.lerp(t0, 0.85f * inst.scale, 0.33f * inst.scale);
-                } else if (u < 0.82f) {
-                    r = 0.33f * inst.scale + 0.03f * (float) Math.sin(u * 14.0f + v * 2.0f);
-                } else {
-                    float t1 = (u - 0.82f) / 0.18f;
-                    r = MathHelper.lerp(t1, 0.33f * inst.scale, 0.44f * inst.scale);
-                }
-
-                float currY = (float) (inst.y + (u * 0.92f) * targetH - inst.currentDrag);
-                float currX = (float) (inst.x + Math.cos(theta) * r);
-                float currZ = (float) (inst.z + Math.sin(theta) * r);
-
-                Vector3f currPos = new Vector3f(currX - (float) camPos.x, currY - (float) camPos.y, currZ - (float) camPos.z);
-                float thick = MathHelper.lerp(u, 0.065f, 0.022f) * inst.scale;
-
-                if (prevPos != null) {
-                    Vector3f forward = new Vector3f(currPos).sub(prevPos);
-                    if (forward.lengthSquared() > 0.00001f) {
-                        forward.normalize();
-                    } else {
-                        forward = new Vector3f(0, 1, 0);
-                    }
-
-                    Vector3f side1 = new Vector3f(forward).cross(new Vector3f(0, 1, 0));
-                    if (side1.lengthSquared() < 0.0001f) {
-                        side1 = new Vector3f(forward).cross(new Vector3f(1, 0, 0));
-                    }
-                    side1.normalize().mul(thick);
-
-                    Vector3f side2 = new Vector3f(forward).cross(side1).normalize().mul(thick);
-
-                    if (prevSide1 == null) {
-                        prevSide1 = side1;
-                        prevSide2 = side2;
-                    }
-
-                    float dotLight = Math.abs(side1.dot(lightDir));
-                    float diff = 0.60f + 0.40f * dotLight;
-
-                    int barkR = (int) (MathHelper.lerp(u, 35, tr) * diff);
-                    int barkG = (int) (MathHelper.lerp(u, 8, tg) * diff);
-                    int barkB = (int) (MathHelper.lerp(u, 14, tb) * diff);
-                    int alpha = (int) (245 * fade);
-
-                    quadBuf.vertex(prevPos.x - prevSide1.x, prevPos.y - prevSide1.y, prevPos.z - prevSide1.z).color(barkR, barkG, barkB, alpha);
-                    quadBuf.vertex(currPos.x - side1.x, currPos.y - side1.y, currPos.z - side1.z).color(barkR, barkG, barkB, alpha);
-                    quadBuf.vertex(currPos.x + side1.x, currPos.y + side1.y, currPos.z + side1.z).color(barkR, barkG, barkB, alpha);
-                    quadBuf.vertex(prevPos.x + prevSide1.x, prevPos.y + prevSide1.y, prevPos.z + prevSide1.z).color(barkR, barkG, barkB, alpha);
-
-                    quadBuf.vertex(prevPos.x - prevSide2.x, prevPos.y - prevSide2.y, prevPos.z - prevSide2.z).color(barkR, barkG, barkB, alpha);
-                    quadBuf.vertex(currPos.x - side2.x, currPos.y - side2.y, currPos.z - side2.z).color(barkR, barkG, barkB, alpha);
-                    quadBuf.vertex(currPos.x + side2.x, currPos.y + side2.y, currPos.z + side2.z).color(barkR, barkG, barkB, alpha);
-                    quadBuf.vertex(prevPos.x + prevSide2.x, prevPos.y + prevSide2.y, prevPos.z + prevSide2.z).color(barkR, barkG, barkB, alpha);
-
-                    if (i % 5 == 0 && i < visibleSegs - 2) {
-                        Vector3f thornOut = new Vector3f((float) Math.cos(theta), 0.15f, (float) Math.sin(theta)).normalize().mul(thick * 2.8f);
-                        Vector3f thornTip = new Vector3f(currPos).add(thornOut);
-
-                        quadBuf.vertex(currPos.x - side1.x, currPos.y - side1.y, currPos.z - side1.z).color(tr, tg, tb, alpha);
-                        quadBuf.vertex(currPos.x + side1.x, currPos.y + side1.y, currPos.z + side1.z).color(tr, tg, tb, alpha);
-                        quadBuf.vertex(thornTip.x, thornTip.y, thornTip.z).color(255, 230, 240, alpha);
-                        quadBuf.vertex(thornTip.x, thornTip.y, thornTip.z).color(255, 230, 240, alpha);
-                    }
-
-                    prevSide1 = side1;
-                    prevSide2 = side2;
-                }
-
-                prevPos = currPos;
-            }
-        }
-    }
-
-    private void renderLotusFlower(VertexConsumer quadBuf, VertexConsumer lightBuf,
-                                  LotusKillInstance inst, Vec3d camPos, Vector3f lightDir) {
-        float age = inst.age;
-        if (age < 0.35f) return;
-
-        float bloomFactor = MathHelper.clamp((age - 0.35f) / 0.40f, 0.0f, 1.0f);
-        float easeBloom = (float) (Math.sin(bloomFactor * Math.PI * 0.5) * (1.0 + 0.12 * Math.sin(bloomFactor * Math.PI)));
-
-        float fade = 1.0f;
-        if (age > 1.8f) {
-            fade = MathHelper.clamp(1.0f - (age - 1.8f) / 0.6f, 0.0f, 1.0f);
-        }
-        if (fade <= 0.01f || easeBloom <= 0.01f) return;
-
-        float flowerY = (float) (inst.y + inst.entityHeight * 0.55 * inst.scale - inst.currentDrag);
-        float fcx = (float) (inst.x - camPos.x);
-        float fcy = (float) (flowerY - camPos.y);
-        float fcz = (float) (inst.z - camPos.z);
-
-        int tint = inst.tintColor;
-        int tr = (tint >> 16) & 0xFF;
-        int tg = (tint >> 8) & 0xFF;
-        int tb = tint & 0xFF;
-        int alpha = (int) (245 * fade);
-
-        int petalCount = 12;
-        float petalMaxLen = 0.52f * inst.scale * easeBloom;
-
-        for (int p = 0; p < petalCount; p++) {
-            float pAngle = (float) ((p / (double) petalCount) * Math.PI * 2.0);
-            float cos = (float) Math.cos(pAngle);
-            float sin = (float) Math.sin(pAngle);
-
-            Vector3f p0 = new Vector3f(fcx, fcy, fcz);
-            Vector3f p1 = new Vector3f(fcx + cos * (petalMaxLen * 0.30f), fcy + 0.08f * inst.scale, fcz + sin * (petalMaxLen * 0.30f));
-            Vector3f p2 = new Vector3f(fcx + cos * (petalMaxLen * 0.70f), fcy + 0.16f * inst.scale, fcz + sin * (petalMaxLen * 0.70f));
-            Vector3f p3 = new Vector3f(fcx + cos * petalMaxLen, fcy - 0.05f * inst.scale, fcz + sin * petalMaxLen);
-
-            float w1 = 0.06f * inst.scale;
-            float w2 = 0.09f * inst.scale;
-            Vector3f side = new Vector3f(-sin, 0, cos);
-
-            quadBuf.vertex(p0.x, p0.y, p0.z).color(tr / 2, tg / 2, tb / 2, alpha);
-            quadBuf.vertex(p1.x - side.x * w1, p1.y, p1.z - side.z * w1).color(tr, tg, tb, alpha);
-            quadBuf.vertex(p1.x + side.x * w1, p1.y, p1.z + side.z * w1).color(tr, tg, tb, alpha);
-            quadBuf.vertex(p0.x, p0.y, p0.z).color(tr / 2, tg / 2, tb / 2, alpha);
-
-            quadBuf.vertex(p1.x - side.x * w1, p1.y, p1.z - side.z * w1).color(tr, tg, tb, alpha);
-            quadBuf.vertex(p2.x - side.x * w2, p2.y, p2.z - side.z * w2).color(255, Math.min(255, tg + 60), Math.min(255, tb + 60), alpha);
-            quadBuf.vertex(p2.x + side.x * w2, p2.y, p2.z + side.z * w2).color(255, Math.min(255, tg + 60), Math.min(255, tb + 60), alpha);
-            quadBuf.vertex(p1.x + side.x * w1, p1.y, p1.z + side.z * w1).color(tr, tg, tb, alpha);
-
-            quadBuf.vertex(p2.x - side.x * w2, p2.y, p2.z - side.z * w2).color(255, Math.min(255, tg + 60), Math.min(255, tb + 60), alpha);
-            quadBuf.vertex(p3.x, p3.y, p3.z).color(255, 240, 245, alpha);
-            quadBuf.vertex(p3.x, p3.y, p3.z).color(255, 240, 245, alpha);
-            quadBuf.vertex(p2.x + side.x * w2, p2.y, p2.z + side.z * w2).color(255, Math.min(255, tg + 60), Math.min(255, tb + 60), alpha);
-        }
-
-        int stamenCount = 8;
-        float stamenLen = 0.38f * inst.scale * easeBloom;
-        for (int s = 0; s < stamenCount; s++) {
-            float sAngle = (float) ((s / (double) stamenCount) * Math.PI * 2.0 + 0.35);
-            float scos = (float) Math.cos(sAngle);
-            float ssin = (float) Math.sin(sAngle);
-
-            float tipX = fcx + scos * (stamenLen * 0.85f);
-            float tipY = fcy + (0.24f + 0.08f * (float) Math.sin(s * 2.0)) * inst.scale;
-            float tipZ = fcz + ssin * (stamenLen * 0.85f);
-
-            float ps = 0.025f * inst.scale;
-            lightBuf.vertex(tipX - ps, tipY - ps, tipZ).color(255, 255, 200, 0);
-            lightBuf.vertex(tipX + ps, tipY - ps, tipZ).color(255, 255, 200, 0);
-            lightBuf.vertex(tipX + ps, tipY + ps, tipZ).color(255, 255, 200, (int) (255 * fade));
-            lightBuf.vertex(tipX - ps, tipY + ps, tipZ).color(255, 255, 200, (int) (255 * fade));
-        }
     }
 
     // =========================================================================
@@ -1222,7 +1224,7 @@ public class KillEffect extends Module {
         buf.vertex(px - gw, py - gs, pz).color(255, 255, 255, 0);
         buf.vertex(px + gw, py - gs, pz).color(255, 255, 255, 0);
         buf.vertex(px + gw, py + gs, pz).color(255, 255, 255, alpha);
-        buf.vertex(px + gw, py + gs, pz).color(255, 255, 255, alpha);
+        buf.vertex(px - gw, py + gs, pz).color(255, 255, 255, alpha);
 
         buf.vertex(px - gs, py - gw, pz).color(255, 255, 255, 0);
         buf.vertex(px - gs, py + gw, pz).color(255, 255, 255, 0);
@@ -1232,9 +1234,9 @@ public class KillEffect extends Module {
 
     @Override
     public void onDisable() {
-        particles.clear();
-        lotusInstances.clear();
+        statueInstances.clear();
         inkSlashInstances.clear();
+        particles.clear();
         recentAttacks.clear();
         deadEntities.clear();
     }
@@ -1242,6 +1244,129 @@ public class KillEffect extends Module {
     // =========================================================================
     // Вспомогательные классы
     // =========================================================================
+
+    private static class GoldenStatueInstance {
+        double x, y, z;
+        final float yaw;
+        final float pitch;
+        final float headYaw;
+        final boolean isSneaking;
+
+        final float rLegPitch;
+        final float lLegPitch;
+        final float rArmPitch;
+        final float lArmPitch;
+        final float rArmRoll;
+
+        double slideVx;
+        double slideVz;
+        final int tintColor;
+        final float maxLife;
+
+        double puddleX;
+        double puddleY;
+        double puddleZ;
+
+        float age = 0.0f;
+        boolean soundPlayedMelt = false;
+
+        final List<GoldDropParticle> drops = new ArrayList<>();
+
+        GoldenStatueInstance(double x, double y, double z,
+                             float yaw, float pitch, float headYaw, boolean isSneaking,
+                             float rLegPitch, float lLegPitch, float rArmPitch, float lArmPitch, float rArmRoll,
+                             double slideVx, double slideVz, int tintColor, float maxLife) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.yaw = yaw;
+            this.pitch = pitch;
+            this.headYaw = headYaw;
+            this.isSneaking = isSneaking;
+            this.rLegPitch = rLegPitch;
+            this.lLegPitch = lLegPitch;
+            this.rArmPitch = rArmPitch;
+            this.lArmPitch = lArmPitch;
+            this.rArmRoll = rArmRoll;
+            this.slideVx = slideVx;
+            this.slideVz = slideVz;
+            this.tintColor = tintColor;
+            this.maxLife = maxLife;
+            this.puddleX = x;
+            this.puddleY = y;
+            this.puddleZ = z;
+        }
+
+        void spawnMeltingDroplet(Random rnd) {
+            double dx = (rnd.nextDouble() - 0.5) * 0.45;
+            double dy = rnd.nextDouble() * 0.8;
+            double dz = (rnd.nextDouble() - 0.5) * 0.45;
+            drops.add(new GoldDropParticle(
+                    x + dx, y + dy, z + dz,
+                    (rnd.nextDouble() - 0.5) * 0.5,
+                    -rnd.nextDouble() * 1.5,
+                    (rnd.nextDouble() - 0.5) * 0.5,
+                    0.035f + rnd.nextFloat() * 0.035f,
+                    0.8f + rnd.nextFloat() * 0.4f,
+                    tintColor
+            ));
+        }
+
+        void updateAndRenderDroplets(VertexConsumer quadBuf, VertexConsumer lightBuf, Vec3d camPos, float dt) {
+            Iterator<GoldDropParticle> it = drops.iterator();
+            while (it.hasNext()) {
+                GoldDropParticle d = it.next();
+                d.age += dt;
+                if (d.age >= d.life) {
+                    it.remove();
+                    continue;
+                }
+                d.vy -= 9.5f * dt;
+                d.x += d.vx * dt;
+                d.y += d.vy * dt;
+                d.z += d.vz * dt;
+
+                float alpha = MathHelper.clamp((1.0f - d.age / d.life) * 1.6f, 0.0f, 1.0f);
+                if (alpha <= 0.01f) continue;
+
+                float px = (float) (d.x - camPos.x);
+                float py = (float) (d.y - camPos.y);
+                float pz = (float) (d.z - camPos.z);
+                float s = d.size;
+
+                int tr = (d.color >> 16) & 0xFF;
+                int tg = (d.color >> 8) & 0xFF;
+                int tb = d.color & 0xFF;
+
+                lightBuf.vertex(px - s, py - s, pz).color(tr, tg, tb, 0);
+                lightBuf.vertex(px + s, py - s, pz).color(tr, tg, tb, 0);
+                lightBuf.vertex(px + s, py + s, pz).color(255, 245, 160, (int) (255 * alpha));
+                lightBuf.vertex(px - s, py + s, pz).color(255, 245, 160, (int) (255 * alpha));
+            }
+        }
+    }
+
+    private static class GoldDropParticle {
+        double x, y, z;
+        double vx, vy, vz;
+        final float size;
+        final float life;
+        final int color;
+        float age = 0.0f;
+
+        GoldDropParticle(double x, double y, double z, double vx, double vy, double vz,
+                         float size, float life, int color) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.vx = vx;
+            this.vy = vy;
+            this.vz = vz;
+            this.size = size;
+            this.life = life;
+            this.color = color;
+        }
+    }
 
     private static class InkSlashInstance {
         final double x, y, z;
@@ -1280,7 +1405,6 @@ public class KillEffect extends Module {
             float cosYaw = (float) Math.cos(slashAngleRad);
             float sinYaw = (float) Math.sin(slashAngleRad);
 
-            // Направленный взрыв брызг туши вдоль линии среза
             for (int i = 0; i < dropCount; i++) {
                 double s = (rnd.nextDouble() - 0.5) * 0.6 * scale;
                 double spdX = (2.2 + rnd.nextDouble() * 3.8) * scale;
@@ -1304,7 +1428,6 @@ public class KillEffect extends Module {
                 ));
             }
 
-            // Дымчатые клубы туши
             for (int i = 0; i < 20; i++) {
                 smoke.add(new InkSmokeParticle(
                         x + (rnd.nextDouble() - 0.5) * 0.4 * scale,
@@ -1392,7 +1515,6 @@ public class KillEffect extends Module {
             float py = (float) (y - camPos.y);
             float pz = (float) (z - camPos.z);
 
-            // Вытягивание капли вдоль вектора ее скорости
             float stretch = (float) Math.min(2.5, 1.0 + Math.sqrt(vx * vx + vy * vy + vz * vz) * 0.18);
             float sx = size;
             float sy = size * stretch;
@@ -1476,215 +1598,6 @@ public class KillEffect extends Module {
             this.life = life;
             this.shapeType = shapeType;
             this.tintColor = tintColor;
-        }
-    }
-
-    private static class LotusKillInstance {
-        final double x, y, z;
-        final double entityHeight;
-        final int tintColor;
-        final int vineCount;
-        final float scale;
-        final float duration = 2.4f;
-        float age = 0.0f;
-        float currentDrag = 0.0f;
-
-        boolean soundPlayedPhase2 = false;
-        boolean soundPlayedPhase3 = false;
-
-        final List<LotusPetalParticle> detachedPetals = new ArrayList<>();
-        final List<LotusSporeParticle> spores = new ArrayList<>();
-
-        LotusKillInstance(double x, double y, double z, double entityHeight, int tintColor, int vineCount, float scale) {
-            this.x = x;
-            this.y = y;
-            this.z = z;
-            this.entityHeight = entityHeight;
-            this.tintColor = tintColor;
-            this.vineCount = vineCount;
-            this.scale = scale;
-        }
-
-        void spawnBurstPetals(Random rnd) {
-            float flowerY = (float) (y + entityHeight * 0.55 * scale - currentDrag);
-            for (int i = 0; i < 14; i++) {
-                double a = rnd.nextDouble() * Math.PI * 2.0;
-                double spd = (1.2 + rnd.nextDouble() * 2.4) * scale;
-                double vx = Math.cos(a) * spd;
-                double vy = (0.9 + rnd.nextDouble() * 2.0) * scale;
-                double vz = Math.sin(a) * spd;
-                detachedPetals.add(new LotusPetalParticle(
-                        x + Math.cos(a) * 0.25,
-                        flowerY + (rnd.nextDouble() - 0.5) * 0.15,
-                        z + Math.sin(a) * 0.25,
-                        vx, vy, vz,
-                        (0.12f + rnd.nextFloat() * 0.08f) * scale,
-                        1.4f + rnd.nextFloat() * 0.5f,
-                        tintColor, rnd
-                ));
-            }
-
-            for (int i = 0; i < 35; i++) {
-                double a = rnd.nextDouble() * Math.PI * 2.0;
-                double r = rnd.nextDouble() * 0.45 * scale;
-                spores.add(new LotusSporeParticle(
-                        x + Math.cos(a) * r,
-                        flowerY + (rnd.nextDouble() - 0.5) * 0.3,
-                        z + Math.sin(a) * r,
-                        (rnd.nextDouble() - 0.5) * 0.8 * scale,
-                        (0.6 + rnd.nextDouble() * 1.5) * scale,
-                        (rnd.nextDouble() - 0.5) * 0.8 * scale,
-                        (0.035f + rnd.nextFloat() * 0.03f) * scale,
-                        1.5f + rnd.nextFloat() * 0.6f,
-                        tintColor
-                ));
-            }
-        }
-
-        void updateAndRenderParticles(VertexConsumer quadBuf, VertexConsumer lightBuf,
-                                      Vec3d camPos, Vector3f lightDir, float dt) {
-            Iterator<LotusPetalParticle> itP = detachedPetals.iterator();
-            while (itP.hasNext()) {
-                LotusPetalParticle p = itP.next();
-                p.age += dt;
-                if (p.age >= p.life) {
-                    itP.remove();
-                    continue;
-                }
-                p.vy -= 2.6f * dt;
-                float drag = (float) Math.exp(-1.4f * dt);
-                p.vx *= drag;
-                p.vy *= drag;
-                p.vz *= drag;
-
-                p.pitch += p.rotPitch * dt;
-                p.yaw += p.rotYaw * dt;
-                p.roll += p.rotRoll * dt;
-
-                p.x += p.vx * dt + Math.sin(p.age * 6.0f) * 0.02f;
-                p.y += p.vy * dt;
-                p.z += p.vz * dt + Math.cos(p.age * 6.0f) * 0.02f;
-
-                float alphaP = MathHelper.clamp((1.0f - p.age / p.life) * 1.6f, 0.0f, 1.0f);
-                if (alphaP <= 0.01f) continue;
-
-                p.render(quadBuf, camPos, lightDir, alphaP);
-            }
-
-            Iterator<LotusSporeParticle> itS = spores.iterator();
-            while (itS.hasNext()) {
-                LotusSporeParticle s = itS.next();
-                s.age += dt;
-                if (s.age >= s.life) {
-                    itS.remove();
-                    continue;
-                }
-                s.x += s.vx * dt;
-                s.y += s.vy * dt;
-                s.z += s.vz * dt;
-                s.vy += 0.2f * dt;
-
-                float alphaS = MathHelper.clamp((1.0f - s.age / s.life) * 1.5f, 0.0f, 1.0f);
-                if (alphaS <= 0.01f) continue;
-
-                s.render(lightBuf, camPos, alphaS);
-            }
-        }
-    }
-
-    private static class LotusPetalParticle {
-        double x, y, z;
-        double vx, vy, vz;
-        float pitch, yaw, roll;
-        final float rotPitch, rotYaw, rotRoll;
-        final float size;
-        final float life;
-        final int tintColor;
-        float age = 0.0f;
-
-        LotusPetalParticle(double x, double y, double z, double vx, double vy, double vz,
-                           float size, float life, int tintColor, Random rnd) {
-            this.x = x;
-            this.y = y;
-            this.z = z;
-            this.vx = vx;
-            this.vy = vy;
-            this.vz = vz;
-            this.size = size;
-            this.life = life;
-            this.tintColor = tintColor;
-            this.pitch = rnd.nextFloat() * 360.0f;
-            this.yaw = rnd.nextFloat() * 360.0f;
-            this.roll = rnd.nextFloat() * 360.0f;
-            this.rotPitch = (rnd.nextFloat() - 0.5f) * 500.0f;
-            this.rotYaw = (rnd.nextFloat() - 0.5f) * 500.0f;
-            this.rotRoll = (rnd.nextFloat() - 0.5f) * 500.0f;
-        }
-
-        void render(VertexConsumer buf, Vec3d camPos, Vector3f lightDir, float alpha) {
-            Quaternionf rot = new Quaternionf()
-                    .rotationYXZ((float) Math.toRadians(yaw),
-                                 (float) Math.toRadians(pitch),
-                                 (float) Math.toRadians(roll));
-
-            float s = size;
-            float px = (float) (x - camPos.x);
-            float py = (float) (y - camPos.y);
-            float pz = (float) (z - camPos.z);
-
-            Vector3f v0 = new Vector3f(-0.35f * s, -0.6f * s, 0).rotate(rot);
-            Vector3f v1 = new Vector3f( 0.35f * s, -0.6f * s, 0).rotate(rot);
-            Vector3f v2 = new Vector3f( 0.45f * s,  0.7f * s, 0).rotate(rot);
-            Vector3f v3 = new Vector3f(-0.45f * s,  0.7f * s, 0).rotate(rot);
-
-            int tr = (tintColor >> 16) & 0xFF;
-            int tg = (tintColor >> 8) & 0xFF;
-            int tb = tintColor & 0xFF;
-            int a = (int) (230 * alpha);
-
-            buf.vertex(px + v0.x, py + v0.y, pz + v0.z).color(tr, tg, tb, a);
-            buf.vertex(px + v1.x, py + v1.y, pz + v1.z).color(tr, tg, tb, a);
-            buf.vertex(px + v2.x, py + v2.y, pz + v2.z).color(255, 235, 240, a);
-            buf.vertex(px + v3.x, py + v3.y, pz + v3.z).color(255, 235, 240, a);
-        }
-    }
-
-    private static class LotusSporeParticle {
-        double x, y, z;
-        double vx, vy, vz;
-        final float size;
-        final float life;
-        final int tintColor;
-        float age = 0.0f;
-
-        LotusSporeParticle(double x, double y, double z, double vx, double vy, double vz,
-                           float size, float life, int tintColor) {
-            this.x = x;
-            this.y = y;
-            this.z = z;
-            this.vx = vx;
-            this.vy = vy;
-            this.vz = vz;
-            this.size = size;
-            this.life = life;
-            this.tintColor = tintColor;
-        }
-
-        void render(VertexConsumer buf, Vec3d camPos, float alpha) {
-            float px = (float) (x - camPos.x);
-            float py = (float) (y - camPos.y);
-            float pz = (float) (z - camPos.z);
-            float s = size;
-
-            int tr = (tintColor >> 16) & 0xFF;
-            int tg = (tintColor >> 8) & 0xFF;
-            int tb = tintColor & 0xFF;
-            int a = (int) (240 * alpha);
-
-            buf.vertex(px - s, py - s, pz).color(tr, tg, tb, 0);
-            buf.vertex(px + s, py - s, pz).color(tr, tg, tb, 0);
-            buf.vertex(px + s, py + s, pz).color(255, 245, 230, a);
-            buf.vertex(px - s, py + s, pz).color(255, 245, 230, a);
         }
     }
 }
