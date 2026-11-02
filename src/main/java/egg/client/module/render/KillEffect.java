@@ -4,6 +4,7 @@ import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ColorSetting;
+import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.ui.theme.Theme;
 import net.minecraft.block.BlockState;
@@ -35,28 +36,37 @@ public class KillEffect extends Module {
 
     private static KillEffect instance;
 
+    private final ModeSetting mode = new ModeSetting("Эффект", "Стекло", "Тип эффекта при смерти противника", "Стекло", "Лотос");
     private final BooleanSetting onlyTarget = new BooleanSetting("Только цель", true, "Создавать эффект только для атакованных вами врагов");
     private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", false, "Создавать эффект только при смерти игроков");
-    private final SliderSetting amount = new SliderSetting("Количество", 85, 20, 250, 5, "Количество 3D осколков стекла");
-    private final SliderSetting size = new SliderSetting("Размер", 0.22, 0.05, 0.60, 0.01, "Размер осколков стекла");
-    private final SliderSetting speed = new SliderSetting("Скорость", 6.5, 2.0, 15.0, 0.5, "Скорость разлета осколков во все стороны");
-    private final SliderSetting lifetime = new SliderSetting("Время жизни", 2.0, 0.5, 5.0, 0.1, "Длительность существования осколков (сек)");
-    private final BooleanSetting bounce = new BooleanSetting("Отскок", true, "Отскок осколков стекла от блоков и пола");
-    private final BooleanSetting sound = new BooleanSetting("Звук стекла", true, "Звук разбивающегося стекла при смерти");
+    private final BooleanSetting sound = new BooleanSetting("Звуки", true, "Звуковые эффекты при убийстве");
     private final BooleanSetting syncColor = new BooleanSetting("Синхр. цвета", true, "Использовать цвет темы клиента");
-    private final ColorSetting color = new ColorSetting("Цвет стекла", 0xFF88DDFF, "Пользовательский цвет стекла");
-    private final BooleanSetting sparkle = new BooleanSetting("Блики", true, "Яркие вспышки и отблески на гранях стекла");
+    private final ColorSetting color = new ColorSetting("Цвет", 0xFFFF2555, "Пользовательский цвет эффекта");
+
+    // Настройки для режима Стекло
+    private final SliderSetting amount = new SliderSetting("Осколки стекла", 85, 20, 250, 5, "Количество 3D осколков стекла");
+    private final SliderSetting size = new SliderSetting("Размер стекла", 0.22, 0.05, 0.60, 0.01, "Размер осколков стекла");
+    private final SliderSetting speed = new SliderSetting("Скорость стекла", 6.5, 2.0, 15.0, 0.5, "Скорость разлета осколков во все стороны");
+    private final SliderSetting lifetime = new SliderSetting("Жизнь стекла", 2.0, 0.5, 5.0, 0.1, "Длительность существования осколков (сек)");
+    private final BooleanSetting bounce = new BooleanSetting("Отскок стекла", true, "Отскок осколков стекла от блоков и пола");
+    private final BooleanSetting sparkle = new BooleanSetting("Блики стекла", true, "Яркие вспышки и отблески на гранях стекла");
+
+    // Настройки для режима Лотос
+    private final SliderSetting vineCount = new SliderSetting("Ветви лотоса", 6, 4, 8, 1, "Количество обвивающих ветвей лотоса");
+    private final SliderSetting lotusScale = new SliderSetting("Масштаб лотоса", 1.0, 0.5, 2.0, 0.1, "Общий масштаб цветка и ветвей");
 
     private final List<DeathGlassShard> particles = new ArrayList<>();
+    private final List<LotusKillInstance> lotusInstances = new ArrayList<>();
     private final Map<Integer, Long> recentAttacks = new ConcurrentHashMap<>();
     private final Set<Integer> deadEntities = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Random random = new Random();
     private long lastFrameNanos = 0L;
 
     public KillEffect() {
-        super("KillEffect", "3D взрыв осколков стекла во все стороны на разных высотах при смерти противника", Category.ESP);
+        super("KillEffect", "Кастомные 3D килл-эффекты при смерти противника (Стекло, Лотос)", Category.ESP);
         instance = this;
-        addSettings(onlyTarget, onlyPlayers, amount, size, speed, lifetime, bounce, sound, syncColor, color, sparkle);
+        addSettings(mode, onlyTarget, onlyPlayers, sound, syncColor, color, vineCount, lotusScale,
+                amount, size, speed, lifetime, bounce, sparkle);
     }
 
     public static KillEffect getInstance() {
@@ -87,10 +97,45 @@ public class KillEffect extends Module {
 
         if (deadEntities.add(entityId)) {
             recentAttacks.remove(entityId);
-            spawnGlassBurst(entity);
+            if ("Лотос".equals(mode.get())) {
+                spawnLotusEffect(entity);
+            } else {
+                spawnGlassBurst(entity);
+            }
         }
     }
 
+    // =========================================================================
+    // Режим: Лотос (Spider Lily & Entangling Vines)
+    // =========================================================================
+    public void spawnLotusEffect(Entity entity) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        double bx = entity.getX();
+        double by = entity.getY();
+        double bz = entity.getZ();
+        double h = Math.max(1.2, entity.getHeight());
+        int tint = syncColor.isEnabled() ? Theme.getAccent() : color.get();
+        int vines = (int) vineCount.get();
+        float scale = (float) lotusScale.get();
+
+        if (sound.isEnabled() && mc.world != null) {
+            mc.world.playSoundClient(bx, by, bz,
+                    SoundEvents.BLOCK_ROOTED_DIRT_BREAK, SoundCategory.PLAYERS,
+                    1.4f, 0.85f + random.nextFloat() * 0.15f, false);
+            mc.world.playSoundClient(bx, by, bz,
+                    SoundEvents.BLOCK_VINE_PLACE, SoundCategory.PLAYERS,
+                    1.2f, 0.8f, false);
+        }
+
+        lotusInstances.add(new LotusKillInstance(bx, by, bz, h, tint, vines, scale));
+        while (lotusInstances.size() > 10) {
+            lotusInstances.remove(0);
+        }
+    }
+
+    // =========================================================================
+    // Режим: Стекло (3D Glass Burst)
+    // =========================================================================
     public void spawnGlassBurst(Entity entity) {
         MinecraftClient mc = MinecraftClient.getInstance();
         Vec3d basePos = new Vec3d(entity.getX(), entity.getY(), entity.getZ());
@@ -165,6 +210,7 @@ public class KillEffect extends Module {
     public void render(VertexConsumerProvider immediate, Vec3d camPos) {
         if (!isEnabled()) {
             if (!particles.isEmpty()) particles.clear();
+            if (!lotusInstances.isEmpty()) lotusInstances.clear();
             recentAttacks.clear();
             deadEntities.clear();
             return;
@@ -196,6 +242,353 @@ public class KillEffect extends Module {
         lastFrameNanos = now;
         if (dt > 0.05f) dt = 0.05f;
 
+        VertexConsumer quadBuffer = immediate.getBuffer(RenderLayers.debugQuads());
+        VertexConsumer lightBuffer = immediate.getBuffer(RenderLayers.lightning());
+        Vector3f lightDir = new Vector3f(0.35f, 0.90f, 0.25f).normalize();
+
+        // Отрисовка осколков стекла
+        if (!particles.isEmpty()) {
+            renderGlassParticles(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
+        }
+
+        // Отрисовка эффекта Лотоса
+        if (!lotusInstances.isEmpty()) {
+            renderLotusInstances(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
+        }
+    }
+
+    // =========================================================================
+    // Отрисовка и обновление Лотоса
+    // =========================================================================
+    private void renderLotusInstances(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                      Vec3d camPos, Vector3f lightDir, float dt, MinecraftClient mc) {
+        Iterator<LotusKillInstance> it = lotusInstances.iterator();
+        while (it.hasNext()) {
+            LotusKillInstance inst = it.next();
+            inst.age += dt;
+            if (inst.age >= inst.duration) {
+                it.remove();
+                continue;
+            }
+
+            // Фазовые звуки
+            if (inst.age >= 0.45f && !inst.soundPlayedPhase2) {
+                inst.soundPlayedPhase2 = true;
+                if (sound.isEnabled() && mc.world != null) {
+                    mc.world.playSoundClient(inst.x, inst.y + inst.entityHeight * 0.5, inst.z,
+                            SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME, SoundCategory.PLAYERS,
+                            1.3f, 0.70f, false);
+                    mc.world.playSoundClient(inst.x, inst.y + inst.entityHeight * 0.5, inst.z,
+                            SoundEvents.BLOCK_VINE_PLACE, SoundCategory.PLAYERS,
+                            1.1f, 0.75f, false);
+                }
+            }
+
+            if (inst.age >= 0.85f && !inst.soundPlayedPhase3) {
+                inst.soundPlayedPhase3 = true;
+                if (sound.isEnabled() && mc.world != null) {
+                    mc.world.playSoundClient(inst.x, inst.y, inst.z,
+                            SoundEvents.ENTITY_WARDEN_DIG, SoundCategory.PLAYERS,
+                            1.2f, 1.35f, false);
+                    mc.world.playSoundClient(inst.x, inst.y, inst.z,
+                            SoundEvents.BLOCK_ROOTED_DIRT_BREAK, SoundCategory.PLAYERS,
+                            1.1f, 0.55f, false);
+                }
+                // При начале затягивания под землю с цветка срываются лепестки
+                inst.spawnBurstPetals(random);
+            }
+
+            // Вычисление смещения утягивания под землю
+            float dragDown = 0.0f;
+            if (inst.age >= 0.85f) {
+                float dragProg = MathHelper.clamp((inst.age - 0.85f) / 0.85f, 0.0f, 1.0f);
+                // Плавное кубическое ускорение рывка под землю
+                dragDown = (float) (Math.pow(dragProg, 2.4) * (inst.entityHeight + 1.6) * inst.scale);
+            }
+            inst.currentDrag = dragDown;
+
+            // 1. Отрисовка земляного разлома и корней на земле
+            renderAbyssalRift(quadBuf, lightBuf, inst, camPos);
+
+            // 2. Отрисовка обвивающих 3D ветвей
+            renderEntanglingVines(quadBuf, inst, camPos, lightDir);
+
+            // 3. Отрисовка распускающегося цветка Spider Lily / Lotus
+            renderLotusFlower(quadBuf, lightBuf, inst, camPos, lightDir);
+
+            // 4. Обновление и отрисовка сорванных лепестков и пыльцы
+            inst.updateAndRenderParticles(quadBuf, lightBuf, camPos, lightDir, dt);
+        }
+    }
+
+    private void renderAbyssalRift(VertexConsumer quadBuf, VertexConsumer lightBuf, LotusKillInstance inst, Vec3d camPos) {
+        float age = inst.age;
+        float openFactor = MathHelper.clamp(age / 0.40f, 0.0f, 1.0f);
+        float fade = 1.0f;
+        if (age > 1.8f) {
+            fade = MathHelper.clamp(1.0f - (age - 1.8f) / 0.6f, 0.0f, 1.0f);
+        }
+        if (fade <= 0.01f || openFactor <= 0.01f) return;
+
+        float radius = 0.95f * inst.scale * openFactor;
+        float groundY = (float) (inst.y + 0.02 - camPos.y);
+        float cx = (float) (inst.x - camPos.x);
+        float cz = (float) (inst.z - camPos.z);
+
+        int tint = inst.tintColor;
+        int tr = (tint >> 16) & 0xFF;
+        int tg = (tint >> 8) & 0xFF;
+        int tb = tint & 0xFF;
+
+        int segments = 18;
+        float pulse = 0.85f + 0.15f * (float) Math.sin(age * 12.0);
+        int alphaVoid = (int) (220 * fade * pulse);
+        int alphaEdge = (int) (255 * fade * pulse);
+
+        // Внутренний темный разлом под землей
+        for (int i = 0; i < segments; i++) {
+            double a0 = (i / (double) segments) * Math.PI * 2.0;
+            double a1 = ((i + 1) / (double) segments) * Math.PI * 2.0;
+
+            float x0 = cx + (float) Math.cos(a0) * radius;
+            float z0 = cz + (float) Math.sin(a0) * radius;
+            float x1 = cx + (float) Math.cos(a1) * radius;
+            float z1 = cz + (float) Math.sin(a1) * radius;
+
+            // Центральный треугольник разлома
+            quadBuf.vertex(cx, groundY, cz).color(20, 4, 8, alphaVoid);
+            quadBuf.vertex(x0, groundY, z0).color(tr / 3, tg / 3, tb / 3, alphaEdge);
+            quadBuf.vertex(x1, groundY, z1).color(tr / 3, tg / 3, tb / 3, alphaEdge);
+            quadBuf.vertex(cx, groundY, cz).color(20, 4, 8, alphaVoid);
+
+            // Светящаяся руническая граница
+            float edgeR = radius * 1.14f;
+            float ex0 = cx + (float) Math.cos(a0) * edgeR;
+            float ez0 = cz + (float) Math.sin(a0) * edgeR;
+            float ex1 = cx + (float) Math.cos(a1) * edgeR;
+            float ez1 = cz + (float) Math.sin(a1) * edgeR;
+
+            lightBuf.vertex(x0, groundY + 0.005f, z0).color(tr, tg, tb, alphaEdge);
+            lightBuf.vertex(ex0, groundY + 0.005f, ez0).color(tr, tg, tb, 0);
+            lightBuf.vertex(ex1, groundY + 0.005f, ez1).color(tr, tg, tb, 0);
+            lightBuf.vertex(x1, groundY + 0.005f, z1).color(tr, tg, tb, alphaEdge);
+        }
+    }
+
+    private void renderEntanglingVines(VertexConsumer quadBuf, LotusKillInstance inst, Vec3d camPos, Vector3f lightDir) {
+        float age = inst.age;
+        float grow = MathHelper.clamp(age / 0.45f, 0.0f, 1.0f);
+        grow = (float) Math.sin(grow * Math.PI * 0.5); // Smooth easeOut
+
+        float fade = 1.0f;
+        if (age > 1.8f) {
+            fade = MathHelper.clamp(1.0f - (age - 1.8f) / 0.6f, 0.0f, 1.0f);
+        }
+        if (fade <= 0.01f || grow <= 0.01f) return;
+
+        int numVines = inst.vineCount;
+        int segCount = 26;
+        int tint = inst.tintColor;
+        int tr = (tint >> 16) & 0xFF;
+        int tg = (tint >> 8) & 0xFF;
+        int tb = tint & 0xFF;
+
+        float targetH = (float) inst.entityHeight * inst.scale;
+
+        for (int v = 0; v < numVines; v++) {
+            float baseAngle = (float) ((v / (double) numVines) * Math.PI * 2.0);
+            float dir = (v % 2 == 0) ? 1.0f : -1.0f; // Чередование направления для перекрестного связывания как веревкой
+            float maxU = grow;
+
+            Vector3f prevPos = null;
+            Vector3f prevSide1 = null;
+            Vector3f prevSide2 = null;
+
+            int visibleSegs = Math.max(2, (int) (segCount * maxU));
+
+            for (int i = 0; i <= visibleSegs; i++) {
+                float u = (i / (float) segCount);
+                if (u > maxU) u = maxU;
+
+                // Спиральная траектория, сжимающаяся вокруг тела цели
+                float theta = baseAngle + u * (2.8f * (float) Math.PI) * dir;
+                
+                // Радиус: широкий у корней на земле (0.85м) -> плотно облегающий тело (0.33м) -> легкое расширение к шипам наверху
+                float r;
+                if (u < 0.18f) {
+                    float t0 = u / 0.18f;
+                    r = MathHelper.lerp(t0, 0.85f * inst.scale, 0.33f * inst.scale);
+                } else if (u < 0.82f) {
+                    float cinch = 0.33f * inst.scale + 0.03f * (float) Math.sin(u * 14.0f + v * 2.0f);
+                    r = cinch;
+                } else {
+                    float t1 = (u - 0.82f) / 0.18f;
+                    r = MathHelper.lerp(t1, 0.33f * inst.scale, 0.44f * inst.scale);
+                }
+
+                float currY = (float) (inst.y + (u * 0.92f) * targetH - inst.currentDrag);
+                float currX = (float) (inst.x + Math.cos(theta) * r);
+                float currZ = (float) (inst.z + Math.sin(theta) * r);
+
+                Vector3f currPos = new Vector3f(currX - (float) camPos.x, currY - (float) camPos.y, currZ - (float) camPos.z);
+
+                // Толщина ветви: сужается от корней к верхушке
+                float thick = MathHelper.lerp(u, 0.065f, 0.022f) * inst.scale;
+
+                if (prevPos != null) {
+                    Vector3f forward = new Vector3f(currPos).sub(prevPos);
+                    if (forward.lengthSquared() > 0.00001f) {
+                        forward.normalize();
+                    } else {
+                        forward = new Vector3f(0, 1, 0);
+                    }
+
+                    Vector3f side1 = new Vector3f(forward).cross(new Vector3f(0, 1, 0));
+                    if (side1.lengthSquared() < 0.0001f) {
+                        side1 = new Vector3f(forward).cross(new Vector3f(1, 0, 0));
+                    }
+                    side1.normalize().mul(thick);
+
+                    Vector3f side2 = new Vector3f(forward).cross(side1).normalize().mul(thick);
+
+                    if (prevSide1 == null) {
+                        prevSide1 = side1;
+                        prevSide2 = side2;
+                    }
+
+                    // Освещение и цвет коры/шипов
+                    float dotLight = Math.abs(side1.dot(lightDir));
+                    float diff = 0.60f + 0.40f * dotLight;
+
+                    // Градиент: темное терновое дерево у основания -> яркие светящиеся прожилки лотоса
+                    int barkR = (int) (MathHelper.lerp(u, 35, tr) * diff);
+                    int barkG = (int) (MathHelper.lerp(u, 8, tg) * diff);
+                    int barkB = (int) (MathHelper.lerp(u, 14, tb) * diff);
+                    int alpha = (int) (245 * fade);
+
+                    // Плоскость 1 (крестообразное объемное сечение)
+                    quadBuf.vertex(prevPos.x - prevSide1.x, prevPos.y - prevSide1.y, prevPos.z - prevSide1.z).color(barkR, barkG, barkB, alpha);
+                    quadBuf.vertex(currPos.x - side1.x, currPos.y - side1.y, currPos.z - side1.z).color(barkR, barkG, barkB, alpha);
+                    quadBuf.vertex(currPos.x + side1.x, currPos.y + side1.y, currPos.z + side1.z).color(barkR, barkG, barkB, alpha);
+                    quadBuf.vertex(prevPos.x + prevSide1.x, prevPos.y + prevSide1.y, prevPos.z + prevSide1.z).color(barkR, barkG, barkB, alpha);
+
+                    // Плоскость 2
+                    quadBuf.vertex(prevPos.x - prevSide2.x, prevPos.y - prevSide2.y, prevPos.z - prevSide2.z).color(barkR, barkG, barkB, alpha);
+                    quadBuf.vertex(currPos.x - side2.x, currPos.y - side2.y, currPos.z - side2.z).color(barkR, barkG, barkB, alpha);
+                    quadBuf.vertex(currPos.x + side2.x, currPos.y + side2.y, currPos.z + side2.z).color(barkR, barkG, barkB, alpha);
+                    quadBuf.vertex(prevPos.x + prevSide2.x, prevPos.y + prevSide2.y, prevPos.z + prevSide2.z).color(barkR, barkG, barkB, alpha);
+
+                    // 3D шипы на ветвях через каждые 5 сегментов
+                    if (i % 5 == 0 && i < visibleSegs - 2) {
+                        Vector3f thornOut = new Vector3f((float) Math.cos(theta), 0.15f, (float) Math.sin(theta)).normalize().mul(thick * 2.8f);
+                        Vector3f thornTip = new Vector3f(currPos).add(thornOut);
+
+                        quadBuf.vertex(currPos.x - side1.x, currPos.y - side1.y, currPos.z - side1.z).color(tr, tg, tb, alpha);
+                        quadBuf.vertex(currPos.x + side1.x, currPos.y + side1.y, currPos.z + side1.z).color(tr, tg, tb, alpha);
+                        quadBuf.vertex(thornTip.x, thornTip.y, thornTip.z).color(255, 230, 240, alpha);
+                        quadBuf.vertex(thornTip.x, thornTip.y, thornTip.z).color(255, 230, 240, alpha);
+                    }
+
+                    prevSide1 = side1;
+                    prevSide2 = side2;
+                }
+
+                prevPos = currPos;
+            }
+        }
+    }
+
+    private void renderLotusFlower(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                  LotusKillInstance inst, Vec3d camPos, Vector3f lightDir) {
+        float age = inst.age;
+        if (age < 0.35f) return;
+
+        float bloomFactor = MathHelper.clamp((age - 0.35f) / 0.40f, 0.0f, 1.0f);
+        // Эластичное раскрытие лепестков
+        float easeBloom = (float) (Math.sin(bloomFactor * Math.PI * 0.5) * (1.0 + 0.12 * Math.sin(bloomFactor * Math.PI)));
+
+        float fade = 1.0f;
+        if (age > 1.8f) {
+            fade = MathHelper.clamp(1.0f - (age - 1.8f) / 0.6f, 0.0f, 1.0f);
+        }
+        if (fade <= 0.01f || easeBloom <= 0.01f) return;
+
+        // Положение центра бутона (на уровне груди / сердца жертвы с учетом утягивания вниз)
+        float flowerY = (float) (inst.y + inst.entityHeight * 0.55 * inst.scale - inst.currentDrag);
+        float fcx = (float) (inst.x - camPos.x);
+        float fcy = (float) (flowerY - camPos.y);
+        float fcz = (float) (inst.z - camPos.z);
+
+        int tint = inst.tintColor;
+        int tr = (tint >> 16) & 0xFF;
+        int tg = (tint >> 8) & 0xFF;
+        int tb = tint & 0xFF;
+        int alpha = (int) (245 * fade);
+
+        int petalCount = 12;
+        float petalMaxLen = 0.52f * inst.scale * easeBloom;
+
+        // 12 элегантных изогнутых лепестков Spider Lily (Ликориса)
+        for (int p = 0; p < petalCount; p++) {
+            float pAngle = (float) ((p / (double) petalCount) * Math.PI * 2.0);
+            float cos = (float) Math.cos(pAngle);
+            float sin = (float) Math.sin(pAngle);
+
+            Vector3f p0 = new Vector3f(fcx, fcy, fcz);
+            // 4 сегмента изгиба лепестка (выгиб наружу и красивый дугообразный спуск кончика)
+            Vector3f p1 = new Vector3f(fcx + cos * (petalMaxLen * 0.30f), fcy + 0.08f * inst.scale, fcz + sin * (petalMaxLen * 0.30f));
+            Vector3f p2 = new Vector3f(fcx + cos * (petalMaxLen * 0.70f), fcy + 0.16f * inst.scale, fcz + sin * (petalMaxLen * 0.70f));
+            Vector3f p3 = new Vector3f(fcx + cos * petalMaxLen, fcy - 0.05f * inst.scale, fcz + sin * petalMaxLen);
+
+            float w1 = 0.06f * inst.scale;
+            float w2 = 0.09f * inst.scale;
+            Vector3f side = new Vector3f(-sin, 0, cos);
+
+            // Нижняя часть лепестка (глубокий бархатный алый)
+            quadBuf.vertex(p0.x, p0.y, p0.z).color(tr / 2, tg / 2, tb / 2, alpha);
+            quadBuf.vertex(p1.x - side.x * w1, p1.y, p1.z - side.z * w1).color(tr, tg, tb, alpha);
+            quadBuf.vertex(p1.x + side.x * w1, p1.y, p1.z + side.z * w1).color(tr, tg, tb, alpha);
+            quadBuf.vertex(p0.x, p0.y, p0.z).color(tr / 2, tg / 2, tb / 2, alpha);
+
+            // Средняя часть
+            quadBuf.vertex(p1.x - side.x * w1, p1.y, p1.z - side.z * w1).color(tr, tg, tb, alpha);
+            quadBuf.vertex(p2.x - side.x * w2, p2.y, p2.z - side.z * w2).color(255, Math.min(255, tg + 60), Math.min(255, tb + 60), alpha);
+            quadBuf.vertex(p2.x + side.x * w2, p2.y, p2.z + side.z * w2).color(255, Math.min(255, tg + 60), Math.min(255, tb + 60), alpha);
+            quadBuf.vertex(p1.x + side.x * w1, p1.y, p1.z + side.z * w1).color(tr, tg, tb, alpha);
+
+            // Кончик лепестка (яркое градиентное свечение)
+            quadBuf.vertex(p2.x - side.x * w2, p2.y, p2.z - side.z * w2).color(255, Math.min(255, tg + 60), Math.min(255, tb + 60), alpha);
+            quadBuf.vertex(p3.x, p3.y, p3.z).color(255, 240, 245, alpha);
+            quadBuf.vertex(p3.x, p3.y, p3.z).color(255, 240, 245, alpha);
+            quadBuf.vertex(p2.x + side.x * w2, p2.y, p2.z + side.z * w2).color(255, Math.min(255, tg + 60), Math.min(255, tb + 60), alpha);
+        }
+
+        // Длинные дугообразные тычинки Ликориса со светящейся пыльцой
+        int stamenCount = 8;
+        float stamenLen = 0.38f * inst.scale * easeBloom;
+        for (int s = 0; s < stamenCount; s++) {
+            float sAngle = (float) ((s / (double) stamenCount) * Math.PI * 2.0 + 0.35);
+            float scos = (float) Math.cos(sAngle);
+            float ssin = (float) Math.sin(sAngle);
+
+            float tipX = fcx + scos * (stamenLen * 0.85f);
+            float tipY = fcy + (0.24f + 0.08f * (float) Math.sin(s * 2.0)) * inst.scale;
+            float tipZ = fcz + ssin * (stamenLen * 0.85f);
+
+            // Светящаяся пыльца на кончике тычинки (аддитивный блеск)
+            float ps = 0.025f * inst.scale;
+            lightBuf.vertex(tipX - ps, tipY - ps, tipZ).color(255, 255, 200, 0);
+            lightBuf.vertex(tipX + ps, tipY - ps, tipZ).color(255, 255, 200, 0);
+            lightBuf.vertex(tipX + ps, tipY + ps, tipZ).color(255, 255, 200, (int) (255 * fade));
+            lightBuf.vertex(tipX - ps, tipY + ps, tipZ).color(255, 255, 200, (int) (255 * fade));
+        }
+    }
+
+    // =========================================================================
+    // Отрисовка и обновление Осколков стекла
+    // =========================================================================
+    private void renderGlassParticles(VertexConsumer quadBuffer, VertexConsumer glintBuffer,
+                                      Vec3d camPos, Vector3f lightDir, float dt, MinecraftClient mc) {
         boolean doBounce = bounce.isEnabled() && mc.world != null;
 
         Iterator<DeathGlassShard> it = particles.iterator();
@@ -238,14 +631,7 @@ public class KillEffect extends Module {
             p.x = nextX;
             p.y = nextY;
             p.z = nextZ;
-        }
 
-        if (particles.isEmpty()) return;
-
-        VertexConsumer quadBuffer = immediate.getBuffer(RenderLayers.debugQuads());
-        Vector3f lightDir = new Vector3f(0.35f, 0.90f, 0.25f).normalize();
-
-        for (DeathGlassShard p : particles) {
             float fadeProgress = 1.0f - (p.age / p.life);
             float alpha = MathHelper.clamp(fadeProgress * 1.5f, 0.0f, 1.0f);
             if (alpha <= 0.01f) continue;
@@ -256,20 +642,9 @@ public class KillEffect extends Module {
                                  (float) Math.toRadians(p.roll));
 
             renderShard3D(quadBuffer, p, rot, camPos, lightDir, alpha);
-        }
 
-        if (sparkle.isEnabled()) {
-            VertexConsumer glintBuffer = immediate.getBuffer(RenderLayers.lightning());
-            for (DeathGlassShard p : particles) {
-                float fadeProgress = 1.0f - (p.age / p.life);
-                float alpha = MathHelper.clamp(fadeProgress * 1.5f, 0.0f, 1.0f);
-                if (alpha <= 0.05f) continue;
-
+            if (sparkle.isEnabled() && alpha > 0.05f) {
                 Vector3f toCam = new Vector3f((float) (camPos.x - p.x), (float) (camPos.y - p.y), (float) (camPos.z - p.z)).normalize();
-                Quaternionf rot = new Quaternionf()
-                        .rotationYXZ((float) Math.toRadians(p.yaw),
-                                     (float) Math.toRadians(p.pitch),
-                                     (float) Math.toRadians(p.roll));
                 Vector3f frontNormal = new Vector3f(0.0f, 0.0f, 1.0f).rotate(rot);
 
                 float alignment = Math.abs(frontNormal.dot(toCam));
@@ -434,9 +809,14 @@ public class KillEffect extends Module {
     @Override
     public void onDisable() {
         particles.clear();
+        lotusInstances.clear();
         recentAttacks.clear();
         deadEntities.clear();
     }
+
+    // =========================================================================
+    // Вспомогательные классы
+    // =========================================================================
 
     private static class DeathGlassShard {
         double x, y, z;
@@ -470,6 +850,217 @@ public class KillEffect extends Module {
             this.life = life;
             this.shapeType = shapeType;
             this.tintColor = tintColor;
+        }
+    }
+
+    private static class LotusKillInstance {
+        final double x, y, z;
+        final double entityHeight;
+        final int tintColor;
+        final int vineCount;
+        final float scale;
+        final float duration = 2.4f;
+        float age = 0.0f;
+        float currentDrag = 0.0f;
+
+        boolean soundPlayedPhase2 = false;
+        boolean soundPlayedPhase3 = false;
+
+        final List<LotusPetalParticle> detachedPetals = new ArrayList<>();
+        final List<LotusSporeParticle> spores = new ArrayList<>();
+
+        LotusKillInstance(double x, double y, double z, double entityHeight, int tintColor, int vineCount, float scale) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.entityHeight = entityHeight;
+            this.tintColor = tintColor;
+            this.vineCount = vineCount;
+            this.scale = scale;
+        }
+
+        void spawnBurstPetals(Random rnd) {
+            float flowerY = (float) (y + entityHeight * 0.55 * scale - currentDrag);
+            for (int i = 0; i < 14; i++) {
+                double a = rnd.nextDouble() * Math.PI * 2.0;
+                double spd = (1.2 + rnd.nextDouble() * 2.4) * scale;
+                double vx = Math.cos(a) * spd;
+                double vy = (0.9 + rnd.nextDouble() * 2.0) * scale;
+                double vz = Math.sin(a) * spd;
+                detachedPetals.add(new LotusPetalParticle(
+                        x + Math.cos(a) * 0.25,
+                        flowerY + (rnd.nextDouble() - 0.5) * 0.15,
+                        z + Math.sin(a) * 0.25,
+                        vx, vy, vz,
+                        (0.12f + rnd.nextFloat() * 0.08f) * scale,
+                        1.4f + rnd.nextFloat() * 0.5f,
+                        tintColor, rnd
+                ));
+            }
+
+            for (int i = 0; i < 35; i++) {
+                double a = rnd.nextDouble() * Math.PI * 2.0;
+                double r = rnd.nextDouble() * 0.45 * scale;
+                spores.add(new LotusSporeParticle(
+                        x + Math.cos(a) * r,
+                        flowerY + (rnd.nextDouble() - 0.5) * 0.3,
+                        z + Math.sin(a) * r,
+                        (rnd.nextDouble() - 0.5) * 0.8 * scale,
+                        (0.6 + rnd.nextDouble() * 1.5) * scale,
+                        (rnd.nextDouble() - 0.5) * 0.8 * scale,
+                        (0.035f + rnd.nextFloat() * 0.03f) * scale,
+                        1.5f + rnd.nextFloat() * 0.6f,
+                        tintColor
+                ));
+            }
+        }
+
+        void updateAndRenderParticles(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                      Vec3d camPos, Vector3f lightDir, float dt) {
+            // Лепестки
+            Iterator<LotusPetalParticle> itP = detachedPetals.iterator();
+            while (itP.hasNext()) {
+                LotusPetalParticle p = itP.next();
+                p.age += dt;
+                if (p.age >= p.life) {
+                    itP.remove();
+                    continue;
+                }
+                p.vy -= 2.6f * dt; // Невесомое порхание
+                float drag = (float) Math.exp(-1.4f * dt);
+                p.vx *= drag;
+                p.vy *= drag;
+                p.vz *= drag;
+
+                p.pitch += p.rotPitch * dt;
+                p.yaw += p.rotYaw * dt;
+                p.roll += p.rotRoll * dt;
+
+                p.x += p.vx * dt + Math.sin(p.age * 6.0f) * 0.02f;
+                p.y += p.vy * dt;
+                p.z += p.vz * dt + Math.cos(p.age * 6.0f) * 0.02f;
+
+                float alphaP = MathHelper.clamp((1.0f - p.age / p.life) * 1.6f, 0.0f, 1.0f);
+                if (alphaP <= 0.01f) continue;
+
+                p.render(quadBuf, camPos, lightDir, alphaP);
+            }
+
+            // Пыльца
+            Iterator<LotusSporeParticle> itS = spores.iterator();
+            while (itS.hasNext()) {
+                LotusSporeParticle s = itS.next();
+                s.age += dt;
+                if (s.age >= s.life) {
+                    itS.remove();
+                    continue;
+                }
+                s.x += s.vx * dt;
+                s.y += s.vy * dt;
+                s.z += s.vz * dt;
+                s.vy += 0.2f * dt; // Легкий подъем вверх
+
+                float alphaS = MathHelper.clamp((1.0f - s.age / s.life) * 1.5f, 0.0f, 1.0f);
+                if (alphaS <= 0.01f) continue;
+
+                s.render(lightBuf, camPos, alphaS);
+            }
+        }
+    }
+
+    private static class LotusPetalParticle {
+        double x, y, z;
+        double vx, vy, vz;
+        float pitch, yaw, roll;
+        final float rotPitch, rotYaw, rotRoll;
+        final float size;
+        final float life;
+        final int tintColor;
+        float age = 0.0f;
+
+        LotusPetalParticle(double x, double y, double z, double vx, double vy, double vz,
+                           float size, float life, int tintColor, Random rnd) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.vx = vx;
+            this.vy = vy;
+            this.vz = vz;
+            this.size = size;
+            this.life = life;
+            this.tintColor = tintColor;
+            this.pitch = rnd.nextFloat() * 360.0f;
+            this.yaw = rnd.nextFloat() * 360.0f;
+            this.roll = rnd.nextFloat() * 360.0f;
+            this.rotPitch = (rnd.nextFloat() - 0.5f) * 500.0f;
+            this.rotYaw = (rnd.nextFloat() - 0.5f) * 500.0f;
+            this.rotRoll = (rnd.nextFloat() - 0.5f) * 500.0f;
+        }
+
+        void render(VertexConsumer buf, Vec3d camPos, Vector3f lightDir, float alpha) {
+            Quaternionf rot = new Quaternionf()
+                    .rotationYXZ((float) Math.toRadians(yaw),
+                                 (float) Math.toRadians(pitch),
+                                 (float) Math.toRadians(roll));
+
+            float s = size;
+            float px = (float) (x - camPos.x);
+            float py = (float) (y - camPos.y);
+            float pz = (float) (z - camPos.z);
+
+            Vector3f v0 = new Vector3f(-0.35f * s, -0.6f * s, 0).rotate(rot);
+            Vector3f v1 = new Vector3f( 0.35f * s, -0.6f * s, 0).rotate(rot);
+            Vector3f v2 = new Vector3f( 0.45f * s,  0.7f * s, 0).rotate(rot);
+            Vector3f v3 = new Vector3f(-0.45f * s,  0.7f * s, 0).rotate(rot);
+
+            int tr = (tintColor >> 16) & 0xFF;
+            int tg = (tintColor >> 8) & 0xFF;
+            int tb = tintColor & 0xFF;
+            int a = (int) (230 * alpha);
+
+            buf.vertex(px + v0.x, py + v0.y, pz + v0.z).color(tr, tg, tb, a);
+            buf.vertex(px + v1.x, py + v1.y, pz + v1.z).color(tr, tg, tb, a);
+            buf.vertex(px + v2.x, py + v2.y, pz + v2.z).color(255, 235, 240, a);
+            buf.vertex(px + v3.x, py + v3.y, pz + v3.z).color(255, 235, 240, a);
+        }
+    }
+
+    private static class LotusSporeParticle {
+        double x, y, z;
+        double vx, vy, vz;
+        final float size;
+        final float life;
+        final int tintColor;
+        float age = 0.0f;
+
+        LotusSporeParticle(double x, double y, double z, double vx, double vy, double vz,
+                           float size, float life, int tintColor) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.vx = vx;
+            this.vy = vy;
+            this.vz = vz;
+            this.size = size;
+            this.life = life;
+            this.tintColor = tintColor;
+        }
+
+        void render(VertexConsumer buf, Vec3d camPos, float alpha) {
+            float px = (float) (x - camPos.x);
+            float py = (float) (y - camPos.y);
+            float pz = (float) (z - camPos.z);
+            float s = size;
+
+            int tr = (tintColor >> 16) & 0xFF;
+            int tg = (tintColor >> 8) & 0xFF;
+            int tb = tintColor & 0xFF;
+            int a = (int) (240 * alpha);
+
+            buf.vertex(px - s, py - s, pz).color(tr, tg, tb, 0);
+            buf.vertex(px + s, py - s, pz).color(tr, tg, tb, 0);
+            buf.vertex(px + s, py + s, pz).color(255, 245, 230, a);
+            buf.vertex(px - s, py + s, pz).color(255, 245, 230, a);
         }
     }
 }
