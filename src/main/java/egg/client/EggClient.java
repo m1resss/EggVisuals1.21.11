@@ -6,6 +6,7 @@ import egg.client.module.render.KillEffect;
 import egg.client.module.render.ItemRadius;
 import egg.client.module.render.TargetESP;
 import egg.client.module.render.Trail;
+import egg.client.module.render.Lyrics;
 import egg.client.module.render.TotemPopConfetti;
 import egg.client.module.render.CustomHitbox;
 import egg.client.module.render.Trajectories;
@@ -105,6 +106,11 @@ public class EggClient implements ClientModInitializer {
             Trail trail = ModuleManager.getInstance().getModule(Trail.class);
             if (trail != null && trail.isEnabled()) {
                 trail.render(matrices, camera, tickDelta, immediate, camPos);
+            }
+
+            Lyrics lyrics = ModuleManager.getInstance().getModule(Lyrics.class);
+            if (lyrics != null && lyrics.isEnabled()) {
+                lyrics.renderWorld3D(matrices, camera, tickDelta, immediate, camPos);
             }
 
             immediate.draw();

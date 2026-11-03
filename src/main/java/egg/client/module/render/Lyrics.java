@@ -6,30 +6,31 @@ import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
-import egg.client.render.msdf.Draw2DProcessor;
-import egg.client.render.msdf.Fonts;
-import egg.client.render.shader.ProjectionUtil;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
 import egg.client.util.LyricLine;
 import egg.client.util.LyricsFetcher;
 import egg.client.util.MediaTracker;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.render.Camera;
-import net.minecraft.client.render.RenderTickCounter;
+import net.minecraft.client.render.RenderLayers;
+import net.minecraft.client.render.VertexConsumer;
+import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.RotationAxis;
 import net.minecraft.util.math.Vec3d;
-import org.joml.Vector2f;
+import org.joml.Matrix4f;
 
 import java.util.*;
 
 public class Lyrics extends Module {
     private final ModeSetting splitMode = new ModeSetting("Разбивка", "По фразам", "По фразам", "По запятой", "Вся строка");
     private final SliderSetting wordsPerCapsule = new SliderSetting("Слов в плашке", 2.0, 1.0, 4.0, 1.0, "Количество слов на одну 3D плашку");
-    private final SliderSetting distance = new SliderSetting("Дистанция", 4.0, 2.0, 10.0, 0.5, "Базовая дальность плашек в мире (блоки)");
-    private final SliderSetting scatterH = new SliderSetting("Разброс X", 5.5, 1.0, 9.0, 0.5, "Ширина разброса влево/вправо");
-    private final SliderSetting scatterV = new SliderSetting("Разброс Y", 2.2, 0.5, 6.0, 0.2, "Разброс по высоте");
+    private final SliderSetting distance = new SliderSetting("Дистанция", 4.0, 2.0, 12.0, 0.5, "Базовая дальность плашек в мире (блоки)");
+    private final SliderSetting scatterH = new SliderSetting("Разброс X", 3.0, 0.5, 8.0, 0.5, "Ширина разброса влево/вправо");
+    private final SliderSetting scatterV = new SliderSetting("Разброс Y", 1.2, 0.2, 4.0, 0.2, "Разброс по высоте");
     private final SliderSetting size = new SliderSetting("Масштаб", 1.0, 0.4, 2.5, 0.1, "Базовый размер плашек");
     private final SliderSetting lifetime = new SliderSetting("Время жизни", 6.0, 2.0, 14.0, 0.5, "Время отображения фразы в секундах");
 
@@ -46,17 +47,21 @@ public class Lyrics extends Module {
         final long spawnTime;
         final long lifeDurationMs;
         final float seed;
-        final float depthTier;
+        double yaw;
+        double pitch;
+        boolean flipping = false;
+        long flipStartTime = 0L;
         boolean disappearing = false;
         long disappearStartTime = 0L;
 
-        Capsule3D(Vec3d worldPos, String text, long spawnTime, long lifeDurationMs, float seed, float depthTier) {
+        Capsule3D(Vec3d worldPos, String text, long spawnTime, long lifeDurationMs, float seed, double yaw, double pitch) {
             this.worldPos = worldPos;
             this.text = text;
             this.spawnTime = spawnTime;
             this.lifeDurationMs = lifeDurationMs;
             this.seed = seed;
-            this.depthTier = depthTier;
+            this.yaw = yaw;
+            this.pitch = pitch;
         }
     }
 
@@ -119,12 +124,10 @@ public class Lyrics extends Module {
         overallAlpha = 0.0f;
     }
 
-    public void render2D(DrawContext context, RenderTickCounter tickCounter) {
+    public void renderWorld3D(MatrixStack matrices, Camera camera, float tickDelta, VertexConsumerProvider.Immediate immediate, Vec3d camPos) {
         if (!isEnabled()) return;
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.player == null || mc.world == null || mc.gameRenderer == null) return;
-        Camera camera = mc.gameRenderer.getCamera();
-        if (camera == null) return;
+        if (mc.player == null || mc.world == null || camera == null) return;
 
         long nowNanos = System.nanoTime();
         if (lastFrameNanos == 0L) lastFrameNanos = nowNanos;
@@ -219,14 +222,14 @@ public class Lyrics extends Module {
                 cap.disappearing = true;
                 cap.disappearStartTime = now;
             }
-            if (cap.disappearing && now - cap.disappearStartTime >= 750L) {
+            if (cap.disappearing && now - cap.disappearStartTime >= 650L) {
                 capIter.remove();
             }
         }
 
         if (activeCapsules.isEmpty()) return;
 
-        render3DCapsules(camera, now, dt);
+        renderWorld3DInternal(matrices, camera, now, dt, immediate, camPos);
     }
 
     private void breakAndSchedulePhrases(String rawText, long now, long lineDuration) {
@@ -278,7 +281,7 @@ public class Lyrics extends Module {
     private void spawnCapsuleInWorld(String text, long now, long lifeMs, Camera camera) {
         Vec3d eye = camera.getCameraPos();
         float yaw = camera.getYaw();
-        float pitch = camera.getPitch();
+        float pitch = MathHelper.clamp(camera.getPitch(), -72.0f, 72.0f);
 
         float yawRad = (float) Math.toRadians(yaw);
         float pitchRad = (float) Math.toRadians(pitch);
@@ -297,130 +300,108 @@ public class Lyrics extends Module {
 
         lastSide = -lastSide;
         float side = lastSide;
-        if (rng.nextFloat() < 0.15f) {
+        if (rng.nextFloat() < 0.20f) {
             side = -side;
+            lastSide = side;
         }
 
-        float[] depthMultipliers = {0.62f, 1.0f, 1.45f, 0.85f, 1.25f};
-        float pickedDepthMult = depthMultipliers[rng.nextInt(depthMultipliers.length)];
-        float d = baseDist * pickedDepthMult;
+        float s = side * hScatter * (0.50f + rng.nextFloat() * 0.50f);
+        float v = (rng.nextFloat() - 0.5f) * 2.0f * vScatter;
 
-        List<Vec3d> candidates = new ArrayList<>();
-        float[] xOffsets = {
-                side * (0.45f + rng.nextFloat() * 0.55f) * hScatter,
-                -side * (0.40f + rng.nextFloat() * 0.60f) * hScatter,
-                side * 0.20f * hScatter,
-                -side * 0.85f * hScatter,
-                0.0f
-        };
+        Vec3d spawnPos = eye.add(F.multiply(baseDist)).add(R.multiply(s)).add(U.multiply(v));
 
-        for (float ox : xOffsets) {
-            float oy = (rng.nextFloat() - 0.5f) * 2.0f * vScatter;
-            candidates.add(eye.add(F.multiply(d)).add(R.multiply(ox)).add(U.multiply(oy)));
-        }
+        double dx = eye.x - spawnPos.x;
+        double dy = eye.y - spawnPos.y;
+        double dz = eye.z - spawnPos.z;
+        double h = Math.sqrt(dx * dx + dz * dz);
+        double capYaw = Math.toDegrees(Math.atan2(-dx, dz));
+        double capPitch = -Math.toDegrees(Math.atan2(dy, Math.max(0.05, h)));
 
-        Vec3d bestPos = candidates.get(0);
-        float lowestPenalty = Float.MAX_VALUE;
+        Capsule3D cap = new Capsule3D(spawnPos, text, now, lifeMs, rng.nextFloat() * 100.0f, capYaw, capPitch);
+        activeCapsules.add(cap);
 
-        if (noOverlap.isEnabled() && !activeCapsules.isEmpty()) {
-            for (Vec3d cand : candidates) {
-                Vector2f candScreen = ProjectionUtil.worldToScreen(cand);
-                if (candScreen == null) continue;
-
-                float penalty = 0.0f;
-                for (Capsule3D other : activeCapsules) {
-                    Vector2f otherScreen = ProjectionUtil.worldToScreen(other.worldPos);
-                    if (otherScreen == null) continue;
-
-                    float dx = Math.abs(candScreen.x - otherScreen.x);
-                    float dy = Math.abs(candScreen.y - otherScreen.y);
-                    float minSpacingX = 110.0f;
-                    float minSpacingY = 46.0f;
-
-                    if (dx < minSpacingX && dy < minSpacingY) {
-                        penalty += (minSpacingX - dx) * 1.5f + (minSpacingY - dy) * 2.5f;
-                    }
-                }
-
-                if (penalty < lowestPenalty) {
-                    lowestPenalty = penalty;
-                    bestPos = cand;
-                    if (penalty <= 0.01f) break;
-                }
-            }
-        } else {
-            bestPos = candidates.get(rng.nextInt(Math.min(candidates.size(), 3)));
-        }
-
-        Capsule3D capsule = new Capsule3D(bestPos, text, now, lifeMs, rng.nextFloat() * 100.0f, pickedDepthMult);
-        activeCapsules.add(capsule);
-
-        if (activeCapsules.size() > 12) {
+        if (activeCapsules.size() > 14) {
             activeCapsules.get(0).disappearing = true;
             activeCapsules.get(0).disappearStartTime = now;
         }
     }
 
-    private void render3DCapsules(Camera camera, long now, float dt) {
-        Vec3d eye = camera.getCameraPos();
-        float yaw = camera.getYaw();
-        float pitch = camera.getPitch();
+    private void renderWorld3DInternal(MatrixStack matrices, Camera camera, long now, float dt, VertexConsumerProvider.Immediate immediate, Vec3d camPos) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        TextRenderer tr = mc.textRenderer;
 
-        float yawRad = (float) Math.toRadians(yaw);
-        float pitchRad = (float) Math.toRadians(pitch);
-        float cosP = MathHelper.cos(pitchRad);
-        float sinP = MathHelper.sin(pitchRad);
-        float cosY = MathHelper.cos(yawRad);
-        float sinY = MathHelper.sin(yawRad);
-
-        Vec3d F = new Vec3d(-sinY * cosP, -sinP, cosY * cosP).normalize();
-        Vec3d R = new Vec3d(-cosY, 0.0, -sinY).normalize();
-        Vec3d U = R.crossProduct(F).normalize();
-
-        activeCapsules.sort((c1, c2) -> Double.compare(eye.squaredDistanceTo(c2.worldPos), eye.squaredDistanceTo(c1.worldPos)));
+        // Sort back to front for proper translucent blending
+        activeCapsules.sort((c1, c2) -> Double.compare(camPos.squaredDistanceTo(c2.worldPos), camPos.squaredDistanceTo(c1.worldPos)));
 
         float userScale = (float) size.getValue();
 
         for (Capsule3D cap : activeCapsules) {
-            float timeSec = (now - cap.spawnTime) / 1000.0f;
-            float waveY = gentleWave.isEnabled() ? (float) Math.sin(timeSec * 1.8f + cap.seed) * 0.08f : 0.0f;
-            float waveX = gentleWave.isEnabled() ? (float) Math.cos(timeSec * 1.4f + cap.seed * 1.2f) * 0.05f : 0.0f;
-            Vec3d currentPos = cap.worldPos.add(R.multiply(waveX)).add(U.multiply(waveY));
+            // Check camera behind capsule -> trigger back-face flip animation
+            double radY = Math.toRadians(cap.yaw);
+            double radP = Math.toRadians(cap.pitch);
+            double cosB = Math.cos(radP);
+            double sinB = Math.sin(radP);
+            double sinA = Math.sin(radY);
+            double cosA = Math.cos(radY);
 
-            Vector2f screenPos = ProjectionUtil.worldToScreen(currentPos);
-            if (screenPos == null) continue;
+            double dot = (camPos.x - cap.worldPos.x) * (-sinA * cosB)
+                    - (camPos.y - cap.worldPos.y) * sinB
+                    + (camPos.z - cap.worldPos.z) * (cosA * cosB);
 
-            double dist = eye.distanceTo(currentPos);
-            float distFactor = (float) (4.2 / Math.max(dist, 0.8));
-            float pxScale = MathHelper.clamp(userScale * distFactor, 0.50f, 2.6f);
+            if (dot < 0 && !cap.flipping) {
+                cap.flipping = true;
+                cap.flipStartTime = now;
+            }
+
+            float flipScaleX = 1.0f;
+            if (cap.flipping) {
+                float f = (now - cap.flipStartTime) / 400.0f;
+                if (f >= 1.0f) {
+                    cap.flipping = false;
+                    cap.yaw = (cap.yaw + 180.0) % 360.0;
+                    flipScaleX = 1.0f;
+                } else if (f < 0.3f) {
+                    flipScaleX = (float) Math.cos(f * 5.235988f);
+                } else {
+                    float b_ = (f - 0.3f) / 0.7f - 1.0f;
+                    flipScaleX = -(1.0f + 2.70158f * b_ * b_ * b_ + 1.70158f * b_ * b_);
+                }
+            }
 
             float appear = MathHelper.clamp((now - cap.spawnTime) / 280.0f, 0.0f, 1.0f);
             appear = appear * appear * (3.0f - 2.0f * appear);
-            float popScale = 0.85f + 0.15f * appear;
 
             long elapsed = now - cap.spawnTime;
             long remaining = cap.lifeDurationMs - elapsed;
             float fade = 1.0f;
             if (cap.disappearing) {
-                fade = 1.0f - MathHelper.clamp((now - cap.disappearStartTime) / 750.0f, 0.0f, 1.0f);
-            } else if (remaining < 750L) {
-                fade = MathHelper.clamp(remaining / 750.0f, 0.0f, 1.0f);
+                fade = 1.0f - MathHelper.clamp((now - cap.disappearStartTime) / 600.0f, 0.0f, 1.0f);
+            } else if (remaining < 600L) {
+                fade = MathHelper.clamp(remaining / 600.0f, 0.0f, 1.0f);
             }
 
             float alpha = appear * fade * (manualPlayback ? 1.0f : overallAlpha);
             if (alpha <= 0.015f) continue;
 
-            float fontSize = 13.5f * pxScale * popScale;
-            float textW = Fonts.d.a(cap.text, fontSize);
-            float textH = Fonts.d.a(fontSize);
-            float padX = 14.5f * pxScale;
-            float padY = 7.5f * pxScale;
+            float popScale = 0.82f + 0.18f * appear;
+            float timeSec = (now - cap.spawnTime) / 1000.0f;
+            float waveY = gentleWave.isEnabled() ? (float) Math.sin(timeSec * 1.8f + cap.seed) * 0.04f : 0.0f;
+            float waveX = gentleWave.isEnabled() ? (float) Math.cos(timeSec * 1.4f + cap.seed * 1.2f) * 0.03f : 0.0f;
+
+            matrices.push();
+            matrices.translate(cap.worldPos.x - camPos.x + waveX, cap.worldPos.y - camPos.y + waveY, cap.worldPos.z - camPos.z);
+            matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees((float) (180.0 - cap.yaw)));
+            matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees((float) cap.pitch));
+
+            float s = userScale * popScale * 0.024f;
+            matrices.scale(s * flipScaleX, -s, s);
+
+            float textW = tr.getWidth(cap.text);
+            float textH = tr.fontHeight;
+            float padX = 9.0f;
+            float padY = 4.5f;
             float boxW = textW + padX * 2.0f;
             float boxH = textH + padY * 2.0f;
-            float radius = boxH / 2.0f;
-
-            float bx = screenPos.x - boxW / 2.0f;
-            float by = screenPos.y - boxH / 2.0f;
 
             int textColor;
             int glowColor;
@@ -428,36 +409,171 @@ public class Lyrics extends Module {
 
             String style = colorStyle.get();
             if ("Белый".equals(style)) {
-                textColor = ColorUtil.rgba(242, 244, 250, (int) (255 * alpha));
-                glowColor = ColorUtil.rgba(255, 255, 255, (int) (130 * alpha));
-                bgCol = ColorUtil.rgba(14, 15, 20, (int) (185 * alpha));
+                textColor = ColorUtil.rgba(245, 246, 252, (int) (255 * alpha));
+                glowColor = ColorUtil.rgba(255, 255, 255, (int) (140 * alpha));
+                bgCol = ColorUtil.rgba(12, 14, 20, (int) (180 * alpha));
             } else if ("Тема".equals(style)) {
                 int accent = Theme.getAccent();
                 textColor = ColorUtil.withAlphaFloat(accent, alpha);
-                glowColor = ColorUtil.withAlphaFloat(accent, 0.60f * alpha);
-                bgCol = ColorUtil.rgba(12, 14, 20, (int) (185 * alpha));
+                glowColor = ColorUtil.withAlphaFloat(accent, 0.65f * alpha);
+                bgCol = ColorUtil.rgba(12, 14, 20, (int) (180 * alpha));
             } else if ("Лавандовый".equals(style)) {
                 textColor = ColorUtil.rgba(215, 185, 255, (int) (255 * alpha));
-                glowColor = ColorUtil.rgba(195, 160, 255, (int) (150 * alpha));
-                bgCol = ColorUtil.rgba(16, 14, 24, (int) (185 * alpha));
+                glowColor = ColorUtil.rgba(195, 155, 255, (int) (150 * alpha));
+                bgCol = ColorUtil.rgba(16, 14, 24, (int) (180 * alpha));
             } else {
                 textColor = ColorUtil.rgba(255, 158, 170, (int) (255 * alpha));
-                glowColor = ColorUtil.rgba(255, 135, 155, (int) (150 * alpha));
-                bgCol = ColorUtil.rgba(15, 16, 22, (int) (185 * alpha));
+                glowColor = ColorUtil.rgba(255, 125, 148, (int) (160 * alpha));
+                bgCol = ColorUtil.rgba(14, 15, 22, (int) (180 * alpha));
             }
 
+            Matrix4f mat = matrices.peek().getPositionMatrix();
+
             if (background.isEnabled()) {
-                Draw2DProcessor.INSTANCE.drawRect(null, bx, by, boxW, boxH, radius, bgCol);
+                VertexConsumer quadConsumer = immediate.getBuffer(RenderLayers.debugQuads());
+                int bgR = (bgCol >> 16) & 0xFF;
+                int bgG = (bgCol >> 8) & 0xFF;
+                int bgB = bgCol & 0xFF;
+                int bgA = (bgCol >> 24) & 0xFF;
+
+                draw3DCapsule(quadConsumer, mat, boxW, boxH, bgR, bgG, bgB, bgA);
 
                 if (glow.isEnabled()) {
-                    float outW = Math.max(1.0f, 1.0f * pxScale);
-                    Draw2DProcessor.INSTANCE.drawOutline(null, bx, by, boxW, boxH, radius, outW, glowColor);
+                    int glR = (glowColor >> 16) & 0xFF;
+                    int glG = (glowColor >> 8) & 0xFF;
+                    int glB = glowColor & 0xFF;
+                    int glA = (glowColor >> 24) & 0xFF;
+                    draw3DCapsuleOutline(quadConsumer, mat, boxW, boxH, 0.9f, glR, glG, glB, glA);
                 }
             }
 
-            float textX = bx + padX;
-            float textY = by + padY - 0.5f;
-            Fonts.d.a(null, cap.text, textX, textY, fontSize, textColor);
+            float tx = -textW / 2.0f;
+            float ty = -textH / 2.0f - 0.5f;
+            tr.draw(cap.text, tx, ty, textColor, false, mat, immediate, TextRenderer.TextLayerType.SEE_THROUGH, 0, 0xF000F0);
+
+            matrices.pop();
+        }
+
+        immediate.draw();
+    }
+
+    private void draw3DCapsule(VertexConsumer buf, Matrix4f mat, float w, float h, int r, int g, int b, int a) {
+        float rad = h * 0.5f;
+        float x1 = -w * 0.5f + rad;
+        float x2 = w * 0.5f - rad;
+        float y1 = -h * 0.5f;
+        float y2 = h * 0.5f;
+
+        // Center rectangle
+        buf.vertex(mat, x1, y1, 0f).color(r, g, b, a);
+        buf.vertex(mat, x2, y1, 0f).color(r, g, b, a);
+        buf.vertex(mat, x2, y2, 0f).color(r, g, b, a);
+        buf.vertex(mat, x1, y2, 0f).color(r, g, b, a);
+
+        int segments = 12;
+        float step = (float) Math.PI / segments;
+
+        // Left cap fan
+        for (int i = 0; i < segments; i++) {
+            float a1 = (float) Math.PI * 0.5f + i * step;
+            float a2 = a1 + step;
+            float px1 = x1 + (float) Math.cos(a1) * rad;
+            float py1 = (float) Math.sin(a1) * rad;
+            float px2 = x1 + (float) Math.cos(a2) * rad;
+            float py2 = (float) Math.sin(a2) * rad;
+
+            buf.vertex(mat, x1, 0f, 0f).color(r, g, b, a);
+            buf.vertex(mat, px1, py1, 0f).color(r, g, b, a);
+            buf.vertex(mat, px2, py2, 0f).color(r, g, b, a);
+            buf.vertex(mat, x1, 0f, 0f).color(r, g, b, a);
+        }
+
+        // Right cap fan
+        for (int i = 0; i < segments; i++) {
+            float a1 = -(float) Math.PI * 0.5f + i * step;
+            float a2 = a1 + step;
+            float px1 = x2 + (float) Math.cos(a1) * rad;
+            float py1 = (float) Math.sin(a1) * rad;
+            float px2 = x2 + (float) Math.cos(a2) * rad;
+            float py2 = (float) Math.sin(a2) * rad;
+
+            buf.vertex(mat, x2, 0f, 0f).color(r, g, b, a);
+            buf.vertex(mat, px1, py1, 0f).color(r, g, b, a);
+            buf.vertex(mat, px2, py2, 0f).color(r, g, b, a);
+            buf.vertex(mat, x2, 0f, 0f).color(r, g, b, a);
+        }
+    }
+
+    private void draw3DCapsuleOutline(VertexConsumer buf, Matrix4f mat, float w, float h, float thickness, int r, int g, int b, int a) {
+        float rad = h * 0.5f;
+        float x1 = -w * 0.5f + rad;
+        float x2 = w * 0.5f - rad;
+        float y1 = -h * 0.5f;
+        float y2 = h * 0.5f;
+
+        // Top edge
+        buf.vertex(mat, x1, y1 - thickness, 0f).color(r, g, b, a);
+        buf.vertex(mat, x2, y1 - thickness, 0f).color(r, g, b, a);
+        buf.vertex(mat, x2, y1, 0f).color(r, g, b, a);
+        buf.vertex(mat, x1, y1, 0f).color(r, g, b, a);
+
+        // Bottom edge
+        buf.vertex(mat, x1, y2, 0f).color(r, g, b, a);
+        buf.vertex(mat, x2, y2, 0f).color(r, g, b, a);
+        buf.vertex(mat, x2, y2 + thickness, 0f).color(r, g, b, a);
+        buf.vertex(mat, x1, y2 + thickness, 0f).color(r, g, b, a);
+
+        int segments = 12;
+        float step = (float) Math.PI / segments;
+
+        // Left cap outline ring
+        for (int i = 0; i < segments; i++) {
+            float a1 = (float) Math.PI * 0.5f + i * step;
+            float a2 = a1 + step;
+            float c1 = (float) Math.cos(a1);
+            float s1 = (float) Math.sin(a1);
+            float c2 = (float) Math.cos(a2);
+            float s2 = (float) Math.sin(a2);
+
+            float in1x = x1 + c1 * rad;
+            float in1y = s1 * rad;
+            float in2x = x1 + c2 * rad;
+            float in2y = s2 * rad;
+
+            float out1x = x1 + c1 * (rad + thickness);
+            float out1y = s1 * (rad + thickness);
+            float out2x = x1 + c2 * (rad + thickness);
+            float out2y = s2 * (rad + thickness);
+
+            buf.vertex(mat, in1x, in1y, 0f).color(r, g, b, a);
+            buf.vertex(mat, out1x, out1y, 0f).color(r, g, b, a);
+            buf.vertex(mat, out2x, out2y, 0f).color(r, g, b, a);
+            buf.vertex(mat, in2x, in2y, 0f).color(r, g, b, a);
+        }
+
+        // Right cap outline ring
+        for (int i = 0; i < segments; i++) {
+            float a1 = -(float) Math.PI * 0.5f + i * step;
+            float a2 = a1 + step;
+            float c1 = (float) Math.cos(a1);
+            float s1 = (float) Math.sin(a1);
+            float c2 = (float) Math.cos(a2);
+            float s2 = (float) Math.sin(a2);
+
+            float in1x = x2 + c1 * rad;
+            float in1y = s1 * rad;
+            float in2x = x2 + c2 * rad;
+            float in2y = s2 * rad;
+
+            float out1x = x2 + c1 * (rad + thickness);
+            float out1y = s1 * (rad + thickness);
+            float out2x = x2 + c2 * (rad + thickness);
+            float out2y = s2 * (rad + thickness);
+
+            buf.vertex(mat, in1x, in1y, 0f).color(r, g, b, a);
+            buf.vertex(mat, out1x, out1y, 0f).color(r, g, b, a);
+            buf.vertex(mat, out2x, out2y, 0f).color(r, g, b, a);
+            buf.vertex(mat, in2x, in2y, 0f).color(r, g, b, a);
         }
     }
 

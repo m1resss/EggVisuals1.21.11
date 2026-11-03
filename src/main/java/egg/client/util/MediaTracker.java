@@ -104,35 +104,65 @@ public final class MediaTracker {
                 try {
                     List<IMediaSession> sessions = MediaPlayerInfo.INSTANCE.getMediaSessions();
                     if (sessions != null && !sessions.isEmpty()) {
-                        for (IMediaSession session : sessions) {
-                            if (session == null) continue;
-                            MediaInfo media = session.getMedia();
-                            if (media != null && !media.getTitle().isEmpty()) {
-                                String t = media.getTitle().trim();
-                                String a = media.getArtist().trim();
-
-                                if (a.isEmpty() && (t.contains(" - ") || t.contains(" — ") || t.contains(" – "))) {
-                                    String[] split = splitArtistAndTitle(t);
-                                    a = split[0];
-                                    t = split[1];
-                                }
-
-                                if (!t.isEmpty()) {
-                                    if (!this.trackTitle.equals(t) || !this.trackArtist.equals(a)) {
-                                        this.trackTitle = t;
-                                        this.trackArtist = a;
-                                        this.manualOffsetMs = 0L;
-                                    }
-                                    this.playing = media.isPlaying();
-                                    this.trackDurationSec = media.getDuration();
-                                    long pos = media.getPosition();
-                                    if (pos != this.trackPositionSec) {
-                                        this.trackPositionSec = pos;
-                                        this.lastPositionUpdate = System.currentTimeMillis();
-                                    }
-                                    foundMedia = true;
+                        IMediaSession bestSession = null;
+                        // 1a. Prioritize actively playing session
+                        for (IMediaSession s : sessions) {
+                            if (s == null) continue;
+                            MediaInfo m = s.getMedia();
+                            if (m == null || m.getTitle().isBlank()) continue;
+                            if (m.isPlaying()) {
+                                String owner = s.getOwner() != null ? s.getOwner().toLowerCase(java.util.Locale.ROOT) : "";
+                                boolean isMusicApp = owner.contains("spotify") || owner.contains("yandex") || owner.contains("aimp") || owner.contains("apple") || owner.contains("music");
+                                if (isMusicApp) {
+                                    bestSession = s;
                                     break;
+                                } else if (bestSession == null) {
+                                    bestSession = s;
                                 }
+                            }
+                        }
+                        // 1b. If no session is currently playing, pick first non-empty session (preferring music apps)
+                        if (bestSession == null) {
+                            for (IMediaSession s : sessions) {
+                                if (s == null) continue;
+                                MediaInfo m = s.getMedia();
+                                if (m == null || m.getTitle().isBlank()) continue;
+                                String owner = s.getOwner() != null ? s.getOwner().toLowerCase(java.util.Locale.ROOT) : "";
+                                boolean isMusicApp = owner.contains("spotify") || owner.contains("yandex") || owner.contains("aimp") || owner.contains("apple") || owner.contains("music");
+                                if (isMusicApp) {
+                                    bestSession = s;
+                                    break;
+                                } else if (bestSession == null) {
+                                    bestSession = s;
+                                }
+                            }
+                        }
+
+                        if (bestSession != null) {
+                            MediaInfo media = bestSession.getMedia();
+                            String t = media.getTitle().trim();
+                            String a = media.getArtist().trim();
+
+                            if (a.isEmpty() && (t.contains(" - ") || t.contains(" — ") || t.contains(" – "))) {
+                                String[] split = splitArtistAndTitle(t);
+                                a = split[0];
+                                t = split[1];
+                            }
+
+                            if (!t.isEmpty()) {
+                                if (!this.trackTitle.equals(t) || !this.trackArtist.equals(a)) {
+                                    this.trackTitle = t;
+                                    this.trackArtist = a;
+                                    this.manualOffsetMs = 0L;
+                                }
+                                this.playing = media.isPlaying();
+                                this.trackDurationSec = media.getDuration();
+                                long pos = media.getPosition();
+                                if (pos != this.trackPositionSec) {
+                                    this.trackPositionSec = pos;
+                                    this.lastPositionUpdate = System.currentTimeMillis();
+                                }
+                                foundMedia = true;
                             }
                         }
                     }
@@ -159,41 +189,53 @@ public final class MediaTracker {
                             int classLen = User32.INSTANCE.GetClassName(hwnd, classBuffer, classBuffer.length);
                             String className = classLen > 0 ? new String(classBuffer, 0, classLen) : "";
 
-                            // Spotify desktop client
-                            if (className.startsWith("Chrome_WidgetWin") || className.contains("Spotify")) {
+                            boolean isBrowserOrNonMedia = winTitle.endsWith(" - Google Chrome")
+                                    || winTitle.endsWith(" - Chromium")
+                                    || winTitle.endsWith(" - Brave")
+                                    || winTitle.endsWith(" - Microsoft​ Edge")
+                                    || winTitle.endsWith(" - Discord")
+                                    || winTitle.endsWith(" - Visual Studio Code")
+                                    || winTitle.contains("Visual Studio")
+                                    || winTitle.endsWith(" - Notepad");
+
+                            // 1. YouTube / YouTube Music in browsers
+                            if (winTitle.contains(" - YouTube")) {
+                                String clean = winTitle.replaceAll("(?i)\\s*[-—–|]\\s*(?:Google Chrome|Chromium|Brave|Microsoft​ Edge).*$", "").trim();
+                                clean = clean.replaceAll("(?i)\\s*-\\s*YouTube(?:\\s+Music)?.*$", "").trim();
+                                String[] split = splitArtistAndTitle(clean);
+                                if (!split[1].isEmpty()) {
+                                    foundArtist[0] = split[0];
+                                    foundTitle[0] = split[1];
+                                    winFound[0] = true;
+                                    return false;
+                                }
+                            }
+
+                            // 2. Yandex Music Desktop or Web / VK / SoundCloud / AIMP / VLC
+                            if (winTitle.contains("Яндекс Музыка") || winTitle.contains("VK Музыка") || winTitle.contains("SoundCloud") || winTitle.contains("AIMP") || winTitle.contains("VLC")) {
+                                String clean = winTitle.replaceAll("(?i)\\s*[-—–|]\\s*(?:Яндекс Музыка|VK Музыка|SoundCloud|AIMP|VLC media player|Google Chrome|Brave|Edge).*$", "").trim();
+                                String[] split = splitArtistAndTitle(clean);
+                                if (!split[1].isEmpty()) {
+                                    foundArtist[0] = split[0];
+                                    foundTitle[0] = split[1];
+                                    winFound[0] = true;
+                                    return false;
+                                }
+                            }
+
+                            // 3. Spotify desktop client
+                            if (!isBrowserOrNonMedia && (className.contains("Spotify") || className.startsWith("Chrome_WidgetWin"))) {
                                 if (winTitle.equalsIgnoreCase("Spotify") || winTitle.equalsIgnoreCase("Spotify Free") || winTitle.equalsIgnoreCase("Spotify Premium")) {
                                     return true;
                                 }
-                                String[] split = splitArtistAndTitle(winTitle);
-                                if (!split[1].isEmpty()) {
-                                    foundArtist[0] = split[0];
-                                    foundTitle[0] = split[1];
-                                    winFound[0] = true;
-                                    return false;
-                                }
-                            }
-
-                            // Yandex Music / VK / Web players
-                            if (winTitle.contains("Яндекс Музыка") || winTitle.contains("VK Музыка") || winTitle.contains("SoundCloud") || winTitle.contains("AIMP") || winTitle.contains("VLC")) {
-                                String clean = winTitle.replaceAll("(?i)\\s*[-—–|]\\s*(?:Яндекс Музыка|VK Музыка|SoundCloud|AIMP|VLC media player).*$", "").trim();
-                                String[] split = splitArtistAndTitle(clean);
-                                if (!split[1].isEmpty()) {
-                                    foundArtist[0] = split[0];
-                                    foundTitle[0] = split[1];
-                                    winFound[0] = true;
-                                    return false;
-                                }
-                            }
-
-                            // YouTube / YouTube Music in browsers
-                            if (winTitle.endsWith(" - YouTube") || winTitle.endsWith(" - YouTube Music")) {
-                                String clean = winTitle.replaceAll("(?i)\\s*-\\s*YouTube(?:\\s+Music)?.*$", "").trim();
-                                String[] split = splitArtistAndTitle(clean);
-                                if (!split[1].isEmpty()) {
-                                    foundArtist[0] = split[0];
-                                    foundTitle[0] = split[1];
-                                    winFound[0] = true;
-                                    return false;
+                                if (winTitle.contains(" - ") || winTitle.contains(" — ")) {
+                                    String[] split = splitArtistAndTitle(winTitle);
+                                    if (!split[1].isEmpty()) {
+                                        foundArtist[0] = split[0];
+                                        foundTitle[0] = split[1];
+                                        winFound[0] = true;
+                                        return false;
+                                    }
                                 }
                             }
 
