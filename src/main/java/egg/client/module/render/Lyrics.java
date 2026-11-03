@@ -69,19 +69,21 @@ public class Lyrics extends Module {
         final long lifeDurationMs;
         final long singDurationMs;
         final float seed;
+        final float yaw;
         boolean disappearing = false;
         long disappearStartTime = 0L;
         float boxW = 80.0f;
         float boxH = 22.0f;
         final List<WordInfo> words = new ArrayList<>();
 
-        Capsule3D(Vec3d worldPos, String text, long spawnTime, long lifeDurationMs, long singDurationMs, float seed, float boxW, float boxH) {
+        Capsule3D(Vec3d worldPos, String text, long spawnTime, long lifeDurationMs, long singDurationMs, float seed, float yaw, float boxW, float boxH) {
             this.worldPos = worldPos;
             this.text = text;
             this.spawnTime = spawnTime;
             this.lifeDurationMs = lifeDurationMs;
             this.singDurationMs = Math.max(800L, singDurationMs);
             this.seed = seed;
+            this.yaw = yaw;
             this.boxW = boxW;
             this.boxH = boxH;
         }
@@ -456,7 +458,8 @@ public class Lyrics extends Module {
             }
         }
 
-        Capsule3D cap = new Capsule3D(bestPos, text, now, lifeMs, singDurationMs, rng.nextFloat() * 100.0f, boxW, boxH);
+        float capYaw = camera.getYaw();
+        Capsule3D cap = new Capsule3D(bestPos, text, now, lifeMs, singDurationMs, rng.nextFloat() * 100.0f, capYaw, boxW, boxH);
         activeCapsules.add(cap);
 
         if (activeCapsules.size() > 10) {
@@ -497,11 +500,12 @@ public class Lyrics extends Module {
 
             matrices.push();
             matrices.translate(cap.worldPos.x - camPos.x + waveX, cap.worldPos.y - camPos.y + waveY, cap.worldPos.z - camPos.z);
-            matrices.multiply(camera.getRotation());
+            // Зафиксирована в пространстве под углом спавна (не вращается вслед за игроком)
+            matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(180.0f - cap.yaw));
 
             float s = userScale * popScale * 0.030f;
-            // Каноничное выравнивание к экрану как у vanilla name tags: всегда прямо, без зеркальности и перекосов
-            matrices.scale(-s, -s, s);
+            // s по X для прямого чтения слева направо (без зеркальности), -s по Y для TextRenderer
+            matrices.scale(s, -s, s);
 
             StyleSpriteSource.Font selectedFont = switch (fontMode.get()) {
                 case "SF Semibold" -> ClientFont.SF_SEMIBOLD;
@@ -560,10 +564,10 @@ public class Lyrics extends Module {
                 int bgA = (bgCol >> 24) & 0xFF;
 
                 // 1a. Глубокая рассеянная тень (oz = -0.05f - сзади капсулы)
-                draw3DCapsule(quadConsumer, mat, boxW + 5.0f, boxH + 3.0f, -2.0f, 2.4f, -0.05f, 0, 0, 0, (int) (70 * alpha));
+                draw3DCapsule(quadConsumer, mat, boxW + 5.0f, boxH + 3.0f, 1.8f, 2.4f, -0.05f, 0, 0, 0, (int) (70 * alpha));
 
                 // 1b. Ближняя контактная тень (oz = -0.025f)
-                draw3DCapsule(quadConsumer, mat, boxW + 2.0f, boxH + 1.2f, -1.0f, 1.2f, -0.025f, 0, 0, 0, (int) (120 * alpha));
+                draw3DCapsule(quadConsumer, mat, boxW + 2.0f, boxH + 1.2f, 0.8f, 1.2f, -0.025f, 0, 0, 0, (int) (120 * alpha));
 
                 // 2. Базовая темная стеклянная капсула (oz = 0.0f)
                 draw3DCapsule(quadConsumer, mat, boxW, boxH, 0f, 0f, 0.0f, bgR, bgG, bgB, bgA);
@@ -602,77 +606,97 @@ public class Lyrics extends Module {
                 }
             }
 
-            if (wordAnimation.isEnabled() && !cap.words.isEmpty()) {
-                int numWords = cap.words.size();
-                float singProgress = MathHelper.clamp((float) elapsed / (float) cap.singDurationMs, 0.0f, 1.0f);
-                int activeWordIdx = (int) (singProgress * numWords);
-                if (activeWordIdx >= numWords) activeWordIdx = numWords - 1;
-                boolean isSinging = elapsed < cap.singDurationMs;
+            // Отрисовка текста (Лицевая сторона)
+            renderTextFace(tr, cap, styledText, textW, textH, textColor, alpha, elapsed, dt, selectedFont, immediate, matrices, pureLight);
 
-                float startX = -textW / 2.0f;
-                float baseTy = -textH / 2.0f;
+            // Отрисовка текста (Задняя сторона — разворот на 180° по Y, чтобы при обходе плашка читалась сзади без зеркальности)
+            matrices.push();
+            matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(180.0f));
+            renderTextFace(tr, cap, styledText, textW, textH, textColor, alpha, elapsed, dt, selectedFont, immediate, matrices, pureLight);
+            matrices.pop();
 
-                for (int w = 0; w < numWords; w++) {
-                    WordInfo word = cap.words.get(w);
-
-                    // Активное слово подпрыгивает и увеличивается до 1.15x как в Dynamic Island
-                    float targetScale = (isSinging && w == activeWordIdx) ? 1.15f : 1.0f;
-                    word.currentScale += (targetScale - word.currentScale) * Math.min(1.0f, dt * 12.0f);
-
-                    // Плавный прыжок вверх при пении
-                    float hop = (word.currentScale - 1.0f) * 9.0f;
-
-                    // Спетое и активное слово светятся 100% белым/акцентом, еще не спетые — мягкие 45% прозрачности
-                    int wColor;
-                    if (!isSinging || w <= activeWordIdx) {
-                        wColor = textColor;
-                    } else {
-                        wColor = ColorUtil.withAlphaFloat(textColor, alpha * 0.45f);
-                    }
-
-                    float wx = startX + word.xOffset;
-                    float wy = baseTy - hop;
-                    float cx = wx + word.width * 0.5f;
-                    float cy = wy + textH * 0.5f;
-
-                    matrices.push();
-                    matrices.translate(cx, cy, 0.035f);
-                    if (Math.abs(word.currentScale - 1.0f) > 0.002f) {
-                        matrices.scale(word.currentScale, word.currentScale, 1.0f);
-                    }
-                    matrices.translate(-cx, -cy, 0.0f);
-                    Matrix4f wMat = matrices.peek().getPositionMatrix();
-                    matrices.pop();
-
-                    Text wText = selectedFont != null ? ClientFont.getText(word.text, selectedFont) : null;
-                    if (wText != null && !"Minecraft".equalsIgnoreCase(fontMode.get())) {
-                        tr.draw(wText, wx, wy, wColor, false, wMat, immediate, TextRenderer.TextLayerType.NORMAL, 0, pureLight);
-                    } else {
-                        tr.draw(word.text, wx, wy, wColor, false, wMat, immediate, TextRenderer.TextLayerType.NORMAL, 0, pureLight);
-                    }
-                }
-            } else {
-                float tx = -textW / 2.0f;
-                float ty = -textH / 2.0f;
-                matrices.push();
-                matrices.translate(0.0f, 0.0f, 0.035f);
-                Matrix4f textMat = matrices.peek().getPositionMatrix();
-                matrices.pop();
-
-                if (styledText != null && !"Minecraft".equalsIgnoreCase(fontMode.get()) && textW > 0) {
-                    try {
-                        tr.draw(styledText, tx, ty, textColor, false, textMat, immediate, TextRenderer.TextLayerType.NORMAL, 0, pureLight);
-                    } catch (Throwable ignored) {}
-                } else {
-                    tr.draw(cap.text, tx, ty, textColor, false, textMat, immediate, TextRenderer.TextLayerType.NORMAL, 0, pureLight);
-                }
-            }
             immediate.draw();
 
             GL11.glDepthMask(true);
             GL11.glEnable(GL11.GL_DEPTH_TEST);
             GL11.glEnable(GL11.GL_CULL_FACE);
             matrices.pop();
+        }
+    }
+
+    private void renderTextFace(TextRenderer tr, Capsule3D cap, Text styledText, float textW, float textH,
+                                int textColor, float alpha, long elapsed, float dt,
+                                StyleSpriteSource.Font selectedFont, VertexConsumerProvider.Immediate immediate,
+                                MatrixStack matrices, int pureLight) {
+        if (wordAnimation.isEnabled() && !cap.words.isEmpty()) {
+            int numWords = cap.words.size();
+            float singProgress = MathHelper.clamp((float) elapsed / (float) cap.singDurationMs, 0.0f, 1.0f);
+            int activeWordIdx = (int) (singProgress * numWords);
+            if (activeWordIdx >= numWords) activeWordIdx = numWords - 1;
+            boolean isSinging = elapsed < cap.singDurationMs;
+
+            float startX = -textW / 2.0f;
+            float baseTy = -textH / 2.0f;
+
+            for (int w = 0; w < numWords; w++) {
+                WordInfo word = cap.words.get(w);
+
+                float targetScale = (isSinging && w == activeWordIdx) ? 1.15f : 1.0f;
+                word.currentScale += (targetScale - word.currentScale) * Math.min(1.0f, dt * 12.0f);
+
+                float hop = (word.currentScale - 1.0f) * 9.0f;
+
+                int wColor;
+                if (!isSinging || w <= activeWordIdx) {
+                    wColor = textColor;
+                } else {
+                    wColor = ColorUtil.withAlphaFloat(textColor, alpha * 0.45f);
+                }
+
+                float wx = startX + word.xOffset;
+                float wy = baseTy - hop;
+                float cx = wx + word.width * 0.5f;
+                float cy = wy + textH * 0.5f;
+
+                matrices.push();
+                matrices.translate(cx, cy, 0.035f);
+                if (Math.abs(word.currentScale - 1.0f) > 0.002f) {
+                    matrices.scale(word.currentScale, word.currentScale, 1.0f);
+                }
+                matrices.translate(-cx, -cy, 0.0f);
+                Matrix4f wMat = matrices.peek().getPositionMatrix();
+                matrices.pop();
+
+                Text wText = selectedFont != null ? ClientFont.getText(word.text, selectedFont) : null;
+                boolean drawn = false;
+                if (wText != null && !"Minecraft".equalsIgnoreCase(fontMode.get())) {
+                    try {
+                        tr.draw(wText, wx, wy, wColor, false, wMat, immediate, TextRenderer.TextLayerType.SEE_THROUGH, 0, pureLight);
+                        drawn = true;
+                    } catch (Throwable ignored) {}
+                }
+                if (!drawn) {
+                    tr.draw(word.text, wx, wy, wColor, false, wMat, immediate, TextRenderer.TextLayerType.SEE_THROUGH, 0, pureLight);
+                }
+            }
+        } else {
+            float tx = -textW / 2.0f;
+            float ty = -textH / 2.0f;
+            matrices.push();
+            matrices.translate(0.0f, 0.0f, 0.035f);
+            Matrix4f textMat = matrices.peek().getPositionMatrix();
+            matrices.pop();
+
+            boolean drawn = false;
+            if (styledText != null && !"Minecraft".equalsIgnoreCase(fontMode.get()) && textW > 0) {
+                try {
+                    tr.draw(styledText, tx, ty, textColor, false, textMat, immediate, TextRenderer.TextLayerType.SEE_THROUGH, 0, pureLight);
+                    drawn = true;
+                } catch (Throwable ignored) {}
+            }
+            if (!drawn) {
+                tr.draw(cap.text, tx, ty, textColor, false, textMat, immediate, TextRenderer.TextLayerType.SEE_THROUGH, 0, pureLight);
+            }
         }
     }
 
