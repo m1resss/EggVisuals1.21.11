@@ -40,7 +40,7 @@ public class Lyrics extends Module {
     private final SliderSetting lifetime = new SliderSetting("Время жизни", 6.0, 2.0, 14.0, 0.5, "Время отображения фразы в секундах");
 
     private final ModeSetting fontMode = new ModeSetting("Шрифт", "SF Medium", "SF Medium", "SF Semibold", "SF Bold", "SF Regular", "Minecraft");
-    private final ModeSetting colorStyle = new ModeSetting("Цвет текста", "Коралловый", "Коралловый", "Белый", "Лавандовый", "Тема");
+    private final ModeSetting colorStyle = new ModeSetting("Цвет текста", "Белый", "Белый", "Лавандовый", "Коралловый", "Тема");
     private final BooleanSetting background = new BooleanSetting("Фон плашки", true, "Отображать темную полупрозрачную подложку");
     private final BooleanSetting glow = new BooleanSetting("Неоновое свечение", true, "Свечение контура капсулы");
     private final BooleanSetting gentleWave = new BooleanSetting("Живое покачивание", true, "Плавное 3D покачивание плашек в пространстве");
@@ -50,7 +50,7 @@ public class Lyrics extends Module {
     private static class Capsule3D {
         Vec3d worldPos;
         final String text;
-        final long spawnTime;
+        long spawnTime;
         final long lifeDurationMs;
         final float seed;
         double yaw;
@@ -77,7 +77,7 @@ public class Lyrics extends Module {
 
     private static class ScheduledChunk {
         final String text;
-        final long spawnAtTimeMs;
+        long spawnAtTimeMs;
         final long lifeMs;
 
         ScheduledChunk(String text, long spawnAtTimeMs, long lifeMs) {
@@ -168,9 +168,12 @@ public class Lyrics extends Module {
             String curArtist = mt.getTrackArtist();
             String curTitle = mt.getTrackTitle();
             boolean hasTrack = !curTitle.isEmpty();
+            boolean isPlaying = mt.isPlaying();
 
-            if (mt.isPlaying() || hasTrack) {
+            if (isPlaying) {
                 overallAlpha = Math.min(1.0f, overallAlpha + dt * 3.0f);
+            } else if (hasTrack) {
+                overallAlpha = 1.0f;
             } else {
                 overallAlpha = Math.max(0.0f, overallAlpha - dt * 0.8f);
             }
@@ -195,6 +198,20 @@ public class Lyrics extends Module {
                 }
             }
             currentPosMs = mt.getTrackElapsedMs();
+
+            // Если трек стоит на паузе — замораживаем таймеры очереди и активных плашек
+            if (!isPlaying && hasTrack) {
+                long dtMs = (long) (dt * 1000.0f);
+                for (ScheduledChunk chunk : pendingQueue) {
+                    chunk.spawnAtTimeMs += dtMs;
+                }
+                for (Capsule3D cap : activeCapsules) {
+                    cap.spawnTime += dtMs;
+                    if (cap.disappearing) {
+                        cap.disappearStartTime += dtMs;
+                    }
+                }
+            }
         }
 
         if (activeLyrics != null && !activeLyrics.isEmpty()) {
@@ -543,9 +560,9 @@ public class Lyrics extends Module {
 
             String style = colorStyle.get();
             if (style.contains("Бел") || style.contains("White")) {
-                textColor = ColorUtil.rgba(245, 246, 252, (int) (255 * alpha));
-                glowColor = ColorUtil.rgba(255, 255, 255, (int) (150 * alpha));
-                bgCol = ColorUtil.rgba(20, 22, 28, (int) (185 * alpha));
+                textColor = ColorUtil.rgba(255, 255, 255, (int) (255 * alpha));
+                glowColor = ColorUtil.rgba(255, 255, 255, (int) (180 * alpha));
+                bgCol = ColorUtil.rgba(16, 17, 22, (int) (190 * alpha));
             } else if (style.contains("Тем") || style.contains("Theme") || style.contains("Акцент")) {
                 int accent = Theme.getAccent();
                 textColor = ColorUtil.withAlphaFloat(accent, alpha);
@@ -609,14 +626,15 @@ public class Lyrics extends Module {
             matrices.pop();
 
             boolean drawn = false;
+            int pureLight = 15728640; // Полный дневной свет (Sky=15, Block=0) — нулевой оттенок факела/желтизны
             if (styledText != null && !"Minecraft".equalsIgnoreCase(fontMode.get()) && textW > 0) {
                 try {
-                    tr.draw(styledText, tx, ty, textColor, true, textMat, immediate, TextRenderer.TextLayerType.SEE_THROUGH, 0, 15728880);
+                    tr.draw(styledText, tx, ty, textColor, false, textMat, immediate, TextRenderer.TextLayerType.NORMAL, 0, pureLight);
                     drawn = true;
                 } catch (Throwable ignored) {}
             }
             if (!drawn) {
-                tr.draw(cap.text, tx, ty, textColor, true, textMat, immediate, TextRenderer.TextLayerType.SEE_THROUGH, 0, 15728880);
+                tr.draw(cap.text, tx, ty, textColor, false, textMat, immediate, TextRenderer.TextLayerType.NORMAL, 0, pureLight);
             }
             immediate.draw();
 

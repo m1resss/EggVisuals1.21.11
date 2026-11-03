@@ -54,7 +54,7 @@ public final class MediaTracker {
 
     public long getTrackElapsedMs() {
         long now = System.currentTimeMillis();
-        long delta = now - lastPositionUpdate;
+        long delta = playing ? (now - lastPositionUpdate) : 0L;
         if (trackPositionSec > 0L) {
             long posMs = trackPositionSec * 1000L + delta + manualOffsetMs;
             if (trackDurationSec > 0L) {
@@ -63,7 +63,7 @@ public final class MediaTracker {
             return Math.max(0L, posMs);
         }
         if (trackTitle.isEmpty()) return manualOffsetMs;
-        return Math.max(0L, delta + manualOffsetMs);
+        return Math.max(0L, (playing ? delta : 0L) + manualOffsetMs);
     }
 
     public void setTrackElapsedMs(long ms) {
@@ -172,6 +172,9 @@ public final class MediaTracker {
                             }
 
                             if (!t.isEmpty()) {
+                                boolean wasPlaying = this.playing;
+                                boolean nowPlaying = media.isPlaying();
+
                                 if (!this.trackTitle.equals(t) || !this.trackArtist.equals(a)) {
                                     this.trackTitle = t;
                                     this.trackArtist = a;
@@ -179,7 +182,19 @@ public final class MediaTracker {
                                     this.lastPositionUpdate = System.currentTimeMillis();
                                     this.manualOffsetMs = 0L;
                                 }
-                                this.playing = media.isPlaying() || !t.isEmpty();
+
+                                if (wasPlaying && !nowPlaying) {
+                                    // Track just paused - freeze position
+                                    long current = getTrackElapsedMs();
+                                    this.trackPositionSec = current / 1000L;
+                                    this.manualOffsetMs = current % 1000L;
+                                    this.lastPositionUpdate = System.currentTimeMillis();
+                                } else if (!wasPlaying && nowPlaying) {
+                                    // Track unpaused - resume from current position
+                                    this.lastPositionUpdate = System.currentTimeMillis();
+                                }
+
+                                this.playing = nowPlaying;
                                 this.trackDurationSec = media.getDuration();
                                 long pos = media.getPosition();
                                 if (pos != this.trackPositionSec) {
