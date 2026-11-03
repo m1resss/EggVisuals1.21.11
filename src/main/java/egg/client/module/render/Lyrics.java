@@ -59,8 +59,10 @@ public class Lyrics extends Module {
         long flipStartTime = 0L;
         boolean disappearing = false;
         long disappearStartTime = 0L;
+        float boxW = 80.0f;
+        float boxH = 22.0f;
 
-        Capsule3D(Vec3d worldPos, String text, long spawnTime, long lifeDurationMs, float seed, double yaw, double pitch) {
+        Capsule3D(Vec3d worldPos, String text, long spawnTime, long lifeDurationMs, float seed, double yaw, double pitch, float boxW, float boxH) {
             this.worldPos = worldPos;
             this.text = text;
             this.spawnTime = spawnTime;
@@ -68,6 +70,8 @@ public class Lyrics extends Module {
             this.seed = seed;
             this.yaw = yaw;
             this.pitch = pitch;
+            this.boxW = boxW;
+            this.boxH = boxH;
         }
     }
 
@@ -208,6 +212,16 @@ public class Lyrics extends Module {
                 LyricLine currentLine = activeLyrics.get(lineIdx);
                 long nextTime = lineIdx + 1 < activeLyrics.size() ? activeLyrics.get(lineIdx + 1).timeMs() : currentLine.timeMs() + 5000L;
                 long lineDuration = Math.max(1400L, nextTime - currentLine.timeMs());
+
+                // Плавно гасим капсулы предыдущей строки при начале новой
+                for (Capsule3D oldCap : activeCapsules) {
+                    if (!oldCap.disappearing) {
+                        oldCap.disappearing = true;
+                        oldCap.disappearStartTime = now;
+                    }
+                }
+                pendingQueue.clear();
+
                 breakAndSchedulePhrases(currentLine.text(), now, lineDuration);
             }
         }
@@ -276,16 +290,25 @@ public class Lyrics extends Module {
 
         if (chunks.isEmpty()) return;
 
-        long capLifeMs = (long) (lifetime.getValue() * 1000.0);
-        long stepMs = chunks.size() <= 1 ? 0L : Math.min(1600L, Math.max(600L, lineDuration / chunks.size()));
+        long userMaxLifetime = (long) (lifetime.getValue() * 1000.0);
+        long stepMs = chunks.size() <= 1 ? 0L : Math.min(1800L, Math.max(500L, lineDuration / chunks.size()));
 
         for (int i = 0; i < chunks.size(); i++) {
             long spawnAt = now + i * stepMs;
-            pendingQueue.add(new ScheduledChunk(chunks.get(i), spawnAt, capLifeMs));
+            // Капсула живет до конца строки (+ запас на чтение 1.2с), но не дольше ползунка lifetime
+            long remainingLineMs = Math.max(2200L, lineDuration - i * stepMs + 1200L);
+            long capLife = Math.min(userMaxLifetime, remainingLineMs);
+            pendingQueue.add(new ScheduledChunk(chunks.get(i), spawnAt, capLife));
         }
     }
 
     private void spawnCapsuleInWorld(String text, long now, long lifeMs, Camera camera) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        TextRenderer tr = mc.textRenderer;
+        float approxTextW = tr != null ? tr.getWidth(text) : (text.length() * 7.5f);
+        float boxW = approxTextW + 28.0f;
+        float boxH = 22.0f;
+
         Vec3d eye = camera.getCameraPos();
         float yaw = camera.getYaw();
         float pitch = MathHelper.clamp(camera.getPitch(), -72.0f, 72.0f);
@@ -304,30 +327,111 @@ public class Lyrics extends Module {
         float baseDist = (float) distance.getValue();
         float hScatter = (float) scatterH.getValue();
         float vScatter = (float) scatterV.getValue();
+        float userScale = (float) size.getValue();
 
         lastSide = -lastSide;
-        float side = lastSide;
-        if (rng.nextFloat() < 0.20f) {
-            side = -side;
-            lastSide = side;
+        float primarySide = lastSide;
+        float otherSide = -primarySide;
+
+        // Поиск свободного слота (NoOverlap) без наложения на другие плашки
+        List<float[]> candidates = new ArrayList<>();
+        // 1. Основная сторона
+        candidates.add(new float[]{ primarySide * hScatter * 0.70f, 0.0f, baseDist });
+        candidates.add(new float[]{ primarySide * hScatter * 0.70f, vScatter * 0.65f, baseDist });
+        candidates.add(new float[]{ primarySide * hScatter * 0.70f, -vScatter * 0.65f, baseDist });
+
+        // 2. Дальше / ближе по основной стороне
+        candidates.add(new float[]{ primarySide * hScatter * 1.10f, 0.0f, baseDist });
+        candidates.add(new float[]{ primarySide * hScatter * 1.10f, vScatter * 0.85f, baseDist });
+        candidates.add(new float[]{ primarySide * hScatter * 1.10f, -vScatter * 0.85f, baseDist });
+        candidates.add(new float[]{ primarySide * hScatter * 0.35f, vScatter * 0.70f, baseDist });
+        candidates.add(new float[]{ primarySide * hScatter * 0.35f, -vScatter * 0.70f, baseDist });
+
+        // 3. Противоположная сторона
+        candidates.add(new float[]{ otherSide * hScatter * 0.70f, 0.0f, baseDist });
+        candidates.add(new float[]{ otherSide * hScatter * 0.70f, vScatter * 0.65f, baseDist });
+        candidates.add(new float[]{ otherSide * hScatter * 0.70f, -vScatter * 0.65f, baseDist });
+        candidates.add(new float[]{ otherSide * hScatter * 1.10f, 0.0f, baseDist });
+        candidates.add(new float[]{ otherSide * hScatter * 1.10f, vScatter * 0.85f, baseDist });
+        candidates.add(new float[]{ otherSide * hScatter * 1.10f, -vScatter * 0.85f, baseDist });
+
+        // 4. Дополнительные слоты по высоте и глубине
+        candidates.add(new float[]{ 0.0f, vScatter * 0.80f, baseDist + 0.6f });
+        candidates.add(new float[]{ 0.0f, -vScatter * 0.80f, baseDist + 0.6f });
+        candidates.add(new float[]{ primarySide * hScatter * 0.50f, vScatter * 1.25f, baseDist });
+        candidates.add(new float[]{ primarySide * hScatter * 0.50f, -vScatter * 1.25f, baseDist });
+
+        Vec3d bestPos = null;
+        double minOverlapScore = Double.MAX_VALUE;
+        Capsule3D worstOverlapCap = null;
+
+        for (float[] cand : candidates) {
+            float cs = cand[0];
+            float cv = cand[1];
+            float cd = cand[2];
+            Vec3d candPos = eye.add(F.multiply(cd)).add(R.multiply(cs)).add(U.multiply(cv));
+
+            double overlapScore = 0.0;
+            Capsule3D candidateConflicting = null;
+
+            if (noOverlap.isEnabled()) {
+                for (Capsule3D existing : activeCapsules) {
+                    if (existing.disappearing && (now - existing.disappearStartTime > 250L)) continue;
+
+                    Vec3d diff = candPos.subtract(existing.worldPos);
+                    double dR = Math.abs(diff.dotProduct(R));
+                    double dU = Math.abs(diff.dotProduct(U));
+                    double dF = Math.abs(diff.dotProduct(F));
+
+                    double safeR = (boxW * 0.5 + existing.boxW * 0.5) * userScale * 0.040 + 0.35;
+                    double safeU = (boxH * 0.5 + existing.boxH * 0.5) * userScale * 0.040 + 0.25;
+
+                    if (dR < safeR && dU < safeU && dF < 1.8) {
+                        double overlapAmount = (safeR - dR) * 1.5 + (safeU - dU) * 3.0;
+                        overlapScore += overlapAmount;
+                        if (candidateConflicting == null || existing.spawnTime < candidateConflicting.spawnTime) {
+                            candidateConflicting = existing;
+                        }
+                    }
+                }
+            }
+
+            if (overlapScore <= 0.001) {
+                bestPos = candPos;
+                minOverlapScore = 0.0;
+                worstOverlapCap = null;
+                break;
+            }
+
+            if (overlapScore < minOverlapScore) {
+                minOverlapScore = overlapScore;
+                bestPos = candPos;
+                worstOverlapCap = candidateConflicting;
+            }
         }
 
-        float s = side * hScatter * (0.50f + rng.nextFloat() * 0.50f);
-        float v = (rng.nextFloat() - 0.5f) * 2.0f * vScatter;
+        if (bestPos == null) {
+            float s = primarySide * hScatter * 0.65f;
+            bestPos = eye.add(F.multiply(baseDist)).add(R.multiply(s));
+        }
 
-        Vec3d spawnPos = eye.add(F.multiply(baseDist)).add(R.multiply(s)).add(U.multiply(v));
+        // Если все слоты заняты, старая конфликтующая плашка плавно растворяется
+        if (noOverlap.isEnabled() && minOverlapScore > 0.001 && worstOverlapCap != null && !worstOverlapCap.disappearing) {
+            worstOverlapCap.disappearing = true;
+            worstOverlapCap.disappearStartTime = now;
+        }
 
-        double dx = eye.x - spawnPos.x;
-        double dy = eye.y - spawnPos.y;
-        double dz = eye.z - spawnPos.z;
+        double dx = eye.x - bestPos.x;
+        double dy = eye.y - bestPos.y;
+        double dz = eye.z - bestPos.z;
         double h = Math.sqrt(dx * dx + dz * dz);
         double capYaw = Math.toDegrees(Math.atan2(-dx, dz));
         double capPitch = -Math.toDegrees(Math.atan2(dy, Math.max(0.05, h)));
 
-        Capsule3D cap = new Capsule3D(spawnPos, text, now, lifeMs, rng.nextFloat() * 100.0f, capYaw, capPitch);
+        Capsule3D cap = new Capsule3D(bestPos, text, now, lifeMs, rng.nextFloat() * 100.0f, capYaw, capPitch, boxW, boxH);
         activeCapsules.add(cap);
 
-        if (activeCapsules.size() > 14) {
+        if (activeCapsules.size() > 10) {
             activeCapsules.get(0).disappearing = true;
             activeCapsules.get(0).disappearStartTime = now;
         }
@@ -430,6 +534,8 @@ public class Lyrics extends Module {
             float padY = 7.0f;
             float boxW = textW + padX * 2.0f;
             float boxH = textH + padY * 2.0f;
+            cap.boxW = boxW;
+            cap.boxH = boxH;
 
             int textColor;
             int glowColor;
