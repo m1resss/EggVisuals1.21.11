@@ -18,7 +18,7 @@ public class DiscordRPC extends Module {
 
     public static final String DEFAULT_CLIENT_ID = "1559901833848299602";
     public static final String TELEGRAM_URL = "https://t.me/ClientEgg";
-    public static final String DEFAULT_AVATAR_URL = "https://raw.githubusercontent.com/m1resss/EggVisuals1.21.11/main/rpc_logo.jpg";
+    public static final String DEFAULT_AVATAR_URL = "https://raw.githubusercontent.com/m1resss/EggVisuals1.21.11/main/rpc_logo_v2.jpg";
     public static final String CLIENT_VERSION = "1.21.11";
 
     private final BooleanSetting showServer = new BooleanSetting("Показывать сервер", true, "Отображать адрес сервера, на котором вы играете");
