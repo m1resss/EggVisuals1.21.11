@@ -1,6 +1,7 @@
 package egg.client.module.render;
 
 import com.mojang.blaze3d.opengl.GlStateManager;
+import org.lwjgl.opengl.GL11;
 import egg.client.command.CommandManager;
 import egg.client.module.Category;
 import egg.client.module.Module;
@@ -443,7 +444,11 @@ public class Lyrics extends Module {
             }
 
             Matrix4f mat = matrices.peek().getPositionMatrix();
-            GlStateManager._disableCull();
+            GL11.glEnable(GL11.GL_BLEND);
+            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+            GL11.glDisable(GL11.GL_CULL_FACE);
+            GL11.glDisable(GL11.GL_DEPTH_TEST);
+            GL11.glDepthMask(false);
 
             if (background.isEnabled()) {
                 VertexConsumer quadConsumer = immediate.getBuffer(RenderLayers.debugQuads());
@@ -452,39 +457,54 @@ public class Lyrics extends Module {
                 int bgB = bgCol & 0xFF;
                 int bgA = (bgCol >> 24) & 0xFF;
 
-                // 1. 3D Drop Shadow behind the plate (oz = -0.06f, offset down and right)
-                draw3DCapsule(quadConsumer, mat, boxW + 2.5f, boxH + 1.5f, 1.2f, 1.8f, -0.06f, 0, 0, 0, (int) (110 * alpha));
+                // 1a. Deep ambient drop shadow (oz = 0.05f, larger offset down and right)
+                draw3DCapsule(quadConsumer, mat, boxW + 5.0f, boxH + 3.0f, 1.8f, 2.8f, 0.05f, 0, 0, 0, (int) (70 * alpha));
 
-                // 2. Base Dark Glass Capsule (oz = -0.03f)
-                draw3DCapsule(quadConsumer, mat, boxW, boxH, 0f, 0f, -0.03f, bgR, bgG, bgB, bgA);
+                // 1b. Near sharp contact shadow (oz = 0.035f, tighter offset)
+                draw3DCapsule(quadConsumer, mat, boxW + 2.0f, boxH + 1.2f, 0.8f, 1.4f, 0.035f, 0, 0, 0, (int) (120 * alpha));
 
-                // 3. Top Gloss Specular Highlight (glass sheen, oz = -0.02f)
-                draw3DTopGloss(quadConsumer, mat, boxW, boxH, -0.02f, (int) (45 * alpha));
+                // 2. Base Dark Glass Capsule (oz = 0.02f)
+                draw3DCapsule(quadConsumer, mat, boxW, boxH, 0f, 0f, 0.02f, bgR, bgG, bgB, bgA);
 
-                // 4. Glowing Rim Outline (oz = -0.01f)
+                // 3. Top Gloss Specular Highlight (glass sheen, oz = 0.01f)
+                draw3DTopGloss(quadConsumer, mat, boxW, boxH, 0.01f, (int) (55 * alpha));
+
+                // 4. Glowing Rim Outline (oz = 0.005f)
                 if (glow.isEnabled()) {
                     int glR = (glowColor >> 16) & 0xFF;
                     int glG = (glowColor >> 8) & 0xFF;
                     int glB = glowColor & 0xFF;
                     int glA = (glowColor >> 24) & 0xFF;
-                    draw3DCapsuleOutline(quadConsumer, mat, boxW, boxH, -0.01f, 1.0f, glR, glG, glB, glA);
+                    draw3DCapsuleOutline(quadConsumer, mat, boxW, boxH, 0.005f, 1.1f, glR, glG, glB, glA);
                 }
 
                 // Flush quads so background is fully drawn before text
                 immediate.draw(RenderLayers.debugQuads());
             }
 
-            // 5. Draw text in front (z = 0.0f) with drop shadow!
+            // 5. Draw text in front (z = -0.02f)
             float tx = -textW / 2.0f;
             float ty = -textH / 2.0f;
-            if (styledText != null) {
-                tr.draw(styledText, tx, ty, textColor, true, mat, immediate, TextRenderer.TextLayerType.NORMAL, 0, 0xF000F0);
-            } else {
-                tr.draw(cap.text, tx, ty, textColor, true, mat, immediate, TextRenderer.TextLayerType.NORMAL, 0, 0xF000F0);
+            matrices.push();
+            matrices.translate(0.0f, 0.0f, -0.02f);
+            Matrix4f textMat = matrices.peek().getPositionMatrix();
+            matrices.pop();
+
+            boolean drawn = false;
+            if (styledText != null && !"Minecraft".equalsIgnoreCase(fontMode.get()) && textW > 0) {
+                try {
+                    tr.draw(styledText, tx, ty, textColor, true, textMat, immediate, TextRenderer.TextLayerType.SEE_THROUGH, 0, 15728880);
+                    drawn = true;
+                } catch (Throwable ignored) {}
+            }
+            if (!drawn) {
+                tr.draw(cap.text, tx, ty, textColor, true, textMat, immediate, TextRenderer.TextLayerType.SEE_THROUGH, 0, 15728880);
             }
             immediate.draw();
 
-            GlStateManager._enableCull();
+            GL11.glDepthMask(true);
+            GL11.glEnable(GL11.GL_DEPTH_TEST);
+            GL11.glEnable(GL11.GL_CULL_FACE);
             matrices.pop();
         }
     }

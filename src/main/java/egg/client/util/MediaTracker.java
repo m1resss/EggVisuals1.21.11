@@ -53,16 +53,17 @@ public final class MediaTracker {
     }
 
     public long getTrackElapsedMs() {
+        long now = System.currentTimeMillis();
+        long delta = now - lastPositionUpdate;
         if (trackPositionSec > 0L) {
-            long delta = System.currentTimeMillis() - lastPositionUpdate;
-            long posMs = trackPositionSec * 1000L + (playing ? delta : 0L) + manualOffsetMs;
+            long posMs = trackPositionSec * 1000L + delta + manualOffsetMs;
             if (trackDurationSec > 0L) {
                 posMs = Math.min(posMs, trackDurationSec * 1000L);
             }
             return Math.max(0L, posMs);
         }
-        if (!playing) return manualOffsetMs;
-        return Math.max(0L, (System.currentTimeMillis() - lastPositionUpdate) + manualOffsetMs);
+        if (trackTitle.isEmpty()) return manualOffsetMs;
+        return Math.max(0L, delta + manualOffsetMs);
     }
 
     public void setTrackElapsedMs(long ms) {
@@ -178,7 +179,7 @@ public final class MediaTracker {
                                     this.lastPositionUpdate = System.currentTimeMillis();
                                     this.manualOffsetMs = 0L;
                                 }
-                                this.playing = media.isPlaying();
+                                this.playing = media.isPlaying() || !t.isEmpty();
                                 this.trackDurationSec = media.getDuration();
                                 long pos = media.getPosition();
                                 if (pos != this.trackPositionSec) {

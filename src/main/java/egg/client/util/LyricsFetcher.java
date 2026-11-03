@@ -121,25 +121,67 @@ public final class LyricsFetcher {
         String cleanA = cleanArtist(artist);
         String cleanT = cleanTitle(title);
 
-        // 1. Primary: NetEase Cloud Music (fast, reliable, millisecond timestamps)
+        // 1. Direct LRCLIB get (exact match, instantaneous response)
+        List<LyricLine> directLrc = fetchLrclibDirect(artist, cleanA, title, cleanT);
+        if (directLrc != null && !directLrc.isEmpty()) {
+            return directLrc;
+        }
+
+        // 2. Primary cascade: NetEase Cloud Music (fast, reliable, millisecond timestamps)
         List<LyricLine> neteaseRes = searchNetEase(artist, cleanA, title, cleanT);
         if (neteaseRes != null && !neteaseRes.isEmpty()) {
             return neteaseRes;
         }
 
-        // 2. Secondary: LRCLIB (LRC format)
+        // 3. Secondary: LRCLIB search (fuzzy matching)
         List<LyricLine> lrclibRes = searchLrclib(artist, cleanA, title, cleanT);
         if (lrclibRes != null && !lrclibRes.isEmpty()) {
             return lrclibRes;
         }
 
-        // 3. Fallback: Genius API
+        // 4. Fallback: Genius API
         List<LyricLine> geniusRes = searchGenius(artist, cleanT);
         if (geniusRes != null && !geniusRes.isEmpty()) {
             return geniusRes;
         }
 
         return Collections.emptyList();
+    }
+
+    private List<LyricLine> fetchLrclibDirect(String artist, String cleanArtist, String title, String cleanTitle) {
+        Map<String, String> headers = Map.of(
+                "User-Agent", "Rockstar/2.0 (https://github.com/rockstar)"
+        );
+        List<String[]> pairs = new ArrayList<>();
+        if (!artist.isEmpty()) {
+            pairs.add(new String[]{artist, title});
+            if (!cleanArtist.isEmpty() && !cleanArtist.equalsIgnoreCase(artist.trim())) {
+                pairs.add(new String[]{cleanArtist, cleanTitle.isEmpty() ? title : cleanTitle});
+            }
+        }
+        for (String[] pair : pairs) {
+            String url = LRCLIB_BASE + "/get?track_name=" + urlEncode(pair[1]) + "&artist_name=" + urlEncode(pair[0]);
+            String json = httpGet(url, headers);
+            if (json == null || json.isBlank()) continue;
+            try {
+                JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
+                if (obj.has("syncedLyrics") && !obj.get("syncedLyrics").isJsonNull()) {
+                    String synced = obj.get("syncedLyrics").getAsString();
+                    if (synced != null && !synced.isBlank()) {
+                        List<LyricLine> parsed = parseLrc(synced);
+                        if (!parsed.isEmpty()) return parsed;
+                    }
+                }
+                if (obj.has("plainLyrics") && !obj.get("plainLyrics").isJsonNull()) {
+                    String plain = obj.get("plainLyrics").getAsString();
+                    if (plain != null && !plain.isBlank()) {
+                        List<LyricLine> parsed = parsePlainLyrics(plain);
+                        if (!parsed.isEmpty()) return parsed;
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
+        return null;
     }
 
     // --- NetEase Cloud Music ---

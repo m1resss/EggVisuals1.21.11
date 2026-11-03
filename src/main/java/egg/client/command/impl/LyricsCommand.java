@@ -10,7 +10,7 @@ import java.util.Arrays;
 
 public class LyricsCommand extends Command {
     public LyricsCommand() {
-        super("lyrics", "Управление модулем отображения текста песен в мире", ".lyrics <play/stop/pos/demo/status>", "lyr", "lrc");
+        super("lyrics", "Управление модулем отображения текста песен в мире", ".lyrics <play/stop/pos/demo/status>", "wlyrics", "lyr", "lrc");
     }
 
     @Override
