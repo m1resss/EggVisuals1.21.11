@@ -44,14 +44,30 @@ public class Lyrics extends Module {
     private final BooleanSetting background = new BooleanSetting("Фон плашки", true, "Отображать темную полупрозрачную подложку");
     private final BooleanSetting glow = new BooleanSetting("Неоновое свечение", true, "Свечение контура капсулы");
     private final BooleanSetting gentleWave = new BooleanSetting("Живое покачивание", true, "Плавное 3D покачивание плашек в пространстве");
+    private final BooleanSetting wordAnimation = new BooleanSetting("Анимация слов", true, "Караоке-анимация и подпрыгивание активного слова как в Dynamic Island");
     private final BooleanSetting noOverlap = new BooleanSetting("Не накладывать", true, "Умное распределение позиций без перекрытия");
     private final BooleanSetting demoMode = new BooleanSetting("Демо режим", false, "Принудительный показ тестовых фраз");
+
+    static class WordInfo {
+        final String text;
+        final float width;
+        final float xOffset;
+        float currentScale = 1.0f;
+        float targetScale = 1.0f;
+
+        WordInfo(String text, float width, float xOffset) {
+            this.text = text;
+            this.width = width;
+            this.xOffset = xOffset;
+        }
+    }
 
     private static class Capsule3D {
         Vec3d worldPos;
         final String text;
         long spawnTime;
         final long lifeDurationMs;
+        final long singDurationMs;
         final float seed;
         double yaw;
         double pitch;
@@ -61,12 +77,14 @@ public class Lyrics extends Module {
         long disappearStartTime = 0L;
         float boxW = 80.0f;
         float boxH = 22.0f;
+        final List<WordInfo> words = new ArrayList<>();
 
-        Capsule3D(Vec3d worldPos, String text, long spawnTime, long lifeDurationMs, float seed, double yaw, double pitch, float boxW, float boxH) {
+        Capsule3D(Vec3d worldPos, String text, long spawnTime, long lifeDurationMs, long singDurationMs, float seed, double yaw, double pitch, float boxW, float boxH) {
             this.worldPos = worldPos;
             this.text = text;
             this.spawnTime = spawnTime;
             this.lifeDurationMs = lifeDurationMs;
+            this.singDurationMs = Math.max(800L, singDurationMs);
             this.seed = seed;
             this.yaw = yaw;
             this.pitch = pitch;
@@ -79,11 +97,13 @@ public class Lyrics extends Module {
         final String text;
         long spawnAtTimeMs;
         final long lifeMs;
+        final long singDurationMs;
 
-        ScheduledChunk(String text, long spawnAtTimeMs, long lifeMs) {
+        ScheduledChunk(String text, long spawnAtTimeMs, long lifeMs, long singDurationMs) {
             this.text = text;
             this.spawnAtTimeMs = spawnAtTimeMs;
             this.lifeMs = lifeMs;
+            this.singDurationMs = singDurationMs;
         }
     }
 
@@ -109,7 +129,7 @@ public class Lyrics extends Module {
         super("Lyrics", "3D капсулы с текстом песни в мире", Category.ESP);
         addSettings(
                 splitMode, wordsPerCapsule, distance, scatterH, scatterV, size,
-                lifetime, fontMode, colorStyle, background, glow, gentleWave, noOverlap, demoMode
+                lifetime, fontMode, colorStyle, background, glow, gentleWave, wordAnimation, noOverlap, demoMode
         );
     }
 
@@ -247,7 +267,7 @@ public class Lyrics extends Module {
         while (queueIter.hasNext()) {
             ScheduledChunk chunk = queueIter.next();
             if (now >= chunk.spawnAtTimeMs) {
-                spawnCapsuleInWorld(chunk.text, now, chunk.lifeMs, camera);
+                spawnCapsuleInWorld(chunk.text, now, chunk.lifeMs, chunk.singDurationMs, camera);
                 queueIter.remove();
             }
         }
@@ -309,17 +329,18 @@ public class Lyrics extends Module {
 
         long userMaxLifetime = (long) (lifetime.getValue() * 1000.0);
         long stepMs = chunks.size() <= 1 ? 0L : Math.min(1800L, Math.max(500L, lineDuration / chunks.size()));
+        long perChunkSingMs = chunks.isEmpty() ? 1500L : Math.max(900L, lineDuration / chunks.size());
 
         for (int i = 0; i < chunks.size(); i++) {
             long spawnAt = now + i * stepMs;
-            // Капсула живет до конца строки (+ запас на чтение 1.2с), но не дольше ползунка lifetime
-            long remainingLineMs = Math.max(2200L, lineDuration - i * stepMs + 1200L);
-            long capLife = Math.min(userMaxLifetime, remainingLineMs);
-            pendingQueue.add(new ScheduledChunk(chunks.get(i), spawnAt, capLife));
+            // Учитываем ползунок lifetime, но гарантируем допевание фразы (+ запас на чтение 800мс)
+            long remainingLineMs = Math.max(1200L, lineDuration - i * stepMs + 800L);
+            long capLife = Math.max(userMaxLifetime, remainingLineMs);
+            pendingQueue.add(new ScheduledChunk(chunks.get(i), spawnAt, capLife, perChunkSingMs));
         }
     }
 
-    private void spawnCapsuleInWorld(String text, long now, long lifeMs, Camera camera) {
+    private void spawnCapsuleInWorld(String text, long now, long lifeMs, long singDurationMs, Camera camera) {
         MinecraftClient mc = MinecraftClient.getInstance();
         TextRenderer tr = mc.textRenderer;
         float approxTextW = tr != null ? tr.getWidth(text) : (text.length() * 7.5f);
@@ -400,10 +421,10 @@ public class Lyrics extends Module {
                     double dU = Math.abs(diff.dotProduct(U));
                     double dF = Math.abs(diff.dotProduct(F));
 
-                    double safeR = (boxW * 0.5 + existing.boxW * 0.5) * userScale * 0.040 + 0.35;
-                    double safeU = (boxH * 0.5 + existing.boxH * 0.5) * userScale * 0.040 + 0.25;
+                    double safeR = (boxW * 0.5 + existing.boxW * 0.5) * userScale * 0.030 + 0.15;
+                    double safeU = (boxH * 0.5 + existing.boxH * 0.5) * userScale * 0.030 + 0.12;
 
-                    if (dR < safeR && dU < safeU && dF < 1.8) {
+                    if (dR < safeR && dU < safeU && dF < 1.6) {
                         double overlapAmount = (safeR - dR) * 1.5 + (safeU - dU) * 3.0;
                         overlapScore += overlapAmount;
                         if (candidateConflicting == null || existing.spawnTime < candidateConflicting.spawnTime) {
@@ -432,10 +453,13 @@ public class Lyrics extends Module {
             bestPos = eye.add(F.multiply(baseDist)).add(R.multiply(s));
         }
 
-        // Если все слоты заняты, старая конфликтующая плашка плавно растворяется
+        // Если все слоты заняты, старая плашка плавно растворяется только если уже повисела достаточно
         if (noOverlap.isEnabled() && minOverlapScore > 0.001 && worstOverlapCap != null && !worstOverlapCap.disappearing) {
-            worstOverlapCap.disappearing = true;
-            worstOverlapCap.disappearStartTime = now;
+            long existingAge = now - worstOverlapCap.spawnTime;
+            if (existingAge > 2000L || existingAge > worstOverlapCap.lifeDurationMs * 0.6) {
+                worstOverlapCap.disappearing = true;
+                worstOverlapCap.disappearStartTime = now;
+            }
         }
 
         double dx = eye.x - bestPos.x;
@@ -445,7 +469,7 @@ public class Lyrics extends Module {
         double capYaw = Math.toDegrees(Math.atan2(-dx, dz));
         double capPitch = -Math.toDegrees(Math.atan2(dy, Math.max(0.05, h)));
 
-        Capsule3D cap = new Capsule3D(bestPos, text, now, lifeMs, rng.nextFloat() * 100.0f, capYaw, capPitch, boxW, boxH);
+        Capsule3D cap = new Capsule3D(bestPos, text, now, lifeMs, singDurationMs, rng.nextFloat() * 100.0f, capYaw, capPitch, boxW, boxH);
         activeCapsules.add(cap);
 
         if (activeCapsules.size() > 10) {
@@ -529,12 +553,12 @@ public class Lyrics extends Module {
 
             matrices.push();
             matrices.translate(cap.worldPos.x - camPos.x + waveX, cap.worldPos.y - camPos.y + waveY, cap.worldPos.z - camPos.z);
-            matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(180.0f - currentYaw));
-            matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees((float) -cap.pitch));
+            matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(currentYaw));
+            matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees((float) cap.pitch));
 
-            float s = userScale * popScale * 0.040f;
-            // Negative X scale cancels 180 deg Y rotation inversion so text is normal left-to-right (never mirrored)
-            matrices.scale(-s * flipScale, -s, s);
+            float s = userScale * popScale * 0.030f;
+            // Положительный X для прямого чтения слева направо (без зеркальности), отрицательный Y для TextRenderer
+            matrices.scale(s * flipScale, -s, s);
 
             StyleSpriteSource.Font selectedFont = switch (fontMode.get()) {
                 case "SF Semibold" -> ClientFont.SF_SEMIBOLD;
@@ -592,49 +616,113 @@ public class Lyrics extends Module {
                 int bgB = bgCol & 0xFF;
                 int bgA = (bgCol >> 24) & 0xFF;
 
-                // 1a. Глубокая рассеянная тень (oz = 0.05f - сзади капсулы)
-                draw3DCapsule(quadConsumer, mat, boxW + 5.0f, boxH + 3.0f, 1.8f, 2.8f, 0.05f, 0, 0, 0, (int) (70 * alpha));
+                // 1a. Глубокая рассеянная тень (oz = -0.05f - сзади капсулы)
+                draw3DCapsule(quadConsumer, mat, boxW + 5.0f, boxH + 3.0f, 1.8f, 2.8f, -0.05f, 0, 0, 0, (int) (70 * alpha));
 
-                // 1b. Ближняя контактная тень (oz = 0.03f)
-                draw3DCapsule(quadConsumer, mat, boxW + 2.0f, boxH + 1.2f, 0.8f, 1.4f, 0.03f, 0, 0, 0, (int) (120 * alpha));
+                // 1b. Ближняя контактная тень (oz = -0.025f)
+                draw3DCapsule(quadConsumer, mat, boxW + 2.0f, boxH + 1.2f, 0.8f, 1.4f, -0.025f, 0, 0, 0, (int) (120 * alpha));
 
                 // 2. Базовая темная стеклянная капсула (oz = 0.0f)
                 draw3DCapsule(quadConsumer, mat, boxW, boxH, 0f, 0f, 0.0f, bgR, bgG, bgB, bgA);
 
-                // 3. Верхний стеклянный глянец (блик, oz = -0.006f - на передней поверхности)
-                draw3DTopGloss(quadConsumer, mat, boxW, boxH, -0.006f, (int) (55 * alpha));
+                // 3. Верхний стеклянный глянец (блик, oz = 0.008f - на передней поверхности)
+                draw3DTopGloss(quadConsumer, mat, boxW, boxH, 0.008f, (int) (55 * alpha));
 
-                // 4. Неоновый контур плашки (oz = -0.012f)
+                // 4. Неоновый контур плашки (oz = 0.015f)
                 if (glow.isEnabled()) {
                     int glR = (glowColor >> 16) & 0xFF;
                     int glG = (glowColor >> 8) & 0xFF;
                     int glB = glowColor & 0xFF;
                     int glA = (glowColor >> 24) & 0xFF;
-                    draw3DCapsuleOutline(quadConsumer, mat, boxW, boxH, -0.012f, 1.1f, glR, glG, glB, glA);
+                    draw3DCapsuleOutline(quadConsumer, mat, boxW, boxH, 0.015f, 1.1f, glR, glG, glB, glA);
                 }
 
                 // Сбрасываем буфер геометрии плашки
                 immediate.draw(RenderLayers.debugQuads());
             }
 
-            // 5. Отрисовка текста поверх всех слоев (z = -0.025f - ближе всего к камере)
-            float tx = -textW / 2.0f;
-            float ty = -textH / 2.0f;
-            matrices.push();
-            matrices.translate(0.0f, 0.0f, -0.025f);
-            Matrix4f textMat = matrices.peek().getPositionMatrix();
-            matrices.pop();
-
-            boolean drawn = false;
+            // 5. Отрисовка текста поверх всех слоев (z = 0.035f - ближе всего к камере)
             int pureLight = 15728640; // Полный дневной свет (Sky=15, Block=0) — нулевой оттенок факела/желтизны
-            if (styledText != null && !"Minecraft".equalsIgnoreCase(fontMode.get()) && textW > 0) {
-                try {
-                    tr.draw(styledText, tx, ty, textColor, false, textMat, immediate, TextRenderer.TextLayerType.NORMAL, 0, pureLight);
-                    drawn = true;
-                } catch (Throwable ignored) {}
+
+            // Инициализация слов плашки (при первом кадре с учетом выбранного шрифта)
+            if (cap.words.isEmpty() && !cap.text.isBlank()) {
+                String[] rawWords = cap.text.trim().split("\\s+");
+                Text spaceText = selectedFont != null ? ClientFont.getText(" ", selectedFont) : null;
+                float spaceW = spaceText != null ? tr.getWidth(spaceText) : tr.getWidth(" ");
+                float curX = 0.0f;
+                for (String w : rawWords) {
+                    if (w.isEmpty()) continue;
+                    Text wText = selectedFont != null ? ClientFont.getText(w, selectedFont) : null;
+                    float ww = wText != null ? tr.getWidth(wText) : tr.getWidth(w);
+                    cap.words.add(new WordInfo(w, ww, curX));
+                    curX += ww + spaceW;
+                }
             }
-            if (!drawn) {
-                tr.draw(cap.text, tx, ty, textColor, false, textMat, immediate, TextRenderer.TextLayerType.NORMAL, 0, pureLight);
+
+            if (wordAnimation.isEnabled() && !cap.words.isEmpty()) {
+                int numWords = cap.words.size();
+                float singProgress = MathHelper.clamp((float) elapsed / (float) cap.singDurationMs, 0.0f, 1.0f);
+                int activeWordIdx = (int) (singProgress * numWords);
+                if (activeWordIdx >= numWords) activeWordIdx = numWords - 1;
+                boolean isSinging = elapsed < cap.singDurationMs;
+
+                float startX = -textW / 2.0f;
+                float baseTy = -textH / 2.0f;
+
+                for (int w = 0; w < numWords; w++) {
+                    WordInfo word = cap.words.get(w);
+
+                    // Активное слово подпрыгивает и увеличивается до 1.15x как в Dynamic Island
+                    float targetScale = (isSinging && w == activeWordIdx) ? 1.15f : 1.0f;
+                    word.currentScale += (targetScale - word.currentScale) * Math.min(1.0f, dt * 12.0f);
+
+                    // Плавный прыжок вверх при пении
+                    float hop = (word.currentScale - 1.0f) * 9.0f;
+
+                    // Спетое и активное слово светятся 100% белым/акцентом, еще не спетые — мягкие 45% прозрачности
+                    int wColor;
+                    if (!isSinging || w <= activeWordIdx) {
+                        wColor = textColor;
+                    } else {
+                        wColor = ColorUtil.withAlphaFloat(textColor, alpha * 0.45f);
+                    }
+
+                    float wx = startX + word.xOffset;
+                    float wy = baseTy - hop;
+                    float cx = wx + word.width * 0.5f;
+                    float cy = wy + textH * 0.5f;
+
+                    matrices.push();
+                    matrices.translate(cx, cy, 0.035f);
+                    if (Math.abs(word.currentScale - 1.0f) > 0.002f) {
+                        matrices.scale(word.currentScale, word.currentScale, 1.0f);
+                    }
+                    matrices.translate(-cx, -cy, 0.0f);
+                    Matrix4f wMat = matrices.peek().getPositionMatrix();
+                    matrices.pop();
+
+                    Text wText = selectedFont != null ? ClientFont.getText(word.text, selectedFont) : null;
+                    if (wText != null && !"Minecraft".equalsIgnoreCase(fontMode.get())) {
+                        tr.draw(wText, wx, wy, wColor, false, wMat, immediate, TextRenderer.TextLayerType.NORMAL, 0, pureLight);
+                    } else {
+                        tr.draw(word.text, wx, wy, wColor, false, wMat, immediate, TextRenderer.TextLayerType.NORMAL, 0, pureLight);
+                    }
+                }
+            } else {
+                float tx = -textW / 2.0f;
+                float ty = -textH / 2.0f;
+                matrices.push();
+                matrices.translate(0.0f, 0.0f, 0.035f);
+                Matrix4f textMat = matrices.peek().getPositionMatrix();
+                matrices.pop();
+
+                if (styledText != null && !"Minecraft".equalsIgnoreCase(fontMode.get()) && textW > 0) {
+                    try {
+                        tr.draw(styledText, tx, ty, textColor, false, textMat, immediate, TextRenderer.TextLayerType.NORMAL, 0, pureLight);
+                    } catch (Throwable ignored) {}
+                } else {
+                    tr.draw(cap.text, tx, ty, textColor, false, textMat, immediate, TextRenderer.TextLayerType.NORMAL, 0, pureLight);
+                }
             }
             immediate.draw();
 
