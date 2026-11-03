@@ -1,11 +1,13 @@
 package egg.client.module.render;
 
+import com.mojang.blaze3d.opengl.GlStateManager;
 import egg.client.command.CommandManager;
 import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
+import egg.client.render.font.ClientFont;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
 import egg.client.util.LyricLine;
@@ -18,6 +20,8 @@ import net.minecraft.client.render.RenderLayers;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.text.StyleSpriteSource;
+import net.minecraft.text.Text;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.RotationAxis;
 import net.minecraft.util.math.Vec3d;
@@ -34,6 +38,7 @@ public class Lyrics extends Module {
     private final SliderSetting size = new SliderSetting("Масштаб", 1.0, 0.4, 2.5, 0.1, "Базовый размер плашек");
     private final SliderSetting lifetime = new SliderSetting("Время жизни", 6.0, 2.0, 14.0, 0.5, "Время отображения фразы в секундах");
 
+    private final ModeSetting fontMode = new ModeSetting("Шрифт", "SF Medium", "SF Medium", "SF Semibold", "SF Bold", "SF Regular", "Minecraft");
     private final ModeSetting colorStyle = new ModeSetting("Цвет текста", "Коралловый", "Коралловый", "Белый", "Лавандовый", "Тема");
     private final BooleanSetting background = new BooleanSetting("Фон плашки", true, "Отображать темную полупрозрачную подложку");
     private final BooleanSetting glow = new BooleanSetting("Неоновое свечение", true, "Свечение контура капсулы");
@@ -81,7 +86,7 @@ public class Lyrics extends Module {
     private final List<ScheduledChunk> pendingQueue = new ArrayList<>();
     private final Random rng = new Random();
 
-    private List<LyricLine> activeLyrics = null;
+    private volatile List<LyricLine> activeLyrics = null;
     private String lastSongKey = "";
     private int currentLineIndex = -1;
     private float lastSide = 1.0f;
@@ -99,7 +104,7 @@ public class Lyrics extends Module {
         super("Lyrics", "3D капсулы с текстом песни в мире", Category.ESP);
         addSettings(
                 splitMode, wordsPerCapsule, distance, scatterH, scatterV, size,
-                lifetime, colorStyle, background, glow, gentleWave, noOverlap, demoMode
+                lifetime, fontMode, colorStyle, background, glow, gentleWave, noOverlap, demoMode
         );
     }
 
@@ -175,6 +180,7 @@ public class Lyrics extends Module {
                                 .thenAccept(lines -> {
                                     if (lines != null && !lines.isEmpty()) {
                                         activeLyrics = lines;
+                                        currentLineIndex = -1;
                                     }
                                 });
                     }
@@ -383,7 +389,7 @@ public class Lyrics extends Module {
             float alpha = appear * fade * (manualPlayback ? 1.0f : overallAlpha);
             if (alpha <= 0.015f) continue;
 
-            float popScale = 0.82f + 0.18f * appear;
+            float popScale = 0.85f + 0.15f * appear;
             float timeSec = (now - cap.spawnTime) / 1000.0f;
             float waveY = gentleWave.isEnabled() ? (float) Math.sin(timeSec * 1.8f + cap.seed) * 0.04f : 0.0f;
             float waveX = gentleWave.isEnabled() ? (float) Math.cos(timeSec * 1.4f + cap.seed * 1.2f) * 0.03f : 0.0f;
@@ -391,15 +397,24 @@ public class Lyrics extends Module {
             matrices.push();
             matrices.translate(cap.worldPos.x - camPos.x + waveX, cap.worldPos.y - camPos.y + waveY, cap.worldPos.z - camPos.z);
             matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees((float) (180.0 - cap.yaw)));
-            matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees((float) cap.pitch));
+            matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees((float) -cap.pitch));
 
-            float s = userScale * popScale * 0.024f;
+            float s = userScale * popScale * 0.040f;
             matrices.scale(s * flipScaleX, -s, s);
 
-            float textW = tr.getWidth(cap.text);
+            StyleSpriteSource.Font selectedFont = switch (fontMode.get()) {
+                case "SF Semibold" -> ClientFont.SF_SEMIBOLD;
+                case "SF Bold" -> ClientFont.SF_BOLD;
+                case "SF Regular" -> ClientFont.SF_REGULAR;
+                case "Minecraft" -> null;
+                default -> ClientFont.SF_MEDIUM;
+            };
+
+            Text styledText = selectedFont != null ? ClientFont.getText(cap.text, selectedFont) : null;
+            float textW = styledText != null ? tr.getWidth(styledText) : tr.getWidth(cap.text);
             float textH = tr.fontHeight;
-            float padX = 9.0f;
-            float padY = 4.5f;
+            float padX = 14.0f;
+            float padY = 7.0f;
             float boxW = textW + padX * 2.0f;
             float boxH = textH + padY * 2.0f;
 
@@ -410,24 +425,25 @@ public class Lyrics extends Module {
             String style = colorStyle.get();
             if ("Белый".equals(style)) {
                 textColor = ColorUtil.rgba(245, 246, 252, (int) (255 * alpha));
-                glowColor = ColorUtil.rgba(255, 255, 255, (int) (140 * alpha));
-                bgCol = ColorUtil.rgba(12, 14, 20, (int) (180 * alpha));
+                glowColor = ColorUtil.rgba(255, 255, 255, (int) (150 * alpha));
+                bgCol = ColorUtil.rgba(20, 22, 28, (int) (185 * alpha));
             } else if ("Тема".equals(style)) {
                 int accent = Theme.getAccent();
                 textColor = ColorUtil.withAlphaFloat(accent, alpha);
-                glowColor = ColorUtil.withAlphaFloat(accent, 0.65f * alpha);
-                bgCol = ColorUtil.rgba(12, 14, 20, (int) (180 * alpha));
+                glowColor = ColorUtil.withAlphaFloat(accent, 0.70f * alpha);
+                bgCol = ColorUtil.rgba(18, 20, 26, (int) (185 * alpha));
             } else if ("Лавандовый".equals(style)) {
                 textColor = ColorUtil.rgba(215, 185, 255, (int) (255 * alpha));
-                glowColor = ColorUtil.rgba(195, 155, 255, (int) (150 * alpha));
-                bgCol = ColorUtil.rgba(16, 14, 24, (int) (180 * alpha));
+                glowColor = ColorUtil.rgba(195, 155, 255, (int) (160 * alpha));
+                bgCol = ColorUtil.rgba(22, 18, 30, (int) (185 * alpha));
             } else {
-                textColor = ColorUtil.rgba(255, 158, 170, (int) (255 * alpha));
-                glowColor = ColorUtil.rgba(255, 125, 148, (int) (160 * alpha));
-                bgCol = ColorUtil.rgba(14, 15, 22, (int) (180 * alpha));
+                textColor = ColorUtil.rgba(255, 160, 175, (int) (255 * alpha));
+                glowColor = ColorUtil.rgba(255, 130, 150, (int) (170 * alpha));
+                bgCol = ColorUtil.rgba(22, 18, 24, (int) (185 * alpha));
             }
 
             Matrix4f mat = matrices.peek().getPositionMatrix();
+            GlStateManager._disableCull();
 
             if (background.isEnabled()) {
                 VertexConsumer quadConsumer = immediate.getBuffer(RenderLayers.debugQuads());
@@ -436,39 +452,55 @@ public class Lyrics extends Module {
                 int bgB = bgCol & 0xFF;
                 int bgA = (bgCol >> 24) & 0xFF;
 
-                draw3DCapsule(quadConsumer, mat, boxW, boxH, bgR, bgG, bgB, bgA);
+                // 1. 3D Drop Shadow behind the plate (oz = -0.06f, offset down and right)
+                draw3DCapsule(quadConsumer, mat, boxW + 2.5f, boxH + 1.5f, 1.2f, 1.8f, -0.06f, 0, 0, 0, (int) (110 * alpha));
 
+                // 2. Base Dark Glass Capsule (oz = -0.03f)
+                draw3DCapsule(quadConsumer, mat, boxW, boxH, 0f, 0f, -0.03f, bgR, bgG, bgB, bgA);
+
+                // 3. Top Gloss Specular Highlight (glass sheen, oz = -0.02f)
+                draw3DTopGloss(quadConsumer, mat, boxW, boxH, -0.02f, (int) (45 * alpha));
+
+                // 4. Glowing Rim Outline (oz = -0.01f)
                 if (glow.isEnabled()) {
                     int glR = (glowColor >> 16) & 0xFF;
                     int glG = (glowColor >> 8) & 0xFF;
                     int glB = glowColor & 0xFF;
                     int glA = (glowColor >> 24) & 0xFF;
-                    draw3DCapsuleOutline(quadConsumer, mat, boxW, boxH, 0.9f, glR, glG, glB, glA);
+                    draw3DCapsuleOutline(quadConsumer, mat, boxW, boxH, -0.01f, 1.0f, glR, glG, glB, glA);
                 }
+
+                // Flush quads so background is fully drawn before text
+                immediate.draw(RenderLayers.debugQuads());
             }
 
+            // 5. Draw text in front (z = 0.0f) with drop shadow!
             float tx = -textW / 2.0f;
-            float ty = -textH / 2.0f - 0.5f;
-            tr.draw(cap.text, tx, ty, textColor, false, mat, immediate, TextRenderer.TextLayerType.SEE_THROUGH, 0, 0xF000F0);
+            float ty = -textH / 2.0f;
+            if (styledText != null) {
+                tr.draw(styledText, tx, ty, textColor, true, mat, immediate, TextRenderer.TextLayerType.NORMAL, 0, 0xF000F0);
+            } else {
+                tr.draw(cap.text, tx, ty, textColor, true, mat, immediate, TextRenderer.TextLayerType.NORMAL, 0, 0xF000F0);
+            }
+            immediate.draw();
 
+            GlStateManager._enableCull();
             matrices.pop();
         }
-
-        immediate.draw();
     }
 
-    private void draw3DCapsule(VertexConsumer buf, Matrix4f mat, float w, float h, int r, int g, int b, int a) {
+    private void draw3DCapsule(VertexConsumer buf, Matrix4f mat, float w, float h, float ox, float oy, float oz, int r, int g, int b, int a) {
         float rad = h * 0.5f;
-        float x1 = -w * 0.5f + rad;
-        float x2 = w * 0.5f - rad;
-        float y1 = -h * 0.5f;
-        float y2 = h * 0.5f;
+        float x1 = -w * 0.5f + rad + ox;
+        float x2 = w * 0.5f - rad + ox;
+        float y1 = -h * 0.5f + oy;
+        float y2 = h * 0.5f + oy;
 
         // Center rectangle
-        buf.vertex(mat, x1, y1, 0f).color(r, g, b, a);
-        buf.vertex(mat, x2, y1, 0f).color(r, g, b, a);
-        buf.vertex(mat, x2, y2, 0f).color(r, g, b, a);
-        buf.vertex(mat, x1, y2, 0f).color(r, g, b, a);
+        buf.vertex(mat, x1, y1, oz).color(r, g, b, a);
+        buf.vertex(mat, x2, y1, oz).color(r, g, b, a);
+        buf.vertex(mat, x2, y2, oz).color(r, g, b, a);
+        buf.vertex(mat, x1, y2, oz).color(r, g, b, a);
 
         int segments = 12;
         float step = (float) Math.PI / segments;
@@ -478,14 +510,14 @@ public class Lyrics extends Module {
             float a1 = (float) Math.PI * 0.5f + i * step;
             float a2 = a1 + step;
             float px1 = x1 + (float) Math.cos(a1) * rad;
-            float py1 = (float) Math.sin(a1) * rad;
+            float py1 = oy + (float) Math.sin(a1) * rad;
             float px2 = x1 + (float) Math.cos(a2) * rad;
-            float py2 = (float) Math.sin(a2) * rad;
+            float py2 = oy + (float) Math.sin(a2) * rad;
 
-            buf.vertex(mat, x1, 0f, 0f).color(r, g, b, a);
-            buf.vertex(mat, px1, py1, 0f).color(r, g, b, a);
-            buf.vertex(mat, px2, py2, 0f).color(r, g, b, a);
-            buf.vertex(mat, x1, 0f, 0f).color(r, g, b, a);
+            buf.vertex(mat, x1, oy, oz).color(r, g, b, a);
+            buf.vertex(mat, px1, py1, oz).color(r, g, b, a);
+            buf.vertex(mat, px2, py2, oz).color(r, g, b, a);
+            buf.vertex(mat, x1, oy, oz).color(r, g, b, a);
         }
 
         // Right cap fan
@@ -493,18 +525,69 @@ public class Lyrics extends Module {
             float a1 = -(float) Math.PI * 0.5f + i * step;
             float a2 = a1 + step;
             float px1 = x2 + (float) Math.cos(a1) * rad;
+            float py1 = oy + (float) Math.sin(a1) * rad;
+            float px2 = x2 + (float) Math.cos(a2) * rad;
+            float py2 = oy + (float) Math.sin(a2) * rad;
+
+            buf.vertex(mat, x2, oy, oz).color(r, g, b, a);
+            buf.vertex(mat, px1, py1, oz).color(r, g, b, a);
+            buf.vertex(mat, px2, py2, oz).color(r, g, b, a);
+            buf.vertex(mat, x2, oy, oz).color(r, g, b, a);
+        }
+    }
+
+    private void draw3DTopGloss(VertexConsumer buf, Matrix4f mat, float w, float h, float oz, int a) {
+        if (a <= 1) return;
+        float rad = h * 0.5f;
+        float x1 = -w * 0.5f + rad;
+        float x2 = w * 0.5f - rad;
+        float y1 = -h * 0.5f;
+        float yMid = -0.5f;
+
+        int aTop = a;
+        int aMid = (int) (a * 0.15f);
+
+        // Center upper rectangle gloss gradient
+        buf.vertex(mat, x1, y1, oz).color(255, 255, 255, aTop);
+        buf.vertex(mat, x2, y1, oz).color(255, 255, 255, aTop);
+        buf.vertex(mat, x2, yMid, oz).color(255, 255, 255, aMid);
+        buf.vertex(mat, x1, yMid, oz).color(255, 255, 255, aMid);
+
+        int segments = 8;
+        float step = (float) (Math.PI * 0.5 / segments);
+
+        // Left upper quarter fan
+        for (int i = 0; i < segments; i++) {
+            float a1 = (float) Math.PI + i * step;
+            float a2 = a1 + step;
+            float px1 = x1 + (float) Math.cos(a1) * rad;
+            float py1 = (float) Math.sin(a1) * rad;
+            float px2 = x1 + (float) Math.cos(a2) * rad;
+            float py2 = (float) Math.sin(a2) * rad;
+
+            buf.vertex(mat, x1, 0f, oz).color(255, 255, 255, aMid);
+            buf.vertex(mat, px1, py1, oz).color(255, 255, 255, aTop);
+            buf.vertex(mat, px2, py2, oz).color(255, 255, 255, aTop);
+            buf.vertex(mat, x1, 0f, oz).color(255, 255, 255, aMid);
+        }
+
+        // Right upper quarter fan
+        for (int i = 0; i < segments; i++) {
+            float a1 = -(float) (Math.PI * 0.5) + i * step;
+            float a2 = a1 + step;
+            float px1 = x2 + (float) Math.cos(a1) * rad;
             float py1 = (float) Math.sin(a1) * rad;
             float px2 = x2 + (float) Math.cos(a2) * rad;
             float py2 = (float) Math.sin(a2) * rad;
 
-            buf.vertex(mat, x2, 0f, 0f).color(r, g, b, a);
-            buf.vertex(mat, px1, py1, 0f).color(r, g, b, a);
-            buf.vertex(mat, px2, py2, 0f).color(r, g, b, a);
-            buf.vertex(mat, x2, 0f, 0f).color(r, g, b, a);
+            buf.vertex(mat, x2, 0f, oz).color(255, 255, 255, aMid);
+            buf.vertex(mat, px1, py1, oz).color(255, 255, 255, aTop);
+            buf.vertex(mat, px2, py2, oz).color(255, 255, 255, aTop);
+            buf.vertex(mat, x2, 0f, oz).color(255, 255, 255, aMid);
         }
     }
 
-    private void draw3DCapsuleOutline(VertexConsumer buf, Matrix4f mat, float w, float h, float thickness, int r, int g, int b, int a) {
+    private void draw3DCapsuleOutline(VertexConsumer buf, Matrix4f mat, float w, float h, float oz, float thickness, int r, int g, int b, int a) {
         float rad = h * 0.5f;
         float x1 = -w * 0.5f + rad;
         float x2 = w * 0.5f - rad;
@@ -512,16 +595,16 @@ public class Lyrics extends Module {
         float y2 = h * 0.5f;
 
         // Top edge
-        buf.vertex(mat, x1, y1 - thickness, 0f).color(r, g, b, a);
-        buf.vertex(mat, x2, y1 - thickness, 0f).color(r, g, b, a);
-        buf.vertex(mat, x2, y1, 0f).color(r, g, b, a);
-        buf.vertex(mat, x1, y1, 0f).color(r, g, b, a);
+        buf.vertex(mat, x1, y1 - thickness, oz).color(r, g, b, a);
+        buf.vertex(mat, x2, y1 - thickness, oz).color(r, g, b, a);
+        buf.vertex(mat, x2, y1, oz).color(r, g, b, a);
+        buf.vertex(mat, x1, y1, oz).color(r, g, b, a);
 
         // Bottom edge
-        buf.vertex(mat, x1, y2, 0f).color(r, g, b, a);
-        buf.vertex(mat, x2, y2, 0f).color(r, g, b, a);
-        buf.vertex(mat, x2, y2 + thickness, 0f).color(r, g, b, a);
-        buf.vertex(mat, x1, y2 + thickness, 0f).color(r, g, b, a);
+        buf.vertex(mat, x1, y2, oz).color(r, g, b, a);
+        buf.vertex(mat, x2, y2, oz).color(r, g, b, a);
+        buf.vertex(mat, x2, y2 + thickness, oz).color(r, g, b, a);
+        buf.vertex(mat, x1, y2 + thickness, oz).color(r, g, b, a);
 
         int segments = 12;
         float step = (float) Math.PI / segments;
@@ -545,10 +628,10 @@ public class Lyrics extends Module {
             float out2x = x1 + c2 * (rad + thickness);
             float out2y = s2 * (rad + thickness);
 
-            buf.vertex(mat, in1x, in1y, 0f).color(r, g, b, a);
-            buf.vertex(mat, out1x, out1y, 0f).color(r, g, b, a);
-            buf.vertex(mat, out2x, out2y, 0f).color(r, g, b, a);
-            buf.vertex(mat, in2x, in2y, 0f).color(r, g, b, a);
+            buf.vertex(mat, in1x, in1y, oz).color(r, g, b, a);
+            buf.vertex(mat, out1x, out1y, oz).color(r, g, b, a);
+            buf.vertex(mat, out2x, out2y, oz).color(r, g, b, a);
+            buf.vertex(mat, in2x, in2y, oz).color(r, g, b, a);
         }
 
         // Right cap outline ring
@@ -570,10 +653,10 @@ public class Lyrics extends Module {
             float out2x = x2 + c2 * (rad + thickness);
             float out2y = s2 * (rad + thickness);
 
-            buf.vertex(mat, in1x, in1y, 0f).color(r, g, b, a);
-            buf.vertex(mat, out1x, out1y, 0f).color(r, g, b, a);
-            buf.vertex(mat, out2x, out2y, 0f).color(r, g, b, a);
-            buf.vertex(mat, in2x, in2y, 0f).color(r, g, b, a);
+            buf.vertex(mat, in1x, in1y, oz).color(r, g, b, a);
+            buf.vertex(mat, out1x, out1y, oz).color(r, g, b, a);
+            buf.vertex(mat, out2x, out2y, oz).color(r, g, b, a);
+            buf.vertex(mat, in2x, in2y, oz).color(r, g, b, a);
         }
     }
 

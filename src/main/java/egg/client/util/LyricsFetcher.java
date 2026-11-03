@@ -75,15 +75,15 @@ public final class LyricsFetcher {
         CompletableFuture<List<LyricLine>> future = new CompletableFuture<>();
         executor.submit(() -> {
             try {
-                CommandManager.sendClientMessage("§7[Lyrics] Поиск текста: §f" + (finalArtist.isEmpty() ? "" : finalArtist + " - ") + finalTitle + "...", false);
+                safeSendClientMessage("§7[Lyrics] Поиск текста: §f" + (finalArtist.isEmpty() ? "" : finalArtist + " - ") + finalTitle + "...");
                 List<LyricLine> lines = fetchFromApiCascade(finalArtist, finalTitle);
                 if (lines != null && !lines.isEmpty()) {
                     cache.put(key, lines);
                     cache.put(finalTitle.toLowerCase(Locale.ROOT), lines);
-                    CommandManager.sendClientMessage("§d[Lyrics] §aНайден текст: §f" + (finalArtist.isEmpty() ? "" : finalArtist + " - ") + finalTitle + " §7(" + lines.size() + " строк)", false);
+                    safeSendClientMessage("§d[Lyrics] §aНайден текст: §f" + (finalArtist.isEmpty() ? "" : finalArtist + " - ") + finalTitle + " §7(" + lines.size() + " строк)");
                     future.complete(lines);
                 } else {
-                    CommandManager.sendClientMessage("§d[Lyrics] §cТекст не найден: §f" + (finalArtist.isEmpty() ? "" : finalArtist + " - ") + finalTitle, false);
+                    safeSendClientMessage("§d[Lyrics] §cТекст не найден: §f" + (finalArtist.isEmpty() ? "" : finalArtist + " - ") + finalTitle);
                     future.complete(Collections.emptyList());
                 }
             } catch (Throwable t) {
@@ -93,6 +93,12 @@ public final class LyricsFetcher {
             }
         });
         return future;
+    }
+
+    private static void safeSendClientMessage(String msg) {
+        try {
+            CommandManager.sendClientMessage(msg, false);
+        } catch (Throwable ignored) {}
     }
 
     private static String[] parseArtistAndTitle(String artist, String title) {
@@ -233,8 +239,13 @@ public final class LyricsFetcher {
 
     // --- LRCLIB ---
     private List<LyricLine> searchLrclib(String artist, String cleanArtist, String title, String cleanTitle) {
-        Map<String, String> headers = Map.of("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0");
+        Map<String, String> headers = Map.of(
+                "User-Agent", "Rockstar/2.0 (https://github.com/rockstar)"
+        );
         List<String> queryList = new ArrayList<>();
+        // 1. Broad combined search first (most reliable on LRCLIB)
+        String mainQuery = (cleanArtist.isEmpty() ? artist : cleanArtist) + " " + (cleanTitle.isEmpty() ? title : cleanTitle);
+        queryList.add("q=" + urlEncode(mainQuery.trim()));
         if (!artist.isEmpty()) {
             queryList.add("track_name=" + urlEncode(title) + "&artist_name=" + urlEncode(artist));
             if (!cleanArtist.isEmpty() && !cleanArtist.equalsIgnoreCase(artist.trim())) {
@@ -242,7 +253,7 @@ public final class LyricsFetcher {
             }
         }
         queryList.add("track_name=" + urlEncode(cleanTitle.isEmpty() ? title : cleanTitle));
-        queryList.add("q=" + urlEncode((cleanArtist.isEmpty() ? artist : cleanArtist) + " " + title));
+        queryList.add("q=" + urlEncode(title));
 
         String bestLrc = null;
         String bestPlain = null;
@@ -362,18 +373,38 @@ public final class LyricsFetcher {
                                         String targetArtist, String targetTitle, double targetDur) {
         String tTrack = normalizeText(targetTitle);
         String cTrack = normalizeText(candTrack);
-        double trackSim = levenshteinSim(tTrack, cTrack);
-        boolean isPrefix = cTrack.equals(tTrack) || cTrack.startsWith(tTrack + " ") || tTrack.startsWith(cTrack + " ");
-        if (!isPrefix && trackSim < 0.40) {
-            return Double.NEGATIVE_INFINITY;
+        if (tTrack.isEmpty() || cTrack.isEmpty()) return 0.0;
+
+        String cleanCandTrack = candTrack;
+        int hyphen = candTrack.lastIndexOf(" - ");
+        if (hyphen >= 0 && hyphen + 3 < candTrack.length()) {
+            cleanCandTrack = candTrack.substring(hyphen + 3).trim();
         }
-        if (cTrack.equals(tTrack)) {
-            trackSim += 1.0;
-        } else if (isPrefix) {
-            trackSim += 0.85;
+        String cleanCTrack = normalizeText(cleanCandTrack);
+
+        double trackSim = Math.max(levenshteinSim(tTrack, cTrack), levenshteinSim(tTrack, cleanCTrack));
+        boolean isMatch = cTrack.equals(tTrack)
+                || cleanCTrack.equals(tTrack)
+                || cTrack.contains(tTrack)
+                || tTrack.contains(cTrack)
+                || cleanCTrack.contains(tTrack)
+                || tTrack.contains(cleanCTrack)
+                || cTrack.startsWith(tTrack)
+                || cTrack.endsWith(tTrack);
+
+        if (isMatch) {
+            trackSim = Math.max(trackSim, 0.90);
+        }
+
+        if (!isMatch && trackSim < 0.35) {
+            return Double.NEGATIVE_INFINITY;
         }
 
         double artScore = targetArtist.isBlank() ? 1.0 : artistSim(targetArtist, candArtist);
+        if (artScore < 0.25 && !isMatch) {
+            return Double.NEGATIVE_INFINITY;
+        }
+
         return trackSim * 1000.0 + artScore * 900.0;
     }
 
@@ -385,7 +416,7 @@ public final class LyricsFetcher {
 
     public static String cleanTitle(String title) {
         if (title == null || title.isBlank()) return "";
-        String s = title.replaceAll("(?i)\\s*[\\[(](?:feat\\.?|ft\\.?|featuring|prod\\.?|with|official\\s+(?:audio|video|music\\s+video)|remaster(?:ed)?|live|radio\\s+edit)\\b.*?[Item\\])]", "");
+        String s = title.replaceAll("(?i)\\s*[\\[(](?:feat\\.?|ft\\.?|featuring|prod\\.?|with|official\\s+(?:audio|video|music\\s+video)|remaster(?:ed)?|live|radio\\s+edit)\\b.*?[\\]\\)]", "");
         s = s.replaceAll("(?i)\\s*[-–—]\\s*(?:remaster(?:ed)?|live|radio edit|single version|official audio).*$", "");
         return s.trim();
     }

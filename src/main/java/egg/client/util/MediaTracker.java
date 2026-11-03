@@ -55,7 +55,11 @@ public final class MediaTracker {
     public long getTrackElapsedMs() {
         if (trackPositionSec > 0L) {
             long delta = System.currentTimeMillis() - lastPositionUpdate;
-            return trackPositionSec * 1000L + Math.min(2500L, delta) + manualOffsetMs;
+            long posMs = trackPositionSec * 1000L + (playing ? delta : 0L) + manualOffsetMs;
+            if (trackDurationSec > 0L) {
+                posMs = Math.min(posMs, trackDurationSec * 1000L);
+            }
+            return Math.max(0L, posMs);
         }
         if (!playing) return manualOffsetMs;
         return Math.max(0L, (System.currentTimeMillis() - lastPositionUpdate) + manualOffsetMs);
@@ -105,35 +109,52 @@ public final class MediaTracker {
                     List<IMediaSession> sessions = MediaPlayerInfo.INSTANCE.getMediaSessions();
                     if (sessions != null && !sessions.isEmpty()) {
                         IMediaSession bestSession = null;
-                        // 1a. Prioritize actively playing session
+                        // 1a. Priority 1: Dedicated music app actively playing
                         for (IMediaSession s : sessions) {
                             if (s == null) continue;
                             MediaInfo m = s.getMedia();
                             if (m == null || m.getTitle().isBlank()) continue;
-                            if (m.isPlaying()) {
-                                String owner = s.getOwner() != null ? s.getOwner().toLowerCase(java.util.Locale.ROOT) : "";
-                                boolean isMusicApp = owner.contains("spotify") || owner.contains("yandex") || owner.contains("aimp") || owner.contains("apple") || owner.contains("music");
-                                if (isMusicApp) {
-                                    bestSession = s;
-                                    break;
-                                } else if (bestSession == null) {
-                                    bestSession = s;
-                                }
+                            String owner = s.getOwner() != null ? s.getOwner().toLowerCase(java.util.Locale.ROOT) : "";
+                            boolean isMusicApp = owner.contains("spotify") || owner.contains("yandex") || owner.contains("aimp") || owner.contains("apple") || owner.contains("music") || owner.contains("foobar");
+                            if (isMusicApp && m.isPlaying()) {
+                                bestSession = s;
+                                break;
                             }
                         }
-                        // 1b. If no session is currently playing, pick first non-empty session (preferring music apps)
+                        // 1b. Priority 2: Any dedicated music app present (even if paused/transitioning)
                         if (bestSession == null) {
                             for (IMediaSession s : sessions) {
                                 if (s == null) continue;
                                 MediaInfo m = s.getMedia();
                                 if (m == null || m.getTitle().isBlank()) continue;
                                 String owner = s.getOwner() != null ? s.getOwner().toLowerCase(java.util.Locale.ROOT) : "";
-                                boolean isMusicApp = owner.contains("spotify") || owner.contains("yandex") || owner.contains("aimp") || owner.contains("apple") || owner.contains("music");
+                                boolean isMusicApp = owner.contains("spotify") || owner.contains("yandex") || owner.contains("aimp") || owner.contains("apple") || owner.contains("music") || owner.contains("foobar");
                                 if (isMusicApp) {
                                     bestSession = s;
                                     break;
-                                } else if (bestSession == null) {
+                                }
+                            }
+                        }
+                        // 1c. Priority 3: Browser / other session that is actively playing
+                        if (bestSession == null) {
+                            for (IMediaSession s : sessions) {
+                                if (s == null) continue;
+                                MediaInfo m = s.getMedia();
+                                if (m == null || m.getTitle().isBlank()) continue;
+                                if (m.isPlaying()) {
                                     bestSession = s;
+                                    break;
+                                }
+                            }
+                        }
+                        // 1d. Priority 4: Any non-empty session
+                        if (bestSession == null) {
+                            for (IMediaSession s : sessions) {
+                                if (s == null) continue;
+                                MediaInfo m = s.getMedia();
+                                if (m != null && !m.getTitle().isBlank()) {
+                                    bestSession = s;
+                                    break;
                                 }
                             }
                         }
@@ -153,6 +174,8 @@ public final class MediaTracker {
                                 if (!this.trackTitle.equals(t) || !this.trackArtist.equals(a)) {
                                     this.trackTitle = t;
                                     this.trackArtist = a;
+                                    this.trackPositionSec = media.getPosition();
+                                    this.lastPositionUpdate = System.currentTimeMillis();
                                     this.manualOffsetMs = 0L;
                                 }
                                 this.playing = media.isPlaying();
