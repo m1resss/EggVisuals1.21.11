@@ -553,12 +553,12 @@ public class Lyrics extends Module {
 
             matrices.push();
             matrices.translate(cap.worldPos.x - camPos.x + waveX, cap.worldPos.y - camPos.y + waveY, cap.worldPos.z - camPos.z);
-            matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(currentYaw));
-            matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees((float) cap.pitch));
+            // Прямой биллборд на камеру игрока — плашка всегда идеально ровная (без кривизны и кренов)
+            matrices.multiply(camera.getRotation());
 
-            float s = userScale * popScale * 0.030f;
-            // Положительный X для прямого чтения слева направо (без зеркальности), отрицательный Y для TextRenderer
-            matrices.scale(s * flipScale, -s, s);
+            float s = userScale * popScale * 0.026f;
+            // Стандарт 3D-текста в Minecraft: -s по X и -s по Y для прямого слева-направо чтения и нормального верха
+            matrices.scale(-s, -s, s);
 
             StyleSpriteSource.Font selectedFont = switch (fontMode.get()) {
                 case "SF Semibold" -> ClientFont.SF_SEMIBOLD;
@@ -578,29 +578,42 @@ public class Lyrics extends Module {
             cap.boxW = boxW;
             cap.boxH = boxH;
 
+            int accent = Theme.getAccent();
+            int ar = (accent >> 16) & 0xFF;
+            int ag = (accent >> 8) & 0xFF;
+            int ab = accent & 0xFF;
+
             int textColor;
-            int glowColor;
-            int bgCol;
+            int tintR, tintG, tintB;
 
             String style = colorStyle.get();
-            if (style.contains("Бел") || style.contains("White")) {
-                textColor = ColorUtil.rgba(255, 255, 255, (int) (255 * alpha));
-                glowColor = ColorUtil.rgba(255, 255, 255, (int) (180 * alpha));
-                bgCol = ColorUtil.rgba(16, 17, 22, (int) (190 * alpha));
-            } else if (style.contains("Тем") || style.contains("Theme") || style.contains("Акцент")) {
-                int accent = Theme.getAccent();
+            if (style.contains("Тем") || style.contains("Theme") || style.contains("Акцент")) {
                 textColor = ColorUtil.withAlphaFloat(accent, alpha);
-                glowColor = ColorUtil.withAlphaFloat(accent, 0.70f * alpha);
-                bgCol = ColorUtil.rgba(18, 20, 26, (int) (185 * alpha));
+                tintR = ar;
+                tintG = ag;
+                tintB = ab;
             } else if (style.contains("Роз") || style.contains("Pink") || style.contains("Корал")) {
-                textColor = ColorUtil.rgba(255, 160, 175, (int) (255 * alpha));
-                glowColor = ColorUtil.rgba(255, 130, 150, (int) (170 * alpha));
-                bgCol = ColorUtil.rgba(22, 18, 24, (int) (185 * alpha));
-            } else { // Лавандовый / Фиолетовый (по умолчанию как в референсе)
+                textColor = ColorUtil.rgba(255, 175, 195, (int) (255 * alpha));
+                tintR = 255;
+                tintG = 145;
+                tintB = 180;
+            } else if (style.contains("Лаван") || style.contains("Фиолет")) {
                 textColor = ColorUtil.rgba(235, 225, 255, (int) (255 * alpha));
-                glowColor = ColorUtil.rgba(185, 145, 255, (int) (180 * alpha));
-                bgCol = ColorUtil.rgba(22, 18, 30, (int) (185 * alpha));
+                tintR = 195;
+                tintG = 160;
+                tintB = 255;
+            } else { // Белый: чисто белый текст, а полупрозрачный фон под цвет активной темы клиента
+                textColor = ColorUtil.rgba(255, 255, 255, (int) (255 * alpha));
+                tintR = ar;
+                tintG = ag;
+                tintB = ab;
             }
+
+            // Полупрозрачный темный фон под цвет темы (глубокое матовое стекло, ~50% прозрачности как в референсе)
+            int bgR = (int) (14 * 0.70f + tintR * 0.30f);
+            int bgG = (int) (12 * 0.70f + tintG * 0.30f);
+            int bgB = (int) (24 * 0.70f + tintB * 0.30f);
+            int bgA = (int) (130 * alpha);
 
             Matrix4f mat = matrices.peek().getPositionMatrix();
             GL11.glEnable(GL11.GL_BLEND);
@@ -611,37 +624,30 @@ public class Lyrics extends Module {
 
             if (background.isEnabled()) {
                 VertexConsumer quadConsumer = immediate.getBuffer(RenderLayers.debugQuads());
-                int bgR = (bgCol >> 16) & 0xFF;
-                int bgG = (bgCol >> 8) & 0xFF;
-                int bgB = bgCol & 0xFF;
-                int bgA = (bgCol >> 24) & 0xFF;
+                float cornerRadius = 6.0f;
 
-                // 1a. Глубокая рассеянная тень (oz = -0.05f - сзади капсулы)
-                draw3DCapsule(quadConsumer, mat, boxW + 5.0f, boxH + 3.0f, 1.8f, 2.8f, -0.05f, 0, 0, 0, (int) (70 * alpha));
+                // 1. Мягкая контактная тень под плашкой (oz = -0.04f)
+                draw3DRoundedRect(quadConsumer, mat, boxW + 2.0f, boxH + 2.0f, cornerRadius + 1.5f, 0.0f, 1.8f, -0.04f, 0, 0, 0, (int) (70 * alpha));
 
-                // 1b. Ближняя контактная тень (oz = -0.025f)
-                draw3DCapsule(quadConsumer, mat, boxW + 2.0f, boxH + 1.2f, 0.8f, 1.4f, -0.025f, 0, 0, 0, (int) (120 * alpha));
-
-                // 2. Базовая темная стеклянная капсула (oz = 0.0f)
-                draw3DCapsule(quadConsumer, mat, boxW, boxH, 0f, 0f, 0.0f, bgR, bgG, bgB, bgA);
-
-                // 3. Верхний стеклянный глянец (блик, oz = 0.008f - на передней поверхности)
-                draw3DTopGloss(quadConsumer, mat, boxW, boxH, 0.008f, (int) (55 * alpha));
-
-                // 4. Неоновый контур плашки (oz = 0.015f)
+                // 2. Мягкое неоновое свечение темы вокруг плашки (oz = -0.02f)
                 if (glow.isEnabled()) {
-                    int glR = (glowColor >> 16) & 0xFF;
-                    int glG = (glowColor >> 8) & 0xFF;
-                    int glB = glowColor & 0xFF;
-                    int glA = (glowColor >> 24) & 0xFF;
-                    draw3DCapsuleOutline(quadConsumer, mat, boxW, boxH, 0.015f, 1.1f, glR, glG, glB, glA);
+                    draw3DRoundedRect(quadConsumer, mat, boxW + 4.5f, boxH + 4.0f, cornerRadius + 2.5f, 0.0f, 0.0f, -0.02f, tintR, tintG, tintB, (int) (35 * alpha));
                 }
 
-                // Сбрасываем буфер геометрии плашки
+                // 3. Полупрозрачное темное стекло под цвет темы (oz = 0.0f)
+                draw3DRoundedRect(quadConsumer, mat, boxW, boxH, cornerRadius, 0.0f, 0.0f, 0.0f, bgR, bgG, bgB, bgA);
+
+                // 4. Тонкий верхний стеклянный глянец (oz = 0.008f)
+                draw3DTopGloss(quadConsumer, mat, boxW, boxH, cornerRadius, 0.008f, (int) (38 * alpha));
+
+                // 5. Тонкая аккуратная рамка по контуру под цвет темы (oz = 0.015f)
+                draw3DRoundedOutline(quadConsumer, mat, boxW, boxH, cornerRadius, 0.9f, 0.015f, tintR, tintG, tintB, (int) (80 * alpha));
+
+                // Сбрасываем буфер геометрии подложки
                 immediate.draw(RenderLayers.debugQuads());
             }
 
-            // 5. Отрисовка текста поверх всех слоев (z = 0.035f - ближе всего к камере)
+            // 6. Отрисовка текста поверх всех слоев (z = 0.035f - ближе всего к камере)
             int pureLight = 15728640; // Полный дневной свет (Sky=15, Block=0) — нулевой оттенок факела/желтизны
 
             // Инициализация слов плашки (при первом кадре с учетом выбранного шрифта)
@@ -733,12 +739,13 @@ public class Lyrics extends Module {
         }
     }
 
-    private void draw3DCapsule(VertexConsumer buf, Matrix4f mat, float w, float h, float ox, float oy, float oz, int r, int g, int b, int a) {
-        float rad = h * 0.5f;
+    private void draw3DRoundedRect(VertexConsumer buf, Matrix4f mat, float w, float h, float rad, float ox, float oy, float oz, int r, int g, int b, int a) {
+        if (a <= 0) return;
+        rad = Math.min(rad, Math.min(w * 0.5f, h * 0.5f));
         float x1 = -w * 0.5f + rad + ox;
         float x2 = w * 0.5f - rad + ox;
-        float y1 = -h * 0.5f + oy;
-        float y2 = h * 0.5f + oy;
+        float y1 = -h * 0.5f + rad + oy;
+        float y2 = h * 0.5f - rad + oy;
 
         // Center rectangle
         buf.vertex(mat, x1, y1, oz).color(r, g, b, a);
@@ -746,54 +753,108 @@ public class Lyrics extends Module {
         buf.vertex(mat, x2, y2, oz).color(r, g, b, a);
         buf.vertex(mat, x1, y2, oz).color(r, g, b, a);
 
-        int segments = 12;
-        float step = (float) Math.PI / segments;
+        // Top strip
+        buf.vertex(mat, x1, -h * 0.5f + oy, oz).color(r, g, b, a);
+        buf.vertex(mat, x2, -h * 0.5f + oy, oz).color(r, g, b, a);
+        buf.vertex(mat, x2, y1, oz).color(r, g, b, a);
+        buf.vertex(mat, x1, y1, oz).color(r, g, b, a);
 
-        // Left cap fan
+        // Bottom strip
+        buf.vertex(mat, x1, y2, oz).color(r, g, b, a);
+        buf.vertex(mat, x2, y2, oz).color(r, g, b, a);
+        buf.vertex(mat, x2, h * 0.5f + oy, oz).color(r, g, b, a);
+        buf.vertex(mat, x1, h * 0.5f + oy, oz).color(r, g, b, a);
+
+        // Left strip
+        buf.vertex(mat, -w * 0.5f + ox, y1, oz).color(r, g, b, a);
+        buf.vertex(mat, x1, y1, oz).color(r, g, b, a);
+        buf.vertex(mat, x1, y2, oz).color(r, g, b, a);
+        buf.vertex(mat, -w * 0.5f + ox, y2, oz).color(r, g, b, a);
+
+        // Right strip
+        buf.vertex(mat, x2, y1, oz).color(r, g, b, a);
+        buf.vertex(mat, w * 0.5f + ox, y1, oz).color(r, g, b, a);
+        buf.vertex(mat, w * 0.5f + ox, y2, oz).color(r, g, b, a);
+        buf.vertex(mat, x2, y2, oz).color(r, g, b, a);
+
+        int segments = 8;
+        float step = (float) (Math.PI * 0.5 / segments);
+
+        // Top-Left corner
         for (int i = 0; i < segments; i++) {
-            float a1 = (float) Math.PI * 0.5f + i * step;
+            float a1 = (float) Math.PI + i * step;
             float a2 = a1 + step;
             float px1 = x1 + (float) Math.cos(a1) * rad;
-            float py1 = oy + (float) Math.sin(a1) * rad;
+            float py1 = y1 + (float) Math.sin(a1) * rad;
             float px2 = x1 + (float) Math.cos(a2) * rad;
-            float py2 = oy + (float) Math.sin(a2) * rad;
+            float py2 = y1 + (float) Math.sin(a2) * rad;
 
-            buf.vertex(mat, x1, oy, oz).color(r, g, b, a);
+            buf.vertex(mat, x1, y1, oz).color(r, g, b, a);
             buf.vertex(mat, px1, py1, oz).color(r, g, b, a);
             buf.vertex(mat, px2, py2, oz).color(r, g, b, a);
-            buf.vertex(mat, x1, oy, oz).color(r, g, b, a);
+            buf.vertex(mat, x1, y1, oz).color(r, g, b, a);
         }
 
-        // Right cap fan
+        // Top-Right corner
         for (int i = 0; i < segments; i++) {
-            float a1 = -(float) Math.PI * 0.5f + i * step;
+            float a1 = (float) (Math.PI * 1.5) + i * step;
             float a2 = a1 + step;
             float px1 = x2 + (float) Math.cos(a1) * rad;
-            float py1 = oy + (float) Math.sin(a1) * rad;
+            float py1 = y1 + (float) Math.sin(a1) * rad;
             float px2 = x2 + (float) Math.cos(a2) * rad;
-            float py2 = oy + (float) Math.sin(a2) * rad;
+            float py2 = y1 + (float) Math.sin(a2) * rad;
 
-            buf.vertex(mat, x2, oy, oz).color(r, g, b, a);
+            buf.vertex(mat, x2, y1, oz).color(r, g, b, a);
             buf.vertex(mat, px1, py1, oz).color(r, g, b, a);
             buf.vertex(mat, px2, py2, oz).color(r, g, b, a);
-            buf.vertex(mat, x2, oy, oz).color(r, g, b, a);
+            buf.vertex(mat, x2, y1, oz).color(r, g, b, a);
+        }
+
+        // Bottom-Right corner
+        for (int i = 0; i < segments; i++) {
+            float a1 = i * step;
+            float a2 = a1 + step;
+            float px1 = x2 + (float) Math.cos(a1) * rad;
+            float py1 = y2 + (float) Math.sin(a1) * rad;
+            float px2 = x2 + (float) Math.cos(a2) * rad;
+            float py2 = y2 + (float) Math.sin(a2) * rad;
+
+            buf.vertex(mat, x2, y2, oz).color(r, g, b, a);
+            buf.vertex(mat, px1, py1, oz).color(r, g, b, a);
+            buf.vertex(mat, px2, py2, oz).color(r, g, b, a);
+            buf.vertex(mat, x2, y2, oz).color(r, g, b, a);
+        }
+
+        // Bottom-Left corner
+        for (int i = 0; i < segments; i++) {
+            float a1 = (float) (Math.PI * 0.5) + i * step;
+            float a2 = a1 + step;
+            float px1 = x1 + (float) Math.cos(a1) * rad;
+            float py1 = y2 + (float) Math.sin(a1) * rad;
+            float px2 = x1 + (float) Math.cos(a2) * rad;
+            float py2 = y2 + (float) Math.sin(a2) * rad;
+
+            buf.vertex(mat, x1, y2, oz).color(r, g, b, a);
+            buf.vertex(mat, px1, py1, oz).color(r, g, b, a);
+            buf.vertex(mat, px2, py2, oz).color(r, g, b, a);
+            buf.vertex(mat, x1, y2, oz).color(r, g, b, a);
         }
     }
 
-    private void draw3DTopGloss(VertexConsumer buf, Matrix4f mat, float w, float h, float oz, int a) {
+    private void draw3DTopGloss(VertexConsumer buf, Matrix4f mat, float w, float h, float rad, float oz, int a) {
         if (a <= 1) return;
-        float rad = h * 0.5f;
+        rad = Math.min(rad, Math.min(w * 0.5f, h * 0.5f));
         float x1 = -w * 0.5f + rad;
         float x2 = w * 0.5f - rad;
-        float y1 = -h * 0.5f;
-        float yMid = -0.5f;
+        float y1 = -h * 0.5f + rad;
+        float yMid = 0.0f;
 
         int aTop = a;
-        int aMid = (int) (a * 0.15f);
+        int aMid = (int) (a * 0.08f);
 
         // Center upper rectangle gloss gradient
-        buf.vertex(mat, x1, y1, oz).color(255, 255, 255, aTop);
-        buf.vertex(mat, x2, y1, oz).color(255, 255, 255, aTop);
+        buf.vertex(mat, x1, -h * 0.5f, oz).color(255, 255, 255, aTop);
+        buf.vertex(mat, x2, -h * 0.5f, oz).color(255, 255, 255, aTop);
         buf.vertex(mat, x2, yMid, oz).color(255, 255, 255, aMid);
         buf.vertex(mat, x1, yMid, oz).color(255, 255, 255, aMid);
 
@@ -805,102 +866,117 @@ public class Lyrics extends Module {
             float a1 = (float) Math.PI + i * step;
             float a2 = a1 + step;
             float px1 = x1 + (float) Math.cos(a1) * rad;
-            float py1 = (float) Math.sin(a1) * rad;
+            float py1 = y1 + (float) Math.sin(a1) * rad;
             float px2 = x1 + (float) Math.cos(a2) * rad;
-            float py2 = (float) Math.sin(a2) * rad;
+            float py2 = y1 + (float) Math.sin(a2) * rad;
 
-            buf.vertex(mat, x1, 0f, oz).color(255, 255, 255, aMid);
+            buf.vertex(mat, x1, y1, oz).color(255, 255, 255, aMid);
             buf.vertex(mat, px1, py1, oz).color(255, 255, 255, aTop);
             buf.vertex(mat, px2, py2, oz).color(255, 255, 255, aTop);
-            buf.vertex(mat, x1, 0f, oz).color(255, 255, 255, aMid);
+            buf.vertex(mat, x1, y1, oz).color(255, 255, 255, aMid);
         }
 
         // Right upper quarter fan
         for (int i = 0; i < segments; i++) {
-            float a1 = -(float) (Math.PI * 0.5) + i * step;
+            float a1 = (float) (Math.PI * 1.5) + i * step;
             float a2 = a1 + step;
             float px1 = x2 + (float) Math.cos(a1) * rad;
-            float py1 = (float) Math.sin(a1) * rad;
+            float py1 = y1 + (float) Math.sin(a1) * rad;
             float px2 = x2 + (float) Math.cos(a2) * rad;
-            float py2 = (float) Math.sin(a2) * rad;
+            float py2 = y1 + (float) Math.sin(a2) * rad;
 
-            buf.vertex(mat, x2, 0f, oz).color(255, 255, 255, aMid);
+            buf.vertex(mat, x2, y1, oz).color(255, 255, 255, aMid);
             buf.vertex(mat, px1, py1, oz).color(255, 255, 255, aTop);
             buf.vertex(mat, px2, py2, oz).color(255, 255, 255, aTop);
-            buf.vertex(mat, x2, 0f, oz).color(255, 255, 255, aMid);
+            buf.vertex(mat, x2, y1, oz).color(255, 255, 255, aMid);
         }
     }
 
-    private void draw3DCapsuleOutline(VertexConsumer buf, Matrix4f mat, float w, float h, float oz, float thickness, int r, int g, int b, int a) {
-        float rad = h * 0.5f;
+    private void draw3DRoundedOutline(VertexConsumer buf, Matrix4f mat, float w, float h, float rad, float thickness, float oz, int r, int g, int b, int a) {
+        if (a <= 1) return;
+        rad = Math.min(rad, Math.min(w * 0.5f, h * 0.5f));
         float x1 = -w * 0.5f + rad;
         float x2 = w * 0.5f - rad;
-        float y1 = -h * 0.5f;
-        float y2 = h * 0.5f;
+        float y1 = -h * 0.5f + rad;
+        float y2 = h * 0.5f - rad;
 
         // Top edge
-        buf.vertex(mat, x1, y1 - thickness, oz).color(r, g, b, a);
-        buf.vertex(mat, x2, y1 - thickness, oz).color(r, g, b, a);
-        buf.vertex(mat, x2, y1, oz).color(r, g, b, a);
-        buf.vertex(mat, x1, y1, oz).color(r, g, b, a);
+        buf.vertex(mat, x1, -h * 0.5f - thickness, oz).color(r, g, b, a);
+        buf.vertex(mat, x2, -h * 0.5f - thickness, oz).color(r, g, b, a);
+        buf.vertex(mat, x2, -h * 0.5f, oz).color(r, g, b, a);
+        buf.vertex(mat, x1, -h * 0.5f, oz).color(r, g, b, a);
 
         // Bottom edge
-        buf.vertex(mat, x1, y2, oz).color(r, g, b, a);
-        buf.vertex(mat, x2, y2, oz).color(r, g, b, a);
-        buf.vertex(mat, x2, y2 + thickness, oz).color(r, g, b, a);
-        buf.vertex(mat, x1, y2 + thickness, oz).color(r, g, b, a);
+        buf.vertex(mat, x1, h * 0.5f, oz).color(r, g, b, a);
+        buf.vertex(mat, x2, h * 0.5f, oz).color(r, g, b, a);
+        buf.vertex(mat, x2, h * 0.5f + thickness, oz).color(r, g, b, a);
+        buf.vertex(mat, x1, h * 0.5f + thickness, oz).color(r, g, b, a);
 
-        int segments = 12;
-        float step = (float) Math.PI / segments;
+        // Left edge
+        buf.vertex(mat, -w * 0.5f - thickness, y1, oz).color(r, g, b, a);
+        buf.vertex(mat, -w * 0.5f, y1, oz).color(r, g, b, a);
+        buf.vertex(mat, -w * 0.5f, y2, oz).color(r, g, b, a);
+        buf.vertex(mat, -w * 0.5f - thickness, y2, oz).color(r, g, b, a);
 
-        // Left cap outline ring
+        // Right edge
+        buf.vertex(mat, w * 0.5f, y1, oz).color(r, g, b, a);
+        buf.vertex(mat, w * 0.5f + thickness, y1, oz).color(r, g, b, a);
+        buf.vertex(mat, w * 0.5f + thickness, y2, oz).color(r, g, b, a);
+        buf.vertex(mat, w * 0.5f, y2, oz).color(r, g, b, a);
+
+        int segments = 8;
+        float step = (float) (Math.PI * 0.5 / segments);
+
+        // Top-Left corner
         for (int i = 0; i < segments; i++) {
-            float a1 = (float) Math.PI * 0.5f + i * step;
+            float a1 = (float) Math.PI + i * step;
             float a2 = a1 + step;
-            float c1 = (float) Math.cos(a1);
-            float s1 = (float) Math.sin(a1);
-            float c2 = (float) Math.cos(a2);
-            float s2 = (float) Math.sin(a2);
+            float c1 = (float) Math.cos(a1), s1 = (float) Math.sin(a1);
+            float c2 = (float) Math.cos(a2), s2 = (float) Math.sin(a2);
 
-            float in1x = x1 + c1 * rad;
-            float in1y = s1 * rad;
-            float in2x = x1 + c2 * rad;
-            float in2y = s2 * rad;
-
-            float out1x = x1 + c1 * (rad + thickness);
-            float out1y = s1 * (rad + thickness);
-            float out2x = x1 + c2 * (rad + thickness);
-            float out2y = s2 * (rad + thickness);
-
-            buf.vertex(mat, in1x, in1y, oz).color(r, g, b, a);
-            buf.vertex(mat, out1x, out1y, oz).color(r, g, b, a);
-            buf.vertex(mat, out2x, out2y, oz).color(r, g, b, a);
-            buf.vertex(mat, in2x, in2y, oz).color(r, g, b, a);
+            buf.vertex(mat, x1 + c1 * rad, y1 + s1 * rad, oz).color(r, g, b, a);
+            buf.vertex(mat, x1 + c1 * (rad + thickness), y1 + s1 * (rad + thickness), oz).color(r, g, b, a);
+            buf.vertex(mat, x1 + c2 * (rad + thickness), y1 + s2 * (rad + thickness), oz).color(r, g, b, a);
+            buf.vertex(mat, x1 + c2 * rad, y1 + s2 * rad, oz).color(r, g, b, a);
         }
 
-        // Right cap outline ring
+        // Top-Right corner
         for (int i = 0; i < segments; i++) {
-            float a1 = -(float) Math.PI * 0.5f + i * step;
+            float a1 = (float) (Math.PI * 1.5) + i * step;
             float a2 = a1 + step;
-            float c1 = (float) Math.cos(a1);
-            float s1 = (float) Math.sin(a1);
-            float c2 = (float) Math.cos(a2);
-            float s2 = (float) Math.sin(a2);
+            float c1 = (float) Math.cos(a1), s1 = (float) Math.sin(a1);
+            float c2 = (float) Math.cos(a2), s2 = (float) Math.sin(a2);
 
-            float in1x = x2 + c1 * rad;
-            float in1y = s1 * rad;
-            float in2x = x2 + c2 * rad;
-            float in2y = s2 * rad;
+            buf.vertex(mat, x2 + c1 * rad, y1 + s1 * rad, oz).color(r, g, b, a);
+            buf.vertex(mat, x2 + c1 * (rad + thickness), y1 + s1 * (rad + thickness), oz).color(r, g, b, a);
+            buf.vertex(mat, x2 + c2 * (rad + thickness), y1 + s2 * (rad + thickness), oz).color(r, g, b, a);
+            buf.vertex(mat, x2 + c2 * rad, y1 + s2 * rad, oz).color(r, g, b, a);
+        }
 
-            float out1x = x2 + c1 * (rad + thickness);
-            float out1y = s1 * (rad + thickness);
-            float out2x = x2 + c2 * (rad + thickness);
-            float out2y = s2 * (rad + thickness);
+        // Bottom-Right corner
+        for (int i = 0; i < segments; i++) {
+            float a1 = i * step;
+            float a2 = a1 + step;
+            float c1 = (float) Math.cos(a1), s1 = (float) Math.sin(a1);
+            float c2 = (float) Math.cos(a2), s2 = (float) Math.sin(a2);
 
-            buf.vertex(mat, in1x, in1y, oz).color(r, g, b, a);
-            buf.vertex(mat, out1x, out1y, oz).color(r, g, b, a);
-            buf.vertex(mat, out2x, out2y, oz).color(r, g, b, a);
-            buf.vertex(mat, in2x, in2y, oz).color(r, g, b, a);
+            buf.vertex(mat, x2 + c1 * rad, y2 + s1 * rad, oz).color(r, g, b, a);
+            buf.vertex(mat, x2 + c1 * (rad + thickness), y2 + s1 * (rad + thickness), oz).color(r, g, b, a);
+            buf.vertex(mat, x2 + c2 * (rad + thickness), y2 + s2 * (rad + thickness), oz).color(r, g, b, a);
+            buf.vertex(mat, x2 + c2 * rad, y2 + s2 * rad, oz).color(r, g, b, a);
+        }
+
+        // Bottom-Left corner
+        for (int i = 0; i < segments; i++) {
+            float a1 = (float) (Math.PI * 0.5) + i * step;
+            float a2 = a1 + step;
+            float c1 = (float) Math.cos(a1), s1 = (float) Math.sin(a1);
+            float c2 = (float) Math.cos(a2), s2 = (float) Math.sin(a2);
+
+            buf.vertex(mat, x1 + c1 * rad, y2 + s1 * rad, oz).color(r, g, b, a);
+            buf.vertex(mat, x1 + c1 * (rad + thickness), y2 + s1 * (rad + thickness), oz).color(r, g, b, a);
+            buf.vertex(mat, x1 + c2 * (rad + thickness), y2 + s2 * (rad + thickness), oz).color(r, g, b, a);
+            buf.vertex(mat, x1 + c2 * rad, y2 + s2 * rad, oz).color(r, g, b, a);
         }
     }
 
