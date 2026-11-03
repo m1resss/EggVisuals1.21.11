@@ -142,6 +142,7 @@ public class ModuleManager {
         register(new egg.client.module.render.WorldTweaks());
 
         register(new egg.client.module.misc.ZakoOptimization());
+        register(new egg.client.module.misc.DiscordRPC());
 
         register(new egg.client.module.cosmetic.CosmeticsModule());
 
