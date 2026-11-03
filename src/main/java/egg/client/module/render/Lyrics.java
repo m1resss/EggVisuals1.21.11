@@ -247,12 +247,12 @@ public class Lyrics extends Module {
         List<String> chunks = new ArrayList<>();
         String mode = splitMode.get();
 
-        if ("По запятой".equals(mode)) {
-            for (String p : text.split("[,;—–]")) {
+        if (mode != null && (mode.contains("запят") || mode.contains("Comma"))) {
+            for (String p : text.split("[,;—–\"']")) {
                 String trimmed = p.trim();
                 if (!trimmed.isEmpty()) chunks.add(trimmed);
             }
-        } else if ("Вся строка".equals(mode)) {
+        } else if (mode != null && (mode.contains("строк") || mode.contains("Line"))) {
             chunks.add(text);
         } else {
             String[] words = text.split("\\s+");
@@ -351,29 +351,40 @@ public class Lyrics extends Module {
             double sinA = Math.sin(radY);
             double cosA = Math.cos(radY);
 
-            double dot = (camPos.x - cap.worldPos.x) * (-sinA * cosB)
-                    - (camPos.y - cap.worldPos.y) * sinB
-                    + (camPos.z - cap.worldPos.z) * (cosA * cosB);
+            double dx = camPos.x - cap.worldPos.x;
+            double dy = camPos.y - cap.worldPos.y;
+            double dz = camPos.z - cap.worldPos.z;
 
-            if (dot < 0 && !cap.flipping) {
+            // Dot product with capsule forward normal
+            double dot = dx * (-sinA * cosB) - dy * sinB + dz * (cosA * cosB);
+
+            // Trigger flip when camera is clearly behind capsule, with cooldown
+            if (dot < -0.25 && !cap.flipping && (now - cap.flipStartTime > 800L)) {
                 cap.flipping = true;
                 cap.flipStartTime = now;
             }
 
-            float flipScaleX = 1.0f;
+            float currentYaw = (float) cap.yaw;
+            float flipScale = 1.0f;
+
             if (cap.flipping) {
                 float f = (now - cap.flipStartTime) / 400.0f;
                 if (f >= 1.0f) {
                     cap.flipping = false;
                     cap.yaw = (cap.yaw + 180.0) % 360.0;
-                    flipScaleX = 1.0f;
+                    currentYaw = (float) cap.yaw;
+                    flipScale = 1.0f;
                 } else if (f < 0.3f) {
-                    flipScaleX = (float) Math.cos(f * 5.235988f);
+                    // Compress horizontally towards 0
+                    flipScale = (float) Math.cos(f * 5.235988f);
                 } else {
+                    // Turn 180 deg to face camera from the other side and spring expand back
+                    currentYaw = (float) ((cap.yaw + 180.0) % 360.0);
                     float b_ = (f - 0.3f) / 0.7f - 1.0f;
-                    flipScaleX = -(1.0f + 2.70158f * b_ * b_ * b_ + 1.70158f * b_ * b_);
+                    flipScale = 1.0f + 2.70158f * b_ * b_ * b_ + 1.70158f * b_ * b_;
                 }
             }
+            flipScale = Math.max(0.01f, flipScale);
 
             float appear = MathHelper.clamp((now - cap.spawnTime) / 280.0f, 0.0f, 1.0f);
             appear = appear * appear * (3.0f - 2.0f * appear);
@@ -397,11 +408,12 @@ public class Lyrics extends Module {
 
             matrices.push();
             matrices.translate(cap.worldPos.x - camPos.x + waveX, cap.worldPos.y - camPos.y + waveY, cap.worldPos.z - camPos.z);
-            matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees((float) (180.0 - cap.yaw)));
+            matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(180.0f - currentYaw));
             matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees((float) -cap.pitch));
 
             float s = userScale * popScale * 0.040f;
-            matrices.scale(s * flipScaleX, -s, s);
+            // Negative X scale cancels 180 deg Y rotation inversion so text is normal left-to-right (never mirrored)
+            matrices.scale(-s * flipScale, -s, s);
 
             StyleSpriteSource.Font selectedFont = switch (fontMode.get()) {
                 case "SF Semibold" -> ClientFont.SF_SEMIBOLD;
@@ -424,23 +436,23 @@ public class Lyrics extends Module {
             int bgCol;
 
             String style = colorStyle.get();
-            if ("Белый".equals(style)) {
+            if (style.contains("Бел") || style.contains("White")) {
                 textColor = ColorUtil.rgba(245, 246, 252, (int) (255 * alpha));
                 glowColor = ColorUtil.rgba(255, 255, 255, (int) (150 * alpha));
                 bgCol = ColorUtil.rgba(20, 22, 28, (int) (185 * alpha));
-            } else if ("Тема".equals(style)) {
+            } else if (style.contains("Тем") || style.contains("Theme") || style.contains("Акцент")) {
                 int accent = Theme.getAccent();
                 textColor = ColorUtil.withAlphaFloat(accent, alpha);
                 glowColor = ColorUtil.withAlphaFloat(accent, 0.70f * alpha);
                 bgCol = ColorUtil.rgba(18, 20, 26, (int) (185 * alpha));
-            } else if ("Лавандовый".equals(style)) {
-                textColor = ColorUtil.rgba(215, 185, 255, (int) (255 * alpha));
-                glowColor = ColorUtil.rgba(195, 155, 255, (int) (160 * alpha));
-                bgCol = ColorUtil.rgba(22, 18, 30, (int) (185 * alpha));
-            } else {
+            } else if (style.contains("Роз") || style.contains("Pink") || style.contains("Корал")) {
                 textColor = ColorUtil.rgba(255, 160, 175, (int) (255 * alpha));
                 glowColor = ColorUtil.rgba(255, 130, 150, (int) (170 * alpha));
                 bgCol = ColorUtil.rgba(22, 18, 24, (int) (185 * alpha));
+            } else { // Лавандовый / Фиолетовый (по умолчанию как в референсе)
+                textColor = ColorUtil.rgba(235, 225, 255, (int) (255 * alpha));
+                glowColor = ColorUtil.rgba(185, 145, 255, (int) (180 * alpha));
+                bgCol = ColorUtil.rgba(22, 18, 30, (int) (185 * alpha));
             }
 
             Matrix4f mat = matrices.peek().getPositionMatrix();
@@ -457,36 +469,36 @@ public class Lyrics extends Module {
                 int bgB = bgCol & 0xFF;
                 int bgA = (bgCol >> 24) & 0xFF;
 
-                // 1a. Deep ambient drop shadow (oz = 0.05f, larger offset down and right)
+                // 1a. Глубокая рассеянная тень (oz = 0.05f - сзади капсулы)
                 draw3DCapsule(quadConsumer, mat, boxW + 5.0f, boxH + 3.0f, 1.8f, 2.8f, 0.05f, 0, 0, 0, (int) (70 * alpha));
 
-                // 1b. Near sharp contact shadow (oz = 0.035f, tighter offset)
-                draw3DCapsule(quadConsumer, mat, boxW + 2.0f, boxH + 1.2f, 0.8f, 1.4f, 0.035f, 0, 0, 0, (int) (120 * alpha));
+                // 1b. Ближняя контактная тень (oz = 0.03f)
+                draw3DCapsule(quadConsumer, mat, boxW + 2.0f, boxH + 1.2f, 0.8f, 1.4f, 0.03f, 0, 0, 0, (int) (120 * alpha));
 
-                // 2. Base Dark Glass Capsule (oz = 0.02f)
-                draw3DCapsule(quadConsumer, mat, boxW, boxH, 0f, 0f, 0.02f, bgR, bgG, bgB, bgA);
+                // 2. Базовая темная стеклянная капсула (oz = 0.0f)
+                draw3DCapsule(quadConsumer, mat, boxW, boxH, 0f, 0f, 0.0f, bgR, bgG, bgB, bgA);
 
-                // 3. Top Gloss Specular Highlight (glass sheen, oz = 0.01f)
-                draw3DTopGloss(quadConsumer, mat, boxW, boxH, 0.01f, (int) (55 * alpha));
+                // 3. Верхний стеклянный глянец (блик, oz = -0.006f - на передней поверхности)
+                draw3DTopGloss(quadConsumer, mat, boxW, boxH, -0.006f, (int) (55 * alpha));
 
-                // 4. Glowing Rim Outline (oz = 0.005f)
+                // 4. Неоновый контур плашки (oz = -0.012f)
                 if (glow.isEnabled()) {
                     int glR = (glowColor >> 16) & 0xFF;
                     int glG = (glowColor >> 8) & 0xFF;
                     int glB = glowColor & 0xFF;
                     int glA = (glowColor >> 24) & 0xFF;
-                    draw3DCapsuleOutline(quadConsumer, mat, boxW, boxH, 0.005f, 1.1f, glR, glG, glB, glA);
+                    draw3DCapsuleOutline(quadConsumer, mat, boxW, boxH, -0.012f, 1.1f, glR, glG, glB, glA);
                 }
 
-                // Flush quads so background is fully drawn before text
+                // Сбрасываем буфер геометрии плашки
                 immediate.draw(RenderLayers.debugQuads());
             }
 
-            // 5. Draw text in front (z = -0.02f)
+            // 5. Отрисовка текста поверх всех слоев (z = -0.025f - ближе всего к камере)
             float tx = -textW / 2.0f;
             float ty = -textH / 2.0f;
             matrices.push();
-            matrices.translate(0.0f, 0.0f, -0.02f);
+            matrices.translate(0.0f, 0.0f, -0.025f);
             Matrix4f textMat = matrices.peek().getPositionMatrix();
             matrices.pop();
 
