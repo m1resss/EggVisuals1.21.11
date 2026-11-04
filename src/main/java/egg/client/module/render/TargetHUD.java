@@ -48,6 +48,7 @@ public class TargetHUD extends Module {
 
     private final ModeSetting mode = new ModeSetting("Режим", "Экран", "Расположение Target HUD", "Экран", "В мире");
     private final SliderSetting hudScale = new SliderSetting("Масштаб", 1.0, 0.5, 2.0, 0.05, "Масштаб Target HUD");
+    private final SliderSetting opacity = new SliderSetting("Непрозрачность", 100.0, 10.0, 100.0, 5.0, "Прозрачность Target HUD (%)");
     private final SliderSetting targetTimeout = new SliderSetting("Таймаут цели", 3.0, 0.5, 8.0, 0.5, "Сколько секунд держать цель после отвода прицела");
     private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", true, "Отображать карточку только для игроков");
     private final BooleanSetting hitParticles = new BooleanSetting("Партиклы при ударе", true, "Отображать вылетающие частицы на полоске здоровья при получении урона");
@@ -91,6 +92,9 @@ public class TargetHUD extends Module {
     private float lastKnownHp = -1.0f;
     private int lastHurtTime = 0;
 
+    private final RollingNumber hpRolling = new RollingNumber();
+    private LivingEntity lastHpTarget = null;
+
     public TargetHUD() {
         super("Target HUD", "Информационная карточка цели на экране или в центре противника", Category.ESP);
         instance = this;
@@ -105,7 +109,7 @@ public class TargetHUD extends Module {
         contextMenu.addToggle("Дистанция", () -> showDistance.isEnabled(), () -> showDistance.toggle());
         contextMenu.addToggle("Показывать FPS", () -> showFps.isEnabled(), () -> showFps.toggle());
 
-        addSettings(mode, hudScale, targetTimeout, onlyPlayers, hitParticles, hudThemeGradient, hudGradientStrength, showFps, showDistance, posX, posY);
+        addSettings(mode, hudScale, opacity, targetTimeout, onlyPlayers, hitParticles, hudThemeGradient, hudGradientStrength, showFps, showDistance, posX, posY);
     }
 
     public static TargetHUD getInstance() {
@@ -118,6 +122,8 @@ public class TargetHUD extends Module {
         this.particles.clear();
         this.lastDamageTarget = null;
         this.lastKnownHp = -1.0f;
+        this.lastHpTarget = null;
+        this.hpRolling.reset(-1);
     }
 
     public void render(DrawContext context, RenderTickCounter tickCounter) {
@@ -221,7 +227,8 @@ public class TargetHUD extends Module {
         this.lastRenderW = cardW * scale;
         this.lastRenderH = cardH * scale;
 
-        renderCard(context, renderTarget, cardX, cardY, cardW, cardH, cardRadius, scale, animAlpha, maxHealth, actualAbsorption, dt);
+        float effectiveAlpha = animAlpha * (opacity.getValueFloat() / 100.0f);
+        renderCard(context, renderTarget, cardX, cardY, cardW, cardH, cardRadius, scale, effectiveAlpha, maxHealth, actualAbsorption, dt);
     }
 
     private void renderCard(DrawContext context, LivingEntity target, float x, float y, float w, float h,
@@ -302,10 +309,18 @@ public class TargetHUD extends Module {
         Draw2DProcessor.INSTANCE.a(mat, HEART_ICON, textX, hpY + 0.5f, heartSize, heartSize, 0.0f, heartColor);
 
         float hpTextX = textX + heartSize + 4.0f;
-        String hpValueStr = String.format("%.0f", Math.ceil(target.getHealth()));
-        int hpTextColor = ColorUtil.rgba(255, 255, 255, (int) (230 * alpha));
-        Fonts.b.a(mat, hpValueStr, hpTextX, hpY, 9.5f, hpTextColor);
+        int curHp = (int) Math.ceil(target.getHealth());
+        if (lastHpTarget != target) {
+            lastHpTarget = target;
+            hpRolling.reset(curHp);
+        } else {
+            hpRolling.update(curHp);
+        }
 
+        int hpTextColor = ColorUtil.rgba(255, 255, 255, (int) (230 * alpha));
+        hpRolling.render(mat, hpTextX, hpY, 9.5f, hpTextColor, 1.0f);
+
+        String hpValueStr = String.valueOf(curHp);
         float nextTextX = hpTextX + Fonts.b.a(hpValueStr, 9.5f);
         if (absorption > 0.0f) {
             String absStr = " +" + String.format("%.0f", Math.ceil(absorption));
@@ -450,6 +465,60 @@ public class TargetHUD extends Module {
 
             Draw2DProcessor.INSTANCE.drawGlow(mat, x - r, y - r, r * 2.0f, r * 2.0f, r, glowC, 3.5f);
             Draw2DProcessor.INSTANCE.drawRect(mat, x - r, y - r, r * 2.0f, r * 2.0f, r, c);
+        }
+    }
+
+    public static class RollingNumber {
+        private int currentVal = -1;
+        private int prevVal = -1;
+        private long changeTime = 0L;
+        private static final long DURATION_MS = 180L;
+
+        public void reset(int val) {
+            this.currentVal = val;
+            this.prevVal = val;
+            this.changeTime = 0L;
+        }
+
+        public void update(int newVal) {
+            if (currentVal == -1) {
+                currentVal = newVal;
+                prevVal = newVal;
+                return;
+            }
+            if (newVal != currentVal) {
+                prevVal = currentVal;
+                currentVal = newVal;
+                changeTime = System.currentTimeMillis();
+            }
+        }
+
+        public void render(Matrix3x2f mat, float x, float y, float size, int color, float alphaFactor) {
+            long elapsed = System.currentTimeMillis() - changeTime;
+            int baseA = (int) (((color >> 24) & 0xFF) * alphaFactor);
+            int rgb = color & 0x00FFFFFF;
+            if (elapsed >= DURATION_MS || prevVal == currentVal || prevVal < 0) {
+                Fonts.b.a(mat, String.valueOf(currentVal), x, y, size, (baseA << 24) | rgb);
+                return;
+            }
+
+            float t = (float) elapsed / DURATION_MS;
+            float ease = 1.0f - (float) Math.pow(1.0f - t, 3);
+
+            String oldText = String.valueOf(prevVal);
+            String newText = String.valueOf(currentVal);
+
+            float oldY = y - ease * 5.0f;
+            int oldA = Math.round(baseA * (1.0f - ease));
+            if (oldA > 5) {
+                Fonts.b.a(mat, oldText, x, oldY, size, (oldA << 24) | rgb);
+            }
+
+            float newY = y + (1.0f - ease) * 5.0f;
+            int newA = Math.round(baseA * ease);
+            if (newA > 5) {
+                Fonts.b.a(mat, newText, x, newY, size, (newA << 24) | rgb);
+            }
         }
     }
 

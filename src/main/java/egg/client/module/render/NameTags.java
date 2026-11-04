@@ -2,10 +2,11 @@ package egg.client.module.render;
 
 import egg.client.module.Category;
 import egg.client.module.Module;
+import egg.client.module.misc.Globals;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
-import egg.client.render.Render2D;
+import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Font;
 import egg.client.render.msdf.Fonts;
 import egg.client.render.msdf.pipeline.DrawBatcher;
@@ -21,6 +22,7 @@ import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.MathHelper;
@@ -35,15 +37,13 @@ import java.util.concurrent.ConcurrentHashMap;
 public class NameTags extends Module {
     private static NameTags instance;
 
-    private final BooleanSetting onlyVisible = new BooleanSetting("Только видимые", true, "Отображать только игроков в прямой видимости (без сквозь стены)");
-    private final ModeSetting fontMode = new ModeSetting("Шрифт", "Rockstar Bold",
-            "Rockstar Bold", "Rockstar Semibold", "Rockstar Medium", "Rockstar Round", "SF Medium", "SF Regular");
+    private static final Identifier EGG_LOGO = Identifier.of("egg", "textures/egg_logo.png");
+
     private final BooleanSetting showHealth = new BooleanSetting("Здоровье", true, "Шкала и числовое значение HP");
     private final BooleanSetting showPing = new BooleanSetting("Пинг", true, "Индикатор задержки игрока");
     private final BooleanSetting showDistance = new BooleanSetting("Дистанция", true, "Расстояние в метрах");
     private final BooleanSetting showArmor = new BooleanSetting("Броня и руки", true, "Экипированные предметы над ником");
     private final BooleanSetting showSelf = new BooleanSetting("Себя от 3-го лица", false, "Отображать бейдж над своим персонажем");
-    private final SliderSetting scale = new SliderSetting("Масштаб", 1.0, 0.5, 2.0, 0.05, "Базовый размер бейджа");
     private final SliderSetting bgAlpha = new SliderSetting("Непрозрачность", 85.0, 20.0, 100.0, 5.0, "Плотность подложки (%)");
     private final ModeSetting colorMode = new ModeSetting("Цвет шкалы", "Градиент", "Градиент", "Тема", "Здоровье");
 
@@ -62,9 +62,9 @@ public class NameTags extends Module {
     private long lastFrameNanos = 0L;
 
     public NameTags() {
-        super("NameTags", "Современные бейджи игроков в стиле Rockstar с MSDF-шрифтом", Category.ESP);
+        super("NameTags", "Современные бейджи игроков в стиле Rockstar Round", Category.ESP);
         instance = this;
-        addSettings(onlyVisible, fontMode, showHealth, showPing, showDistance, showArmor, showSelf, scale, bgAlpha, colorMode);
+        addSettings(showHealth, showPing, showDistance, showArmor, showSelf, bgAlpha, colorMode);
     }
 
     public static NameTags getInstance() {
@@ -76,21 +76,6 @@ public class NameTags extends Module {
         super.onDisable();
         this.stateMap.clear();
         this.lastFrameNanos = 0L;
-    }
-
-    public boolean isOnlyVisible() {
-        return this.onlyVisible.get();
-    }
-
-    private Font getSelectedFont() {
-        return switch (this.fontMode.get()) {
-            case "Rockstar Semibold" -> Fonts.ROCKSTAR_SEMIBOLD;
-            case "Rockstar Medium" -> Fonts.ROCKSTAR_MEDIUM;
-            case "Rockstar Round" -> Fonts.ROCKSTAR_ROUND_BOLD;
-            case "SF Medium" -> Fonts.d;
-            case "SF Regular" -> Fonts.sfRegular;
-            default -> Fonts.ROCKSTAR_BOLD;
-        };
     }
 
     private static boolean hasArmorEquipped(PlayerEntity player) {
@@ -162,7 +147,8 @@ public class NameTags extends Module {
             if (distSq > 64.0 * 64.0) continue;
             double dist = Math.sqrt(distSq);
 
-            if (this.onlyVisible.get() && player != mc.player && !isPlayerVisible(mc, player)) {
+            // Визуал, не чит: всегда только прямая видимость
+            if (player != mc.player && !isPlayerVisible(mc, player)) {
                 continue;
             }
 
@@ -216,11 +202,12 @@ public class NameTags extends Module {
             state.trailingHp += (currentHp - state.trailingHp) * Math.min(1.0f, dt * 6.5f);
         }
 
-        // Плавный масштаб от расстояния
+        // Фиксированный масштаб 0.75 с плавной коррекцией по дистанции
         float distScale = (float) MathHelper.clamp(1.0 - (dist - 6.0) * 0.016, 0.68, 1.22);
-        float tagScale = this.scale.getValueFloat() * distScale;
+        float tagScale = 0.75f * distScale;
 
-        Font font = getSelectedFont();
+        // Всегда Rockstar Round
+        Font font = Fonts.ROCKSTAR_ROUND_BOLD;
         float fontSize = 11.5f;
 
         // 1. Имя
@@ -237,6 +224,13 @@ public class NameTags extends Module {
 
         float nameW = font.a(rawName, fontSize);
         int nameColor = isFriend ? 0xFF38BDF8 : 0xFFFFFFFF;
+
+        // Проверка Globals на яйцо перед ником
+        Globals globals = Globals.getInstance();
+        boolean isEgg = globals != null && globals.isEnabled() && globals.isInNametag() && Globals.isEggUser(player);
+        float eggSize = 10.0f;
+        float eggGap = 3.5f;
+        float eggW = isEgg ? (eggSize + eggGap) : 0.0f;
 
         // 2. Пинг
         int latency = -1;
@@ -279,7 +273,7 @@ public class NameTags extends Module {
         // Обсчёт ширины плашки
         float padX = 7.0f;
         float gap = 5.0f;
-        float contentW = nameW;
+        float contentW = nameW + eggW;
         if (pingText != null) contentW += pingW + gap;
         if (distText != null) contentW += distW + gap;
         if (hpText != null) contentW += hpW + gap;
@@ -289,35 +283,31 @@ public class NameTags extends Module {
         float cardRadius = 4.0f;
 
         float alphaFactor = this.bgAlpha.getValueFloat() / 100.0f;
-
-        context.getMatrices().pushMatrix();
-        context.getMatrices().translate(state.smoothX, state.smoothY);
-        context.getMatrices().scale(tagScale, tagScale);
-
         float cardX = -cardW / 2.0f;
         float cardY = -cardH;
 
-        // Экипировка над головой
+        // Экипировка над головой (через Minecraft DrawContext)
         if (this.showArmor.get()) {
+            context.getMatrices().pushMatrix();
+            context.getMatrices().translate(state.smoothX, state.smoothY);
+            context.getMatrices().scale(tagScale, tagScale);
             renderArmorItems(context, mc, player, 0.0f, cardY - 2.0f);
+            context.getMatrices().popMatrix();
         }
 
-        // Фон плашки: матовый темный акрил
+        // Рендерим плашку, полоску, иконки и текст В ОДНОМ MSDF-БАТЧЕ через Draw2DProcessor
+        // Это гарантирует, что плашка ВСЕГДА под текстом, независимо от прозрачности
+        Matrix3x2f tagMat = new Matrix3x2f().translate(state.smoothX, state.smoothY).scale(tagScale, tagScale);
+
+        // 1. Фон плашки: матовый темный акрил
         int bgColor = ColorUtil.rgba(14, 16, 22, (int) (220 * alphaFactor));
-        Render2D.drawRoundedRect(context, cardX, cardY, cardW, cardH, cardRadius, bgColor);
+        Draw2DProcessor.INSTANCE.drawRect(tagMat, cardX, cardY, cardW, cardH, cardRadius, bgColor);
 
-        // Мягкий диагональный блик
-        Render2D.drawDiagonalSheen(context, cardX, cardY, cardW, cardH, cardRadius, 0L);
+        // 2. Мягкий верхний блик
+        int sheenCol = ColorUtil.rgba(255, 255, 255, (int) (14 * alphaFactor));
+        Draw2DProcessor.INSTANCE.drawGradient(tagMat, cardX, cardY, cardW, cardH * 0.5f, cardRadius, sheenCol, sheenCol, 0, 0);
 
-        // Пинг-точка
-        float curX = cardX + padX;
-        float textY = cardY + 2.0f;
-
-        if (pingText != null) {
-            Render2D.drawCircle(context, curX + 2.0f, textY + 5.5f, 1.8f, pingDotColor);
-        }
-
-        // Полоска здоровья внизу плашки
+        // 3. Полоска здоровья внизу плашки
         if (this.showHealth.get()) {
             float barX = cardX + 5.0f;
             float barY = cardY + cardH - 3.2f;
@@ -325,7 +315,7 @@ public class NameTags extends Module {
             float barH = 1.8f;
 
             // Фоновая канавка
-            Render2D.drawRoundedRect(context, barX, barY, barW, barH, 0.9f, ColorUtil.rgba(255, 255, 255, 25));
+            Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, barW, barH, 0.9f, ColorUtil.rgba(255, 255, 255, (int) (25 * alphaFactor)));
 
             float visualRatio = MathHelper.clamp(state.visualHp / maxHp, 0.0f, 1.0f);
             float trailingRatio = MathHelper.clamp(state.trailingHp / maxHp, 0.0f, 1.0f);
@@ -333,7 +323,7 @@ public class NameTags extends Module {
             // Трейл урона
             if (trailingRatio > visualRatio) {
                 float trailW = Math.max(1.5f, barW * trailingRatio);
-                Render2D.drawRoundedRect(context, barX, barY, trailW, barH, 0.9f, ColorUtil.rgba(251, 146, 60, 240));
+                Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, trailW, barH, 0.9f, ColorUtil.rgba(251, 146, 60, (int) (240 * alphaFactor)));
             }
 
             // Основная полоска
@@ -355,41 +345,49 @@ public class NameTags extends Module {
                 else if (visualRatio > 0.25f) barCol = 0xFFFACC15;
                 else barCol = 0xFFEF4444;
             }
-            Render2D.drawRoundedRect(context, barX, barY, fillW, barH, 0.9f, barCol);
+            Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, fillW, barH, 0.9f, ColorUtil.withAlpha(barCol, (int) (255 * alphaFactor)));
 
             // Абсорбция
             if (absorption > 0.0f) {
                 float absRatio = MathHelper.clamp(absorption / maxHp, 0.0f, 1.0f);
                 float absW = Math.max(1.0f, barW * absRatio);
-                Render2D.drawRoundedRect(context, barX, barY, absW, barH, 0.9f, ColorUtil.rgba(252, 211, 77, 255));
+                Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, absW, barH, 0.9f, ColorUtil.rgba(252, 211, 77, (int) (255 * alphaFactor)));
             }
         }
 
-        context.getMatrices().popMatrix();
+        float curX = cardX + padX;
+        float textY = cardY + 2.0f;
 
-        // Рендерим MSDF-шрифт с векторной четкостью Рокстара
-        Matrix3x2f tagMat = new Matrix3x2f().translate(state.smoothX, state.smoothY).scale(tagScale, tagScale);
-        float textCurX = cardX + padX;
-
-        // Пинг
+        // 4. Пинг-точка
         if (pingText != null) {
-            font.a(tagMat, pingText, textCurX + 6.0f, textY, fontSize, ColorUtil.rgba(203, 213, 225, 235));
-            textCurX += pingW + gap;
+            float dotR = 1.8f;
+            float dotX = curX + 2.0f;
+            float dotY = textY + 5.5f;
+            Draw2DProcessor.INSTANCE.drawRect(tagMat, dotX - dotR, dotY - dotR, dotR * 2.0f, dotR * 2.0f, dotR, ColorUtil.withAlpha(pingDotColor, (int) (255 * alphaFactor)));
+            font.a(tagMat, pingText, curX + 6.0f, textY, fontSize, ColorUtil.rgba(203, 213, 225, (int) (235 * alphaFactor)));
+            curX += pingW + gap;
         }
 
-        // Имя игрока (четкий, гладкий, жирный шрифт Рокстара)
-        font.a(tagMat, rawName, textCurX, textY, fontSize, nameColor);
-        textCurX += nameW + gap;
+        // 5. Яйцо Globals перед ником
+        if (isEgg) {
+            float eggY = textY + (font.a(fontSize) - eggSize) / 2.0f;
+            Draw2DProcessor.INSTANCE.a(tagMat, EGG_LOGO, curX, eggY, eggSize, eggSize, 0.0f, ColorUtil.rgba(255, 255, 255, (int) (255 * alphaFactor)));
+            curX += eggW;
+        }
 
-        // Дистанция
+        // 6. Имя игрока (Rockstar Round MSDF)
+        font.a(tagMat, rawName, curX, textY, fontSize, ColorUtil.withAlpha(nameColor, (int) (255 * alphaFactor)));
+        curX += nameW + gap;
+
+        // 7. Дистанция
         if (distText != null) {
-            font.a(tagMat, distText, textCurX, textY, fontSize, ColorUtil.rgba(203, 213, 225, 215));
-            textCurX += distW + gap;
+            font.a(tagMat, distText, curX, textY, fontSize, ColorUtil.rgba(203, 213, 225, (int) (215 * alphaFactor)));
+            curX += distW + gap;
         }
 
-        // Числовое HP
+        // 8. Числовое HP
         if (hpText != null) {
-            font.a(tagMat, hpText, textCurX, textY, fontSize, hpColor);
+            font.a(tagMat, hpText, curX, textY, fontSize, ColorUtil.withAlpha(hpColor, (int) (255 * alphaFactor)));
         }
 
         DrawBatcher.flushPending();
