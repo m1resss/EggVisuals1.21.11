@@ -6,7 +6,9 @@ import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.render.Render2D;
-import egg.client.render.font.ClientFont;
+import egg.client.render.msdf.Font;
+import egg.client.render.msdf.Fonts;
+import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
 import egg.client.util.FriendManager;
@@ -19,12 +21,12 @@ import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
-import net.minecraft.text.StyleSpriteSource;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
+import org.joml.Matrix3x2f;
 import org.joml.Vector2f;
 
 import java.util.*;
@@ -34,7 +36,8 @@ public class NameTags extends Module {
     private static NameTags instance;
 
     private final BooleanSetting onlyVisible = new BooleanSetting("Только видимые", true, "Отображать только игроков в прямой видимости (без сквозь стены)");
-    private final ModeSetting fontMode = new ModeSetting("Шрифт", "SF Semibold", "SF Semibold", "SF Medium", "SF Bold", "SF Regular");
+    private final ModeSetting fontMode = new ModeSetting("Шрифт", "Rockstar Bold",
+            "Rockstar Bold", "Rockstar Semibold", "Rockstar Medium", "Rockstar Round", "SF Medium", "SF Regular");
     private final BooleanSetting showHealth = new BooleanSetting("Здоровье", true, "Шкала и числовое значение HP");
     private final BooleanSetting showPing = new BooleanSetting("Пинг", true, "Индикатор задержки игрока");
     private final BooleanSetting showDistance = new BooleanSetting("Дистанция", true, "Расстояние в метрах");
@@ -59,7 +62,7 @@ public class NameTags extends Module {
     private long lastFrameNanos = 0L;
 
     public NameTags() {
-        super("NameTags", "Минималистичные аккуратные бейджи игроков в стиле macOS/iOS", Category.ESP);
+        super("NameTags", "Современные бейджи игроков в стиле Rockstar с MSDF-шрифтом", Category.ESP);
         instance = this;
         addSettings(onlyVisible, fontMode, showHealth, showPing, showDistance, showArmor, showSelf, scale, bgAlpha, colorMode);
     }
@@ -79,12 +82,14 @@ public class NameTags extends Module {
         return this.onlyVisible.get();
     }
 
-    private StyleSpriteSource.Font getSelectedFont() {
+    private Font getSelectedFont() {
         return switch (this.fontMode.get()) {
-            case "SF Medium" -> ClientFont.SF_MEDIUM;
-            case "SF Bold" -> ClientFont.SF_BOLD;
-            case "SF Regular" -> ClientFont.SF_REGULAR;
-            default -> ClientFont.SF_SEMIBOLD;
+            case "Rockstar Semibold" -> Fonts.ROCKSTAR_SEMIBOLD;
+            case "Rockstar Medium" -> Fonts.ROCKSTAR_MEDIUM;
+            case "Rockstar Round" -> Fonts.ROCKSTAR_ROUND_BOLD;
+            case "SF Medium" -> Fonts.d;
+            case "SF Regular" -> Fonts.sfRegular;
+            default -> Fonts.ROCKSTAR_BOLD;
         };
     }
 
@@ -124,7 +129,7 @@ public class NameTags extends Module {
             return true;
         }
 
-        // 3. Ноги / Низ модели
+        // 3. Ноги / Чуть выше земли
         Vec3d targetFeet = new Vec3d(player.getX(), player.getY() + 0.25, player.getZ());
         double rayDistSq3 = eye.squaredDistanceTo(targetFeet);
         BlockHitResult hit3 = mc.world.raycast(new RaycastContext(
@@ -190,8 +195,9 @@ public class NameTags extends Module {
             renderSingleTag(context, mc, player, state, dist, dt);
         }
 
-        // Очистка неактивных сущностей
+        // Очистка старых игроков
         this.stateMap.entrySet().removeIf(e -> nowMs - e.getValue().lastSeenTime > 4000L);
+        DrawBatcher.flushPending();
     }
 
     private void renderSingleTag(DrawContext context, MinecraftClient mc, PlayerEntity player, PlayerTagState state, double dist, float dt) {
@@ -210,11 +216,12 @@ public class NameTags extends Module {
             state.trailingHp += (currentHp - state.trailingHp) * Math.min(1.0f, dt * 6.5f);
         }
 
-        // Адаптивный масштаб по дистанции
+        // Плавный масштаб от расстояния
         float distScale = (float) MathHelper.clamp(1.0 - (dist - 6.0) * 0.016, 0.68, 1.22);
         float tagScale = this.scale.getValueFloat() * distScale;
 
-        StyleSpriteSource.Font font = getSelectedFont();
+        Font font = getSelectedFont();
+        float fontSize = 11.5f;
 
         // 1. Имя
         String rawName = player.getNameForScoreboard();
@@ -228,7 +235,7 @@ public class NameTags extends Module {
         }
         boolean isFriend = FriendManager.getInstance().isFriend(rawName);
 
-        float nameW = ClientFont.getWidth(rawName, font);
+        float nameW = font.a(rawName, fontSize);
         int nameColor = isFriend ? 0xFF38BDF8 : 0xFFFFFFFF;
 
         // 2. Пинг
@@ -238,7 +245,7 @@ public class NameTags extends Module {
             latency = entry.getLatency();
         }
         String pingText = (this.showPing.get() && latency >= 0) ? (latency + "ms") : null;
-        float pingW = pingText != null ? (ClientFont.getWidth(pingText, font) + 8.0f) : 0.0f;
+        float pingW = pingText != null ? (font.a(pingText, fontSize) + 8.0f) : 0.0f;
         int pingDotColor;
         if (latency < 80) pingDotColor = 0xFF4ADE80;
         else if (latency < 160) pingDotColor = 0xFFFACC15;
@@ -246,7 +253,7 @@ public class NameTags extends Module {
 
         // 3. Дистанция
         String distText = this.showDistance.get() ? ((int) Math.round(dist) + "m") : null;
-        float distW = distText != null ? ClientFont.getWidth(distText, font) : 0.0f;
+        float distW = distText != null ? font.a(distText, fontSize) : 0.0f;
 
         // 4. Здоровье
         String hpText = null;
@@ -255,7 +262,7 @@ public class NameTags extends Module {
         if (this.showHealth.get()) {
             float totalHp = currentHp + absorption;
             hpText = (int) Math.ceil(totalHp) + " HP";
-            hpW = ClientFont.getWidth(hpText, font);
+            hpW = font.a(hpText, fontSize);
 
             float hpRatio = currentHp / maxHp;
             if (absorption > 0.0f) {
@@ -269,7 +276,7 @@ public class NameTags extends Module {
             }
         }
 
-        // Расчет ширины капсулы
+        // Обсчёт ширины плашки
         float padX = 7.0f;
         float gap = 5.0f;
         float contentW = nameW;
@@ -290,52 +297,34 @@ public class NameTags extends Module {
         float cardX = -cardW / 2.0f;
         float cardY = -cardH;
 
-        // Отрисовка экипировки над ником
+        // Экипировка над головой
         if (this.showArmor.get()) {
             renderArmorItems(context, mc, player, 0.0f, cardY - 2.0f);
         }
 
-        // Чистая темная подложка без боковых теней и без обводок
+        // Фон плашки: матовый темный акрил
         int bgColor = ColorUtil.rgba(14, 16, 22, (int) (220 * alphaFactor));
         Render2D.drawRoundedRect(context, cardX, cardY, cardW, cardH, cardRadius, bgColor);
 
-        // Мягкий диагональный блик стекла
+        // Мягкий диагональный блик
         Render2D.drawDiagonalSheen(context, cardX, cardY, cardW, cardH, cardRadius, 0L);
 
-        // Отрисовка элементов в строке
+        // Пинг-точка
         float curX = cardX + padX;
-        float textY = cardY + 3.0f;
+        float textY = cardY + 2.0f;
 
-        // Пинг с точкой
         if (pingText != null) {
-            Render2D.drawCircle(context, curX + 2.0f, textY + 4.5f, 1.8f, pingDotColor);
-            ClientFont.draw(context, pingText, curX + 6.0f, textY, font, ColorUtil.rgba(203, 213, 225, 235));
-            curX += pingW + gap;
+            Render2D.drawCircle(context, curX + 2.0f, textY + 5.5f, 1.8f, pingDotColor);
         }
 
-        // Имя
-        ClientFont.draw(context, rawName, curX, textY, font, nameColor);
-        curX += nameW + gap;
-
-        // Дистанция
-        if (distText != null) {
-            ClientFont.draw(context, distText, curX, textY, font, ColorUtil.rgba(203, 213, 225, 215));
-            curX += distW + gap;
-        }
-
-        // Числовое значение HP
-        if (hpText != null) {
-            ClientFont.draw(context, hpText, curX, textY, font, hpColor);
-        }
-
-        // Плавная полоса здоровья внизу плашки
+        // Полоска здоровья внизу плашки
         if (this.showHealth.get()) {
             float barX = cardX + 5.0f;
             float barY = cardY + cardH - 3.2f;
             float barW = cardW - 10.0f;
             float barH = 1.8f;
 
-            // Фоновая дорожка
+            // Фоновая канавка
             Render2D.drawRoundedRect(context, barX, barY, barW, barH, 0.9f, ColorUtil.rgba(255, 255, 255, 25));
 
             float visualRatio = MathHelper.clamp(state.visualHp / maxHp, 0.0f, 1.0f);
@@ -347,7 +336,7 @@ public class NameTags extends Module {
                 Render2D.drawRoundedRect(context, barX, barY, trailW, barH, 0.9f, ColorUtil.rgba(251, 146, 60, 240));
             }
 
-            // Основная полоса
+            // Основная полоска
             float fillW = Math.max(1.0f, barW * visualRatio);
             int barCol;
             String colorSetting = this.colorMode.get();
@@ -368,7 +357,7 @@ public class NameTags extends Module {
             }
             Render2D.drawRoundedRect(context, barX, barY, fillW, barH, 0.9f, barCol);
 
-            // Поглощение (золотые сердца)
+            // Абсорбция
             if (absorption > 0.0f) {
                 float absRatio = MathHelper.clamp(absorption / maxHp, 0.0f, 1.0f);
                 float absW = Math.max(1.0f, barW * absRatio);
@@ -377,6 +366,33 @@ public class NameTags extends Module {
         }
 
         context.getMatrices().popMatrix();
+
+        // Рендерим MSDF-шрифт с векторной четкостью Рокстара
+        Matrix3x2f tagMat = new Matrix3x2f().translate(state.smoothX, state.smoothY).scale(tagScale, tagScale);
+        float textCurX = cardX + padX;
+
+        // Пинг
+        if (pingText != null) {
+            font.a(tagMat, pingText, textCurX + 6.0f, textY, fontSize, ColorUtil.rgba(203, 213, 225, 235));
+            textCurX += pingW + gap;
+        }
+
+        // Имя игрока (четкий, гладкий, жирный шрифт Рокстара)
+        font.a(tagMat, rawName, textCurX, textY, fontSize, nameColor);
+        textCurX += nameW + gap;
+
+        // Дистанция
+        if (distText != null) {
+            font.a(tagMat, distText, textCurX, textY, fontSize, ColorUtil.rgba(203, 213, 225, 215));
+            textCurX += distW + gap;
+        }
+
+        // Числовое HP
+        if (hpText != null) {
+            font.a(tagMat, hpText, textCurX, textY, fontSize, hpColor);
+        }
+
+        DrawBatcher.flushPending();
     }
 
     private void renderArmorItems(DrawContext context, MinecraftClient mc, PlayerEntity player, float centerX, float bottomY) {

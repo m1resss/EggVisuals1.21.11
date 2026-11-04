@@ -21,6 +21,11 @@ public class Font {
             renderer.loadFont("onest_regular", "onest_regular");
             renderer.loadFont("sf_medium", "sf_medium");
             renderer.loadFont("gt_regular", "gt_regular");
+            renderer.loadFont("rockstar_bold", "rockstar_bold");
+            renderer.loadFont("rockstar_semibold", "rockstar_semibold");
+            renderer.loadFont("rockstar_medium", "rockstar_medium");
+            renderer.loadFont("rockstar_roundbold", "rockstar_roundbold");
+            renderer.loadFont("rockstar_regular", "rockstar_regular");
             renderer.initialize();
         }
         return renderer;
