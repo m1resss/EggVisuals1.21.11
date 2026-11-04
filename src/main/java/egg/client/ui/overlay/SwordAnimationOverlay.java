@@ -72,7 +72,7 @@ public final class SwordAnimationOverlay {
     }
 
     public static void render(DrawContext context, float mouseX, float mouseY, float delta) {
-        float animProgress = openAnim.getValue();
+        float animProgress = open ? Math.max(0.05f, openAnim.getValue()) : openAnim.getValue();
         if (animProgress <= 0.005f) return;
 
         MinecraftClient mc = MinecraftClient.getInstance();
@@ -123,7 +123,9 @@ public final class SwordAnimationOverlay {
         float previewY = winY + headerH + 8.0f;
         float previewW = 215.0f;
         float previewH = WINDOW_HEIGHT - headerH - 18.0f;
-        render3DPreview(context, mc, previewX, previewY, previewW, previewH, mouseX, mouseY, animProgress);
+        try {
+            render3DPreview(context, mc, previewX, previewY, previewW, previewH, mouseX, mouseY, animProgress);
+        } catch (Throwable ignored) {}
 
         // 5. Right Panel: Tabs & Controls (Width: 310.0f, Height: 300.0f)
         float controlsX = winX + 238.0f;
@@ -202,14 +204,16 @@ public final class SwordAnimationOverlay {
         matrices.translate(0.56f, -0.52f, -0.72f);
 
         // Render 3D item with lighting!
-        ItemRenderHelper.renderItem(
-                mc.player,
-                stack,
-                ItemDisplayContext.FIRST_PERSON_RIGHT_HAND,
-                matrices,
-                mc.getBufferBuilders().getEntityVertexConsumers(),
-                15728880
-        );
+        try {
+            ItemRenderHelper.renderItem(
+                    mc.player,
+                    stack,
+                    ItemDisplayContext.FIRST_PERSON_RIGHT_HAND,
+                    matrices,
+                    mc.getBufferBuilders().getEntityVertexConsumers(),
+                    15728880
+            );
+        } catch (Throwable ignored) {}
 
         matrices.pop();
         context.disableScissor();

@@ -53,8 +53,11 @@ public final class ItemRenderHelper {
             state.render(matrices, queue, light, OverlayTexture.DEFAULT_UV, 0);
             dispatcher.render();
             dispatcher.endLayeredCustoms();
+        } catch (Throwable ignored) {
         } finally {
-            dispatcher.close();
+            try {
+                dispatcher.close();
+            } catch (Throwable ignored) {}
         }
     }
 }

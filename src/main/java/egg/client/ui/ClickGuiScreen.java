@@ -428,6 +428,10 @@ public class ClickGuiScreen extends Screen {
 
         renderOpenDropdown(context, mouseX, mouseY, 1.0f);
 
+        if (SwordAnimationOverlay.isOpen() || SwordAnimationOverlay.getAlpha() > 0.005f) {
+            SwordAnimationOverlay.render(context, (float) mouseX, (float) mouseY, delta);
+        }
+
         this.lateMouseX = mouseX;
         this.lateMouseY = mouseY;
     }
