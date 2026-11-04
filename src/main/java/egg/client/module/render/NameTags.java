@@ -7,6 +7,9 @@ import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.render.Render2D;
+import egg.client.render.msdf.Draw2DProcessor;
+import egg.client.render.msdf.pipeline.DrawBatcher;
+import net.minecraft.util.Identifier;
 import egg.client.render.font.ClientFont;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
@@ -33,6 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class NameTags extends Module {
     private static NameTags instance;
+    private static final Identifier EGG_LOGO = Identifier.of("egg", "textures/egg_logo.png");
 
     private final BooleanSetting onlyVisible = new BooleanSetting("Только видимые", true, "Отображать только игроков в прямой видимости (без сквозь стены)");
     private final ModeSetting fontMode = new ModeSetting("Шрифт", "SF Semibold", "SF Semibold", "SF Medium", "SF Bold", "SF Regular");
@@ -223,12 +227,19 @@ public class NameTags extends Module {
         if (rawName == null || rawName.isEmpty()) {
             rawName = player.getName().getString();
         }
+        if (rawName != null) {
+            rawName = rawName.replace("🍳", "").replace("🥚", "").trim();
+        } else {
+            rawName = "Player";
+        }
         boolean isFriend = FriendManager.getInstance().isFriend(rawName);
         boolean isEgg = Globals.isEggUser(player);
 
-        String nameText = isEgg ? ("🍳 " + rawName) : rawName;
-        float nameW = ClientFont.getWidth(nameText, font);
+        float nameW = ClientFont.getWidth(rawName, font);
         int nameColor = isFriend ? 0xFF38BDF8 : 0xFFFFFFFF;
+
+        float eggIconSize = 10.0f;
+        float eggIconW = isEgg ? (eggIconSize + 4.0f) : 0.0f;
 
         // 2. Пинг
         int latency = -1;
@@ -272,6 +283,7 @@ public class NameTags extends Module {
         float padX = 7.0f;
         float gap = 5.0f;
         float contentW = nameW;
+        if (isEgg) contentW += eggIconW;
         if (pingText != null) contentW += pingW + gap;
         if (distText != null) contentW += distW + gap;
         if (hpText != null) contentW += hpW + gap;
@@ -322,8 +334,15 @@ public class NameTags extends Module {
             curX += pingW + gap;
         }
 
+        // Иконка яйца для пользователей клиента
+        if (isEgg) {
+            float eggY = cardY + (cardH - (this.showHealth.get() ? 3.0f : 0.0f) - eggIconSize) / 2.0f;
+            Draw2DProcessor.INSTANCE.a(context.getMatrices(), EGG_LOGO, curX, eggY, eggIconSize, eggIconSize, 2.0f, 0xFFFFFFFF);
+            curX += eggIconW;
+        }
+
         // Имя
-        ClientFont.draw(context, nameText, curX, textY, font, nameColor);
+        ClientFont.draw(context, rawName, curX, textY, font, nameColor);
         curX += nameW + gap;
 
         // Дистанция

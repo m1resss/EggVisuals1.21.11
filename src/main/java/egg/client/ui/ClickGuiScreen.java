@@ -434,6 +434,7 @@ public class ClickGuiScreen extends Screen {
 
         this.lateMouseX = mouseX;
         this.lateMouseY = mouseY;
+        DrawBatcher.flushPending();
     }
 
     private double lateMouseX;
@@ -443,6 +444,7 @@ public class ClickGuiScreen extends Screen {
         if (openColorPickerSetting != null || colorPopupAnim > 0.01f) {
             renderOpenColorPicker(null, lateMouseX, lateMouseY, 1.0f);
         }
+        DrawBatcher.flushPending();
     }
 
     private void renderDirectWindow(DrawContext context, float gx, float gy, float guiWidth, float guiHeight, float mouseX, float mouseY, float containerAlpha, float contentAlpha) {

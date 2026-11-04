@@ -7,6 +7,7 @@ public class Fonts {
     public static final Font c = new Font("onest_regular");
     public static final Font d = new Font("sf_medium");
     public static final Font e = new Font("gt_regular");
+    public static final Font sfRegular = new Font("sf_regular");
 
     private Fonts() {
     }

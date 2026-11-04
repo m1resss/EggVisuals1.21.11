@@ -1,17 +1,13 @@
 package egg.client.render.font;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
+import egg.client.render.msdf.Font;
+import egg.client.render.msdf.Fonts;
+import egg.client.util.ColorUtil;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.text.MutableText;
 import net.minecraft.text.Style;
 import net.minecraft.text.StyleSpriteSource;
 import net.minecraft.text.Text;
-import net.minecraft.text.TextColor;
 import net.minecraft.util.Identifier;
-
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public final class ClientFont {
     private ClientFont() {}
@@ -22,103 +18,73 @@ public final class ClientFont {
     public static final StyleSpriteSource.Font SF_BOLD = new StyleSpriteSource.Font(Identifier.of("egg", "sf_bold"));
 
     public static final float FONT_HEIGHT = 9.0f;
+    public static final float DEFAULT_SIZE = 10.5f;
 
-    private static final Map<StyleSpriteSource.Font, Map<String, Text>> FONT_TEXT_CACHE = new ConcurrentHashMap<>();
-    private static final Map<StyleSpriteSource.Font, Map<String, Float>> FONT_WIDTH_CACHE = new ConcurrentHashMap<>();
-    private static final Map<Long, Map<String, Text>> GRADIENT_CACHE = new ConcurrentHashMap<>();
-
-    private static Map<String, Text> getTextMap(StyleSpriteSource.Font font) {
-        return FONT_TEXT_CACHE.computeIfAbsent(font, f -> new ConcurrentHashMap<>());
-    }
-
-    private static Map<String, Float> getWidthMap(StyleSpriteSource.Font font) {
-        return FONT_WIDTH_CACHE.computeIfAbsent(font, f -> new ConcurrentHashMap<>());
+    public static Font getFont(StyleSpriteSource.Font font) {
+        if (font == SF_REGULAR) {
+            return Fonts.sfRegular;
+        }
+        return Fonts.b; // sf_medium (Apple SF Pro Medium)
     }
 
     public static Text getText(String text, StyleSpriteSource.Font font) {
         if (text == null || text.isEmpty()) return Text.empty();
-        return getTextMap(font).computeIfAbsent(text, k -> Text.literal(k).setStyle(Style.EMPTY.withFont(font)));
+        return Text.literal(text).setStyle(Style.EMPTY.withFont(font));
     }
 
     public static void draw(DrawContext context, String text, float x, float y, StyleSpriteSource.Font font, int color) {
-        if (text == null || text.isEmpty()) return;
-        TextRenderer tr = MinecraftClient.getInstance().textRenderer;
-        if (tr == null) return;
-        int ix = Math.round(x);
-        int iy = Math.round(y);
-        context.drawText(tr, getText(text, font), ix, iy, color, false);
+        draw(context, text, x, y, DEFAULT_SIZE, font, color);
+    }
+
+    public static void draw(DrawContext context, String text, float x, float y, float size, StyleSpriteSource.Font font, int color) {
+        if (text == null || text.isEmpty() || context == null) return;
+        Font f = getFont(font);
+        f.a(context.getMatrices(), text, x, y, size, color);
     }
 
     public static void drawScaled(DrawContext context, String text, float x, float y, float scale, StyleSpriteSource.Font font, int color) {
-        if (text == null || text.isEmpty()) return;
-        context.getMatrices().pushMatrix();
-        context.getMatrices().translate(x, y);
-        context.getMatrices().scale(scale, scale);
-        draw(context, text, 0.0f, 0.0f, font, color);
-        context.getMatrices().popMatrix();
+        if (text == null || text.isEmpty() || context == null) return;
+        Font f = getFont(font);
+        f.a(context.getMatrices(), text, x, y, DEFAULT_SIZE * scale, color);
     }
 
     public static void drawCentered(DrawContext context, String text, float cx, float cy, StyleSpriteSource.Font font, int color) {
-        if (text == null || text.isEmpty()) return;
-        TextRenderer tr = MinecraftClient.getInstance().textRenderer;
-        if (tr == null) return;
-        float w = getWidth(text, font);
-        int ix = Math.round(cx - w / 2.0f);
-        int iy = Math.round(cy - FONT_HEIGHT / 2.0f);
-        context.drawText(tr, getText(text, font), ix, iy, color, false);
+        drawCentered(context, text, cx, cy, DEFAULT_SIZE, font, color);
+    }
+
+    public static void drawCentered(DrawContext context, String text, float cx, float cy, float size, StyleSpriteSource.Font font, int color) {
+        if (text == null || text.isEmpty() || context == null) return;
+        Font f = getFont(font);
+        float w = f.a(text, size);
+        float x = cx - w / 2.0f;
+        float y = cy - FONT_HEIGHT / 2.0f;
+        f.a(context.getMatrices(), text, x, y, size, color);
     }
 
     public static void drawGradient(DrawContext context, String text, float x, float y, StyleSpriteSource.Font font, int color1, int color2) {
-        if (text == null || text.isEmpty()) return;
-        TextRenderer tr = MinecraftClient.getInstance().textRenderer;
-        if (tr == null) return;
-
-        int alpha1 = (color1 >> 24) & 0xFF;
-        int alpha2 = (color2 >> 24) & 0xFF;
-        int avgAlpha = (alpha1 + alpha2) / 2;
-        if (avgAlpha == 0) avgAlpha = 255;
-
-        long gradKey = (((long) (color1 & 0xFFFFFF)) << 32) | ((long) (color2 & 0xFFFFFF));
-        Map<String, Text> gradMap = GRADIENT_CACHE.computeIfAbsent(gradKey, k -> new ConcurrentHashMap<>());
-        Text cached = gradMap.computeIfAbsent(text, k -> buildGradientText(k, font, color1 & 0xFFFFFF, color2 & 0xFFFFFF));
-
-        int passColor = (avgAlpha << 24) | 0xFFFFFF;
-        context.drawText(tr, cached, Math.round(x), Math.round(y), passColor, false);
-    }
-
-    private static Text buildGradientText(String text, StyleSpriteSource.Font font, int rgb1, int rgb2) {
+        if (text == null || text.isEmpty() || context == null) return;
+        Font f = getFont(font);
         int len = text.length();
-        MutableText root = Text.empty();
+        float curX = x;
         for (int i = 0; i < len; i++) {
             float ratio = len > 1 ? (float) i / (float) (len - 1) : 0.0f;
-            int r = (int) (((rgb1 >> 16) & 0xFF) * (1.0f - ratio) + ((rgb2 >> 16) & 0xFF) * ratio);
-            int g = (int) (((rgb1 >> 8) & 0xFF) * (1.0f - ratio) + ((rgb2 >> 8) & 0xFF) * ratio);
-            int b = (int) ((rgb1 & 0xFF) * (1.0f - ratio) + (rgb2 & 0xFF) * ratio);
-            int rgb = (r << 16) | (g << 8) | b;
-
-            root.append(Text.literal(String.valueOf(text.charAt(i)))
-                    .setStyle(Style.EMPTY.withFont(font).withColor(TextColor.fromRgb(rgb))));
+            int col = ColorUtil.interpolate(color1, color2, ratio);
+            String ch = String.valueOf(text.charAt(i));
+            f.a(context.getMatrices(), ch, curX, y, DEFAULT_SIZE, col);
+            curX += f.a(ch, DEFAULT_SIZE);
         }
-        return root;
     }
 
     public static float getWidth(String text, StyleSpriteSource.Font font) {
+        return getWidth(text, DEFAULT_SIZE, font);
+    }
+
+    public static float getWidth(String text, float size, StyleSpriteSource.Font font) {
         if (text == null || text.isEmpty()) return 0.0f;
-        TextRenderer tr = MinecraftClient.getInstance().textRenderer;
-        if (tr == null) return text.length() * 6.0f;
-
-        Map<String, Float> widthMap = getWidthMap(font);
-        Float cached = widthMap.get(text);
-        if (cached != null) return cached;
-
-        float w = tr.getWidth(getText(text, font));
-        widthMap.put(text, w);
-        return w;
+        Font f = getFont(font);
+        return f.a(text, size);
     }
 
     public static void clearCaches() {
-        FONT_TEXT_CACHE.clear();
-        FONT_WIDTH_CACHE.clear();
-        GRADIENT_CACHE.clear();
     }
 }

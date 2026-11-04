@@ -45,5 +45,6 @@ public abstract class InventoryScreenMixin {
         }
 
         InventoryScreenOverlay.render(context, self, mouseX, mouseY);
+        egg.client.render.msdf.pipeline.DrawBatcher.flushPending();
     }
 }
