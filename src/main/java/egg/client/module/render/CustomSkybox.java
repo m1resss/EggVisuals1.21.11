@@ -19,16 +19,16 @@ import java.util.Random;
 
 /**
  * Custom Dynamic Skybox.
- * Procedural gradient night sky with multi-layer Aurora Borealis waves,
+ * Procedural low-horizon Aurora Borealis ribbons with zero z-fighting,
  * glowing cosmic nebulae, and soft twinkling star clusters.
  * Zero resource packs, zero chunk updates, zero FPS impact.
  */
 public class CustomSkybox extends Module {
 
-    private final BooleanSetting nightGradient = new BooleanSetting("Градиент ночи", true, "Глубокий процедурный градиент ночного небосвода");
-    private final BooleanSetting aurora = new BooleanSetting("Северное сияние", true, "Многослойные волны Aurora Borealis на севере");
+    private final BooleanSetting aurora = new BooleanSetting("Северное сияние", true, "Реалистичные волны Aurora Borealis над северным горизонтом");
     private final SliderSetting auroraSpeed = new SliderSetting("Скорость сияния", 1.0f, 0.2f, 3.0f, 0.1f, "Скорость переливания и колыхания волн сияния");
     private final SliderSetting auroraIntensity = new SliderSetting("Яркость сияния", 1.0f, 0.2f, 2.0f, 0.05f, "Интенсивность неонового свечения волн");
+    private final SliderSetting auroraAltitude = new SliderSetting("Высота сияния", 1.0f, 0.5f, 2.0f, 0.1f, "Вертикальный подъем ленты над горизонтом");
     private final BooleanSetting nebulae = new BooleanSetting("Туманности", true, "Космические туманности с мягким объемным свечением");
     private final SliderSetting nebulaBrightness = new SliderSetting("Яркость туманностей", 0.85f, 0.2f, 2.0f, 0.05f, "Степень свечения газовых облаков");
     private final BooleanSetting stars = new BooleanSetting("Звёздные скопления", true, "Звёздные скопления и пояс Млечного пути");
@@ -40,15 +40,14 @@ public class CustomSkybox extends Module {
     private final List<Star> starCatalog = new ArrayList<>(TOTAL_STARS);
 
     private static final float SKY_RADIUS = 84.0f;
-    private static final float GRADIENT_RADIUS = 88.0f;
 
     public CustomSkybox() {
         super("Custom Skybox", "Процедурный динамический скайбокс с северным сиянием, туманностями и звездами", Category.ESP);
         addSettings(
-                nightGradient,
                 aurora,
                 auroraSpeed,
                 auroraIntensity,
+                auroraAltitude,
                 nebulae,
                 nebulaBrightness,
                 stars,
@@ -70,12 +69,12 @@ public class CustomSkybox extends Module {
             float y = beltOffset;
             float z = MathHelper.sin(u);
 
-            // Tilt the galactic belt by ~36 degrees around X axis
+            // Tilt galactic belt by ~36 degrees around X axis
             float tilt = (float) Math.toRadians(36.0);
             float tiltedY = y * MathHelper.cos(tilt) - z * MathHelper.sin(tilt);
             float tiltedZ = y * MathHelper.sin(tilt) + z * MathHelper.cos(tilt);
 
-            // Push to upper hemisphere if below horizon
+            // Keep in upper dome
             if (tiltedY < 0.05f) tiltedY = Math.abs(tiltedY) + 0.08f;
 
             Vector3f dir = new Vector3f(x, tiltedY, tiltedZ).normalize();
@@ -180,83 +179,19 @@ public class CustomSkybox extends Module {
         long now = System.currentTimeMillis();
         float time = (float) ((now % 10_000_000L) * 0.001);
 
-        // 1. Procedural Night Gradient Dome
-        if (this.nightGradient.get()) {
-            renderGradientDome(immediate, nightFactor);
-        }
-
-        // 2. Glowing Cosmic Nebulae
+        // 1. Glowing Cosmic Nebulae (distant space: radius ~82m)
         if (this.nebulae.get()) {
             renderNebulae(immediate, time, nightFactor);
         }
 
-        // 3. Multi-layer Aurora Borealis Waves
-        if (this.aurora.get()) {
-            renderAurora(immediate, time, nightFactor);
-        }
-
-        // 4. Soft Twinkling Star Clusters & Milky Way
+        // 2. Soft Twinkling Star Clusters & Milky Way (radius ~85m)
         if (this.stars.get()) {
             renderStars(immediate, time, nightFactor);
         }
-    }
 
-    private void renderGradientDome(VertexConsumerProvider immediate, float nightFactor) {
-        VertexConsumer buf = immediate.getBuffer(RenderLayers.debugQuads());
-
-        float[] latAngles = { 0.0f, 16.0f, 35.0f, 58.0f, 85.0f };
-        int[] latAlphas = {
-                (int) (130 * nightFactor),
-                (int) (165 * nightFactor),
-                (int) (195 * nightFactor),
-                (int) (225 * nightFactor),
-                (int) (245 * nightFactor)
-        };
-        // Gradient color progression: deep horizon twilight -> velvety black zenith
-        int[][] latColors = {
-                { 8, 12, 28 },   // Horizon navy
-                { 5, 8, 20 },    // Deep indigo
-                { 4, 5, 14 },    // Dark cosmic blue
-                { 2, 3, 9 },     // Deep space purple-black
-                { 1, 1, 5 }      // Zenith void
-        };
-
-        int lonSteps = 20;
-        float lonStepRad = (float) (Math.PI * 2.0 / lonSteps);
-
-        for (int i = 0; i < latAngles.length - 1; i++) {
-            float phi0 = (float) Math.toRadians(latAngles[i]);
-            float phi1 = (float) Math.toRadians(latAngles[i + 1]);
-
-            float cos0 = MathHelper.cos(phi0) * GRADIENT_RADIUS;
-            float sin0 = MathHelper.sin(phi0) * GRADIENT_RADIUS;
-            float cos1 = MathHelper.cos(phi1) * GRADIENT_RADIUS;
-            float sin1 = MathHelper.sin(phi1) * GRADIENT_RADIUS;
-
-            int[] c0 = latColors[i];
-            int a0 = latAlphas[i];
-            int[] c1 = latColors[i + 1];
-            int a1 = latAlphas[i + 1];
-
-            for (int j = 0; j < lonSteps; j++) {
-                float theta0 = j * lonStepRad;
-                float theta1 = (j + 1) * lonStepRad;
-
-                float x00 = MathHelper.cos(theta0) * cos0;
-                float z00 = MathHelper.sin(theta0) * cos0;
-                float x01 = MathHelper.cos(theta1) * cos0;
-                float z01 = MathHelper.sin(theta1) * cos0;
-
-                float x10 = MathHelper.cos(theta0) * cos1;
-                float z10 = MathHelper.sin(theta0) * cos1;
-                float x11 = MathHelper.cos(theta1) * cos1;
-                float z11 = MathHelper.sin(theta1) * cos1;
-
-                buf.vertex(x00, sin0, z00).color(c0[0], c0[1], c0[2], a0);
-                buf.vertex(x01, sin0, z01).color(c0[0], c0[1], c0[2], a0);
-                buf.vertex(x11, sin1, z11).color(c1[0], c1[1], c1[2], a1);
-                buf.vertex(x10, sin1, z10).color(c1[0], c1[1], c1[2], a1);
-            }
+        // 3. Multi-layer Aurora Borealis Ribbons (closer northern horizon: radius 66-78m, no z-fighting)
+        if (this.aurora.get()) {
+            renderAurora(immediate, time, nightFactor);
         }
     }
 
@@ -361,7 +296,6 @@ public class CustomSkybox extends Module {
     ) {
         if (alpha <= 1) return;
 
-        // Diamond quad: Center has maximum alpha, corners have 0 alpha for soft bloom falloff
         float cx = center.x, cy = center.y, cz = center.z;
 
         float rx = right.x * halfW, ry = right.y * halfW, rz = right.z * halfW;
@@ -372,13 +306,13 @@ public class CustomSkybox extends Module {
         float rgtX = cx + rx, rgtY = cy + ry, rgtZ = cz + rz;
         float lftX = cx - rx, lftY = cy - ry, lftZ = cz - rz;
 
-        // Quad 1: Left -> Bottom -> Center -> Top (Left Half)
+        // Quad 1: Left -> Bottom -> Center -> Top
         buf.vertex(lftX, lftY, lftZ).color(r, g, b, 0);
         buf.vertex(botX, botY, botZ).color(r, g, b, 0);
         buf.vertex(cx, cy, cz).color(r, g, b, alpha);
         buf.vertex(topX, topY, topZ).color(r, g, b, 0);
 
-        // Quad 2: Center -> Bottom -> Right -> Top (Right Half)
+        // Quad 2: Center -> Bottom -> Right -> Top
         buf.vertex(cx, cy, cz).color(r, g, b, alpha);
         buf.vertex(botX, botY, botZ).color(r, g, b, 0);
         buf.vertex(rgtX, rgtY, rgtZ).color(r, g, b, 0);
@@ -390,83 +324,146 @@ public class CustomSkybox extends Module {
 
         float spd = (float) this.auroraSpeed.get();
         float intensity = (float) this.auroraIntensity.get() * nightFactor;
+        float altMultiplier = (float) this.auroraAltitude.get();
         if (intensity <= 0.01f) return;
 
-        // 3 Layered Curtains across the Northern celestial quadrant
-        int curtains = 3;
-        int segments = 42;
-        float uMin = -1.25f; // ~ -72 deg
-        float uMax = 1.25f;  // ~ +72 deg
+        // 2 strictly separated curtains with guaranteed physical distance gap (NO z-fighting)
+        // Curtain 0 (Front): Radius ~66m, low-to-mid altitude (8° to 24°)
+        // Curtain 1 (Back):  Radius ~78m, mid-to-upper altitude (16° to 32°)
+        // Separation is 12 meters, max displacement is 2 meters -> impossible to intersect!
+        drawAuroraCurtain(
+                buf,
+                time,
+                spd,
+                intensity * 1.05f,
+                66.0f,
+                altMultiplier,
+                8.0f, 25.0f,
+                0.0f,
+                0.88f,
+                1.0f
+        );
+
+        drawAuroraCurtain(
+                buf,
+                time,
+                spd * 0.9f,
+                intensity * 0.75f,
+                78.0f,
+                altMultiplier,
+                16.0f, 33.0f,
+                2.4f,
+                0.95f,
+                0.85f
+        );
+    }
+
+    private void drawAuroraCurtain(
+            VertexConsumer buf,
+            float time,
+            float spd,
+            float intensity,
+            float baseRadius,
+            float altScale,
+            float minAlt,
+            float maxAlt,
+            float phaseOffset,
+            float curvature,
+            float rayScale
+    ) {
+        int segments = 64; // High horizontal resolution for silky-smooth waves
+        int slices = 4;    // 4 vertical altitude bands (5 vertex rows)
+
+        float uMin = -1.35f; // ~ -77 degrees azimuth
+        float uMax = 1.35f;  // ~ +77 degrees azimuth
         float uStep = (uMax - uMin) / segments;
 
-        // Vertical slices from lower horizon to high altitude
-        float[] baseAltitudes = { 18.0f, 32.0f, 52.0f, 74.0f };
-        int[] sliceAlphas = {
-                (int) (45 * intensity),   // Base emergence
-                (int) (210 * intensity),  // Peak emission ribbon
-                (int) (125 * intensity),  // Middle curtain wave
-                0                         // Top wisp fadeout
-        };
+        // Altitudes scaled by user setting
+        float scaledMinAlt = minAlt * altScale;
+        float scaledMaxAlt = maxAlt * altScale;
+        float altStep = (scaledMaxAlt - scaledMinAlt) / slices;
 
-        // Curtain color bands: Neon Emerald -> Cyan/Turquoise -> Magenta fringe
+        // Colors per slice (from bottom to top):
+        // 0: Soft fade-in emerald (alpha=0 at base)
+        // 1: Neon emerald / bright green (#00FF88)
+        // 2: Turquoise / cyan (#00E5FF)
+        // 3: Aurora magenta / violet (#D946EF)
+        // 4: Top fade-out violet (#A855F7, alpha=0)
         int[][] sliceColors = {
-                { 0, 245, 120 },    // Neon Emerald base
-                { 0, 230, 255 },    // Electric Cyan-Blue
-                { 217, 70, 239 },   // Aurora Magenta
-                { 168, 85, 247 }    // High ethereal Violet
+                { 0, 240, 110 },
+                { 0, 255, 160 },
+                { 0, 225, 255 },
+                { 217, 70, 239 },
+                { 168, 85, 247 }
         };
 
-        for (int c = 0; c < curtains; c++) {
-            float cRadius = SKY_RADIUS * (0.86f + c * 0.06f);
-            float cPhase = c * 2.1f;
-            float cSpeed = spd * (0.85f + c * 0.25f);
-            float cCurvature = 0.90f + c * 0.15f;
+        float[] baseAlphas = {
+                0.0f,   // Soft bottom edge (no hard line against landscape)
+                1.0f,   // Maximum core emerald luminescence
+                0.75f,  // Vibrant cyan middle ribbon
+                0.45f,  // Magenta upper fringe
+                0.0f    // Soft top edge (smoothly dissolves into night sky)
+        };
 
-            for (int i = 0; i < segments; i++) {
-                float u0 = uMin + i * uStep;
-                float u1 = uMin + (i + 1) * uStep;
+        // Grid storage: [segment][slice]
+        Vector3f[][] grid = new Vector3f[segments + 1][slices + 1];
+        int[][] alphaGrid = new int[segments + 1][slices + 1];
 
-                // Dynamic undulating waves
-                float wave0 = MathHelper.sin(u0 * 3.4f + time * cSpeed * 0.4f + cPhase) * 6.5f
-                        + MathHelper.cos(u0 * 7.5f - time * cSpeed * 0.25f) * 3.0f
-                        + MathHelper.sin(u0 * 13.0f + time * cSpeed * 0.6f) * 1.2f;
+        // 1. Calculate all vertices into grid (ensures adjacent quads share IDENTICAL points)
+        for (int i = 0; i <= segments; i++) {
+            float u = uMin + i * uStep;
 
-                float wave1 = MathHelper.sin(u1 * 3.4f + time * cSpeed * 0.4f + cPhase) * 6.5f
-                        + MathHelper.cos(u1 * 7.5f - time * cSpeed * 0.25f) * 3.0f
-                        + MathHelper.sin(u1 * 13.0f + time * cSpeed * 0.6f) * 1.2f;
+            // Gentle harmonic horizontal wave (max displacement ~ 2.2m)
+            float wave = MathHelper.sin(u * 2.6f + time * spd * 0.40f + phaseOffset) * 1.8f
+                    + MathHelper.cos(u * 5.2f - time * spd * 0.25f + phaseOffset * 0.5f) * 0.9f;
 
-                float fold0 = MathHelper.sin(u0 * 5.2f + time * cSpeed * 0.5f) * 2.8f;
-                float fold1 = MathHelper.sin(u1 * 5.2f + time * cSpeed * 0.5f) * 2.8f;
+            // Smooth vertical undulation (max ~ 1.2 degrees)
+            float fold = MathHelper.sin(u * 3.2f + time * spd * 0.35f + phaseOffset) * 1.2f;
 
-                // Shimmer pulse along the curtain
-                float shimmer0 = 0.88f + 0.12f * MathHelper.sin(time * 1.4f + u0 * 4.5f);
-                float shimmer1 = 0.88f + 0.12f * MathHelper.sin(time * 1.4f + u1 * 4.5f);
+            // Ray brightness variation (creates luminous vertical pillars of light)
+            float ray1 = MathHelper.sin(u * 14.0f + time * spd * 0.8f + phaseOffset);
+            float ray2 = MathHelper.cos(u * 28.0f - time * spd * 0.5f);
+            float ray = 0.65f + 0.35f * (ray1 * 0.6f + ray2 * 0.4f);
+            ray = Math.max(0.20f, ray * ray) * rayScale;
 
-                for (int s = 0; s < 3; s++) {
-                    float alt0A = baseAltitudes[s] + fold0;
-                    float alt0B = baseAltitudes[s + 1] + fold0;
-                    float alt1A = baseAltitudes[s] + fold1;
-                    float alt1B = baseAltitudes[s + 1] + fold1;
+            // Edge fade at the extreme ends of the ribbon (smooth azimuth fadeout)
+            float edgeDist = Math.abs(u) / uMax;
+            float edgeFade = edgeDist > 0.70f ? Math.max(0.0f, (1.0f - edgeDist) / 0.30f) : 1.0f;
 
-                    Vector3f v00 = calculateAuroraVertex(u0, alt0A, cRadius + wave0, cCurvature);
-                    Vector3f v01 = calculateAuroraVertex(u0, alt0B, cRadius + wave0, cCurvature);
-                    Vector3f v10 = calculateAuroraVertex(u1, alt1A, cRadius + wave1, cCurvature);
-                    Vector3f v11 = calculateAuroraVertex(u1, alt1B, cRadius + wave1, cCurvature);
+            float curRadius = baseRadius + wave;
 
-                    int[] colA = sliceColors[s];
-                    int[] colB = sliceColors[s + 1];
+            for (int s = 0; s <= slices; s++) {
+                float altDeg = scaledMinAlt + s * altStep + fold;
+                grid[i][s] = calculateAuroraVertex(u, altDeg, curRadius, curvature);
 
-                    int a0A = Math.min(255, (int) (sliceAlphas[s] * shimmer0));
-                    int a0B = Math.min(255, (int) (sliceAlphas[s + 1] * shimmer0));
-                    int a1A = Math.min(255, (int) (sliceAlphas[s] * shimmer1));
-                    int a1B = Math.min(255, (int) (sliceAlphas[s + 1] * shimmer1));
+                float a = baseAlphas[s] * intensity * ray * edgeFade;
+                alphaGrid[i][s] = Math.min(255, (int) (a * 220.0f));
+            }
+        }
 
-                    // Quad: v00 -> v10 -> v11 -> v01
-                    buf.vertex(v00.x, v00.y, v00.z).color(colA[0], colA[1], colA[2], a0A);
-                    buf.vertex(v10.x, v10.y, v10.z).color(colA[0], colA[1], colA[2], a1A);
-                    buf.vertex(v11.x, v11.y, v11.z).color(colB[0], colB[1], colB[2], a1B);
-                    buf.vertex(v01.x, v01.y, v01.z).color(colB[0], colB[1], colB[2], a0B);
-                }
+        // 2. Emit quads connecting shared grid vertices
+        for (int i = 0; i < segments; i++) {
+            for (int s = 0; s < slices; s++) {
+                Vector3f v00 = grid[i][s];
+                Vector3f v10 = grid[i + 1][s];
+                Vector3f v11 = grid[i + 1][s + 1];
+                Vector3f v01 = grid[i][s + 1];
+
+                int a00 = alphaGrid[i][s];
+                int a10 = alphaGrid[i + 1][s];
+                int a11 = alphaGrid[i + 1][s + 1];
+                int a01 = alphaGrid[i][s + 1];
+
+                // If entire quad is invisible, skip
+                if (a00 == 0 && a10 == 0 && a11 == 0 && a01 == 0) continue;
+
+                int[] col0 = sliceColors[s];
+                int[] col1 = sliceColors[s + 1];
+
+                buf.vertex(v00.x, v00.y, v00.z).color(col0[0], col0[1], col0[2], a00);
+                buf.vertex(v10.x, v10.y, v10.z).color(col0[0], col0[1], col0[2], a10);
+                buf.vertex(v11.x, v11.y, v11.z).color(col1[0], col1[1], col1[2], a11);
+                buf.vertex(v01.x, v01.y, v01.z).color(col1[0], col1[1], col1[2], a01);
             }
         }
     }
@@ -543,7 +540,7 @@ public class CustomSkybox extends Module {
                 // Vertical beam
                 buf.vertex(px - fwrx, py - fwry, pz - fwrz).color(star.r, star.g, star.b, 0);
                 buf.vertex(px - fLux, py - fLuy, pz - fLuz).color(star.r, star.g, star.b, 0);
-                buf.vertex(px + fwrx, py + fwry, pz + fwrz).color(star.r, star.g, star.b, flareAlpha);
+                buf.vertex(px + fwrx, py + fwry, pz + fwuz).color(star.r, star.g, star.b, flareAlpha);
                 buf.vertex(px + fLux, py + fLuy, pz + fLuz).color(star.r, star.g, star.b, flareAlpha);
             }
         }
