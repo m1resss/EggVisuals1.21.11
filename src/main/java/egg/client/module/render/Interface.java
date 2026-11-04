@@ -228,10 +228,10 @@ public class Interface extends Module {
         float islandBottom = 8.0f;
         if (showDynamicIsland.isEnabled()) {
             boolean inChat = (mc.currentScreen instanceof net.minecraft.client.gui.screen.ChatScreen);
-            if (!inChat) {
+            if (!inChat || !hasActiveMedia || !isMediaPlaying) {
                 islandExpanded = false;
             }
-            float targetExpand = islandExpanded ? 1.0f : 0.0f;
+            float targetExpand = (islandExpanded && hasActiveMedia && isMediaPlaying) ? 1.0f : 0.0f;
             this.islandExpandAnim += (targetExpand - this.islandExpandAnim) * 0.22f;
             if (Math.abs(this.islandExpandAnim - targetExpand) < 0.001f) {
                 this.islandExpandAnim = targetExpand;
@@ -250,7 +250,7 @@ public class Interface extends Module {
                 lastFrameTime = System.currentTimeMillis();
             }
 
-            boolean playing = (hasActiveMedia && isMediaPlaying) || this.islandExpandAnim > 0.01f;
+            boolean playing = hasActiveMedia && isMediaPlaying;
             if (playing) {
                 islandActive = true;
                 renderDynamicIsland(context, screenW);
@@ -861,7 +861,7 @@ public class Interface extends Module {
             try {
                 if (OptMedia.init() && OptMedia.INSTANCE != null) {
                     boolean ok = OptMedia.INSTANCE.GetCurrentMediaInfo(artistStruct);
-                    if (ok && artistStruct.getTitle() != null && !artistStruct.getTitle().trim().isEmpty()) {
+                    if (ok && artistStruct.getTitle() != null && !artistStruct.getTitle().trim().isEmpty() && artistStruct.isPlaying()) {
                         hasActiveMedia = true;
                         currentMediaTitle = artistStruct.getTitle().trim();
                         currentMediaArtist = artistStruct.getArtist().trim();
