@@ -17,6 +17,6 @@ public class GlyphAtlasTextureMixin {
             )
     )
     private static FilterMode egg$linearFilter(FilterMode original) {
-        return FilterMode.LINEAR;
+        return original;
     }
 }

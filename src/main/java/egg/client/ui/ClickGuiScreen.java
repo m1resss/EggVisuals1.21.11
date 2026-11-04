@@ -434,7 +434,6 @@ public class ClickGuiScreen extends Screen {
 
         this.lateMouseX = mouseX;
         this.lateMouseY = mouseY;
-        DrawBatcher.flushPending();
     }
 
     private double lateMouseX;

@@ -2,14 +2,10 @@ package egg.client.module.render;
 
 import egg.client.module.Category;
 import egg.client.module.Module;
-import egg.client.module.misc.Globals;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.render.Render2D;
-import egg.client.render.msdf.Draw2DProcessor;
-import egg.client.render.msdf.pipeline.DrawBatcher;
-import net.minecraft.util.Identifier;
 import egg.client.render.font.ClientFont;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
@@ -36,7 +32,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class NameTags extends Module {
     private static NameTags instance;
-    private static final Identifier EGG_LOGO = Identifier.of("egg", "textures/egg_logo.png");
 
     private final BooleanSetting onlyVisible = new BooleanSetting("Только видимые", true, "Отображать только игроков в прямой видимости (без сквозь стены)");
     private final ModeSetting fontMode = new ModeSetting("Шрифт", "SF Semibold", "SF Semibold", "SF Medium", "SF Bold", "SF Regular");
@@ -46,8 +41,7 @@ public class NameTags extends Module {
     private final BooleanSetting showArmor = new BooleanSetting("Броня и руки", true, "Экипированные предметы над ником");
     private final BooleanSetting showSelf = new BooleanSetting("Себя от 3-го лица", false, "Отображать бейдж над своим персонажем");
     private final SliderSetting scale = new SliderSetting("Масштаб", 1.0, 0.5, 2.0, 0.05, "Базовый размер бейджа");
-    private final SliderSetting bgAlpha = new SliderSetting("Непрозрачность", 88.0, 20.0, 100.0, 5.0, "Плотность подложки (%)");
-    private final BooleanSetting borderGlow = new BooleanSetting("Неоновая обводка", true, "Светящаяся окантовка в стиле темы");
+    private final SliderSetting bgAlpha = new SliderSetting("Непрозрачность", 85.0, 20.0, 100.0, 5.0, "Плотность подложки (%)");
     private final ModeSetting colorMode = new ModeSetting("Цвет шкалы", "Градиент", "Градиент", "Тема", "Здоровье");
 
     private static class PlayerTagState {
@@ -65,9 +59,9 @@ public class NameTags extends Module {
     private long lastFrameNanos = 0L;
 
     public NameTags() {
-        super("NameTags", "Минималистичные современные бейджи игроков в стиле macOS/iOS", Category.ESP);
+        super("NameTags", "Минималистичные аккуратные бейджи игроков в стиле macOS/iOS", Category.ESP);
         instance = this;
-        addSettings(onlyVisible, fontMode, showHealth, showPing, showDistance, showArmor, showSelf, scale, bgAlpha, borderGlow, colorMode);
+        addSettings(onlyVisible, fontMode, showHealth, showPing, showDistance, showArmor, showSelf, scale, bgAlpha, colorMode);
     }
 
     public static NameTags getInstance() {
@@ -196,7 +190,7 @@ public class NameTags extends Module {
             renderSingleTag(context, mc, player, state, dist, dt);
         }
 
-        // Очистка старых игроков
+        // Очистка неактивных сущностей
         this.stateMap.entrySet().removeIf(e -> nowMs - e.getValue().lastSeenTime > 4000L);
     }
 
@@ -233,13 +227,9 @@ public class NameTags extends Module {
             rawName = "Player";
         }
         boolean isFriend = FriendManager.getInstance().isFriend(rawName);
-        boolean isEgg = Globals.isEggUser(player);
 
         float nameW = ClientFont.getWidth(rawName, font);
         int nameColor = isFriend ? 0xFF38BDF8 : 0xFFFFFFFF;
-
-        float eggIconSize = 10.0f;
-        float eggIconW = isEgg ? (eggIconSize + 4.0f) : 0.0f;
 
         // 2. Пинг
         int latency = -1;
@@ -248,7 +238,7 @@ public class NameTags extends Module {
             latency = entry.getLatency();
         }
         String pingText = (this.showPing.get() && latency >= 0) ? (latency + "ms") : null;
-        float pingW = pingText != null ? (ClientFont.getWidth(pingText, font) + 8.0f) : 0.0f; // с точкой
+        float pingW = pingText != null ? (ClientFont.getWidth(pingText, font) + 8.0f) : 0.0f;
         int pingDotColor;
         if (latency < 80) pingDotColor = 0xFF4ADE80;
         else if (latency < 160) pingDotColor = 0xFFFACC15;
@@ -261,7 +251,7 @@ public class NameTags extends Module {
         // 4. Здоровье
         String hpText = null;
         float hpW = 0.0f;
-        int hpColor = 0xFF4ADE80;
+        int hpColor = 0xFF22C55E;
         if (this.showHealth.get()) {
             float totalHp = currentHp + absorption;
             hpText = (int) Math.ceil(totalHp) + " HP";
@@ -271,7 +261,7 @@ public class NameTags extends Module {
             if (absorption > 0.0f) {
                 hpColor = 0xFFF59E0B;
             } else if (hpRatio >= 0.70f) {
-                hpColor = 0xFF4ADE80;
+                hpColor = 0xFF22C55E;
             } else if (hpRatio >= 0.35f) {
                 hpColor = 0xFFFACC15;
             } else {
@@ -279,18 +269,17 @@ public class NameTags extends Module {
             }
         }
 
-        // Расчет общей ширины капсулы
+        // Расчет ширины капсулы
         float padX = 7.0f;
         float gap = 5.0f;
         float contentW = nameW;
-        if (isEgg) contentW += eggIconW;
         if (pingText != null) contentW += pingW + gap;
         if (distText != null) contentW += distW + gap;
         if (hpText != null) contentW += hpW + gap;
 
-        float cardW = Math.max(48.0f, contentW + padX * 2.0f);
+        float cardW = Math.max(44.0f, contentW + padX * 2.0f);
         float cardH = this.showHealth.get() ? 19.0f : 15.0f;
-        float cardRadius = 5.0f;
+        float cardRadius = 4.0f;
 
         float alphaFactor = this.bgAlpha.getValueFloat() / 100.0f;
 
@@ -306,22 +295,12 @@ public class NameTags extends Module {
             renderArmorItems(context, mc, player, 0.0f, cardY - 2.0f);
         }
 
-        // Мягкая тень карточки
-        int shadowColor = ColorUtil.rgba(0, 0, 0, (int) (140 * alphaFactor));
-        Render2D.drawShadow(context, cardX, cardY, cardW, cardH, cardRadius, 8.0f, shadowColor);
-
-        // Темная стеклянная подложка
-        int bgColor = ColorUtil.rgba(13, 15, 21, (int) (225 * alphaFactor));
+        // Чистая темная подложка без боковых теней и без обводок
+        int bgColor = ColorUtil.rgba(14, 16, 22, (int) (220 * alphaFactor));
         Render2D.drawRoundedRect(context, cardX, cardY, cardW, cardH, cardRadius, bgColor);
 
-        // Блик стекла
+        // Мягкий диагональный блик стекла
         Render2D.drawDiagonalSheen(context, cardX, cardY, cardW, cardH, cardRadius, 0L);
-
-        // Неоновый или белый контур
-        int borderColor = this.borderGlow.get()
-                ? ColorUtil.withAlpha(Theme.getAccent(), (int) (125 * alphaFactor))
-                : ColorUtil.rgba(255, 255, 255, (int) (26 * alphaFactor));
-        Render2D.drawRoundedOutline(context, cardX, cardY, cardW, cardH, cardRadius, 1.0f, borderColor);
 
         // Отрисовка элементов в строке
         float curX = cardX + padX;
@@ -330,15 +309,8 @@ public class NameTags extends Module {
         // Пинг с точкой
         if (pingText != null) {
             Render2D.drawCircle(context, curX + 2.0f, textY + 4.5f, 1.8f, pingDotColor);
-            ClientFont.draw(context, pingText, curX + 6.0f, textY, font, ColorUtil.rgba(203, 213, 225, 220));
+            ClientFont.draw(context, pingText, curX + 6.0f, textY, font, ColorUtil.rgba(203, 213, 225, 235));
             curX += pingW + gap;
-        }
-
-        // Иконка яйца для пользователей клиента
-        if (isEgg) {
-            float eggY = cardY + (cardH - (this.showHealth.get() ? 3.0f : 0.0f) - eggIconSize) / 2.0f;
-            Draw2DProcessor.INSTANCE.a(context.getMatrices(), EGG_LOGO, curX, eggY, eggIconSize, eggIconSize, 2.0f, 0xFFFFFFFF);
-            curX += eggIconW;
         }
 
         // Имя
@@ -347,7 +319,7 @@ public class NameTags extends Module {
 
         // Дистанция
         if (distText != null) {
-            ClientFont.draw(context, distText, curX, textY, font, ColorUtil.rgba(148, 163, 184, 215));
+            ClientFont.draw(context, distText, curX, textY, font, ColorUtil.rgba(203, 213, 225, 215));
             curX += distW + gap;
         }
 
@@ -356,7 +328,7 @@ public class NameTags extends Module {
             ClientFont.draw(context, hpText, curX, textY, font, hpColor);
         }
 
-        // Плавная шкала здоровья внизу плашки
+        // Плавная полоса здоровья внизу плашки
         if (this.showHealth.get()) {
             float barX = cardX + 5.0f;
             float barY = cardY + cardH - 3.2f;
@@ -364,15 +336,15 @@ public class NameTags extends Module {
             float barH = 1.8f;
 
             // Фоновая дорожка
-            Render2D.drawRoundedRect(context, barX, barY, barW, barH, 0.9f, ColorUtil.rgba(255, 255, 255, 20));
+            Render2D.drawRoundedRect(context, barX, barY, barW, barH, 0.9f, ColorUtil.rgba(255, 255, 255, 25));
 
             float visualRatio = MathHelper.clamp(state.visualHp / maxHp, 0.0f, 1.0f);
             float trailingRatio = MathHelper.clamp(state.trailingHp / maxHp, 0.0f, 1.0f);
 
-            // Трейл урона (плавно догоняющий хвост)
+            // Трейл урона
             if (trailingRatio > visualRatio) {
                 float trailW = Math.max(1.5f, barW * trailingRatio);
-                Render2D.drawRoundedRect(context, barX, barY, trailW, barH, 0.9f, ColorUtil.rgba(251, 146, 60, 210));
+                Render2D.drawRoundedRect(context, barX, barY, trailW, barH, 0.9f, ColorUtil.rgba(251, 146, 60, 240));
             }
 
             // Основная полоса
@@ -384,23 +356,23 @@ public class NameTags extends Module {
             } else if ("Градиент".equals(colorSetting)) {
                 if (visualRatio > 0.5f) {
                     float f = (visualRatio - 0.5f) * 2.0f;
-                    barCol = ColorUtil.interpolate(0xFFFACC15, 0xFF4ADE80, f);
+                    barCol = ColorUtil.interpolate(0xFFFACC15, 0xFF22C55E, f);
                 } else {
                     float f = visualRatio * 2.0f;
                     barCol = ColorUtil.interpolate(0xFFEF4444, 0xFFFACC15, f);
                 }
             } else { // "Здоровье"
-                if (visualRatio > 0.6f) barCol = 0xFF4ADE80;
+                if (visualRatio > 0.6f) barCol = 0xFF22C55E;
                 else if (visualRatio > 0.25f) barCol = 0xFFFACC15;
                 else barCol = 0xFFEF4444;
             }
             Render2D.drawRoundedRect(context, barX, barY, fillW, barH, 0.9f, barCol);
 
-            // Золотые сердца (поглощение)
+            // Поглощение (золотые сердца)
             if (absorption > 0.0f) {
                 float absRatio = MathHelper.clamp(absorption / maxHp, 0.0f, 1.0f);
                 float absW = Math.max(1.0f, barW * absRatio);
-                Render2D.drawRoundedRect(context, barX, barY, absW, barH, 0.9f, ColorUtil.rgba(252, 211, 77, 230));
+                Render2D.drawRoundedRect(context, barX, barY, absW, barH, 0.9f, ColorUtil.rgba(252, 211, 77, 255));
             }
         }
 
