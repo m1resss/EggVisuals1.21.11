@@ -227,8 +227,7 @@ public class TargetHUD extends Module {
         this.lastRenderW = cardW * scale;
         this.lastRenderH = cardH * scale;
 
-        float effectiveAlpha = animAlpha * (opacity.getValueFloat() / 100.0f);
-        renderCard(context, renderTarget, cardX, cardY, cardW, cardH, cardRadius, scale, effectiveAlpha, maxHealth, actualAbsorption, dt);
+        renderCard(context, renderTarget, cardX, cardY, cardW, cardH, cardRadius, scale, animAlpha, maxHealth, actualAbsorption, dt);
     }
 
     private void renderCard(DrawContext context, LivingEntity target, float x, float y, float w, float h,
@@ -247,9 +246,10 @@ public class TargetHUD extends Module {
             context.getMatrices().translate(-x, -y);
         }
 
-        int bgAlpha = (int) (225 * alpha);
-        int borderAlpha = (int) (30 * alpha);
-        int shadowAlpha = (int) (65 * alpha);
+        float op = opacity.getValueFloat() / 100.0f;
+        int bgAlpha = (int) (225 * alpha * op);
+        int borderAlpha = (int) (30 * alpha * op);
+        int shadowAlpha = (int) (65 * alpha * op);
 
         int bgColor = ColorUtil.rgba(18, 18, 22, bgAlpha);
         int borderColor = ColorUtil.rgba(255, 255, 255, borderAlpha);
@@ -261,7 +261,7 @@ public class TargetHUD extends Module {
 
         if (hudThemeGradient.isEnabled()) {
             float str = hudGradientStrength.getValueFloat() / 100.0f;
-            int gradC = ColorUtil.rgba(168, 85, 247, (int) (str * 45.0f * alpha));
+            int gradC = ColorUtil.rgba(168, 85, 247, (int) (str * 45.0f * alpha * op));
             Draw2DProcessor.INSTANCE.drawGradient(mat, x, y, w, h, radius, gradC, 0x00000000, 0x00000000, gradC);
         }
         DrawBatcher.flushPending();

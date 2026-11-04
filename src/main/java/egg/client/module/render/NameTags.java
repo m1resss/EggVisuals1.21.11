@@ -315,7 +315,7 @@ public class NameTags extends Module {
             float barH = 1.8f;
 
             // Фоновая канавка
-            Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, barW, barH, 0.9f, ColorUtil.rgba(255, 255, 255, (int) (25 * alphaFactor)));
+            Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, barW, barH, 0.9f, ColorUtil.rgba(255, 255, 255, 25));
 
             float visualRatio = MathHelper.clamp(state.visualHp / maxHp, 0.0f, 1.0f);
             float trailingRatio = MathHelper.clamp(state.trailingHp / maxHp, 0.0f, 1.0f);
@@ -323,7 +323,7 @@ public class NameTags extends Module {
             // Трейл урона
             if (trailingRatio > visualRatio) {
                 float trailW = Math.max(1.5f, barW * trailingRatio);
-                Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, trailW, barH, 0.9f, ColorUtil.rgba(251, 146, 60, (int) (240 * alphaFactor)));
+                Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, trailW, barH, 0.9f, ColorUtil.rgba(251, 146, 60, 240));
             }
 
             // Основная полоска
@@ -345,13 +345,13 @@ public class NameTags extends Module {
                 else if (visualRatio > 0.25f) barCol = 0xFFFACC15;
                 else barCol = 0xFFEF4444;
             }
-            Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, fillW, barH, 0.9f, ColorUtil.withAlpha(barCol, (int) (255 * alphaFactor)));
+            Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, fillW, barH, 0.9f, barCol);
 
             // Абсорбция
             if (absorption > 0.0f) {
                 float absRatio = MathHelper.clamp(absorption / maxHp, 0.0f, 1.0f);
                 float absW = Math.max(1.0f, barW * absRatio);
-                Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, absW, barH, 0.9f, ColorUtil.rgba(252, 211, 77, (int) (255 * alphaFactor)));
+                Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, absW, barH, 0.9f, ColorUtil.rgba(252, 211, 77, 255));
             }
         }
 
@@ -363,31 +363,31 @@ public class NameTags extends Module {
             float dotR = 1.8f;
             float dotX = curX + 2.0f;
             float dotY = textY + 5.5f;
-            Draw2DProcessor.INSTANCE.drawRect(tagMat, dotX - dotR, dotY - dotR, dotR * 2.0f, dotR * 2.0f, dotR, ColorUtil.withAlpha(pingDotColor, (int) (255 * alphaFactor)));
-            font.a(tagMat, pingText, curX + 6.0f, textY, fontSize, ColorUtil.rgba(203, 213, 225, (int) (235 * alphaFactor)));
+            Draw2DProcessor.INSTANCE.drawRect(tagMat, dotX - dotR, dotY - dotR, dotR * 2.0f, dotR * 2.0f, dotR, pingDotColor);
+            font.a(tagMat, pingText, curX + 6.0f, textY, fontSize, ColorUtil.rgba(203, 213, 225, 235));
             curX += pingW + gap;
         }
 
         // 5. Яйцо Globals перед ником
         if (isEgg) {
             float eggY = textY + (font.a(fontSize) - eggSize) / 2.0f;
-            Draw2DProcessor.INSTANCE.a(tagMat, EGG_LOGO, curX, eggY, eggSize, eggSize, 0.0f, ColorUtil.rgba(255, 255, 255, (int) (255 * alphaFactor)));
+            Draw2DProcessor.INSTANCE.a(tagMat, EGG_LOGO, curX, eggY, eggSize, eggSize, 0.0f, 0xFFFFFFFF);
             curX += eggW;
         }
 
         // 6. Имя игрока (Rockstar Round MSDF)
-        font.a(tagMat, rawName, curX, textY, fontSize, ColorUtil.withAlpha(nameColor, (int) (255 * alphaFactor)));
+        font.a(tagMat, rawName, curX, textY, fontSize, nameColor);
         curX += nameW + gap;
 
         // 7. Дистанция
         if (distText != null) {
-            font.a(tagMat, distText, curX, textY, fontSize, ColorUtil.rgba(203, 213, 225, (int) (215 * alphaFactor)));
+            font.a(tagMat, distText, curX, textY, fontSize, ColorUtil.rgba(203, 213, 225, 215));
             curX += distW + gap;
         }
 
         // 8. Числовое HP
         if (hpText != null) {
-            font.a(tagMat, hpText, curX, textY, fontSize, ColorUtil.withAlpha(hpColor, (int) (255 * alphaFactor)));
+            font.a(tagMat, hpText, curX, textY, fontSize, hpColor);
         }
 
         DrawBatcher.flushPending();
