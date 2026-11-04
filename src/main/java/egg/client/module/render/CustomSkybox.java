@@ -198,93 +198,100 @@ public class CustomSkybox extends Module {
     private void renderNebulae(VertexConsumerProvider immediate, float time, float nightFactor) {
         VertexConsumer buf = immediate.getBuffer(RenderLayers.lightning());
         float brightness = (float) this.nebulaBrightness.get() * nightFactor;
+        if (brightness <= 0.01f) return;
+
+        // Subtle slow cosmic breathing (NO pinwheel rotation, pure celestial pulse)
+        float pulse1 = 0.88f + 0.12f * MathHelper.sin(time * 0.45f);
+        float pulse2 = 0.88f + 0.12f * MathHelper.sin(time * 0.40f + 1.8f);
+        float pulse3 = 0.88f + 0.12f * MathHelper.sin(time * 0.50f + 3.2f);
 
         // Nebula 1: The Northern Cosmic Veil (North-East, Magenta & Indigo)
         drawNebulaComplex(
                 buf,
                 new Vector3f(0.52f, 0.68f, -0.51f).normalize(),
-                18.0f,
-                time * 0.04f,
-                brightness * 0.95f,
-                217, 70, 239,  // Magenta
-                99, 102, 241,  // Indigo
-                0xCAFE1
+                brightness * pulse1,
+                217, 70, 239,  // Magenta core
+                99, 102, 241,  // Indigo lobe
+                56, 189, 248,  // Electric cyan fringe
+                82.0f
         );
 
         // Nebula 2: Emerald Lagoon Nebula (Zenith/South-West, Cyan & Emerald)
         drawNebulaComplex(
                 buf,
                 new Vector3f(-0.58f, 0.72f, 0.38f).normalize(),
-                22.0f,
-                -time * 0.035f + 1.2f,
-                brightness * 0.88f,
-                6, 182, 212,   // Electric Cyan
-                16, 185, 129,  // Emerald
-                0xBEEF2
+                brightness * pulse2,
+                6, 182, 212,   // Electric Cyan core
+                16, 185, 129,  // Emerald lobe
+                2, 132, 199,   // Deep marine fringe
+                83.0f
         );
 
         // Nebula 3: Orion's Flame (South-East, Rose & Deep Violet)
         drawNebulaComplex(
                 buf,
                 new Vector3f(0.42f, 0.48f, 0.77f).normalize(),
-                16.0f,
-                time * 0.05f + 2.5f,
-                brightness * 0.82f,
-                244, 63, 94,   // Warm Rose
-                139, 92, 246,  // Deep Violet
-                0xFEED3
+                brightness * pulse3,
+                244, 63, 94,   // Warm Rose core
+                139, 92, 246,  // Deep Violet lobe
+                236, 72, 153,  // Pink fringe
+                84.0f
         );
     }
 
     private void drawNebulaComplex(
             VertexConsumer buf,
             Vector3f dir,
-            float radiusSpan,
-            float rotAngle,
             float intensity,
             int r1, int g1, int b1,
             int r2, int g2, int b2,
-            int seed
+            int r3, int g3, int b3,
+            float baseRadius
     ) {
-        Vector3f centerPos = new Vector3f(dir).mul(SKY_RADIUS * 0.95f);
-
-        // Orthonormal basis for billboarding perpendicular to line of sight
         Vector3f forward = new Vector3f(dir).normalize();
         Vector3f upApprox = Math.abs(forward.y) < 0.95f ? new Vector3f(0, 1, 0) : new Vector3f(1, 0, 0);
         Vector3f right = new Vector3f(forward).cross(upApprox).normalize();
         Vector3f up = new Vector3f(right).cross(forward).normalize();
 
-        Random rand = new Random(seed);
+        // 3 non-coplanar static celestial lobes (different depths: 0.0m, +0.4m, +0.8m)
+        // Core lobe
+        drawGaussianCloudGrid(
+                buf,
+                new Vector3f(forward).mul(baseRadius),
+                right, up,
+                16.0f, 12.0f,
+                r1, g1, b1,
+                (int) (150 * intensity)
+        );
 
-        // Core glow
-        drawSoftDiamond(buf, centerPos, right, up, radiusSpan * 0.75f, radiusSpan * 0.75f, r1, g1, b1, (int) (140 * intensity));
+        // Secondary elongated lobe (offset +4.5m along right, +2.2m along up, depth +0.4m)
+        Vector3f lobe2Pos = new Vector3f(forward).mul(baseRadius + 0.4f)
+                .add(new Vector3f(right).mul(4.5f))
+                .add(new Vector3f(up).mul(2.2f));
+        drawGaussianCloudGrid(
+                buf,
+                lobe2Pos,
+                right, up,
+                13.0f, 9.0f,
+                r2, g2, b2,
+                (int) (105 * intensity)
+        );
 
-        // 8 orbiting soft gas lobes with breathing scale and drift
-        for (int i = 0; i < 8; i++) {
-            float baseAngle = (float) (i * Math.PI * 2.0 / 8.0) + rotAngle;
-            float distFactor = 0.35f + rand.nextFloat() * 0.45f;
-            float lobeX = MathHelper.cos(baseAngle) * radiusSpan * distFactor;
-            float lobeY = MathHelper.sin(baseAngle) * radiusSpan * distFactor;
-
-            Vector3f lobeCenter = new Vector3f(centerPos)
-                    .add(new Vector3f(right).mul(lobeX))
-                    .add(new Vector3f(up).mul(lobeY));
-
-            float lobeW = radiusSpan * (0.45f + rand.nextFloat() * 0.35f);
-            float lobeH = radiusSpan * (0.40f + rand.nextFloat() * 0.30f);
-
-            // Interpolate colors between r1,g1,b1 and r2,g2,b2
-            float blend = rand.nextFloat();
-            int r = (int) (r1 * (1.0f - blend) + r2 * blend);
-            int g = (int) (g1 * (1.0f - blend) + g2 * blend);
-            int b = (int) (b1 * (1.0f - blend) + b2 * blend);
-            int alpha = (int) ((80 + rand.nextInt(55)) * intensity);
-
-            drawSoftDiamond(buf, lobeCenter, right, up, lobeW, lobeH, r, g, b, alpha);
-        }
+        // Third wispy fringe (offset -4.0m along right, -2.5m along up, depth +0.8m)
+        Vector3f lobe3Pos = new Vector3f(forward).mul(baseRadius + 0.8f)
+                .add(new Vector3f(right).mul(-4.0f))
+                .add(new Vector3f(up).mul(-2.5f));
+        drawGaussianCloudGrid(
+                buf,
+                lobe3Pos,
+                right, up,
+                11.0f, 8.0f,
+                r3, g3, b3,
+                (int) (75 * intensity)
+        );
     }
 
-    private void drawSoftDiamond(
+    private void drawGaussianCloudGrid(
             VertexConsumer buf,
             Vector3f center,
             Vector3f right,
@@ -292,31 +299,60 @@ public class CustomSkybox extends Module {
             float halfW,
             float halfH,
             int r, int g, int b,
-            int alpha
+            int maxAlpha
     ) {
-        if (alpha <= 1) return;
+        if (maxAlpha <= 1) return;
 
-        float cx = center.x, cy = center.y, cz = center.z;
+        // 6x6 vertex grid (5x5 quads) with smooth Gaussian radial falloff
+        int res = 5;
+        Vector3f[][] vGrid = new Vector3f[res + 1][res + 1];
+        int[][] aGrid = new int[res + 1][res + 1];
 
-        float rx = right.x * halfW, ry = right.y * halfW, rz = right.z * halfW;
-        float ux = up.x * halfH, uy = up.y * halfH, uz = up.z * halfH;
+        float step = 2.0f / res;
 
-        float topX = cx + ux, topY = cy + uy, topZ = cz + uz;
-        float botX = cx - ux, botY = cy - uy, botZ = cz - uz;
-        float rgtX = cx + rx, rgtY = cy + ry, rgtZ = cz + rz;
-        float lftX = cx - rx, lftY = cy - ry, lftZ = cz - rz;
+        for (int i = 0; i <= res; i++) {
+            float gx = -1.0f + i * step; // -1.0 to 1.0
+            for (int j = 0; j <= res; j++) {
+                float gy = -1.0f + j * step; // -1.0 to 1.0
 
-        // Quad 1: Left -> Bottom -> Center -> Top
-        buf.vertex(lftX, lftY, lftZ).color(r, g, b, 0);
-        buf.vertex(botX, botY, botZ).color(r, g, b, 0);
-        buf.vertex(cx, cy, cz).color(r, g, b, alpha);
-        buf.vertex(topX, topY, topZ).color(r, g, b, 0);
+                // Elliptical normalized distance from center
+                float distSq = gx * gx + gy * gy;
+                if (distSq >= 1.0f) {
+                    aGrid[i][j] = 0;
+                } else {
+                    // Smooth quartic Gaussian bell curve: (1 - distSq)^2
+                    float falloff = (1.0f - distSq) * (1.0f - distSq);
+                    aGrid[i][j] = Math.min(255, (int) (maxAlpha * falloff));
+                }
 
-        // Quad 2: Center -> Bottom -> Right -> Top
-        buf.vertex(cx, cy, cz).color(r, g, b, alpha);
-        buf.vertex(botX, botY, botZ).color(r, g, b, 0);
-        buf.vertex(rgtX, rgtY, rgtZ).color(r, g, b, 0);
-        buf.vertex(topX, topY, topZ).color(r, g, b, 0);
+                vGrid[i][j] = new Vector3f(center)
+                        .add(new Vector3f(right).mul(gx * halfW))
+                        .add(new Vector3f(up).mul(gy * halfH));
+            }
+        }
+
+        // Emit quads from continuous grid
+        for (int i = 0; i < res; i++) {
+            for (int j = 0; j < res; j++) {
+                int a00 = aGrid[i][j];
+                int a10 = aGrid[i + 1][j];
+                int a11 = aGrid[i + 1][j + 1];
+                int a01 = aGrid[i][j + 1];
+
+                // If entire quad is 0 alpha, skip
+                if (a00 == 0 && a10 == 0 && a11 == 0 && a01 == 0) continue;
+
+                Vector3f v00 = vGrid[i][j];
+                Vector3f v10 = vGrid[i + 1][j];
+                Vector3f v11 = vGrid[i + 1][j + 1];
+                Vector3f v01 = vGrid[i][j + 1];
+
+                buf.vertex(v00.x, v00.y, v00.z).color(r, g, b, a00);
+                buf.vertex(v10.x, v10.y, v10.z).color(r, g, b, a10);
+                buf.vertex(v11.x, v11.y, v11.z).color(r, g, b, a11);
+                buf.vertex(v01.x, v01.y, v01.z).color(r, g, b, a01);
+            }
+        }
     }
 
     private void renderAurora(VertexConsumerProvider immediate, float time, float nightFactor) {
