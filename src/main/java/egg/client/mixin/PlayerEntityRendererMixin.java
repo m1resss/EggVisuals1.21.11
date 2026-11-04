@@ -40,9 +40,15 @@ public abstract class PlayerEntityRendererMixin extends LivingEntityRenderer<Abs
 
     @Inject(
             method = "renderLabelIfPresent(Lnet/minecraft/client/render/entity/state/PlayerEntityRenderState;Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/command/OrderedRenderCommandQueue;Lnet/minecraft/client/render/state/CameraRenderState;)V",
-            at = @At("HEAD")
+            at = @At("HEAD"),
+            cancellable = true
     )
     private void onRenderLabelIfPresent(PlayerEntityRenderState state, MatrixStack matrices, OrderedRenderCommandQueue queue, CameraRenderState camera, CallbackInfo ci) {
+        egg.client.module.render.NameTags nameTags = ModuleManager.getInstance().getModule(egg.client.module.render.NameTags.class);
+        if (nameTags != null && nameTags.isEnabled()) {
+            ci.cancel();
+            return;
+        }
         Globals globals = ModuleManager.getInstance().getModule(Globals.class);
         if (globals != null && globals.isEnabled() && globals.isInNametag() && Globals.isEggUser(state)) {
             String cleanName = Globals.extractCleanName(state);

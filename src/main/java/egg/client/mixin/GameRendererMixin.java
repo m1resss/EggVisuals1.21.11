@@ -238,6 +238,11 @@ public abstract class GameRendererMixin {
 
         }
 
+        NameTags nameTags = ModuleManager.getInstance().getModule(NameTags.class);
+        if (nameTags != null && nameTags.isEnabled()) {
+            nameTags.render2D(context, tickCounter);
+        }
+
 
 
         WaypointManager.getInstance().render(context);

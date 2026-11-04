@@ -82,6 +82,7 @@ public class ModuleManager {
         register(new ItemPhysic());
 
         register(new TargetESP());
+        register(new NameTags());
 
         register(new ViewModel());
 
