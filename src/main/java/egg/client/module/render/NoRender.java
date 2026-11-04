@@ -48,7 +48,7 @@ public class NoRender extends Module {
     );
 
     public NoRender() {
-        super("No Render", "Отключение визуальных оверлеев и мешающих эффектов", Category.ESP);
+        super("No Render", "Отключает отображение огня, тумана, дождя и слепоты", Category.ESP);
         addSettings(fire, pumpkin, totem, blindness, fog, hurtCam, vignette);
     }
 

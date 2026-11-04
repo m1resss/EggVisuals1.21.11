@@ -122,7 +122,7 @@ public class Lyrics extends Module {
     private long lastFrameNanos = 0L;
 
     public Lyrics() {
-        super("Lyrics", "3D капсулы с текстом песни в мире", Category.ESP);
+        super("Lyrics", "Отображает строки играющей песни над землей", Category.ESP);
         addSettings(
                 splitMode, wordsPerCapsule, distance, scatterH, scatterV, size,
                 lifetime, fontMode, colorStyle, background, glow, gentleWave, wordAnimation, noOverlap, demoMode

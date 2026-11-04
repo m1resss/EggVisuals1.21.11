@@ -6,6 +6,6 @@ import egg.client.module.setting.BooleanSetting;
 
 public class NoChatBackground extends Module {
     public NoChatBackground() {
-        super("NoChatBackground", "Отключение темного фона сообщений в чате", Category.PLAYER);
+        super("NoChatBackground", "Убирает темный фон под текстом сообщений в чате", Category.PLAYER);
     }
 }

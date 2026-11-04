@@ -8,7 +8,7 @@ public class SmoothEat extends Module {
     private final SliderSetting strength = new SliderSetting("Сила тряски", 0.25, 0.0, 1.0, 0.05, "Интенсивность тряски при поедании");
 
     public SmoothEat() {
-        super("Smooth Eat", "Убирает тряску руки при еде и питье", Category.ESP);
+        super("Smooth Eat", "Убирает покачивание руки при употреблении еды", Category.ESP);
         addSettings(strength);
     }
 

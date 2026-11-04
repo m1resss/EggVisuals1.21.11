@@ -10,7 +10,7 @@ public class AutoRespawn extends Module {
     private final BooleanSetting instant = new BooleanSetting("Instant", true, "Мгновенное возрождение без задержки");
 
     public AutoRespawn() {
-        super("AutoRespawn", "Автоматическое возрождение после гибели", Category.PLAYER);
+        super("AutoRespawn", "Автоматически возрождает персонажа после смерти", Category.PLAYER);
         addSettings(instant);
     }
 

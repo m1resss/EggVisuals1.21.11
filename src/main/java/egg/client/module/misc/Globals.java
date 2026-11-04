@@ -44,7 +44,7 @@ public class Globals extends Module {
     private static final Gson GSON = new Gson();
 
     public Globals() {
-        super("Globals", "Отображает белое яйцо перед никами других пользователей Egg Visuals и их косметику", Category.MISC);
+        super("Globals", "Показывает значок перед никами других пользователей и их украшения", Category.MISC);
         instance = this;
         this.netClient = new GlobalsNetClient(this);
         addSettings(showSelf, inTab, inNametag, iconPosition, cosmetics);

@@ -82,7 +82,7 @@ public class PotionHUD extends Module {
     private final List<AnimatedPotion> animatedPotions = new ArrayList<>();
 
     public PotionHUD() {
-        super("Potions", "Отображение активных эффектов зелий", Category.ESP);
+        super("Potions", "Показывает список действующих эффектов зелий и их таймеры", Category.ESP);
         instance = this;
         showDigits.setVisible(() -> "Капсулы".equalsIgnoreCase(style.get()));
         posX.setVisible(() -> false);

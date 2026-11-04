@@ -17,7 +17,7 @@ public class Animations extends Module {
     private final SliderSetting animSpeed = new SliderSetting("Скорость", 1.0, 0.5, 2.5, 0.1, "Множитель скорости анимаций");
 
     public Animations() {
-        super("Animations", "Плавные анимации чата, таба, контейнеров и камеры", Category.ESP);
+        super("Animations", "Добавляет анимации открытия окон, чата и списка игроков", Category.ESP);
         instance = this;
         addSettings(tab, chat, chatOpen, containers, perspective, typing, animSpeed);
     }

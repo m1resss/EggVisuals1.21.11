@@ -53,7 +53,7 @@ public class TotemPopConfetti extends Module {
     };
 
     public TotemPopConfetti() {
-        super("TotemPopConfetti", "3D конфетти с физикой падения при попе тотема", Category.ESP);
+        super("TotemPopConfetti", "Создает осыпающееся конфетти при срабатывании тотема бессмертия", Category.ESP);
         addSettings(count, speed, gravity, flutter, lifetime, glow, cancelVanilla);
     }
 

@@ -38,7 +38,7 @@ public class CustomHitbox extends Module {
     private final BooleanSetting self = new BooleanSetting("Себя", false, "Отображать свой хитбокс при виде от третьего лица");
 
     public CustomHitbox() {
-        super("CustomHitbox", "Настраиваемое 3D выделение хитбоксов сущностей", Category.ESP);
+        super("CustomHitbox", "Отображает границы моделей игроков и существ", Category.ESP);
 
         fillAlpha.setVisible(() -> fill.get());
         fillColor.setVisible(() -> fill.get() && colorMode.is("Кастомный"));

@@ -10,7 +10,7 @@ public class AutoAccept extends Module {
     private final BooleanSetting clan = new BooleanSetting("Clan", true, "Автоматически принимать приглашения в клан");
 
     public AutoAccept() {
-        super("AutoAccept", "Автоматически принимает запросы телепортации и приглашения в клан", Category.PLAYER);
+        super("AutoAccept", "Автоматически принимает запросы на телепортацию и приглашения в клан", Category.PLAYER);
         addSettings(teleport, clan);
     }
 

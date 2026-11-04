@@ -44,7 +44,7 @@ public class Hitmarker extends Module {
     private double hitZ = 0.0;
 
     public Hitmarker() {
-        super("Hitmarker", "Отображает визуальный хитмаркер при попадании по противнику", Category.ESP);
+        super("Hitmarker", "Показывает отметку попадания в центре экрана при ударе", Category.ESP);
         addSettings(renderMode, size, duration, colorMode, customColor, dynamicScale, sound, soundType);
     }
 

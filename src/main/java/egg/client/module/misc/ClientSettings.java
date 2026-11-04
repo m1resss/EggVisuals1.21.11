@@ -26,7 +26,7 @@ public class ClientSettings extends Module {
     private final BooleanSetting halloweenEmbers = new BooleanSetting("Хеллоуинские частицы", true, "Парящие атмосферные искры и частицы на фоне окна");
 
     public ClientSettings() {
-        super("ClientSettings", "Основные настройки интерфейса и эффектов клиента", Category.SETTINGS);
+        super("ClientSettings", "Настройки интерфейса и визуальных эффектов", Category.SETTINGS);
         addSettings(accentColor, openAnimMode, lensCenterMode, smoothAnimations, animSpeed, openSoundVolume, guiBlur, guiShadow,
                 halloweenStyle, halloweenWebs, halloweenPumpkins, halloweenEmbers);
     }

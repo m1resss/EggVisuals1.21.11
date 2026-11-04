@@ -81,7 +81,7 @@ public class Cooldowns extends Module {
     );
 
     public Cooldowns() {
-        super("Cooldowns", "Индикатор перезарядки предметов и способностей в виде горизонтальной капсулы", Category.ESP);
+        super("Cooldowns", "Показывает оставшееся время перезарядки предметов", Category.ESP);
         instance = this;
         addSettings(bgColor, scale, hudThemeGradient, hudGradientStrength);
         setEnabled(true);

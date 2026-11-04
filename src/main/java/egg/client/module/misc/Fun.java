@@ -10,7 +10,7 @@ public class Fun extends Module {
     private final BooleanSetting raisedArms = new BooleanSetting("Поднятые руки", true, "Противники бегают с поднятыми руками как в старом майнкрафте");
 
     public Fun() {
-        super("Fun", "Развлекательные анимации и визуальные эффекты", Category.MISC);
+        super("Fun", "Визуальные эффекты вращения и движения персонажа", Category.MISC);
         instance = this;
         addSettings(this.raisedArms);
     }

@@ -21,7 +21,7 @@ public class Crosshair extends Module {
     private final ColorSetting crosshairColor = new ColorSetting("Цвет прицела", 0xFFFFFFFF, "Цвет прицела");
 
     public Crosshair() {
-        super("Crosshair", "Отображает настраиваемый прицел на экране", Category.ESP);
+        super("Crosshair", "Отображает настраиваемый прицел вместо стандартного", Category.ESP);
         addSettings(gap, length, thickness, adaptive, outline, dot, crosshairColor);
     }
 

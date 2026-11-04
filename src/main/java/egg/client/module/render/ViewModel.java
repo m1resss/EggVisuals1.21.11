@@ -54,7 +54,7 @@ public class ViewModel extends Module {
     private float grabOffsetY;
 
     public ViewModel() {
-        super("View Model", "Изменяет положение и размер предметов в руке через ползунки или интерактивно в чате", Category.ESP);
+        super("View Model", "Изменяет положение, угол наклона и размер предмета в руке", Category.ESP);
         addSettings(mode, mainX, mainY, mainZ, mainScaleSetting, offX, offY, offZ, offScaleSetting, resetBtn);
         syncFromSettings();
     }

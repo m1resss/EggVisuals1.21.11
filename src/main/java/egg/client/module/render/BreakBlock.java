@@ -30,7 +30,7 @@ public class BreakBlock extends Module {
     private BlockPos currentBreakingPos = null;
 
     public BreakBlock() {
-        super("Break Block", "Подсветка процесса и процентов при сломе блока", Category.ESP);
+        super("Break Block", "Показывает прогресс разрушения блока", Category.ESP);
         addSettings(colorMode, customColor, showPercent);
     }
 

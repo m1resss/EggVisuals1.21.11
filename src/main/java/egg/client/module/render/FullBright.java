@@ -11,7 +11,7 @@ public class FullBright extends Module {
     private final ModeSetting mode = new ModeSetting("Режим", "Ночное зрение", "Режим полного освещения", "Ночное зрение", "Гамма");
 
     public FullBright() {
-        super("FullBright", "Полное освещение мира без факелов и темноты", Category.ESP);
+        super("FullBright", "Увеличивает яркость мира до максимума", Category.ESP);
         addSettings(mode);
     }
 

@@ -88,7 +88,7 @@ public class KillEffect extends Module {
     private long lastFrameNanos = 0L;
 
     public KillEffect() {
-        super("KillEffect", "Кастомные 3D килл-эффекты при смерти противника (Статуя, Обелиск, Чернила, Стекло)", Category.ESP);
+        super("KillEffect", "Воспроизводит визуальный эффект на месте гибели игрока", Category.ESP);
         instance = this;
 
         // Фильтрация настроек: отображаются только параметры активного режима

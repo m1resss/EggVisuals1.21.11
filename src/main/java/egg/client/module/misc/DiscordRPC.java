@@ -33,7 +33,7 @@ public class DiscordRPC extends Module {
     private String lastClientId = "";
 
     public DiscordRPC() {
-        super("DiscordRPC", "Отображает статус Egg Visuals в вашем профиле Discord", Category.MISC);
+        super("DiscordRPC", "Показывает игровую активность в профиле Discord", Category.MISC);
         addSettings(showServer, showTimer, clientId, avatarUrl);
         setEnabled(true);
     }

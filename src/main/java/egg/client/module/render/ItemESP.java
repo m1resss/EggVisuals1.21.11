@@ -44,7 +44,7 @@ public class ItemESP extends Module {
     private final SliderSetting glowIntensity = new SliderSetting("Яркость", 1.0, 0.2, 2.0, 0.1, "Интенсивность свечения голограммы");
 
     public ItemESP() {
-        super("ItemESP", "Голографический ESP для выпавших предметов с глитчем и оболочкой", Category.ESP);
+        super("ItemESP", "Подсвечивает лежащие на земле предметы", Category.ESP);
         color.setVisible(() -> colorMode.is("Кастомный"));
         addSettings(colorMode, color, shell, scanlines, glitch, box, tracer, glowIntensity);
     }

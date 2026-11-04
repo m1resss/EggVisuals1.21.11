@@ -9,7 +9,7 @@ public class ItemScroller extends Module {
     private long lastMoveTime = 0L;
 
     public ItemScroller() {
-        super("ItemScroller", "Быстрое перемещение предметов в сундуках зажатием Shift и ЛКМ", Category.PLAYER);
+        super("ItemScroller", "Быстро перемещает предметы в сундуках проведением мыши с зажатой клавишей", Category.PLAYER);
         addSettings(delay);
     }
 

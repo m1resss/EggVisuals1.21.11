@@ -37,7 +37,7 @@ public class CosmeticsModule extends Module {
     private String selectedSwordModel = "";
 
     public CosmeticsModule() {
-        super("Cosmetics", "Кастомные 3D крылья, рюкзаки, шапки, маски, питомцы и мечи", Category.COSMETICS);
+        super("Cosmetics", "Отображает украшения персонажа: крылья, шляпы, маски и питомцев", Category.COSMETICS);
         instance = this;
         setEnabled(true);
         addSettings(wings, backpacks, hats, masks, pets);

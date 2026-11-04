@@ -10,7 +10,7 @@ public class StreamerMode extends Module {
     private final BooleanSetting hideAnarchy = new BooleanSetting("Hide Anarchy #", true, "Скрывать номер анархии");
 
     public StreamerMode() {
-        super("StreamerMode", "Скрывает личные данные и номер сервера при стриме/записи", Category.MISC);
+        super("StreamerMode", "Скрывает ники игроков и адрес сервера на экране", Category.MISC);
         addSettings(hideName, hideAnarchy);
     }
 

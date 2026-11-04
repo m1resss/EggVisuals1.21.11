@@ -86,8 +86,6 @@ public class ModuleManager {
 
         register(new ViewModel());
 
-        register(new SwordAnimations());
-
         register(new AspectRatio());
 
         register(new BreakBlock());
@@ -110,7 +108,6 @@ public class ModuleManager {
         register(new KillEffect());
         register(new Lyrics());
         register(new Trail());
-        register(new CustomSkybox());
 
 
 

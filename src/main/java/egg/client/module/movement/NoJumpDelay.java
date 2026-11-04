@@ -7,7 +7,7 @@ import net.minecraft.client.MinecraftClient;
 
 public class NoJumpDelay extends Module {
     public NoJumpDelay() {
-        super("No Jump Delay", "Убирает задержку между прыжками для непрерывного распрыга", Category.MOVEMENT);
+        super("No Jump Delay", "Убирает задержку между прыжками при удержании пробела", Category.MOVEMENT);
     }
 
     @Override

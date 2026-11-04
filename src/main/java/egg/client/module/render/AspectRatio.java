@@ -11,7 +11,7 @@ public class AspectRatio extends Module {
     private final SliderSetting customRatio = new SliderSetting("Соотношение", 1.9, 0.1, 5.0, 0.1, "Пользовательское значение соотношения");
 
     public AspectRatio() {
-        super("Aspect Ratio", "Изменяет соотношение сторон экрана", Category.ESP);
+        super("Aspect Ratio", "Изменяет соотношение сторон игрового экрана", Category.ESP);
         addSettings(mode, customRatio);
     }
 

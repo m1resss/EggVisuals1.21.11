@@ -11,7 +11,6 @@ import egg.client.module.render.TotemPopConfetti;
 import egg.client.module.render.CustomHitbox;
 import egg.client.module.render.Trajectories;
 import egg.client.module.render.WorldTweaks;
-import egg.client.module.render.CustomSkybox;
 import egg.client.render.shader.FrameBufferPool;
 import egg.client.render.shader.GlStateSnapshot;
 import net.fabricmc.api.ClientModInitializer;
@@ -61,10 +60,6 @@ public class EggClient implements ClientModInitializer {
 
         GlStateSnapshot snapshot = GlStateSnapshot.capture();
         try {
-            CustomSkybox customSky = ModuleManager.getInstance().getModule(CustomSkybox.class);
-            if (customSky != null && customSky.isEnabled()) {
-                customSky.render(immediate, camPos, tickDelta);
-            }
             WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
             if (wt != null && wt.isEnabled()) {
                 wt.renderWorld3D(immediate, camPos);

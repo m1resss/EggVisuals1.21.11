@@ -56,7 +56,7 @@ public class Trajectories extends Module {
     private long lastFrameNanos = 0L;
 
     public Trajectories() {
-        super("Trajectories", "Прогнозирует траекторию и точку падения стрел, зелий, жемчуга и снарядов", Category.ESP);
+        super("Trajectories", "Показывает линию полета стрел, зелий и жемчуга края", Category.ESP);
         pullThreshold.setVisible(() -> showLine.get());
         addSettings(circleRadius, cubeSize, cubeOutlineWidth, smoothSpeed, showLine, pullThreshold, glowEffect, inFlight);
     }

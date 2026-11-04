@@ -8,7 +8,7 @@ public class ItemPhysic extends Module {
     private final BooleanSetting smallItems = new BooleanSetting("Small Items", false, "Уменьшить размер лежащих предметов");
 
     public ItemPhysic() {
-        super("ItemPhysic", "Реалистичная физика лежащих на земле предметов", Category.ESP);
+        super("ItemPhysic", "Кладет выброшенные предметы плашмя на землю с анимацией падения", Category.ESP);
         addSettings(smallItems);
     }
 

@@ -10,7 +10,7 @@ public class AutoAuth extends Module {
     private final StringSetting regPassword = new StringSetting("Пароль регистрации", "", "Пароль для автоматического /register");
 
     public AutoAuth() {
-        super("Auto Auth", "Автоматически вводит пароль при авторизации и регистрации", Category.PLAYER);
+        super("Auto Auth", "Автоматически вводит пароль при входе на сервер", Category.PLAYER);
         addSettings(authPassword, regPassword);
     }
 

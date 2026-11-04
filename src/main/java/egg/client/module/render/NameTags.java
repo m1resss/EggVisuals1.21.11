@@ -62,7 +62,7 @@ public class NameTags extends Module {
     private long lastFrameNanos = 0L;
 
     public NameTags() {
-        super("NameTags", "Современные бейджи игроков в стиле Rockstar Round", Category.ESP);
+        super("NameTags", "Отображает имя, здоровье и экипировку над головами игроков", Category.ESP);
         instance = this;
         addSettings(showHealth, showPing, showDistance, showArmor, showSelf, bgAlpha, colorMode);
     }

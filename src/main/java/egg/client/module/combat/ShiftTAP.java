@@ -11,7 +11,7 @@ public class ShiftTAP extends Module {
     private int sneakTicks = 0;
 
     public ShiftTAP() {
-        super("ShiftTAP", "Автоматически приседает в момент удара по игроку для сброса отдачи", Category.COMBAT);
+        super("ShiftTAP", "Приседает в момент удара по игроку для сброса отдачи", Category.COMBAT);
     }
 
     public void onAttack(Entity target) {

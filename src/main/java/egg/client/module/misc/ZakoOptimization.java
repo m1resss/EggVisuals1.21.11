@@ -68,7 +68,7 @@ public class ZakoOptimization extends Module {
     });
 
     public ZakoOptimization() {
-        super("Zako Optimization", "Комплексная оптимизация рендера, сущностей, партиклов и CPU на базе ZakoOpt", Category.MISC);
+        super("Zako Optimization", "Оптимизирует отрисовку сущностей и частиц для повышения частоты кадров", Category.MISC);
         addSettings(settingsBtn);
         setEnabled(true);
         sanitizeUnsafeFeatures();

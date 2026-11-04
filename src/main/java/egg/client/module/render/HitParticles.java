@@ -47,7 +47,7 @@ public class HitParticles extends Module {
     private long lastFrameNanos = 0L;
 
     public HitParticles() {
-        super("HitParticles", "3D осколки стекла при ударе противника", Category.ESP);
+        super("HitParticles", "Создает осколки и искры при ударе по существу", Category.ESP);
         instance = this;
         addSettings(normalHits, amount, size, speed, lifetime, bounce, syncColor, color, sparkle);
     }

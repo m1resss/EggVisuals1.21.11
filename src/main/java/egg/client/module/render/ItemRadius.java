@@ -52,7 +52,7 @@ public class ItemRadius extends Module {
     private boolean plastHasSmoothedPose = false;
 
     public ItemRadius() {
-        super("ItemRadius", "Отображение радиуса особых предметов на серверах", Category.ESP);
+        super("ItemRadius", "Показывает круги радиуса действия предметов на земле", Category.ESP);
         addSettings(server, showDez, showYavka, showFireCharge, showGodAura, showTrap, showPlast, radarWave, pulseRing, fillOpacity);
     }
 

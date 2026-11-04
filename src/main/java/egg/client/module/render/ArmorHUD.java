@@ -61,7 +61,7 @@ public class ArmorHUD extends Module {
     public float getLastH() { return lastH; }
 
     public ArmorHUD() {
-        super("ArmorHUD", "Индикатор надетой брони и её прочности", Category.ESP);
+        super("ArmorHUD", "Показывает надетую броню, предметы в руках и их прочность", Category.ESP);
         instance = this;
         posX.setVisible(() -> false);
         posY.setVisible(() -> false);

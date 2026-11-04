@@ -17,7 +17,7 @@ public class SoundReducer extends Module {
     private final BooleanSetting totem = new BooleanSetting("Totem", false, "Звук тотема бессмертия");
 
     public SoundReducer() {
-        super("SoundReducer", "Уменьшает или отключает громкость резких игровых звуков", Category.PLAYER);
+        super("SoundReducer", "Понижает или отключает громкость выбранных звуков игры", Category.PLAYER);
         addSettings(mode, volume, potionsAndExp, tntAndCreeper, anvil, portal, wither, totem);
     }
 

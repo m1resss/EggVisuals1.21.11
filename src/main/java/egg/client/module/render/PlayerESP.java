@@ -10,7 +10,7 @@ public class PlayerESP extends Module {
     private final BooleanSetting armorBar = new BooleanSetting("ArmorBar", true, "Индикатор прочности экипировки");
 
     public PlayerESP() {
-        super("PlayerESP", "Подсветка игроков через стены и в поле зрения", Category.ESP);
+        super("PlayerESP", "Подсвечивает контуры игроков в поле зрения", Category.ESP);
         addSettings(box, healthBar, armorBar);
     }
 }

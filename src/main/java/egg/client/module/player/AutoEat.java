@@ -36,7 +36,7 @@ public class AutoEat extends Module {
     private int autoEatTicks = 0;
 
     public AutoEat() {
-        super("AutoEat", "Берёт в руки морковку (если голоден) или гэпл (если сыт) по ПКМ с инструментом", Category.PLAYER);
+        super("AutoEat", "Автоматически берет еду или золотое яблоко при нажатии правой кнопки мыши", Category.PLAYER);
         addSettings(this.mode, this.onlyWithTool, this.returnToTool, this.fallbackFood, this.includeWeapons, this.hungerThreshold);
     }
 

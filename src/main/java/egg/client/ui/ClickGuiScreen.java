@@ -8,7 +8,6 @@ import egg.client.module.misc.ClientSettings;
 import egg.client.module.render.WorldTweaks;
 
 import egg.client.ui.widget.WorldTweaksUI;
-import egg.client.ui.overlay.SwordAnimationOverlay;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ButtonSetting;
 import egg.client.module.setting.ColorSetting;
@@ -358,10 +357,6 @@ public class ClickGuiScreen extends Screen {
         if ("Простая".equals(animMode) || "�".equals(animMode)) {
             renderDirectWindow(context, gx, gy, guiWidth, guiHeight, mouseX, mouseY, p, p);
             renderOpenDropdown(context, mouseX, mouseY, 1.0f);
-
-            if (SwordAnimationOverlay.isOpen() || SwordAnimationOverlay.getAlpha() > 0.005f) {
-                SwordAnimationOverlay.render(context, (float) mouseX, (float) mouseY, delta);
-            }
             this.lateMouseX = mouseX;
             this.lateMouseY = mouseY;
             return;
@@ -427,10 +422,6 @@ public class ClickGuiScreen extends Screen {
         }
 
         renderOpenDropdown(context, mouseX, mouseY, 1.0f);
-
-        if (SwordAnimationOverlay.isOpen() || SwordAnimationOverlay.getAlpha() > 0.005f) {
-            SwordAnimationOverlay.render(context, (float) mouseX, (float) mouseY, delta);
-        }
 
         this.lateMouseX = mouseX;
         this.lateMouseY = mouseY;
@@ -645,7 +636,6 @@ public class ClickGuiScreen extends Screen {
     static {
 
         MODULE_KEYWORDS.put("HitColor", new String[]{"хитколор", "цвет удара", "хит", "вспышка", "урон", "хит колор", "hit color", "hit"});
-        MODULE_KEYWORDS.put("SwordAnimations", new String[]{"анимации", "блокхит", "меч", "удар", "свинг", "1.7", "анимация меча", "sword"});
         MODULE_KEYWORDS.put("TapeMouse", new String[]{"тейп", "кликер", "автокликер", "мышь", "зажим", "tape mouse", "clicker"});
         MODULE_KEYWORDS.put("ShiftTAP", new String[]{"шифт", "шифттап", "тап", "сброс кб", "shift tap"});
         MODULE_KEYWORDS.put("AutoSwap", new String[]{"автосвап", "свап", "свапер", "офхенд", "тотем", "сфера", "левая рука", "щит", "auto swap", "autoswap", "swap"});
@@ -1558,11 +1548,6 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
     @Override
     public boolean mouseClicked(Click click, boolean bl) {
-        if (SwordAnimationOverlay.isOpen()) {
-            if (SwordAnimationOverlay.mouseClicked((float) click.x(), (float) click.y(), click.button())) {
-                return true;
-            }
-        }
         if (closing || (!closing && currentAnimProgress < 0.70f)) {
             return false;
         }
@@ -2011,9 +1996,6 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
     @Override
     public boolean mouseReleased(Click click) {
-        if (SwordAnimationOverlay.isOpen()) {
-            SwordAnimationOverlay.mouseReleased();
-        }
         draggingSlider = null;
         WorldTweaksUI.mouseReleased();
         if (selectedCategory == Category.INVENTORY) {
@@ -2032,11 +2014,6 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
     @Override
     public boolean mouseDragged(Click click, double dx, double dy) {
-        if (SwordAnimationOverlay.isOpen()) {
-            if (SwordAnimationOverlay.mouseDragged((float) click.x(), (float) click.y(), click.button(), dx, dy)) {
-                return true;
-            }
-        }
 
         if (searchFocused && searchSelecting) {
             float gWidth = Math.clamp(this.width * 0.58f, 520.0f, 580.0f);
@@ -2093,10 +2070,6 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        if (SwordAnimationOverlay.isOpen()) {
-            SwordAnimationOverlay.mouseScrolled(mouseX, mouseY, verticalAmount);
-            return true;
-        }
         if (closing || (!closing && currentAnimProgress < 0.70f)) {
             return false;
         }
@@ -2137,15 +2110,6 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
     public boolean keyPressed(KeyInput input) {
         int key = input.key();
 
-        if (SwordAnimationOverlay.isOpen()) {
-            if (key == GLFW.GLFW_KEY_ESCAPE) {
-                SwordAnimationOverlay.close();
-                return true;
-            }
-            if (SwordAnimationOverlay.keyPressed(input.key(), input.scancode(), input.modifiers())) {
-                return true;
-            }
-        }
 
         if (closing) {
             return true;

@@ -96,7 +96,7 @@ public class TargetHUD extends Module {
     private LivingEntity lastHpTarget = null;
 
     public TargetHUD() {
-        super("Target HUD", "Информационная карточка цели на экране или в центре противника", Category.ESP);
+        super("Target HUD", "Показывает здоровье, броню и имя противника в прицеле", Category.ESP);
         instance = this;
 
         posX.setVisible(() -> false);

@@ -8,7 +8,7 @@ import net.minecraft.item.BlockItem;
 
 public class FastPlace extends Module {
     public FastPlace() {
-        super("Fast Place", "Убирает задержку при установке блоков", Category.PLAYER);
+        super("Fast Place", "Убирает задержку при установке блоков и использовании предметов", Category.PLAYER);
     }
 
     @Override

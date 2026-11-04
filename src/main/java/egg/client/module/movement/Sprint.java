@@ -13,7 +13,7 @@ public class Sprint extends Module {
     );
 
     public Sprint() {
-        super("Sprint", "Автоматический спринт при движении вперед", Category.MOVEMENT);
+        super("Sprint", "Автоматически включает бег при движении вперед", Category.MOVEMENT);
         addSettings(keepSprint);
     }
 

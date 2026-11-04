@@ -51,7 +51,7 @@ public class AutoSwap extends Module {
     private static int timer = 0;
 
     public AutoSwap() {
-        super("AutoSwap", "Легитно открывает инвентарь, наводится на предмет и меняет его в левую руку", Category.COMBAT);
+        super("AutoSwap", "Перемещает выбранный предмет во вторую руку через инвентарь", Category.COMBAT);
         instance = this;
         addSettings(this.mode, this.firstItem, this.secondItem, this.delay);
         setKey(GLFW.GLFW_KEY_V);

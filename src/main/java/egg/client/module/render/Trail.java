@@ -63,7 +63,7 @@ public class Trail extends Module {
     };
 
     public Trail() {
-        super("Trail", "Шелковые светящиеся нити за спиной игрока", Category.ESP);
+        super("Trail", "Оставляет светящуюся линию позади персонажа при движении", Category.ESP);
         instance = this;
 
         customColor.setVisible(() -> "Кастомный".equals(colorMode.get()));

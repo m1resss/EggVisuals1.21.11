@@ -181,7 +181,7 @@ public class Interface extends Module {
     public float getLastH() { return lastH; }
 
     public Interface() {
-        super("Interface", "Отображает выбранные элементы интерфейса на экране", Category.ESP);
+        super("Interface", "Отображает панели с информацией о частоте кадров, пинге и координатах", Category.ESP);
         instance = this;
 
         contextMenu.addToggle("Айленд", () -> showDynamicIsland.isEnabled(), () -> showDynamicIsland.toggle());

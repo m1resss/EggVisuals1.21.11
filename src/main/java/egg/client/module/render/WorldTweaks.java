@@ -145,7 +145,7 @@ public class WorldTweaks extends Module {
     private String lastAppliedSeason = "";
 
     public WorldTweaks() {
-        super("World Tweaks", "Кастомная погода, времена года и оптимизированные частицы", Category.MISC);
+        super("World Tweaks", "Изменяет визуальный стиль погоды, листвы и снежного покрова", Category.MISC);
         addSettings(
                 this.timeMode, this.timeOfDay, this.timeHour,
                 this.season, this.weather,
