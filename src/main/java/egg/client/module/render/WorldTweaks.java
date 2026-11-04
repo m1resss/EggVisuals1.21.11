@@ -79,10 +79,12 @@ public class WorldTweaks extends Module {
     private final BooleanSetting particles = new BooleanSetting("Партиклы", true, "3D планирующие частицы в воздухе");
     private final SliderSetting particleDensity = new SliderSetting("Кол-во частиц", 80.0, 20.0, 180.0, 10.0, "Плотность частиц");
     private final SliderSetting snowSpeed = new SliderSetting("Скорость снега", 1.4, 0.5, 3.0, 0.1, "Скорость падения снежинок");
+    private final SliderSetting particleSpeed = new SliderSetting("Скорость частиц", 1.5, 0.5, 3.5, 0.1, "Скорость падения частиц в воздухе");
 
     private final BooleanSetting smoothSnow = new BooleanSetting("Рельефный снег", true, "Объемные сугробы и бугорки со скруглением");
     private final BooleanSetting snowFootprints = new BooleanSetting("Следы на снегу", true, "Оставлять следы шагов на снегу");
-    private final BooleanSetting autumnLeavesGround = new BooleanSetting("Опавшие листья", true, "3D кучки и пары листьев на земле осенью");
+    private final BooleanSetting autumnLeavesGround = new BooleanSetting("Опавшие листья", true, "3D кучки и ковер из листьев на земле осенью");
+    private final SliderSetting groundLeavesDensity = new SliderSetting("Плотность листьев", 75.0, 20.0, 100.0, 5.0, "Плотность опавших листьев на земле (%)");
 
     private final BooleanSetting customFog = new BooleanSetting("Кастомный туман", false, "Атмосферный цвет тумана горизонта");
     private final ModeSetting fogColorMode = new ModeSetting("Цвет тумана", "По сезону", "Режим цвета тумана", "По сезону", "Кастом", "Ванилла");
@@ -134,6 +136,7 @@ public class WorldTweaks extends Module {
     private int lastLeafCamX = Integer.MIN_VALUE;
     private int lastLeafCamY = Integer.MIN_VALUE;
     private int lastLeafCamZ = Integer.MIN_VALUE;
+    private double lastGroundLeavesDensity = -1.0;
     private boolean groundLeavesDirty = true;
 
     private int thunderCooldown = 120;
@@ -146,8 +149,8 @@ public class WorldTweaks extends Module {
         addSettings(
                 this.timeMode, this.timeOfDay, this.timeHour,
                 this.season, this.weather,
-                this.particles, this.particleDensity, this.snowSpeed,
-                this.smoothSnow, this.snowFootprints, this.autumnLeavesGround,
+                this.particles, this.particleDensity, this.particleSpeed, this.snowSpeed,
+                this.smoothSnow, this.snowFootprints, this.autumnLeavesGround, this.groundLeavesDensity,
                 this.shaderQuality, this.reflections,
                 this.bloom, this.bloomIntensity, this.bloomThreshold,
                 this.colorGrade, this.colorGradeSaturation, this.colorGradeContrast, this.colorGradeBrightness, this.colorGradeTemperature,
@@ -378,7 +381,7 @@ public class WorldTweaks extends Module {
 
         if ("Зима".equals(curSeason)) {
             p.texIdx = this.random.nextInt(SNOWFLAKE_TEXTURES.length);
-            float speedMult = (float) this.snowSpeed.get();
+            float speedMult = (float) this.particleSpeed.get();
             p.vy = (-0.036f - this.random.nextFloat() * 0.034f) * speedMult;
             p.vx = (this.random.nextFloat() - 0.5f) * 0.014f;
             p.vz = (this.random.nextFloat() - 0.5f) * 0.014f;
@@ -388,7 +391,8 @@ public class WorldTweaks extends Module {
             p.scale = 0.22f + this.random.nextFloat() * 0.18f;
         } else if ("Весна".equals(curSeason)) {
             p.texIdx = this.random.nextInt(SAKURA_TEXTURES.length);
-            p.vy = -0.012f - this.random.nextFloat() * 0.014f;
+            float speedMult = (float) this.particleSpeed.get();
+            p.vy = (-0.022f - this.random.nextFloat() * 0.020f) * speedMult;
             p.vx = 0.014f + this.random.nextFloat() * 0.016f;
             p.vz = 0.006f + this.random.nextFloat() * 0.012f;
             p.swayRadius = 0.024f + this.random.nextFloat() * 0.024f;
@@ -397,7 +401,8 @@ public class WorldTweaks extends Module {
             p.scale = 0.26f + this.random.nextFloat() * 0.16f;
         } else if ("Осень".equals(curSeason)) {
             p.texIdx = this.random.nextInt(LEAF_TEXTURES.length);
-            p.vy = -0.018f - this.random.nextFloat() * 0.020f;
+            float speedMult = (float) this.particleSpeed.get();
+            p.vy = (-0.030f - this.random.nextFloat() * 0.028f) * speedMult;
             p.vx = 0.012f + this.random.nextFloat() * 0.014f;
             p.vz = (this.random.nextFloat() - 0.5f) * 0.010f;
             p.swayRadius = 0.030f + this.random.nextFloat() * 0.030f;
@@ -406,7 +411,8 @@ public class WorldTweaks extends Module {
             p.scale = 0.26f + this.random.nextFloat() * 0.18f;
         } else {
             p.texIdx = 0;
-            p.vy = -0.006f - this.random.nextFloat() * 0.006f;
+            float speedMult = (float) this.particleSpeed.get();
+            p.vy = (-0.014f - this.random.nextFloat() * 0.014f) * speedMult;
             p.vx = (this.random.nextFloat() - 0.5f) * 0.008f;
             p.vz = (this.random.nextFloat() - 0.5f) * 0.008f;
             p.swayRadius = 0.014f;
@@ -1102,10 +1108,12 @@ public class WorldTweaks extends Module {
         }
     }
     private void updateGroundLeaves(MinecraftClient mc, int camBx, int camBy, int camBz) {
+        double densityVal = this.groundLeavesDensity.get();
         if (!this.groundLeavesDirty &&
                 Math.abs(camBx - this.lastLeafCamX) < 2 &&
                 Math.abs(camBz - this.lastLeafCamZ) < 2 &&
-                Math.abs(camBy - this.lastLeafCamY) < 2) {
+                Math.abs(camBy - this.lastLeafCamY) < 2 &&
+                Math.abs(densityVal - this.lastGroundLeavesDensity) < 0.1) {
             return;
         }
 
@@ -1113,11 +1121,12 @@ public class WorldTweaks extends Module {
         this.lastLeafCamX = camBx;
         this.lastLeafCamY = camBy;
         this.lastLeafCamZ = camBz;
+        this.lastGroundLeavesDensity = densityVal;
         this.groundLeavesDirty = false;
 
         if (mc.world == null) return;
 
-        int radius = 18;
+        int radius = 26;
         int radSq = radius * radius;
 
         for (int dx = -radius; dx <= radius; dx++) {
@@ -1133,16 +1142,18 @@ public class WorldTweaks extends Module {
                 long seed = ((long) bx * 3129871L) ^ ((long) bz * 6128657L) ^ ((long) topY * 19349663L);
                 Random rand = new Random(seed);
 
-                if (rand.nextInt(100) > 35) continue;
+                if (rand.nextInt(100) >= (int) densityVal) continue;
 
-                int count = 2 + rand.nextInt(3);
+                int clusterRoll = rand.nextInt(100);
+                boolean isHeavy = clusterRoll < 50;
+                int count = isHeavy ? (4 + rand.nextInt(5)) : (2 + rand.nextInt(3));
                 double clusterCenterX = bx + 0.25 + rand.nextDouble() * 0.50;
                 double clusterCenterZ = bz + 0.25 + rand.nextDouble() * 0.50;
 
                 for (int i = 0; i < count; i++) {
-                    double lx = clusterCenterX + (rand.nextDouble() - 0.5) * 0.38;
-                    double lz = clusterCenterZ + (rand.nextDouble() - 0.5) * 0.38;
-                    double ly = topY + 1.004 + i * 0.005;
+                    double lx = (isHeavy && i < 3) ? (clusterCenterX + (rand.nextDouble() - 0.5) * 0.44) : (bx + 0.12 + rand.nextDouble() * 0.76);
+                    double lz = (isHeavy && i < 3) ? (clusterCenterZ + (rand.nextDouble() - 0.5) * 0.44) : (bz + 0.12 + rand.nextDouble() * 0.76);
+                    double ly = topY + 1.003 + (i % 6) * 0.004;
 
                     float yaw = rand.nextFloat() * 360.0f;
                     float pitch = (rand.nextFloat() - 0.5f) * 18.0f;
@@ -1150,7 +1161,7 @@ public class WorldTweaks extends Module {
                     float scale = 0.24f + rand.nextFloat() * 0.12f;
                     int texIdx = rand.nextInt(LEAF_TEXTURES.length);
 
-                    int tintRoll = rand.nextInt(4);
+                    int tintRoll = rand.nextInt(5);
                     int r, g, b;
                     if (tintRoll == 0) {
                         r = 255; g = 205; b = 55;
@@ -1158,8 +1169,10 @@ public class WorldTweaks extends Module {
                         r = 235; g = 110; b = 35;
                     } else if (tintRoll == 2) {
                         r = 215; g = 60; b = 38;
-                    } else {
+                    } else if (tintRoll == 3) {
                         r = 200; g = 145; b = 45;
+                    } else {
+                        r = 195; g = 85; b = 32;
                     }
 
                     this.cachedGroundLeaves.add(new GroundLeaf(lx, ly, lz, yaw, pitch, roll, scale, texIdx, r, g, b));
