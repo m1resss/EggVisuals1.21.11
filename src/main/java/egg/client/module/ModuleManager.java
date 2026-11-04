@@ -85,6 +85,8 @@ public class ModuleManager {
 
         register(new ViewModel());
 
+        register(new SwordAnimations());
+
         register(new AspectRatio());
 
         register(new BreakBlock());

@@ -8,6 +8,7 @@ import egg.client.module.misc.ClientSettings;
 import egg.client.module.render.WorldTweaks;
 
 import egg.client.ui.widget.WorldTweaksUI;
+import egg.client.ui.overlay.SwordAnimationOverlay;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ButtonSetting;
 import egg.client.module.setting.ColorSetting;
@@ -354,8 +355,15 @@ public class ClickGuiScreen extends Screen {
         float gx = (float) Math.round((width - guiWidth) / 2.0f);
         float gy = (float) Math.round((height - guiHeight) / 2.0f);
 
-        if ("Простая".equals(animMode)) {
+        if ("Простая".equals(animMode) || "�".equals(animMode)) {
             renderDirectWindow(context, gx, gy, guiWidth, guiHeight, mouseX, mouseY, p, p);
+            renderOpenDropdown(context, mouseX, mouseY, 1.0f);
+
+            if (SwordAnimationOverlay.isOpen() || SwordAnimationOverlay.getAlpha() > 0.005f) {
+                SwordAnimationOverlay.render(context, (float) mouseX, (float) mouseY, delta);
+            }
+            this.lateMouseX = mouseX;
+            this.lateMouseY = mouseY;
             return;
         }
 
@@ -1545,6 +1553,11 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
     @Override
     public boolean mouseClicked(Click click, boolean bl) {
+        if (SwordAnimationOverlay.isOpen()) {
+            if (SwordAnimationOverlay.mouseClicked((float) click.x(), (float) click.y(), click.button())) {
+                return true;
+            }
+        }
         if (closing || (!closing && currentAnimProgress < 0.70f)) {
             return false;
         }
@@ -1993,6 +2006,9 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
     @Override
     public boolean mouseReleased(Click click) {
+        if (SwordAnimationOverlay.isOpen()) {
+            SwordAnimationOverlay.mouseReleased();
+        }
         draggingSlider = null;
         WorldTweaksUI.mouseReleased();
         if (selectedCategory == Category.INVENTORY) {
@@ -2011,6 +2027,11 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
     @Override
     public boolean mouseDragged(Click click, double dx, double dy) {
+        if (SwordAnimationOverlay.isOpen()) {
+            if (SwordAnimationOverlay.mouseDragged((float) click.x(), (float) click.y(), click.button(), dx, dy)) {
+                return true;
+            }
+        }
 
         if (searchFocused && searchSelecting) {
             float gWidth = Math.clamp(this.width * 0.58f, 520.0f, 580.0f);
@@ -2067,6 +2088,10 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        if (SwordAnimationOverlay.isOpen()) {
+            SwordAnimationOverlay.mouseScrolled(mouseX, mouseY, verticalAmount);
+            return true;
+        }
         if (closing || (!closing && currentAnimProgress < 0.70f)) {
             return false;
         }
@@ -2106,6 +2131,16 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
     @Override
     public boolean keyPressed(KeyInput input) {
         int key = input.key();
+
+        if (SwordAnimationOverlay.isOpen()) {
+            if (key == GLFW.GLFW_KEY_ESCAPE) {
+                SwordAnimationOverlay.close();
+                return true;
+            }
+            if (SwordAnimationOverlay.keyPressed(input.key(), input.scancode(), input.modifiers())) {
+                return true;
+            }
+        }
 
         if (closing) {
             return true;
