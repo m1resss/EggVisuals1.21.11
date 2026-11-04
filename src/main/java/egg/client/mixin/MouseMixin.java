@@ -113,6 +113,11 @@ public class MouseMixin {
                 if (iface != null && iface.isEnabled()) {
                     iface.onChatMouseReleased(mouseX, mouseY, button);
                 }
+
+                egg.client.module.render.Keybinds keybinds = ModuleManager.getInstance().getModule(egg.client.module.render.Keybinds.class);
+                if (keybinds != null && keybinds.isEnabled()) {
+                    keybinds.onChatMouseReleased(mouseX, mouseY, button);
+                }
             }
         }
 
@@ -161,6 +166,14 @@ public class MouseMixin {
             egg.client.module.render.ArmorHUD armorHUD = ModuleManager.getInstance().getModule(egg.client.module.render.ArmorHUD.class);
             if (armorHUD != null && armorHUD.isEnabled()) {
                 if (armorHUD.onMouseScrolled(mouseX, mouseY, vertical)) {
+                    ci.cancel();
+                    return;
+                }
+            }
+
+            egg.client.module.render.Keybinds keybinds = ModuleManager.getInstance().getModule(egg.client.module.render.Keybinds.class);
+            if (keybinds != null && keybinds.isEnabled()) {
+                if (keybinds.onMouseScrolled(mouseX, mouseY, vertical)) {
                     ci.cancel();
                     return;
                 }

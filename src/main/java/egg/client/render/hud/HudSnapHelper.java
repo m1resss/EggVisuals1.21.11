@@ -6,6 +6,7 @@ import egg.client.module.render.Cooldowns;
 import egg.client.module.render.Interface;
 import egg.client.module.render.PotionHUD;
 import egg.client.module.render.TargetHUD;
+import egg.client.module.render.Keybinds;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.render.msdf.Fonts;
@@ -70,6 +71,11 @@ public class HudSnapHelper {
         Cooldowns cd = ModuleManager.getInstance().getModule(Cooldowns.class);
         if (cd != null && cd.isEnabled() && !"cooldowns".equals(currentId) && cd.getLastW() > 10.0f) {
             list.add(new HudElementBounds("cooldowns", "Кулдауны", cd.getLastX(), cd.getLastY(), cd.getLastW(), cd.getLastH()));
+        }
+
+        Keybinds kb = ModuleManager.getInstance().getModule(Keybinds.class);
+        if (kb != null && kb.isEnabled() && !"keybinds".equals(currentId) && kb.getLastW() > 10.0f) {
+            list.add(new HudElementBounds("keybinds", "Keybinds", kb.getLastX(), kb.getLastY(), kb.getLastW(), kb.getLastH()));
         }
 
         return list;

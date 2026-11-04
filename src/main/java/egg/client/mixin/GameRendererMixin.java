@@ -188,6 +188,11 @@ public abstract class GameRendererMixin {
             armorHUD.render(context, tickCounter);
         }
 
+        Keybinds keybinds = ModuleManager.getInstance().getModule(Keybinds.class);
+        if (keybinds != null && keybinds.isEnabled()) {
+            keybinds.render(context, tickCounter);
+        }
+
 
 
         Hitmarker hitmarker = ModuleManager.getInstance().getModule(Hitmarker.class);

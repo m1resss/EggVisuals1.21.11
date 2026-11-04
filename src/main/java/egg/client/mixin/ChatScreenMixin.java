@@ -4,6 +4,7 @@ import egg.client.module.ModuleManager;
 import egg.client.module.render.Interface;
 import egg.client.module.render.PotionHUD;
 import egg.client.module.render.ArmorHUD;
+import egg.client.module.render.Keybinds;
 import egg.client.module.render.Cooldowns;
 import egg.client.module.render.TargetHUD;
 import egg.client.render.animation.HudAnimations;
@@ -68,10 +69,21 @@ public class ChatScreenMixin {
         if (armorHUD != null && armorHUD.isEnabled()) {
             armorHUD.renderChatOverlay(context, mouseX, mouseY);
         }
+        Keybinds keybinds = ModuleManager.getInstance().getModule(Keybinds.class);
+        if (keybinds != null && keybinds.isEnabled()) {
+            keybinds.renderChatOverlay(context, mouseX, mouseY);
+        }
     }
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void onChatMouseClicked(Click click, boolean bl, CallbackInfoReturnable<Boolean> cir) {
+        Keybinds keybinds = ModuleManager.getInstance().getModule(Keybinds.class);
+        if (keybinds != null && keybinds.isEnabled()) {
+            if (keybinds.onChatMouseClicked(click.x(), click.y(), click.button())) {
+                cir.setReturnValue(true);
+                return;
+            }
+        }
         ArmorHUD armorHUD = ModuleManager.getInstance().getModule(ArmorHUD.class);
         if (armorHUD != null && armorHUD.isEnabled()) {
             if (armorHUD.onChatMouseClicked(click.x(), click.y(), click.button())) {
@@ -110,6 +122,13 @@ public class ChatScreenMixin {
 
     @Inject(method = "mouseScrolled", at = @At("HEAD"), cancellable = true)
     private void onChatMouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount, CallbackInfoReturnable<Boolean> cir) {
+        Keybinds keybinds = ModuleManager.getInstance().getModule(Keybinds.class);
+        if (keybinds != null && keybinds.isEnabled()) {
+            if (keybinds.onMouseScrolled(mouseX, mouseY, verticalAmount)) {
+                cir.setReturnValue(true);
+                return;
+            }
+        }
         Interface iface = ModuleManager.getInstance().getModule(Interface.class);
         if (iface != null && iface.isEnabled()) {
             if (iface.onMouseScrolled(mouseX, mouseY, verticalAmount)) {

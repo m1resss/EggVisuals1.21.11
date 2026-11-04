@@ -6,6 +6,7 @@ import egg.client.module.Module;
 import egg.client.module.ModuleManager;
 import egg.client.module.misc.ClientSettings;
 import egg.client.module.render.WorldTweaks;
+import egg.client.module.render.Keybinds;
 
 import egg.client.ui.widget.WorldTweaksUI;
 import egg.client.module.setting.BooleanSetting;
@@ -646,6 +647,7 @@ public class ClickGuiScreen extends Screen {
         MODULE_KEYWORDS.put("Fast Place", new String[]{"фаст плейс", "блоки", "строительство", "fast place", "fastplace"});
 
         MODULE_KEYWORDS.put("Interface", new String[]{"интерфейс", "худ", "ватермарка", "айленд", "остров", "динамик", "музыка", "трек", "бар", "watermark", "island"});
+        MODULE_KEYWORDS.put("Keybinds", new String[]{"бинды", "бинд", "клавиши", "кнопки", "keybinds", "keys", "binds"});
         MODULE_KEYWORDS.put("PotionHUD", new String[]{"зелья", "эффекты", "баффы", "поушн", "зельки", "hud", "potion"});
         MODULE_KEYWORDS.put("ArmorHUD", new String[]{"броня", "бронь", "шлем", "нагрудник", "поножи", "ботинки", "armor", "hud", "армор"});
         MODULE_KEYWORDS.put("FullBright", new String[]{"яркость", "свет", "гамма", "ночное видение", "ночь", "фулбрайт", "full bright"});
@@ -836,6 +838,13 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         Render2D.drawRoundedRect(context, x, y, width, height, Theme.CARD_RADIUS, ColorUtil.withAlphaFloat(cardBg, alpha));
         Render2D.drawRoundedOutline(context, x, y, width, height, Theme.CARD_RADIUS, 1.0f, ColorUtil.withAlphaFloat(cardBorder, alpha));
 
+        boolean isListening = (listeningKeybindModule == module);
+        if (isListening) {
+            float pulse = 0.5f + 0.5f * (float) Math.sin(System.currentTimeMillis() / 130.0);
+            int pulseBorder = ColorUtil.interpolate(Theme.getAccent(), Theme.getAccentHover(), pulse);
+            Render2D.drawRoundedOutline(context, x - 0.5f, y - 0.5f, width + 1.0f, height + 1.0f, Theme.CARD_RADIUS, 1.5f, ColorUtil.withAlphaFloat(pulseBorder, alpha));
+        }
+
         float textX = x + 10.0f;
         float titleY = y + 8.0f;
 
@@ -856,6 +865,33 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
         if (!FpsBenchmark.overrideNoText) {
             ClientFont.drawGradient(context, module.getName(), textX, titleY, ClientFont.SF_REGULAR, grad1, grad2);
+            float nameW = ClientFont.getWidth(module.getName(), ClientFont.SF_REGULAR);
+
+            if (isListening) {
+                float badgeX = textX + nameW + 6.0f;
+                String waitText = "Жду клавишу...";
+                float tw = ClientFont.getWidth(waitText, ClientFont.SF_REGULAR);
+                float bw = tw + 8.0f;
+                float bh = 11.5f;
+                float by = titleY - 1.0f;
+                int bBg = ColorUtil.withAlphaFloat(Theme.getAccent(), alpha * 0.9f);
+                Render2D.drawRoundedRect(context, badgeX, by, bw, bh, 3.0f, bBg);
+                ClientFont.draw(context, waitText, badgeX + 4.0f, by + 1.5f, ClientFont.SF_REGULAR, 0xFFFFFFFF);
+            } else if (module.getKey() > 0) {
+                String keyStr = Keybinds.formatKey(module.getKey());
+                float tw = ClientFont.getWidth(keyStr, ClientFont.SF_REGULAR);
+                float bw = Math.max(16.0f, tw + 8.0f);
+                float bh = 11.5f;
+                float badgeX = textX + nameW + 6.0f;
+                float by = titleY - 1.0f;
+                boolean pressed = Keybinds.isKeyPressed(module.getKey());
+                int bBg = pressed ? ColorUtil.withAlphaFloat(Theme.getAccent(), alpha * 0.9f) : ColorUtil.rgba(36, 40, 52, (int) (190 * alpha));
+                int bBorder = pressed ? ColorUtil.withAlphaFloat(Theme.getAccentHover(), alpha) : ColorUtil.rgba(255, 255, 255, (int) (28 * alpha));
+                Render2D.drawRoundedRect(context, badgeX, by, bw, bh, 3.0f, bBg);
+                Render2D.drawRoundedOutline(context, badgeX, by, bw, bh, 3.0f, 0.8f, bBorder);
+                int kColor = pressed ? 0xFFFFFFFF : ColorUtil.rgba(215, 220, 235, (int) (230 * alpha));
+                ClientFont.draw(context, keyStr, badgeX + (bw - tw) / 2.0f, by + 1.5f, ClientFont.SF_REGULAR, kColor);
+            }
 
             float descY = titleY + 14.0f;
             int descColor = ColorUtil.withAlphaFloat(Theme.TEXT_SUB, alpha);
@@ -1559,11 +1595,23 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
 
         if (listeningKeybindModule != null) {
-            listeningKeybindModule.setKey(1000 + button);
-            egg.client.config.ConfigManager.save();
-            lastModuleKeys.remove(listeningKeybindModule);
-            listeningKeybindModule = null;
-            return true;
+            if (button == 1) {
+                listeningKeybindModule.setKey(0);
+                egg.client.config.ConfigManager.save();
+                lastModuleKeys.remove(listeningKeybindModule);
+                listeningKeybindModule = null;
+                GuiSoundManager.playClick();
+                return true;
+            } else if (button >= 3) {
+                listeningKeybindModule.setKey(1000 + button);
+                egg.client.config.ConfigManager.save();
+                lastModuleKeys.remove(listeningKeybindModule);
+                listeningKeybindModule = null;
+                GuiSoundManager.playClick();
+                return true;
+            } else if (button == 0) {
+                listeningKeybindModule = null;
+            }
         }
 
         if (this.openColorPickerSetting != null) {
@@ -1834,12 +1882,22 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             }
         }
 
+        if (listeningKeybindModule != null && button == 2) {
+            listeningKeybindModule = null;
+        }
+
         return super.mouseClicked(click, bl);
     }
 
     private boolean checkModuleClick(Module module, float cardX, float cardY, float cardW, float cardH, float mouseX, float mouseY, int button) {
         if (mouseX < cardX || mouseX > cardX + cardW || mouseY < cardY || mouseY > cardY + cardH) {
             return false;
+        }
+
+        if (button == 2) {
+            listeningKeybindModule = (listeningKeybindModule == module) ? null : module;
+            GuiSoundManager.playClick();
+            return true;
         }
 
         float toggleW = 26.0f;
