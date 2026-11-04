@@ -109,6 +109,7 @@ public class ModuleManager {
         register(new KillEffect());
         register(new Lyrics());
         register(new Trail());
+        register(new CustomSkybox());
 
 
 
