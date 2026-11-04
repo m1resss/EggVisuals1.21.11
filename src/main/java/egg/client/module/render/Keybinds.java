@@ -30,7 +30,7 @@ public class Keybinds extends Module {
         return instance;
     }
 
-    private final BooleanSetting showHeader = new BooleanSetting("Шапка", true, "Отображать заголовок Keybinds");
+    private final BooleanSetting showHeader = new BooleanSetting("Шапка", true, "Отображать заголовок Кейбинды");
     private final BooleanSetting onlyEnabled = new BooleanSetting("Только активные", false, "Отображать только включенные модули");
     private final SliderSetting rounding = new SliderSetting("Скругление", 6.0, 0.0, 16.0, 0.5, "Скругление углов плашки");
     private final SliderSetting opacity = new SliderSetting("Непрозрачность", 225.0, 20.0, 255.0, 5.0, "Прозрачность фона карточки");
@@ -41,7 +41,7 @@ public class Keybinds extends Module {
     private boolean dragging = false;
     private float dragOffsetX = 0.0f;
     private float dragOffsetY = 0.0f;
-    private final HudContextMenu contextMenu = new HudContextMenu("Keybinds");
+    private final HudContextMenu contextMenu = new HudContextMenu("Кейбинды");
     private HudSnapHelper.SnapResult currentSnap = null;
 
     private float lastX = 20.0f;
@@ -166,7 +166,7 @@ public class Keybinds extends Module {
         int screenW = mc.getWindow().getScaledWidth();
         int screenH = mc.getWindow().getScaledHeight();
 
-        float maxNameW = Fonts.b.a("Keybinds", 11.0f * s);
+        float maxNameW = Fonts.b.a("Кейбинды", 11.0f * s);
         float maxBadgeW = 26.0f * s;
         for (KeybindItem item : visibleItems) {
             float nw = Fonts.b.a(item.getName(), 10.0f * s);
@@ -217,7 +217,7 @@ public class Keybinds extends Module {
         }
 
         if (showHeader.get()) {
-            Fonts.d.a(null, "Keybinds", px + 8.0f * s, py + 5.0f * s, 10.5f * s, ColorUtil.rgba(255, 255, 255, (int) (245 * combatAlpha)));
+            Fonts.d.a(null, "Кейбинды", px + 8.0f * s, py + 5.0f * s, 10.5f * s, ColorUtil.rgba(255, 255, 255, (int) (245 * combatAlpha)));
             Draw2DProcessor.INSTANCE.drawRect(null, px + 7.0f * s, py + headerH - 1.5f * s, cardW - 14.0f * s, 1.0f, 0.0f, ColorUtil.rgba(255, 255, 255, (int) (18 * combatAlpha)));
         }
 
@@ -369,12 +369,12 @@ public class Keybinds extends Module {
         if (dragging) {
             onChatMouseDragged(mouseX, mouseY, 0);
             HudSnapHelper.renderGridAndGuides(context, currentSnap, screenW, screenH,
-                    new HudSnapHelper.HudElementBounds("keybinds", "Keybinds", lastX, lastY, lastW, lastH),
-                    "Keybinds", Math.round(scale.getValueFloat() * 100.0f), rad);
+                    new HudSnapHelper.HudElementBounds("keybinds", "Кейбинды", lastX, lastY, lastW, lastH),
+                    "Кейбинды", Math.round(scale.getValueFloat() * 100.0f), rad);
         } else {
             boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
             if (inside) {
-                String scaleBadge = "Keybinds: " + Math.round(scale.getValueFloat() * 100.0f) + "%";
+                String scaleBadge = "Кейбинды: " + Math.round(scale.getValueFloat() * 100.0f) + "%";
                 HudSnapHelper.renderHoverBadge(context, lastX, lastY, lastW, lastH, rad, scaleBadge);
             }
         }

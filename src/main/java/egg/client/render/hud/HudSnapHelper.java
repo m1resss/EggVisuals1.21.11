@@ -60,7 +60,7 @@ public class HudSnapHelper {
 
         PotionHUD potion = ModuleManager.getInstance().getModule(PotionHUD.class);
         if (potion != null && potion.isEnabled() && !"potion".equals(currentId) && potion.getLastW() > 10.0f) {
-            list.add(new HudElementBounds("potion", "Зелья", potion.getLastX(), potion.getLastY(), potion.getLastW(), potion.getLastH()));
+            list.add(new HudElementBounds("potion", "Эффекты", potion.getLastX(), potion.getLastY(), potion.getLastW(), potion.getLastH()));
         }
 
         TargetHUD target = ModuleManager.getInstance().getModule(TargetHUD.class);
@@ -75,7 +75,7 @@ public class HudSnapHelper {
 
         Keybinds kb = ModuleManager.getInstance().getModule(Keybinds.class);
         if (kb != null && kb.isEnabled() && !"keybinds".equals(currentId) && kb.getLastW() > 10.0f) {
-            list.add(new HudElementBounds("keybinds", "Keybinds", kb.getLastX(), kb.getLastY(), kb.getLastW(), kb.getLastH()));
+            list.add(new HudElementBounds("keybinds", "Кейбинды", kb.getLastX(), kb.getLastY(), kb.getLastW(), kb.getLastH()));
         }
 
         return list;
