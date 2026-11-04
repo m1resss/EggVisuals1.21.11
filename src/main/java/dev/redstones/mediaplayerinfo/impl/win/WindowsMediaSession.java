@@ -58,5 +58,3 @@ implements IMediaSession {
         cycle = n;
     }
 }
-
-

@@ -150,7 +150,6 @@ public class HudContextMenu {
         float visualW = mw * scale;
         float visualH = mh * scale;
 
-        // Автоматическое удержание внутри экрана с учетом масштаба
         this.x = Math.clamp(this.x, 8.0f, Math.max(8.0f, screenW - visualW - 8.0f));
         this.y = Math.clamp(this.y, 8.0f, Math.max(8.0f, screenH - visualH - 8.0f));
 
@@ -174,26 +173,19 @@ public class HudContextMenu {
         float localMX = mx + (mouseX - mx) / this.scale;
         float localMY = my + (mouseY - my) / this.scale;
 
-        // 1. Тень и мягкое свечение
         Draw2DProcessor.INSTANCE.drawGlow(mat, mx, my, mw, mh, 10.0f, ColorUtil.rgba(0, 0, 0, 190), 12.0f);
 
-        // 2. Темное стекло интерфейса (стиль Dynamic Island)
         Draw2DProcessor.INSTANCE.drawRect(mat, mx, my, mw, mh, 10.0f, ColorUtil.rgba(14, 15, 22, 245));
 
-        // 3. Тонкий контур
         Draw2DProcessor.INSTANCE.drawOutline(mat, mx, my, mw, mh, 10.0f, 1.0f, ColorUtil.rgba(255, 255, 255, 24));
 
-        // 4. Верхний мягкий акцентный блик
         Draw2DProcessor.INSTANCE.drawRect(mat, mx + 16.0f, my, mw - 32.0f, 1.5f, 0.75f, ColorUtil.withAlphaFloat(Theme.getAccent(), 0.55f));
 
-        // 5. Заголовок с индикатором
         Draw2DProcessor.INSTANCE.drawRect(mat, mx + 10.0f, my + 9.5f, 3.0f, 9.0f, 1.5f, Theme.getAccent());
         Fonts.b.a(mat, title, mx + 18.0f, my + 8.0f, 12.0f, 0xFFFFFFFF);
 
-        // Разделитель
         Draw2DProcessor.INSTANCE.drawRect(mat, mx + 8.0f, my + 26.0f, mw - 16.0f, 1.0f, 0.0f, ColorUtil.rgba(255, 255, 255, 12));
 
-        // 6. Список элементов настроек
         float rowY = my + 30.0f;
         for (MenuItem item : items) {
             boolean hov = localMX >= mx + 4.0f && localMX <= mx + mw - 4.0f && localMY >= rowY - 1.0f && localMY < rowY + 19.0f;
@@ -201,11 +193,10 @@ public class HudContextMenu {
                 Draw2DProcessor.INSTANCE.drawRect(mat, mx + 4.0f, rowY - 1.0f, mw - 8.0f, 19.0f, 4.5f, ColorUtil.rgba(255, 255, 255, 14));
             }
 
-            // Текст названия
             Fonts.b.a(mat, item.getLabel(), mx + 10.0f, rowY + 3.5f, 11.5f, hov ? 0xFFFFFFFF : ColorUtil.rgba(225, 228, 238, 220));
 
             if (item.isMode()) {
-                // Пилл-значение режима справа
+
                 String val = item.getValue();
                 float valW = Fonts.b.a(val, 10.5f);
                 float badgeW = valW + 14.0f;
@@ -217,7 +208,7 @@ public class HudContextMenu {
                 Draw2DProcessor.INSTANCE.drawOutline(mat, badgeX, badgeY, badgeW, badgeH, 4.0f, 1.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), hov ? 0.8f : 0.4f));
                 Fonts.b.a(mat, val, badgeX + 7.0f, badgeY + 2.0f, 10.5f, Theme.getAccentHover());
             } else {
-                // Компактный переключатель в стиле Island
+
                 boolean on = item.isChecked();
                 float swW = 20.0f;
                 float swH = 10.5f;
@@ -266,7 +257,7 @@ public class HudContextMenu {
                 }
                 rowY += 21.0f;
             }
-            return true; // Клик внутри меню (например по заголовку) поглощается
+            return true;
         }
 
         close();

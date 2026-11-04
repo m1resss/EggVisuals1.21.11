@@ -680,7 +680,6 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         MODULE_KEYWORDS.put("ClientSettings", new String[]{"настройки", "клиент", "тема", "блюр", "шрифт", "акцент", "цвета", "звук", "громкость", "звук меню", "client settings"});
         MODULE_KEYWORDS.put("StreamerMode", new String[]{"стример", "стрим", "скрыть ник", "ютуб", "защита", "streamer mode"});
 
-        // MODULE_KEYWORDS.put("MeleeSkins", new String[]{"нож", "ножи", "скин", "скины", "косметика", "оружие", "бабочка", "керамбит", "кнайф", "кс", "cs2", "ножик", "ножей", "ножами", "меч", "melee skins"});
     }
 
     private boolean matchesModule(Module m, String q, String qEn, String qRu) {
@@ -1592,8 +1591,6 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         float mouseY = (float) click.y();
         int button = click.button();
 
-
-
         if (listeningKeybindModule != null) {
             if (button == 1) {
                 listeningKeybindModule.setKey(0);
@@ -2167,7 +2164,6 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
     @Override
     public boolean keyPressed(KeyInput input) {
         int key = input.key();
-
 
         if (closing) {
             return true;

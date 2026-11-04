@@ -23,4 +23,3 @@ public interface IMediaSession {
 
     public int getCycleType();
 }
-

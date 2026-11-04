@@ -33,7 +33,7 @@ public final class CommandManager {
         register(new BindCommand());
         register(new ToggleCommand());
         register(new ConfigCommand());
-// register(new CasesCommand());
+
         register(new ConfettiCommand());
         register(new GlobalsCommand());
         register(new LyricsCommand());

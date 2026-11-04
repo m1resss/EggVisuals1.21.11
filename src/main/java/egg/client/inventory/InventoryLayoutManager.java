@@ -51,7 +51,6 @@ public class InventoryLayoutManager {
 
         File fileToRead = configFile;
 
-        // If configFile doesn't exist or is empty, check if .corrupted backup exists
         if (!fileToRead.exists() || fileToRead.length() == 0) {
             File corrupted = new File(fileToRead.getParentFile(), fileToRead.getName() + ".corrupted");
             if (corrupted.exists() && corrupted.length() > 100) {
@@ -62,7 +61,6 @@ public class InventoryLayoutManager {
             }
         }
 
-        // If still empty or missing, check global fallback (.minecraft/egg/inventory_layouts.json)
         if (!fileToRead.exists() || fileToRead.length() == 0) {
             String appdata = System.getenv("APPDATA");
             if (appdata != null) {
@@ -105,7 +103,7 @@ public class InventoryLayoutManager {
         if (presets.isEmpty()) {
             presets.add(new InventoryPreset("1"));
             activeIndex = 0;
-            // Only write file if it didn't exist or was empty
+
             if (!configFile.exists() || configFile.length() == 0) {
                 save();
             }

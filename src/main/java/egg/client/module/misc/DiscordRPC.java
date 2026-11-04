@@ -111,23 +111,19 @@ public class DiscordRPC extends Module {
     private JsonObject buildActivityJson() {
         JsonObject activity = new JsonObject();
 
-        // 1. Details: "Version: 1.21.11"
         activity.addProperty("details", "Version: " + CLIENT_VERSION);
 
-        // 2. State: Current server address or singleplayer/menu
         String stateText = getServerState();
         if (stateText != null && !stateText.isBlank()) {
             activity.addProperty("state", stateText);
         }
 
-        // 3. Timestamps: elapsed playing time
         if (showTimer.get()) {
             JsonObject timestamps = new JsonObject();
             timestamps.addProperty("start", sessionStartTime);
             activity.add("timestamps", timestamps);
         }
 
-        // 4. Assets: Avatar & "Egg Visuals" text
         JsonObject assets = new JsonObject();
         String img = avatarUrl.get();
         if (img == null || img.isBlank()) {
@@ -137,7 +133,6 @@ public class DiscordRPC extends Module {
         assets.addProperty("large_text", "Egg Visuals");
         activity.add("assets", assets);
 
-        // 5. Buttons: Telegram (no VK)
         JsonArray buttons = new JsonArray();
         JsonObject tgButton = new JsonObject();
         tgButton.addProperty("label", "Telegram");
@@ -162,7 +157,6 @@ public class DiscordRPC extends Module {
             return "В сетевой игре";
         }
 
-        // Check streamer mode if enabled
         boolean streamerProtected = false;
         try {
             StreamerMode sm = ModuleManager.getInstance().getModule(StreamerMode.class);

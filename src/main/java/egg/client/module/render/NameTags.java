@@ -94,7 +94,6 @@ public class NameTags extends Module {
 
         Vec3d eye = mc.player.getEyePos();
 
-        // 1. Глаза / Голова
         Vec3d targetEye = player.getEyePos();
         double rayDistSq1 = eye.squaredDistanceTo(targetEye);
         BlockHitResult hit1 = mc.world.raycast(new RaycastContext(
@@ -104,7 +103,6 @@ public class NameTags extends Module {
             return true;
         }
 
-        // 2. Торс / Центр хитбокса
         Vec3d targetCenter = player.getBoundingBox().getCenter();
         double rayDistSq2 = eye.squaredDistanceTo(targetCenter);
         BlockHitResult hit2 = mc.world.raycast(new RaycastContext(
@@ -114,7 +112,6 @@ public class NameTags extends Module {
             return true;
         }
 
-        // 3. Ноги / Чуть выше земли
         Vec3d targetFeet = new Vec3d(player.getX(), player.getY() + 0.25, player.getZ());
         double rayDistSq3 = eye.squaredDistanceTo(targetFeet);
         BlockHitResult hit3 = mc.world.raycast(new RaycastContext(
@@ -147,7 +144,6 @@ public class NameTags extends Module {
             if (distSq > 64.0 * 64.0) continue;
             double dist = Math.sqrt(distSq);
 
-            // Визуал, не чит: всегда только прямая видимость
             if (player != mc.player && !isPlayerVisible(mc, player)) {
                 continue;
             }
@@ -181,7 +177,6 @@ public class NameTags extends Module {
             renderSingleTag(context, mc, player, state, dist, dt);
         }
 
-        // Очистка старых игроков
         this.stateMap.entrySet().removeIf(e -> nowMs - e.getValue().lastSeenTime > 4000L);
         DrawBatcher.flushPending();
     }
@@ -202,15 +197,12 @@ public class NameTags extends Module {
             state.trailingHp += (currentHp - state.trailingHp) * Math.min(1.0f, dt * 6.5f);
         }
 
-        // Фиксированный масштаб 0.75 с плавной коррекцией по дистанции
         float distScale = (float) MathHelper.clamp(1.0 - (dist - 6.0) * 0.016, 0.68, 1.22);
         float tagScale = 0.75f * distScale;
 
-        // Всегда Rockstar Round
         Font font = Fonts.ROCKSTAR_ROUND_BOLD;
         float fontSize = 11.5f;
 
-        // 1. Имя
         String rawName = player.getNameForScoreboard();
         if (rawName == null || rawName.isEmpty()) {
             rawName = player.getName().getString();
@@ -225,14 +217,12 @@ public class NameTags extends Module {
         float nameW = font.a(rawName, fontSize);
         int nameColor = isFriend ? 0xFF38BDF8 : 0xFFFFFFFF;
 
-        // Проверка Globals на яйцо перед ником
         Globals globals = Globals.getInstance();
         boolean isEgg = globals != null && globals.isEnabled() && globals.isInNametag() && Globals.isEggUser(player);
         float eggSize = 10.0f;
         float eggGap = 3.5f;
         float eggW = isEgg ? (eggSize + eggGap) : 0.0f;
 
-        // 2. Пинг
         int latency = -1;
         PlayerListEntry entry = mc.getNetworkHandler() != null ? mc.getNetworkHandler().getPlayerListEntry(player.getUuid()) : null;
         if (entry != null) {
@@ -245,11 +235,9 @@ public class NameTags extends Module {
         else if (latency < 160) pingDotColor = 0xFFFACC15;
         else pingDotColor = 0xFFF87171;
 
-        // 3. Дистанция
         String distText = this.showDistance.get() ? ((int) Math.round(dist) + "m") : null;
         float distW = distText != null ? font.a(distText, fontSize) : 0.0f;
 
-        // 4. Здоровье
         String hpText = null;
         float hpW = 0.0f;
         int hpColor = 0xFF22C55E;
@@ -270,7 +258,6 @@ public class NameTags extends Module {
             }
         }
 
-        // Обсчёт ширины плашки
         float padX = 7.0f;
         float gap = 5.0f;
         float contentW = nameW + eggW;
@@ -286,7 +273,6 @@ public class NameTags extends Module {
         float cardX = -cardW / 2.0f;
         float cardY = -cardH;
 
-        // Экипировка над головой (через Minecraft DrawContext)
         if (this.showArmor.get()) {
             context.getMatrices().pushMatrix();
             context.getMatrices().translate(state.smoothX, state.smoothY);
@@ -295,38 +281,30 @@ public class NameTags extends Module {
             context.getMatrices().popMatrix();
         }
 
-        // Рендерим плашку, полоску, иконки и текст В ОДНОМ MSDF-БАТЧЕ через Draw2DProcessor
-        // Это гарантирует, что плашка ВСЕГДА под текстом, независимо от прозрачности
         Matrix3x2f tagMat = new Matrix3x2f().translate(state.smoothX, state.smoothY).scale(tagScale, tagScale);
 
-        // 1. Фон плашки: матовый темный акрил
         int bgColor = ColorUtil.rgba(14, 16, 22, (int) (220 * alphaFactor));
         Draw2DProcessor.INSTANCE.drawRect(tagMat, cardX, cardY, cardW, cardH, cardRadius, bgColor);
 
-        // 2. Мягкий верхний блик
         int sheenCol = ColorUtil.rgba(255, 255, 255, (int) (14 * alphaFactor));
         Draw2DProcessor.INSTANCE.drawGradient(tagMat, cardX, cardY, cardW, cardH * 0.5f, cardRadius, sheenCol, sheenCol, 0, 0);
 
-        // 3. Полоска здоровья внизу плашки
         if (this.showHealth.get()) {
             float barX = cardX + 5.0f;
             float barY = cardY + cardH - 3.2f;
             float barW = cardW - 10.0f;
             float barH = 1.8f;
 
-            // Фоновая канавка
             Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, barW, barH, 0.9f, ColorUtil.rgba(255, 255, 255, 25));
 
             float visualRatio = MathHelper.clamp(state.visualHp / maxHp, 0.0f, 1.0f);
             float trailingRatio = MathHelper.clamp(state.trailingHp / maxHp, 0.0f, 1.0f);
 
-            // Трейл урона
             if (trailingRatio > visualRatio) {
                 float trailW = Math.max(1.5f, barW * trailingRatio);
                 Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, trailW, barH, 0.9f, ColorUtil.rgba(251, 146, 60, 240));
             }
 
-            // Основная полоска
             float fillW = Math.max(1.0f, barW * visualRatio);
             int barCol;
             String colorSetting = this.colorMode.get();
@@ -340,14 +318,13 @@ public class NameTags extends Module {
                     float f = visualRatio * 2.0f;
                     barCol = ColorUtil.interpolate(0xFFEF4444, 0xFFFACC15, f);
                 }
-            } else { // "Здоровье"
+            } else {
                 if (visualRatio > 0.6f) barCol = 0xFF22C55E;
                 else if (visualRatio > 0.25f) barCol = 0xFFFACC15;
                 else barCol = 0xFFEF4444;
             }
             Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, fillW, barH, 0.9f, barCol);
 
-            // Абсорбция
             if (absorption > 0.0f) {
                 float absRatio = MathHelper.clamp(absorption / maxHp, 0.0f, 1.0f);
                 float absW = Math.max(1.0f, barW * absRatio);
@@ -358,7 +335,6 @@ public class NameTags extends Module {
         float curX = cardX + padX;
         float textY = cardY + 2.0f;
 
-        // 4. Пинг-точка
         if (pingText != null) {
             float dotR = 1.8f;
             float dotX = curX + 2.0f;
@@ -368,24 +344,20 @@ public class NameTags extends Module {
             curX += pingW + gap;
         }
 
-        // 5. Яйцо Globals перед ником
         if (isEgg) {
             float eggY = textY + (font.a(fontSize) - eggSize) / 2.0f;
             Draw2DProcessor.INSTANCE.a(tagMat, EGG_LOGO, curX, eggY, eggSize, eggSize, 0.0f, 0xFFFFFFFF);
             curX += eggW;
         }
 
-        // 6. Имя игрока (Rockstar Round MSDF)
         font.a(tagMat, rawName, curX, textY, fontSize, nameColor);
         curX += nameW + gap;
 
-        // 7. Дистанция
         if (distText != null) {
             font.a(tagMat, distText, curX, textY, fontSize, ColorUtil.rgba(203, 213, 225, 215));
             curX += distW + gap;
         }
 
-        // 8. Числовое HP
         if (hpText != null) {
             font.a(tagMat, hpText, curX, textY, fontSize, hpColor);
         }

@@ -257,7 +257,6 @@ public class TargetHUD extends Module {
 
         Draw2DProcessor.INSTANCE.drawGlow(mat, x, y, w, h, radius, shadowColor, 6.0f);
         Draw2DProcessor.INSTANCE.drawRect(mat, x, y, w, h, radius, bgColor);
-        // Draw2DProcessor.INSTANCE.drawOutline(mat, x, y, w, h, radius, 0.8f, borderColor);
 
         if (hudThemeGradient.isEnabled()) {
             float str = hudGradientStrength.getValueFloat() / 100.0f;

@@ -88,7 +88,6 @@ public class HudSnapHelper {
         float snapThreshold = 7.0f;
         float gap = 6.0f;
 
-        // Snapping по X
         float bestX = proposedX;
         float minDiffX = snapThreshold;
         boolean centerSnapX = false;
@@ -97,7 +96,6 @@ public class HudSnapHelper {
         float bestGuideXMinY = 0.0f;
         float bestGuideXMaxY = screenH;
 
-        // 1. Экранный центр X
         float midX = (screenW - w) / 2.0f;
         float diffCenterX = Math.abs(proposedX - midX);
         if (diffCenterX < minDiffX) {
@@ -109,12 +107,10 @@ public class HudSnapHelper {
             bestGuideXMaxY = screenH;
         }
 
-        // 2. Выравнивание по другим элементам
         for (HudElementBounds target : others) {
             float tMinY = Math.min(proposedY, target.y()) - 4.0f;
             float tMaxY = Math.max(proposedY + h, target.y() + target.h()) + 4.0f;
 
-            // Выравнивание по левому краю
             float dLeft = Math.abs(proposedX - target.x());
             if (dLeft < minDiffX) {
                 minDiffX = dLeft;
@@ -126,7 +122,6 @@ public class HudSnapHelper {
                 bestGuideXMaxY = tMaxY;
             }
 
-            // Выравнивание по правому краю
             float dRight = Math.abs(proposedX - (target.x() + target.w() - w));
             if (dRight < minDiffX) {
                 minDiffX = dRight;
@@ -138,7 +133,6 @@ public class HudSnapHelper {
                 bestGuideXMaxY = tMaxY;
             }
 
-            // Выравнивание по центру
             float dCenter = Math.abs(proposedX - (target.x() + (target.w() - w) / 2.0f));
             if (dCenter < minDiffX) {
                 minDiffX = dCenter;
@@ -150,7 +144,6 @@ public class HudSnapHelper {
                 bestGuideXMaxY = tMaxY;
             }
 
-            // Примагничивание справа от элемента (с зазором)
             float dAdjRight = Math.abs(proposedX - (target.x() + target.w() + gap));
             if (dAdjRight < minDiffX) {
                 minDiffX = dAdjRight;
@@ -162,7 +155,6 @@ public class HudSnapHelper {
                 bestGuideXMaxY = tMaxY;
             }
 
-            // Примагничивание слева от элемента (с зазором)
             float dAdjLeft = Math.abs(proposedX - (target.x() - w - gap));
             if (dAdjLeft < minDiffX) {
                 minDiffX = dAdjLeft;
@@ -175,7 +167,6 @@ public class HudSnapHelper {
             }
         }
 
-        // Если не примагнитились к элементам или центру — проверяем сетку 25px
         if (minDiffX >= snapThreshold) {
             float nearestGridX = Math.round(proposedX / 25.0f) * 25.0f;
             if (Math.abs(proposedX - nearestGridX) < 5.0f) {
@@ -190,7 +181,6 @@ public class HudSnapHelper {
         res.guideXMinY = bestGuideXMinY;
         res.guideXMaxY = bestGuideXMaxY;
 
-        // Snapping по Y
         float bestY = proposedY;
         float minDiffY = snapThreshold;
         boolean centerSnapY = false;
@@ -199,7 +189,6 @@ public class HudSnapHelper {
         float bestGuideYMinX = 0.0f;
         float bestGuideYMaxX = screenW;
 
-        // 1. Экранный центр Y
         float midY = (screenH - h) / 2.0f;
         float diffCenterY = Math.abs(proposedY - midY);
         if (diffCenterY < minDiffY) {
@@ -211,12 +200,10 @@ public class HudSnapHelper {
             bestGuideYMaxX = screenW;
         }
 
-        // 2. Выравнивание по другим элементам
         for (HudElementBounds target : others) {
             float tMinX = Math.min(proposedX, target.x()) - 4.0f;
             float tMaxX = Math.max(proposedX + w, target.x() + target.w()) + 4.0f;
 
-            // Выравнивание по верхнему краю
             float dTop = Math.abs(proposedY - target.y());
             if (dTop < minDiffY) {
                 minDiffY = dTop;
@@ -228,7 +215,6 @@ public class HudSnapHelper {
                 bestGuideYMaxX = tMaxX;
             }
 
-            // Выравнивание по нижнему краю
             float dBottom = Math.abs(proposedY - (target.y() + target.h() - h));
             if (dBottom < minDiffY) {
                 minDiffY = dBottom;
@@ -240,7 +226,6 @@ public class HudSnapHelper {
                 bestGuideYMaxX = tMaxX;
             }
 
-            // Выравнивание по центру Y
             float dCenter = Math.abs(proposedY - (target.y() + (target.h() - h) / 2.0f));
             if (dCenter < minDiffY) {
                 minDiffY = dCenter;
@@ -252,7 +237,6 @@ public class HudSnapHelper {
                 bestGuideYMaxX = tMaxX;
             }
 
-            // Примагничивание снизу (с зазором)
             float dAdjBelow = Math.abs(proposedY - (target.y() + target.h() + gap));
             if (dAdjBelow < minDiffY) {
                 minDiffY = dAdjBelow;
@@ -264,7 +248,6 @@ public class HudSnapHelper {
                 bestGuideYMaxX = tMaxX;
             }
 
-            // Примагничивание сверху (с зазором)
             float dAdjAbove = Math.abs(proposedY - (target.y() - h - gap));
             if (dAdjAbove < minDiffY) {
                 minDiffY = dAdjAbove;
@@ -277,7 +260,6 @@ public class HudSnapHelper {
             }
         }
 
-        // Если не примагнитились к элементам или центру — сетка 25px
         if (minDiffY >= snapThreshold) {
             float nearestGridY = Math.round(proposedY / 25.0f) * 25.0f;
             if (Math.abs(proposedY - nearestGridY) < 5.0f) {
@@ -297,7 +279,7 @@ public class HudSnapHelper {
 
     public static void renderGridAndGuides(DrawContext context, SnapResult snap, float screenW, float screenH,
                                            HudElementBounds current, String label, int scalePercent, float radius) {
-        // 1. Отрисовка базовой 25px сетки
+
         int gridStep = 25;
         int gridColor = ColorUtil.rgba(255, 255, 255, 12);
         for (int gx = gridStep; gx < screenW; gx += gridStep) {
@@ -307,7 +289,6 @@ public class HudSnapHelper {
             Draw2DProcessor.INSTANCE.drawRect(null, 0, gy, screenW, 1.0f, 0.0f, gridColor);
         }
 
-        // 2. Отрисовка экранных осей центра
         float midX = screenW / 2.0f;
         float midY = screenH / 2.0f;
         int centerColor = (snap != null && snap.isCenterSnapX)
@@ -326,14 +307,12 @@ public class HudSnapHelper {
             Draw2DProcessor.INSTANCE.drawGlow(null, 0, midY - 1.0f, screenW, 2.0f, 0.0f, Theme.getAccent(), 4.0f);
         }
 
-        // 3. Подсветка целевых элементов, с которыми выровнены
         if (snap != null) {
             if (snap.snappedElemX != null) {
                 HudElementBounds target = snap.snappedElemX;
                 Draw2DProcessor.INSTANCE.drawOutline(null, target.x() - 2.0f, target.y() - 2.0f, target.w() + 4.0f, target.h() + 4.0f, 6.0f, 1.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), 0.7f));
                 Draw2DProcessor.INSTANCE.drawGlow(null, target.x() - 2.0f, target.y() - 2.0f, target.w() + 4.0f, target.h() + 4.0f, 6.0f, Theme.getAccent(), 6.0f);
 
-                // Бейдж элемента
                 float bw = Fonts.b.a(target.displayName(), 9.0f) + 8.0f;
                 float bx = target.x() + (target.w() - bw) / 2.0f;
                 float by = Math.max(4.0f, target.y() - 15.0f);
@@ -353,7 +332,6 @@ public class HudSnapHelper {
                 Fonts.b.a(null, target.displayName(), bx + 4.0f, by + 2.0f, 9.0f, Theme.getAccentHover());
             }
 
-            // Отрисовка светящихся направляющих линий (Smart Guides)
             if (snap.guideX > 0.0f && !snap.isCenterSnapX) {
                 float gx = snap.guideX;
                 float gy1 = snap.guideXMinY;
@@ -371,7 +349,6 @@ public class HudSnapHelper {
             }
         }
 
-        // 4. Отрисовка контура и бейджа текущего перетаскиваемого элемента
         Draw2DProcessor.INSTANCE.drawOutline(null, current.x() - 2.0f, current.y() - 2.0f, current.w() + 4.0f, current.h() + 4.0f, radius, 1.2f, Theme.getAccent());
         Draw2DProcessor.INSTANCE.drawGlow(null, current.x() - 2.0f, current.y() - 2.0f, current.w() + 4.0f, current.h() + 4.0f, radius, Theme.getAccent(), 8.0f);
 

@@ -79,4 +79,3 @@ implements Serializable {
         return "MediaInfo{title='" + this.title + "', artist='" + this.artist + "', position=" + this.position + ", duration=" + this.duration + ", playing=" + this.playing + "}";
     }
 }
-

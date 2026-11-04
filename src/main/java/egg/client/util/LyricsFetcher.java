@@ -121,25 +121,21 @@ public final class LyricsFetcher {
         String cleanA = cleanArtist(artist);
         String cleanT = cleanTitle(title);
 
-        // 1. Direct LRCLIB get (exact match, instantaneous response)
         List<LyricLine> directLrc = fetchLrclibDirect(artist, cleanA, title, cleanT);
         if (directLrc != null && !directLrc.isEmpty()) {
             return directLrc;
         }
 
-        // 2. Primary cascade: NetEase Cloud Music (fast, reliable, millisecond timestamps)
         List<LyricLine> neteaseRes = searchNetEase(artist, cleanA, title, cleanT);
         if (neteaseRes != null && !neteaseRes.isEmpty()) {
             return neteaseRes;
         }
 
-        // 3. Secondary: LRCLIB search (fuzzy matching)
         List<LyricLine> lrclibRes = searchLrclib(artist, cleanA, title, cleanT);
         if (lrclibRes != null && !lrclibRes.isEmpty()) {
             return lrclibRes;
         }
 
-        // 4. Fallback: Genius API
         List<LyricLine> geniusRes = searchGenius(artist, cleanT);
         if (geniusRes != null && !geniusRes.isEmpty()) {
             return geniusRes;
@@ -184,7 +180,6 @@ public final class LyricsFetcher {
         return null;
     }
 
-    // --- NetEase Cloud Music ---
     private List<LyricLine> searchNetEase(String artist, String cleanArtist, String title, String cleanTitle) {
         Map<String, String> headers = Map.of(
                 "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -279,13 +274,12 @@ public final class LyricsFetcher {
         return null;
     }
 
-    // --- LRCLIB ---
     private List<LyricLine> searchLrclib(String artist, String cleanArtist, String title, String cleanTitle) {
         Map<String, String> headers = Map.of(
                 "User-Agent", "Rockstar/2.0 (https://github.com/rockstar)"
         );
         List<String> queryList = new ArrayList<>();
-        // 1. Broad combined search first (most reliable on LRCLIB)
+
         String mainQuery = (cleanArtist.isEmpty() ? artist : cleanArtist) + " " + (cleanTitle.isEmpty() ? title : cleanTitle);
         queryList.add("q=" + urlEncode(mainQuery.trim()));
         if (!artist.isEmpty()) {
@@ -345,7 +339,6 @@ public final class LyricsFetcher {
         return null;
     }
 
-    // --- Genius Fallback ---
     private List<LyricLine> searchGenius(String artist, String cleanTitle) {
         Map<String, String> headers = Map.of(
                 "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",

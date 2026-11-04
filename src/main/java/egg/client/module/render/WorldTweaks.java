@@ -1026,13 +1026,11 @@ public class WorldTweaks extends Module {
         SnowVertex mW = new SnowVertex(bx, mWy, bz + 0.5f, 0.0f, 0.5f, mrW, mgW, 250, 255, light);
         SnowVertex mE = new SnowVertex(bx + 1.0f, mEy, bz + 0.5f, 1.0f, 0.5f, mrE, mgE, 250, 255, light);
 
-        // 4 symmetric quadrants radiating outward from pCenter
         this.cachedSnowMesh.add(new SnowQuad(pCenter, mW, p00, mN));
         this.cachedSnowMesh.add(new SnowQuad(pCenter, mN, p10, mE));
         this.cachedSnowMesh.add(new SnowQuad(pCenter, mE, p11, mS));
         this.cachedSnowMesh.add(new SnowQuad(pCenter, mS, p01, mW));
 
-        // Side skirts for exposed drops:
         int diffN = getElevationDiff(mc, bx, bz - 1, topY);
         int diffS = getElevationDiff(mc, bx, bz + 1, topY);
         int diffW = getElevationDiff(mc, bx - 1, bz, topY);

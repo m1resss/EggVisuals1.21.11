@@ -434,7 +434,6 @@ public class InventoryConfigPanel {
                 return true;
             }
 
-            // Click on individual slots to set or clear them
             float containerX = x + 4.0f;
             float containerY = curY + 32.0f;
             float slotSize = 21.0f;
@@ -491,12 +490,12 @@ public class InventoryConfigPanel {
             }
 
             if (clickedSlot != -1) {
-                if (button == 1) { // Right click -> clear slot
+                if (button == 1) {
                     detailedPreset.clearSlot(clickedSlot);
                     lm.save();
                     GuiSoundManager.playSelect();
                     return true;
-                } else if (button == 0 && mc.player != null) { // Left click -> set to item in hand/cursor
+                } else if (button == 0 && mc.player != null) {
                     ItemStack cursor = mc.player.currentScreenHandler != null ? mc.player.currentScreenHandler.getCursorStack() : ItemStack.EMPTY;
                     ItemStack toSet = !cursor.isEmpty() ? cursor : mc.player.getMainHandStack();
                     if (!toSet.isEmpty()) {

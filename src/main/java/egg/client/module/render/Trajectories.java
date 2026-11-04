@@ -427,7 +427,7 @@ public class Trajectories extends Module {
         }
 
         Box box = new Box(minX, minY, minZ, maxX, maxY, maxZ);
-        int fillA = (int) Math.round(255 * 0.15); // 15% fill transparency
+        int fillA = (int) Math.round(255 * 0.15);
         int outlineA = 220;
 
         float x1 = (float) (box.minX - camPos.x);

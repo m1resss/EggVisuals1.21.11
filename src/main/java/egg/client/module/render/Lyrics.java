@@ -215,7 +215,6 @@ public class Lyrics extends Module {
             }
             currentPosMs = mt.getTrackElapsedMs();
 
-            // Если трек стоит на паузе — замораживаем таймеры очереди и активных плашек
             if (!isPlaying && hasTrack) {
                 long dtMs = (long) (dt * 1000.0f);
                 for (ScheduledChunk chunk : pendingQueue) {
@@ -246,7 +245,6 @@ public class Lyrics extends Module {
                 long nextTime = lineIdx + 1 < activeLyrics.size() ? activeLyrics.get(lineIdx + 1).timeMs() : currentLine.timeMs() + 5000L;
                 long lineDuration = Math.max(1400L, nextTime - currentLine.timeMs());
 
-                // Плавно гасим капсулы предыдущей строки при начале новой
                 for (Capsule3D oldCap : activeCapsules) {
                     if (!oldCap.disappearing) {
                         oldCap.disappearing = true;
@@ -329,7 +327,7 @@ public class Lyrics extends Module {
 
         for (int i = 0; i < chunks.size(); i++) {
             long spawnAt = now + i * stepMs;
-            // Учитываем ползунок lifetime, но гарантируем допевание фразы (+ запас на чтение 800мс)
+
             long remainingLineMs = Math.max(1200L, lineDuration - i * stepMs + 800L);
             long capLife = Math.max(userMaxLifetime, remainingLineMs);
             pendingQueue.add(new ScheduledChunk(chunks.get(i), spawnAt, capLife, perChunkSingMs));
@@ -367,21 +365,18 @@ public class Lyrics extends Module {
         float primarySide = lastSide;
         float otherSide = -primarySide;
 
-        // Поиск свободного слота (NoOverlap) без наложения на другие плашки
         List<float[]> candidates = new ArrayList<>();
-        // 1. Основная сторона
+
         candidates.add(new float[]{ primarySide * hScatter * 0.70f, 0.0f, baseDist });
         candidates.add(new float[]{ primarySide * hScatter * 0.70f, vScatter * 0.65f, baseDist });
         candidates.add(new float[]{ primarySide * hScatter * 0.70f, -vScatter * 0.65f, baseDist });
 
-        // 2. Дальше / ближе по основной стороне
         candidates.add(new float[]{ primarySide * hScatter * 1.10f, 0.0f, baseDist });
         candidates.add(new float[]{ primarySide * hScatter * 1.10f, vScatter * 0.85f, baseDist });
         candidates.add(new float[]{ primarySide * hScatter * 1.10f, -vScatter * 0.85f, baseDist });
         candidates.add(new float[]{ primarySide * hScatter * 0.35f, vScatter * 0.70f, baseDist });
         candidates.add(new float[]{ primarySide * hScatter * 0.35f, -vScatter * 0.70f, baseDist });
 
-        // 3. Противоположная сторона
         candidates.add(new float[]{ otherSide * hScatter * 0.70f, 0.0f, baseDist });
         candidates.add(new float[]{ otherSide * hScatter * 0.70f, vScatter * 0.65f, baseDist });
         candidates.add(new float[]{ otherSide * hScatter * 0.70f, -vScatter * 0.65f, baseDist });
@@ -389,7 +384,6 @@ public class Lyrics extends Module {
         candidates.add(new float[]{ otherSide * hScatter * 1.10f, vScatter * 0.85f, baseDist });
         candidates.add(new float[]{ otherSide * hScatter * 1.10f, -vScatter * 0.85f, baseDist });
 
-        // 4. Дополнительные слоты по высоте и глубине
         candidates.add(new float[]{ 0.0f, vScatter * 0.80f, baseDist + 0.6f });
         candidates.add(new float[]{ 0.0f, -vScatter * 0.80f, baseDist + 0.6f });
         candidates.add(new float[]{ primarySide * hScatter * 0.50f, vScatter * 1.25f, baseDist });
@@ -449,7 +443,6 @@ public class Lyrics extends Module {
             bestPos = eye.add(F.multiply(baseDist)).add(R.multiply(s));
         }
 
-        // Если все слоты заняты, старая плашка плавно растворяется только если уже повисела достаточно
         if (noOverlap.isEnabled() && minOverlapScore > 0.001 && worstOverlapCap != null && !worstOverlapCap.disappearing) {
             long existingAge = now - worstOverlapCap.spawnTime;
             if (existingAge > 2000L || existingAge > worstOverlapCap.lifeDurationMs * 0.6) {
@@ -472,7 +465,6 @@ public class Lyrics extends Module {
         MinecraftClient mc = MinecraftClient.getInstance();
         TextRenderer tr = mc.textRenderer;
 
-        // Sort back to front for proper translucent blending
         activeCapsules.sort((c1, c2) -> Double.compare(camPos.squaredDistanceTo(c2.worldPos), camPos.squaredDistanceTo(c1.worldPos)));
 
         float userScale = (float) size.getValue();
@@ -500,11 +492,11 @@ public class Lyrics extends Module {
 
             matrices.push();
             matrices.translate(cap.worldPos.x - camPos.x + waveX, cap.worldPos.y - camPos.y + waveY, cap.worldPos.z - camPos.z);
-            // Зафиксирована в пространстве под углом спавна (не вращается вслед за игроком)
+
             matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(180.0f - cap.yaw));
 
             float s = userScale * popScale * 0.030f;
-            // s по X для прямого чтения слева направо (без зеркальности), -s по Y для TextRenderer
+
             matrices.scale(s, -s, s);
 
             StyleSpriteSource.Font selectedFont = switch (fontMode.get()) {
@@ -543,7 +535,7 @@ public class Lyrics extends Module {
                 textColor = ColorUtil.rgba(255, 160, 175, (int) (255 * alpha));
                 glowColor = ColorUtil.rgba(255, 130, 150, (int) (170 * alpha));
                 bgCol = ColorUtil.rgba(22, 18, 24, (int) (185 * alpha));
-            } else { // Лавандовый / Фиолетовый (по умолчанию как в референсе)
+            } else {
                 textColor = ColorUtil.rgba(235, 225, 255, (int) (255 * alpha));
                 glowColor = ColorUtil.rgba(185, 145, 255, (int) (180 * alpha));
                 bgCol = ColorUtil.rgba(22, 18, 30, (int) (185 * alpha));
@@ -563,19 +555,14 @@ public class Lyrics extends Module {
                 int bgB = bgCol & 0xFF;
                 int bgA = (bgCol >> 24) & 0xFF;
 
-                // 1a. Глубокая рассеянная тень (oz = -0.05f - сзади капсулы)
                 draw3DCapsule(quadConsumer, mat, boxW + 5.0f, boxH + 3.0f, 1.8f, 2.4f, -0.05f, 0, 0, 0, (int) (70 * alpha));
 
-                // 1b. Ближняя контактная тень (oz = -0.025f)
                 draw3DCapsule(quadConsumer, mat, boxW + 2.0f, boxH + 1.2f, 0.8f, 1.2f, -0.025f, 0, 0, 0, (int) (120 * alpha));
 
-                // 2. Базовая темная стеклянная капсула (oz = 0.0f)
                 draw3DCapsule(quadConsumer, mat, boxW, boxH, 0f, 0f, 0.0f, bgR, bgG, bgB, bgA);
 
-                // 3. Верхний стеклянный глянец (блик, oz = 0.008f - на передней поверхности)
                 draw3DTopGloss(quadConsumer, mat, boxW, boxH, 0.008f, (int) (55 * alpha));
 
-                // 4. Неоновый контур плашки (oz = 0.015f)
                 if (glow.isEnabled()) {
                     int glR = (glowColor >> 16) & 0xFF;
                     int glG = (glowColor >> 8) & 0xFF;
@@ -584,14 +571,11 @@ public class Lyrics extends Module {
                     draw3DCapsuleOutline(quadConsumer, mat, boxW, boxH, 0.015f, 1.1f, glR, glG, glB, glA);
                 }
 
-                // Сбрасываем буфер геометрии плашки
                 immediate.draw(RenderLayers.debugQuads());
             }
 
-            // 5. Отрисовка текста поверх всех слоев (z = 0.035f - ближе всего к камере)
-            int pureLight = 15728640; // Полный дневной свет (Sky=15, Block=0) — нулевой оттенок факела/желтизны
+            int pureLight = 15728640;
 
-            // Инициализация слов плашки (при первом кадре с учетом выбранного шрифта)
             if (cap.words.isEmpty() && !cap.text.isBlank()) {
                 String[] rawWords = cap.text.trim().split("\\s+");
                 Text spaceText = selectedFont != null ? ClientFont.getText(" ", selectedFont) : null;
@@ -606,10 +590,8 @@ public class Lyrics extends Module {
                 }
             }
 
-            // Отрисовка текста (Лицевая сторона)
             renderTextFace(tr, cap, styledText, textW, textH, textColor, alpha, elapsed, dt, selectedFont, immediate, matrices, pureLight);
 
-            // Отрисовка текста (Задняя сторона — разворот на 180° по Y, чтобы при обходе плашка читалась сзади без зеркальности)
             matrices.push();
             matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(180.0f));
             renderTextFace(tr, cap, styledText, textW, textH, textColor, alpha, elapsed, dt, selectedFont, immediate, matrices, pureLight);
@@ -707,7 +689,6 @@ public class Lyrics extends Module {
         float y1 = -h * 0.5f + oy;
         float y2 = h * 0.5f + oy;
 
-        // Center rectangle
         buf.vertex(mat, x1, y1, oz).color(r, g, b, a);
         buf.vertex(mat, x2, y1, oz).color(r, g, b, a);
         buf.vertex(mat, x2, y2, oz).color(r, g, b, a);
@@ -716,7 +697,6 @@ public class Lyrics extends Module {
         int segments = 12;
         float step = (float) Math.PI / segments;
 
-        // Left cap fan
         for (int i = 0; i < segments; i++) {
             float a1 = (float) Math.PI * 0.5f + i * step;
             float a2 = a1 + step;
@@ -731,7 +711,6 @@ public class Lyrics extends Module {
             buf.vertex(mat, x1, oy, oz).color(r, g, b, a);
         }
 
-        // Right cap fan
         for (int i = 0; i < segments; i++) {
             float a1 = -(float) Math.PI * 0.5f + i * step;
             float a2 = a1 + step;
@@ -758,7 +737,6 @@ public class Lyrics extends Module {
         int aTop = a;
         int aMid = (int) (a * 0.15f);
 
-        // Center upper rectangle gloss gradient
         buf.vertex(mat, x1, y1, oz).color(255, 255, 255, aTop);
         buf.vertex(mat, x2, y1, oz).color(255, 255, 255, aTop);
         buf.vertex(mat, x2, yMid, oz).color(255, 255, 255, aMid);
@@ -767,7 +745,6 @@ public class Lyrics extends Module {
         int segments = 8;
         float step = (float) (Math.PI * 0.5 / segments);
 
-        // Left upper quarter fan
         for (int i = 0; i < segments; i++) {
             float a1 = (float) Math.PI + i * step;
             float a2 = a1 + step;
@@ -782,7 +759,6 @@ public class Lyrics extends Module {
             buf.vertex(mat, x1, 0f, oz).color(255, 255, 255, aMid);
         }
 
-        // Right upper quarter fan
         for (int i = 0; i < segments; i++) {
             float a1 = -(float) (Math.PI * 0.5) + i * step;
             float a2 = a1 + step;
@@ -805,13 +781,11 @@ public class Lyrics extends Module {
         float y1 = -h * 0.5f;
         float y2 = h * 0.5f;
 
-        // Top edge
         buf.vertex(mat, x1, y1 - thickness, oz).color(r, g, b, a);
         buf.vertex(mat, x2, y1 - thickness, oz).color(r, g, b, a);
         buf.vertex(mat, x2, y1, oz).color(r, g, b, a);
         buf.vertex(mat, x1, y1, oz).color(r, g, b, a);
 
-        // Bottom edge
         buf.vertex(mat, x1, y2, oz).color(r, g, b, a);
         buf.vertex(mat, x2, y2, oz).color(r, g, b, a);
         buf.vertex(mat, x2, y2 + thickness, oz).color(r, g, b, a);
@@ -820,7 +794,6 @@ public class Lyrics extends Module {
         int segments = 12;
         float step = (float) Math.PI / segments;
 
-        // Left cap outline ring
         for (int i = 0; i < segments; i++) {
             float a1 = (float) Math.PI * 0.5f + i * step;
             float a2 = a1 + step;
@@ -845,7 +818,6 @@ public class Lyrics extends Module {
             buf.vertex(mat, in2x, in2y, oz).color(r, g, b, a);
         }
 
-        // Right cap outline ring
         for (int i = 0; i < segments; i++) {
             float a1 = -(float) Math.PI * 0.5f + i * step;
             float a2 = a1 + step;

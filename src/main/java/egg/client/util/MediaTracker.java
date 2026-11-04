@@ -105,12 +105,11 @@ public final class MediaTracker {
             try {
                 boolean foundMedia = false;
 
-                // 1. Primary: Windows Media Transport Controls (GSMTC via MediaPlayerInfo.dll)
                 try {
                     List<IMediaSession> sessions = MediaPlayerInfo.INSTANCE.getMediaSessions();
                     if (sessions != null && !sessions.isEmpty()) {
                         IMediaSession bestSession = null;
-                        // 1a. Priority 1: Dedicated music app actively playing
+
                         for (IMediaSession s : sessions) {
                             if (s == null) continue;
                             MediaInfo m = s.getMedia();
@@ -122,7 +121,7 @@ public final class MediaTracker {
                                 break;
                             }
                         }
-                        // 1b. Priority 2: Any dedicated music app present (even if paused/transitioning)
+
                         if (bestSession == null) {
                             for (IMediaSession s : sessions) {
                                 if (s == null) continue;
@@ -136,7 +135,7 @@ public final class MediaTracker {
                                 }
                             }
                         }
-                        // 1c. Priority 3: Browser / other session that is actively playing
+
                         if (bestSession == null) {
                             for (IMediaSession s : sessions) {
                                 if (s == null) continue;
@@ -148,7 +147,7 @@ public final class MediaTracker {
                                 }
                             }
                         }
-                        // 1d. Priority 4: Any non-empty session
+
                         if (bestSession == null) {
                             for (IMediaSession s : sessions) {
                                 if (s == null) continue;
@@ -184,13 +183,13 @@ public final class MediaTracker {
                                 }
 
                                 if (wasPlaying && !nowPlaying) {
-                                    // Track just paused - freeze position
+
                                     long current = getTrackElapsedMs();
                                     this.trackPositionSec = current / 1000L;
                                     this.manualOffsetMs = current % 1000L;
                                     this.lastPositionUpdate = System.currentTimeMillis();
                                 } else if (!wasPlaying && nowPlaying) {
-                                    // Track unpaused - resume from current position
+
                                     this.lastPositionUpdate = System.currentTimeMillis();
                                 }
 
@@ -207,7 +206,6 @@ public final class MediaTracker {
                     }
                 } catch (Throwable ignored) {}
 
-                // 2. Fallback: Window title enumeration (EnumWindows)
                 if (!foundMedia) {
                     final boolean[] winFound = new boolean[]{false};
                     final String[] foundTitle = new String[]{""};
@@ -237,7 +235,6 @@ public final class MediaTracker {
                                     || winTitle.contains("Visual Studio")
                                     || winTitle.endsWith(" - Notepad");
 
-                            // 1. YouTube / YouTube Music in browsers
                             if (winTitle.contains(" - YouTube")) {
                                 String clean = winTitle.replaceAll("(?i)\\s*[-—–|]\\s*(?:Google Chrome|Chromium|Brave|Microsoft​ Edge).*$", "").trim();
                                 clean = clean.replaceAll("(?i)\\s*-\\s*YouTube(?:\\s+Music)?.*$", "").trim();
@@ -250,7 +247,6 @@ public final class MediaTracker {
                                 }
                             }
 
-                            // 2. Yandex Music Desktop or Web / VK / SoundCloud / AIMP / VLC
                             if (winTitle.contains("Яндекс Музыка") || winTitle.contains("VK Музыка") || winTitle.contains("SoundCloud") || winTitle.contains("AIMP") || winTitle.contains("VLC")) {
                                 String clean = winTitle.replaceAll("(?i)\\s*[-—–|]\\s*(?:Яндекс Музыка|VK Музыка|SoundCloud|AIMP|VLC media player|Google Chrome|Brave|Edge).*$", "").trim();
                                 String[] split = splitArtistAndTitle(clean);
@@ -262,7 +258,6 @@ public final class MediaTracker {
                                 }
                             }
 
-                            // 3. Spotify desktop client
                             if (!isBrowserOrNonMedia && (className.contains("Spotify") || className.startsWith("Chrome_WidgetWin"))) {
                                 if (winTitle.equalsIgnoreCase("Spotify") || winTitle.equalsIgnoreCase("Spotify Free") || winTitle.equalsIgnoreCase("Spotify Premium")) {
                                     return true;

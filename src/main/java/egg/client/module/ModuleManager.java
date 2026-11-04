@@ -1,7 +1,5 @@
 package egg.client.module;
 
-
-
 import egg.client.module.combat.HitColor;
 
 import egg.client.module.combat.ShiftTAP;
@@ -24,11 +22,7 @@ import egg.client.module.render.*;
 
 import net.minecraft.client.MinecraftClient;
 
-
-
 import java.util.*;
-
-
 
 public class ModuleManager {
 
@@ -38,11 +32,7 @@ public class ModuleManager {
 
     private final Map<Class<? extends Module>, Module> moduleClassMap = new HashMap<>();
 
-
-
     public ModuleManager() {
-
-
 
         register(new HitColor());
 
@@ -54,15 +44,11 @@ public class ModuleManager {
 
         register(new egg.client.module.combat.AutoSwap());
 
-
-
         register(new Sprint());
 
         register(new NoJumpDelay());
 
         register(new FastPlace());
-
-
 
         register(new Interface());
 
@@ -110,8 +96,6 @@ public class ModuleManager {
         register(new Lyrics());
         register(new Trail());
 
-
-
         register(new egg.client.module.player.InventorySorter());
 
         register(new AutoRespawn());
@@ -132,8 +116,6 @@ public class ModuleManager {
 
         register(new AutoAuth());
 
-
-
         register(new ClientSettings());
 
         register(new StreamerMode());
@@ -148,17 +130,7 @@ public class ModuleManager {
 
         register(new egg.client.module.cosmetic.CosmeticsModule());
 
-
-
-        /*
-
-                register(new egg.client.module.cosmetic.MeleeSkins());
-
-        */
-
     }
-
-
 
     public static ModuleManager getInstance() {
 
@@ -172,8 +144,6 @@ public class ModuleManager {
 
     }
 
-
-
     private void register(Module module) {
 
         modules.add(module);
@@ -182,15 +152,11 @@ public class ModuleManager {
 
     }
 
-
-
     public List<Module> getModules() {
 
         return modules;
 
     }
-
-
 
     public List<Module> getModulesByCategory(Category category) {
 
@@ -210,8 +176,6 @@ public class ModuleManager {
 
     }
 
-
-
     @SuppressWarnings("unchecked")
 
     public <T extends Module> T getModule(Class<T> clazz) {
@@ -219,8 +183,6 @@ public class ModuleManager {
         return (T) moduleClassMap.get(clazz);
 
     }
-
-
 
     public Module getModuleByName(String name) {
 
@@ -238,11 +200,7 @@ public class ModuleManager {
 
     }
 
-
-
     public void onTick(MinecraftClient client) {
-
-        // egg.client.cases.CaseManager.getInstance().onTick(client);
 
         for (Module m : modules) {
 
@@ -273,8 +231,6 @@ public class ModuleManager {
         }
 
     }
-
-
 
     public void onKey(int key, int action) {
 
@@ -311,4 +267,3 @@ public class ModuleManager {
     }
 
 }
-

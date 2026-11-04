@@ -57,20 +57,16 @@ public class KillEffect extends Module {
     private final BooleanSetting syncColor = new BooleanSetting("Синхр. цвета", false, "Использовать цвет темы клиента для эффекта");
     private final ColorSetting color = new ColorSetting("Цвет", 0xFFFFD700, "Пользовательский цвет эффекта (по умолч. золото)");
 
-    // Настройки для режима Статуя
     private final SliderSetting statueSpeed = new SliderSetting("Скорость льда", 5.2, 1.0, 12.0, 0.5, "Скорость скольжения золотой статуи по земле");
     private final SliderSetting meltDuration = new SliderSetting("Время плавления", 2.6, 1.5, 5.0, 0.1, "Длительность плавления статуи в лужу (сек)");
 
-    // Настройки для режима Обелиск (Monolith Crush)
     private final SliderSetting monolithHeight = new SliderSetting("Высота портала", 6.0, 3.5, 12.0, 0.5, "Высота появления небесного обелиска");
     private final SliderSetting monolithScale = new SliderSetting("Размер обелиска", 1.0, 0.6, 2.0, 0.1, "Масштаб 3D модели обелиска");
     private final BooleanSetting monolithRunes = new BooleanSetting("Руны", true, "Светящиеся выбитые руны на гранях обелиска");
 
-    // Настройки для режима Чернила (Суми-э)
     private final SliderSetting slashScale = new SliderSetting("Масштаб среза", 1.0, 0.5, 2.0, 0.1, "Масштаб каллиграфического среза и модели");
     private final SliderSetting inkDrops = new SliderSetting("Брызги туши", 35, 10, 80, 5, "Количество вылетающих капель туши");
 
-    // Настройки для режима Стекло
     private final SliderSetting amount = new SliderSetting("Осколки стекла", 85, 20, 250, 5, "Количество 3D осколков стекла");
     private final SliderSetting size = new SliderSetting("Размер стекла", 0.22, 0.05, 0.60, 0.01, "Размер осколков стекла");
     private final SliderSetting speed = new SliderSetting("Скорость стекла", 6.5, 2.0, 15.0, 0.5, "Скорость разлета осколков во все стороны");
@@ -91,7 +87,6 @@ public class KillEffect extends Module {
         super("KillEffect", "Воспроизводит визуальный эффект на месте гибели игрока", Category.ESP);
         instance = this;
 
-        // Фильтрация настроек: отображаются только параметры активного режима
         statueSpeed.setVisible(() -> "Статуя".equals(mode.get()));
         meltDuration.setVisible(() -> "Статуя".equals(mode.get()));
 
@@ -159,9 +154,6 @@ public class KillEffect extends Module {
         }
     }
 
-    // =========================================================================
-    // Режим: Золотая Статуя (Golden Statue Melt & Ice Slide)
-    // =========================================================================
     public void spawnStatueEffect(Entity entity) {
         MinecraftClient mc = MinecraftClient.getInstance();
         double bx = entity.getX();
@@ -182,7 +174,6 @@ public class KillEffect extends Module {
             swingProgress = living.getHandSwingProgress(1.0f);
         }
 
-        // Вычисление точных углов суставов на момент смерти
         float rLegPitch = (float) Math.cos(limbProgress * 0.6662f) * 1.4f * limbSpeed;
         float lLegPitch = (float) Math.cos(limbProgress * 0.6662f + (float) Math.PI) * 1.4f * limbSpeed;
         float rArmPitch = (float) Math.cos(limbProgress * 0.6662f + (float) Math.PI) * 1.8f * limbSpeed;
@@ -193,7 +184,6 @@ public class KillEffect extends Module {
             rArmRoll += swingProgress * 0.35f;
         }
 
-        // Вектор скорости, сила тяжести и инерция
         boolean onGround = entity.isOnGround();
         double vy = onGround ? 0.0 : vel.y;
         double hSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
@@ -205,7 +195,7 @@ public class KillEffect extends Module {
             slideVx = (vel.x / hSpeed) * speedSetting;
             slideVz = (vel.z / hSpeed) * speedSetting;
         } else {
-            // Если стоял неподвижно — скользит назад от удара
+
             float rad = (float) Math.toRadians(yaw);
             slideVx = Math.sin(rad) * speedSetting * 0.8;
             slideVz = -Math.cos(rad) * speedSetting * 0.8;
@@ -215,14 +205,14 @@ public class KillEffect extends Module {
         float maxLife = (float) meltDuration.get();
 
         if (sound.isEnabled() && mc.world != null) {
-            // Звон мгновенной кристаллизации в монолитное золото
+
             mc.world.playSoundClient(bx, by + 1.0, bz,
                     SoundEvents.BLOCK_AMETHYST_BLOCK_RESONATE, SoundCategory.PLAYERS,
                     1.4f, 0.82f, false);
             mc.world.playSoundClient(bx, by + 1.0, bz,
                     SoundEvents.BLOCK_ANVIL_PLACE, SoundCategory.PLAYERS,
                     0.85f, 1.75f, false);
-            // Скольжение по льду (только если уже на твердой поверхности)
+
             if (onGround) {
                 mc.world.playSoundClient(bx, by, bz,
                         SoundEvents.BLOCK_GLASS_STEP, SoundCategory.PLAYERS,
@@ -241,9 +231,6 @@ public class KillEffect extends Module {
         }
     }
 
-    // =========================================================================
-    // Режим: Небесный Обелиск (Monolith Crush)
-    // =========================================================================
     public void spawnMonolithEffect(Entity entity) {
         MinecraftClient mc = MinecraftClient.getInstance();
         double bx = entity.getX();
@@ -273,7 +260,6 @@ public class KillEffect extends Module {
             rArmRoll += swingProgress * 0.35f;
         }
 
-        // Звуки небесного разлома и нарастающего гравитационного гула
         if (sound.isEnabled() && mc.world != null) {
             mc.world.playSoundClient(bx, by + 3.0, bz,
                     SoundEvents.BLOCK_RESPAWN_ANCHOR_CHARGE, SoundCategory.PLAYERS,
@@ -301,9 +287,6 @@ public class KillEffect extends Module {
         }
     }
 
-    // =========================================================================
-    // Режим: Чернила Суми-э (Calligraphic Ink Slash + 1:1 Model Slice)
-    // =========================================================================
     public void spawnInkSlashEffect(Entity entity) {
         MinecraftClient mc = MinecraftClient.getInstance();
         double bx = entity.getX();
@@ -343,9 +326,6 @@ public class KillEffect extends Module {
         }
     }
 
-    // =========================================================================
-    // Режим: Стекло (3D Glass Burst)
-    // =========================================================================
     public void spawnGlassBurst(Entity entity) {
         MinecraftClient mc = MinecraftClient.getInstance();
         Vec3d basePos = new Vec3d(entity.getX(), entity.getY(), entity.getZ());
@@ -458,30 +438,23 @@ public class KillEffect extends Module {
         VertexConsumer lightBuffer = immediate.getBuffer(RenderLayers.lightning());
         Vector3f lightDir = new Vector3f(0.35f, 0.90f, 0.25f).normalize();
 
-        // 1. Отрисовка Золотой Статуи (скольжение + плавление + лужа)
         if (!statueInstances.isEmpty()) {
             renderGoldenStatues(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
         }
 
-        // 2. Отрисовка Небесного Обелиска (Monolith Crush)
         if (!monolithInstances.isEmpty()) {
             renderMonolithInstances(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
         }
 
-        // 3. Отрисовка эффекта Чернила Суми-э
         if (!inkSlashInstances.isEmpty()) {
             renderInkSlashInstances(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
         }
 
-        // 4. Отрисовка осколков стекла
         if (!particles.isEmpty()) {
             renderGlassParticles(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
         }
     }
 
-    // =========================================================================
-    // Отрисовка и физика Золотой Статуи
-    // =========================================================================
     private void renderGoldenStatues(VertexConsumer quadBuf, VertexConsumer lightBuf,
                                      Vec3d camPos, Vector3f lightDir, float dt, MinecraftClient mc) {
         Iterator<GoldenStatueInstance> it = statueInstances.iterator();
@@ -493,16 +466,14 @@ public class KillEffect extends Module {
                 continue;
             }
 
-            // Физика скольжения и гравитации: пока статуя не осела в лужу (первые 1.35 сек)
             if (inst.age < 1.35f) {
                 if (mc.world != null) {
-                    // 1. Сила тяжести
+
                     if (!inst.onGround) {
                         inst.vy -= 22.0 * dt;
                         if (inst.vy < -32.0) inst.vy = -32.0;
                     }
 
-                    // 2. Горизонтальное скольжение с проверкой препятствий (стен)
                     double nextX = inst.x + inst.slideVx * dt;
                     double nextZ = inst.z + inst.slideVz * dt;
 
@@ -517,7 +488,6 @@ public class KillEffect extends Module {
                         nextZ = inst.z;
                     }
 
-                    // 3. Вертикальное перемещение и коллизия с твердой поверхностью
                     double nextY = inst.y + inst.vy * dt;
 
                     BlockPos feetPos = BlockPos.ofFloored(nextX, nextY, nextZ);
@@ -543,7 +513,7 @@ public class KillEffect extends Module {
                     }
 
                     if (!hitGround) {
-                        // Проверка блока непосредственно под подошвой при скольжении
+
                         BlockPos underPos = BlockPos.ofFloored(nextX, nextY - 0.08, nextZ);
                         BlockState underState = mc.world.getBlockState(underPos);
                         if (underState.blocksMovement() && inst.vy <= 0.0) {
@@ -566,7 +536,6 @@ public class KillEffect extends Module {
                     inst.y = nextY;
                     inst.z = nextZ;
 
-                    // 4. Трение: на земле ледяное скольжение, в воздухе легкое аэродинамическое сопротивление
                     if (inst.onGround) {
                         float friction = (float) Math.exp(-1.45f * dt);
                         inst.slideVx *= friction;
@@ -577,25 +546,21 @@ public class KillEffect extends Module {
                         inst.slideVz *= airDrag;
                     }
 
-                    // Лужа следует за текущей точкой опоры статуи
                     inst.puddleX = inst.x;
                     inst.puddleY = inst.y;
                     inst.puddleZ = inst.z;
 
-                    // Срыв расплавленных золотых капель на ходу
                     if (random.nextFloat() < 0.65f) {
                         inst.spawnMeltingDroplet(random);
                     }
                 }
             }
 
-            // Провал в бездну
             if (inst.y < -70.0) {
                 it.remove();
                 continue;
             }
 
-            // Звук шипения тающего золота
             if (inst.age >= 0.35f && !inst.soundPlayedMelt) {
                 inst.soundPlayedMelt = true;
                 if (sound.isEnabled() && mc.world != null) {
@@ -605,20 +570,16 @@ public class KillEffect extends Module {
                 }
             }
 
-            // Коэффициент плавления (от 0.0 до 1.0)
             float meltProg = MathHelper.clamp((inst.age - 0.20f) / 1.10f, 0.0f, 1.0f);
             float yScale = (float) (Math.pow(1.0f - meltProg, 1.45) * 0.96f + 0.04f);
             float xzSpread = 1.0f + meltProg * 0.42f;
 
-            // 1. Отрисовка самой тающей 3D золотой статуи
             if (meltProg < 0.98f) {
                 renderMeltingStatueModel(quadBuf, lightBuf, inst, camPos, lightDir, yScale, xzSpread, meltProg);
             }
 
-            // 2. Отрисовка неподвижной зеркальной золотой лужи на земле
             renderGoldenPuddle(quadBuf, lightBuf, inst, camPos, lightDir, meltProg);
 
-            // 3. Обновление и отрисовка капель жидкого золота
             inst.updateAndRenderDroplets(quadBuf, lightBuf, camPos, dt);
         }
     }
@@ -626,21 +587,18 @@ public class KillEffect extends Module {
     private void renderMeltingStatueModel(VertexConsumer quadBuf, VertexConsumer lightBuf,
                                          GoldenStatueInstance inst, Vec3d camPos, Vector3f lightDir,
                                          float yScale, float xzSpread, float meltProg) {
-        // Положение и поворот тела
+
         Matrix4f bodyMat = new Matrix4f()
                 .rotateY((float) Math.toRadians(-inst.yaw));
 
-        // Матрица трансформации торса
         Matrix4f torsoMat = new Matrix4f(bodyMat);
         if (inst.isSneaking) {
             torsoMat.rotateX((float) Math.toRadians(25.0f));
         }
 
-        // Цвета золота: 24K золотой отлив с глубоким амбровым затемнением
         int baseCol = inst.tintColor;
         int alpha = (int) (255 * MathHelper.clamp((1.0f - meltProg) / 0.15f, 0.0f, 1.0f));
 
-        // Торс (ширина 0.5, высота 0.75, глубина 0.25)
         float torsoBaseY = 0.70f * yScale;
         float torsoTopY = torsoBaseY + 0.75f * yScale;
         emitGoldBox(quadBuf, camPos, inst.x, inst.y, inst.z, torsoMat,
@@ -648,7 +606,6 @@ public class KillEffect extends Module {
                 0.25f * xzSpread, torsoTopY, 0.125f * xzSpread,
                 baseCol, lightDir, alpha);
 
-        // Голова (0.5 x 0.5 x 0.5), поворачивается по headYaw и pitch
         Matrix4f headMat = new Matrix4f(bodyMat);
         headMat.translate(0, torsoTopY, 0);
         headMat.rotateY((float) Math.toRadians(-(inst.headYaw - inst.yaw)));
@@ -660,7 +617,6 @@ public class KillEffect extends Module {
                 0.25f * xzSpread, headH, 0.25f * xzSpread,
                 baseCol, lightDir, alpha);
 
-        // Правая рука (сохраняет зафиксированный угол атаки/бега)
         Matrix4f rArmMat = new Matrix4f(bodyMat);
         rArmMat.translate(-0.375f * xzSpread, torsoTopY - 0.08f * yScale, 0);
         rArmMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.rArmPitch)));
@@ -671,7 +627,6 @@ public class KillEffect extends Module {
                 0.125f * xzSpread, 0.03f * yScale, 0.125f * xzSpread,
                 baseCol, lightDir, alpha);
 
-        // Левая рука
         Matrix4f lArmMat = new Matrix4f(bodyMat);
         lArmMat.translate(0.375f * xzSpread, torsoTopY - 0.08f * yScale, 0);
         lArmMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.lArmPitch)));
@@ -681,7 +636,6 @@ public class KillEffect extends Module {
                 0.125f * xzSpread, 0.03f * yScale, 0.125f * xzSpread,
                 baseCol, lightDir, alpha);
 
-        // Правая нога (зафиксированная в шаге)
         Matrix4f rLegMat = new Matrix4f(bodyMat);
         rLegMat.translate(-0.125f * xzSpread, torsoBaseY, 0);
         rLegMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.rLegPitch)));
@@ -691,7 +645,6 @@ public class KillEffect extends Module {
                 0.125f * xzSpread, 0, 0.125f * xzSpread,
                 baseCol, lightDir, alpha);
 
-        // Левая нога
         Matrix4f lLegMat = new Matrix4f(bodyMat);
         lLegMat.translate(0.125f * xzSpread, torsoBaseY, 0);
         lLegMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.lLegPitch)));
@@ -706,17 +659,14 @@ public class KillEffect extends Module {
                                     GoldenStatueInstance inst, Vec3d camPos, Vector3f lightDir, float meltProg) {
         if (meltProg < 0.15f) return;
 
-        // Плавное появление лужи по мере таяния статуи
         float puddleAppear = MathHelper.clamp((meltProg - 0.15f) / 0.85f, 0.0f, 1.0f);
 
-        // Плавное исчезновение лужи после завершения таяния (после 1.45 сек)
         float fade = 1.0f;
         if (inst.age > 1.45f) {
             fade = MathHelper.clamp(1.0f - (inst.age - 1.45f) / (inst.maxLife - 1.45f), 0.0f, 1.0f);
         }
         if (fade <= 0.005f) return;
 
-        // Лужа НЕ ДВИГАЕТСЯ: зафиксирована на поверхности блока в inst.puddleX, inst.puddleY, inst.puddleZ
         float px = (float) (inst.puddleX - camPos.x);
         float py = (float) (inst.puddleY + 0.015 - camPos.y);
         float pz = (float) (inst.puddleZ - camPos.z);
@@ -727,19 +677,16 @@ public class KillEffect extends Module {
         int centerAlpha = (int) (245 * fade);
         int rimAlpha = (int) (225 * fade);
 
-        // Отражение неба и солнца на зеркальной поверхности жидкого золота
         int centerCol = computeGoldColor(inst.puddleX, inst.puddleY, inst.puddleZ,
                 camPos, new Vector3f(0, 1, 0), null, lightDir, inst.tintColor);
         int cr = (centerCol >> 16) & 0xFF;
         int cg = (centerCol >> 8) & 0xFF;
         int cb = centerCol & 0xFF;
 
-        // Отрисовка жидкого зеркального золота на земле
         for (int i = 0; i < segments; i++) {
             double a0 = (i / (double) segments) * Math.PI * 2.0;
             double a1 = ((i + 1) / (double) segments) * Math.PI * 2.0;
 
-            // Волнообразная кромка лужи с поверхностным натяжением
             float r0 = radius * (1.0f + 0.07f * (float) Math.sin(a0 * 5.0 + inst.age * 3.0));
             float r1 = radius * (1.0f + 0.07f * (float) Math.sin(a1 * 5.0 + inst.age * 3.0));
 
@@ -748,7 +695,6 @@ public class KillEffect extends Module {
             float x1 = px + (float) Math.cos(a1) * r1;
             float z1 = pz + (float) Math.sin(a1) * r1;
 
-            // Нормали на кромке изогнуты наружу (мениск жидкого металла)
             Vector3f norm0 = new Vector3f((float) Math.cos(a0) * 0.35f, 0.93f, (float) Math.sin(a0) * 0.35f).normalize();
             Vector3f norm1 = new Vector3f((float) Math.cos(a1) * 0.35f, 0.93f, (float) Math.sin(a1) * 0.35f).normalize();
 
@@ -757,13 +703,11 @@ public class KillEffect extends Module {
             int col1 = computeGoldColor(inst.puddleX + Math.cos(a1) * r1, inst.puddleY, inst.puddleZ + Math.sin(a1) * r1,
                     camPos, norm1, null, lightDir, inst.tintColor);
 
-            // Зеркальная золотая поверхность лужи
             quadBuf.vertex(px, py, pz).color(cr, cg, cb, centerAlpha);
             quadBuf.vertex(x0, py, z0).color((col0 >> 16) & 0xFF, (col0 >> 8) & 0xFF, col0 & 0xFF, rimAlpha);
             quadBuf.vertex(x1, py, z1).color((col1 >> 16) & 0xFF, (col1 >> 8) & 0xFF, col1 & 0xFF, rimAlpha);
             quadBuf.vertex(px, py, pz).color(cr, cg, cb, centerAlpha);
 
-            // Светящаяся кромка расплавленного золота
             float glowR0 = r0 * 1.12f;
             float glowR1 = r1 * 1.12f;
             float gx0 = px + (float) Math.cos(a0) * glowR0;
@@ -787,7 +731,6 @@ public class KillEffect extends Module {
         float cy = (y0 + y1) * 0.5f;
         float cz = (z0 + z1) * 0.5f;
 
-        // Front (+Z)
         emitGoldFace(buf, camPos, wx, wy, wz, mat, lightDir, tintColor, alpha,
                 x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1,
                 x0 - cx, y0 - cy, z1 - cz,
@@ -795,7 +738,7 @@ public class KillEffect extends Module {
                 x1 - cx, y1 - cy, z1 - cz,
                 x0 - cx, y1 - cy, z1 - cz,
                 0, 0, 1);
-        // Back (-Z)
+
         emitGoldFace(buf, camPos, wx, wy, wz, mat, lightDir, tintColor, alpha,
                 x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0,
                 x1 - cx, y0 - cy, z0 - cz,
@@ -803,7 +746,7 @@ public class KillEffect extends Module {
                 x0 - cx, y1 - cy, z0 - cz,
                 x1 - cx, y1 - cy, z0 - cz,
                 0, 0, -1);
-        // Top (+Y)
+
         emitGoldFace(buf, camPos, wx, wy, wz, mat, lightDir, tintColor, alpha,
                 x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0,
                 x0 - cx, y1 - cy, z0 - cz,
@@ -811,7 +754,7 @@ public class KillEffect extends Module {
                 x1 - cx, y1 - cy, z1 - cz,
                 x1 - cx, y1 - cy, z0 - cz,
                 0, 1, 0);
-        // Bottom (-Y)
+
         emitGoldFace(buf, camPos, wx, wy, wz, mat, lightDir, tintColor, alpha,
                 x0, y0, z1, x0, y0, z0, x1, y0, z0, x1, y0, z1,
                 x0 - cx, y0 - cy, z1 - cz,
@@ -819,7 +762,7 @@ public class KillEffect extends Module {
                 x1 - cx, y0 - cy, z0 - cz,
                 x1 - cx, y0 - cy, z1 - cz,
                 0, -1, 0);
-        // Left (-X)
+
         emitGoldFace(buf, camPos, wx, wy, wz, mat, lightDir, tintColor, alpha,
                 x0, y0, z0, x0, y0, z1, x0, y1, z1, x0, y1, z0,
                 x0 - cx, y0 - cy, z0 - cz,
@@ -827,7 +770,7 @@ public class KillEffect extends Module {
                 x0 - cx, y1 - cy, z1 - cz,
                 x0 - cx, y1 - cy, z0 - cz,
                 -1, 0, 0);
-        // Right (+X)
+
         emitGoldFace(buf, camPos, wx, wy, wz, mat, lightDir, tintColor, alpha,
                 x1, y0, z1, x1, y0, z0, x1, y1, z0, x1, y1, z1,
                 x1 - cx, y0 - cy, z1 - cz,
@@ -918,7 +861,6 @@ public class KillEffect extends Module {
             }
         }
 
-        // Вектор отражения R = 2*(N.V)*N - V
         float NdotV = nx * toCamX + ny * toCamY + nz * toCamZ;
         float rx = 2.0f * NdotV * nx - toCamX;
         float ry = 2.0f * NdotV * ny - toCamY;
@@ -929,59 +871,42 @@ public class KillEffect extends Module {
         ry *= invRLen;
         rz *= invRLen;
 
-        // Диффузная составляющая (у металлов слабая, формирует теплое тело)
         float NdotL = Math.max(0.0f, nx * lightDir.x + ny * lightDir.y + nz * lightDir.z);
         float diff = 0.30f + 0.42f * NdotL;
 
-        // Прямой зеркальный блик солнца (ослепительное полированное золото)
         float RdotL = Math.max(0.0f, rx * lightDir.x + ry * lightDir.y + rz * lightDir.z);
         float sharpSun = (float) Math.pow(RdotL, 28.0);
         float broadSun = (float) Math.pow(RdotL, 7.0) * 0.35f;
 
-        // Отражение купола неба (верхнее полупространство дает зеркальный золотой глянец)
         float skyFactor = MathHelper.clamp((ry + 0.15f) / 1.15f, 0.0f, 1.0f);
 
-        // Отражение земли (нижнее полупространство отражает теплый коньячно-бронзовый оттенок)
         float groundFactor = MathHelper.clamp(-ry, 0.0f, 1.0f);
 
-        // Горизонтный металлический отблеск
         float horizonGlint = (float) Math.exp(-ry * ry * 16.0f) * 0.28f;
 
-        // Френель проводника (на краях золото отражает почти 100% света)
         float fresnel = (float) Math.pow(1.0f - Math.max(0.0f, Math.abs(NdotV)), 2.6f);
 
-        // Физический спектр чистого 24-каратного золота:
-        // Базовые амбровые тени: (125, 75, 12)
-        // Основной тон слитка 24K: (255, 215, 30)
-        // Зеркальное отражение неба: (255, 238, 130)
-        // Блик солнца: (255, 255, 220)
-        // Ореол Френеля: (255, 245, 155)
         float r = 125.0f * (1.0f - diff) + 255.0f * diff;
         float g = 75.0f * (1.0f - diff) + 215.0f * diff;
         float b = 12.0f * (1.0f - diff) + 30.0f * diff;
 
-        // Отражение окружения (небо)
         r += 255.0f * skyFactor * 0.45f;
         g += 238.0f * skyFactor * 0.45f;
         b += 130.0f * skyFactor * 0.45f;
 
-        // Отражение земли
         r += 42.0f * groundFactor;
         g += 22.0f * groundFactor;
         b += 6.0f * groundFactor;
 
-        // Полоса горизонта
         r += 135.0f * horizonGlint;
         g += 115.0f * horizonGlint;
         b += 48.0f * horizonGlint;
 
-        // Металлический солнечный блик
         float totalSpec = sharpSun + broadSun;
         r += 255.0f * totalSpec;
         g += 255.0f * totalSpec;
         b += 220.0f * totalSpec;
 
-        // Френелевское контурное свечение металла
         r += 255.0f * fresnel * 0.65f;
         g += 245.0f * fresnel * 0.65f;
         b += 155.0f * fresnel * 0.65f;
@@ -1002,9 +927,6 @@ public class KillEffect extends Module {
         return (ir << 16) | (ig << 8) | ib;
     }
 
-    // =========================================================================
-    // Отрисовка и физика Небесного Обелиска (Monolith Crush)
-    // =========================================================================
     private void renderMonolithInstances(VertexConsumer quadBuf, VertexConsumer lightBuf,
                                          Vec3d camPos, Vector3f lightDir, float dt, MinecraftClient mc) {
         Iterator<MonolithInstance> it = monolithInstances.iterator();
@@ -1018,7 +940,6 @@ public class KillEffect extends Module {
 
             float age = inst.age;
 
-            // 1. Звук падения со свистом воздуха
             if (age >= 0.22f && !inst.soundPlayedDrop) {
                 inst.soundPlayedDrop = true;
                 if (sound.isEnabled() && mc.world != null) {
@@ -1031,7 +952,6 @@ public class KillEffect extends Module {
                 }
             }
 
-            // 2. Сейсмический удар о землю (Impact)
             if (age >= 0.46f && !inst.soundPlayedImpact) {
                 inst.soundPlayedImpact = true;
                 if (sound.isEnabled() && mc.world != null) {
@@ -1045,59 +965,53 @@ public class KillEffect extends Module {
                             SoundEvents.BLOCK_STONE_BREAK, SoundCategory.PLAYERS,
                             1.6f, 0.85f, false);
                 }
-                // Окаменевшая фигура разбивается на 3D каменные осколки
+
                 inst.spawnShatterDebris(random);
             }
 
-            // 3. Вычисление текущей высоты и положения обелиска
             double curY;
             double shakeX = 0;
             double shakeZ = 0;
 
             if (age < 0.22f) {
-                // До начала падения обелиск находится в портале наверху
+
                 curY = inst.y + inst.portalHeight + 1.2 * inst.scale;
             } else if (age < 0.46f) {
-                // Сверхзвуковое падение вертикально вниз с ускорением
+
                 float dropProg = (age - 0.22f) / 0.24f;
                 float easeDrop = dropProg * dropProg;
                 curY = (inst.y + inst.portalHeight + 1.2 * inst.scale) * (1.0f - easeDrop) + inst.y * easeDrop;
             } else if (age < 1.15f) {
-                // Обелиск вонзился в землю: затухающая сейсмическая вибрация
+
                 curY = inst.y;
                 float tremorTime = age - 0.46f;
                 float tremorAmp = (float) (Math.exp(-tremorTime * 5.0) * 0.065 * inst.scale);
                 shakeX = Math.sin(tremorTime * 48.0) * tremorAmp;
                 shakeZ = Math.cos(tremorTime * 42.0) * tremorAmp;
             } else {
-                // Обелиск медленно погружается в глубины земли
+
                 float sinkProg = (age - 1.15f) / 1.85f;
                 float easeSink = (float) Math.pow(sinkProg, 1.4);
                 curY = inst.y - easeSink * (4.2 * inst.scale);
             }
 
-            // 4. Отрисовка небесного рунического портала (вверху)
             if (age < 0.65f) {
                 renderCelestialPortal(quadBuf, lightBuf, inst, camPos, age);
             }
 
-            // 5. Отрисовка окаменевшей модельки врага (до момента удара на 0.46 сек)
             if (age < 0.46f) {
                 renderPetrifiedModel(quadBuf, inst, camPos, lightDir);
             }
 
-            // 6. Отрисовка сейсмической ударной волны и трещин в земле
             if (age >= 0.46f) {
                 renderImpactShockwaveAndCracks(quadBuf, lightBuf, inst, camPos, age);
             }
 
-            // 7. Отрисовка самого 3D обелиска из натурального камня
             if (curY + 4.5 * inst.scale > inst.y - 2.0) {
                 renderMonolithModel(quadBuf, lightBuf, inst, camPos, lightDir,
                         inst.x + shakeX, curY, inst.z + shakeZ);
             }
 
-            // 8. Обновление и отрисовка разлетающихся 3D каменных осколков
             inst.updateAndRenderDebris(quadBuf, camPos, lightDir, dt, mc);
         }
     }
@@ -1111,14 +1025,12 @@ public class KillEffect extends Module {
             torsoMat.rotateX((float) Math.toRadians(25.0f));
         }
 
-        // Торс
         float torsoBaseY = 0.70f;
         float torsoTopY = torsoBaseY + 0.75f;
         emitStoneBox(quadBuf, camPos, inst.x, inst.y, inst.z, torsoMat,
                 -0.25f, torsoBaseY, -0.125f,
                 0.25f, torsoTopY, 0.125f, lightDir, 255);
 
-        // Голова
         Matrix4f headMat = new Matrix4f(bodyMat);
         headMat.translate(0, torsoTopY, 0);
         headMat.rotateY((float) Math.toRadians(-(inst.headYaw - inst.yaw)));
@@ -1128,7 +1040,6 @@ public class KillEffect extends Module {
                 -0.25f, 0, -0.25f,
                 0.25f, 0.50f, 0.25f, lightDir, 255);
 
-        // Руки
         Matrix4f rArmMat = new Matrix4f(bodyMat);
         rArmMat.translate(-0.375f, torsoTopY - 0.08f, 0);
         rArmMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.rArmPitch)));
@@ -1144,7 +1055,6 @@ public class KillEffect extends Module {
                 -0.125f, -0.72f, -0.125f,
                 0.125f, 0.03f, 0.125f, lightDir, 255);
 
-        // Ноги
         Matrix4f rLegMat = new Matrix4f(bodyMat);
         rLegMat.translate(-0.125f, torsoBaseY, 0);
         rLegMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.rLegPitch)));
@@ -1181,7 +1091,6 @@ public class KillEffect extends Module {
         int alpha = (int) (230 * portalAlphaProg);
         int innerAlpha = (int) (160 * portalAlphaProg);
 
-        // 1. Внешнее магическое кольцо (16 сегментов)
         int segs = 16;
         float rOuter = 1.55f * inst.scale;
         float rInner = 1.25f * inst.scale;
@@ -1207,7 +1116,6 @@ public class KillEffect extends Module {
             lightBuf.vertex(x0_out, py, z0_out).color(tr, tg, tb, 0);
         }
 
-        // 2. Внутреннее руническое кольцо (противоположное вращение)
         float r2Outer = 0.95f * inst.scale;
         float r2Inner = 0.65f * inst.scale;
         float rot2 = -age * 3.8f;
@@ -1232,7 +1140,6 @@ public class KillEffect extends Module {
             quadBuf.vertex(x0_out, py, z0_out).color(tr, tg, tb, innerAlpha);
         }
 
-        // 3. Вертикальный нисходящий луч призыва
         float beamH = inst.portalHeight;
         float beamR = 0.55f * inst.scale;
         int beamAlpha = (int) (70 * portalAlphaProg);
@@ -1265,7 +1172,6 @@ public class KillEffect extends Module {
         int tg = (inst.runeColor >> 8) & 0xFF;
         int tb = inst.runeColor & 0xFF;
 
-        // 1. Быстро расширяющаяся сейсмическая ударная волна (до 0.55 сек после удара)
         if (timeSinceImpact < 0.55f) {
             float waveProg = timeSinceImpact / 0.55f;
             float waveRadius = (0.25f + waveProg * 2.6f) * inst.scale;
@@ -1304,7 +1210,6 @@ public class KillEffect extends Module {
             }
         }
 
-        // 2. Радиальные трещины в земле от точки падения (до 2.0 сек)
         if (timeSinceImpact < 2.0f) {
             float crackProg = MathHelper.clamp(1.0f - timeSinceImpact / 2.0f, 0.0f, 1.0f);
             int crackAlpha = (int) (200 * crackProg);
@@ -1371,7 +1276,6 @@ public class KillEffect extends Module {
             zt[i] = sin * rTop;
         }
 
-        // 1. Отрисовка 8 вертикальных граней тела обелиска (Shaft)
         for (int i = 0; i < 8; i++) {
             int next = (i + 1) % 8;
 
@@ -1418,14 +1322,12 @@ public class KillEffect extends Module {
             quadBuf.vertex(vx2, vy2, vz2).color((col2 >> 16) & 0xFF, (col2 >> 8) & 0xFF, col2 & 0xFF, 255);
             quadBuf.vertex(vx3, vy3, vz3).color((col3 >> 16) & 0xFF, (col3 >> 8) & 0xFF, col3 & 0xFF, 255);
 
-            // 2. Светящиеся выбитые руны на 4 главных широких гранях (i = 0, 2, 4, 6)
             if (monolithRunes.isEnabled() && (i % 2 == 0)) {
                 renderMonolithFaceRunes(lightBuf, inst, camPos, mx, my, mz,
                         lx0, lz0, lx1, lz1, lx2, lz2, lx3, lz3, normal, hBody);
             }
         }
 
-        // 3. Отрисовка 8 граней вершины (Пирамидион / Apex)
         float apexY = hBody + hApex;
         for (int i = 0; i < 8; i++) {
             int next = (i + 1) % 8;
@@ -1468,7 +1370,6 @@ public class KillEffect extends Module {
             quadBuf.vertex(vx0, vy0, vz0).color((col0 >> 16) & 0xFF, (col0 >> 8) & 0xFF, col0 & 0xFF, 255);
         }
 
-        // 4. Отрисовка нижнего клина (Wedge), вонзающегося в грунт
         float wedgeY = -hWedge;
         for (int i = 0; i < 8; i++) {
             int next = (i + 1) % 8;
@@ -1549,7 +1450,6 @@ public class KillEffect extends Module {
 
         float width = 0.012f * inst.scale;
 
-        // Центральная вертикальная ось рунического канала
         float ax0 = (float) (mx + bx + offX - camPos.x);
         float ay0 = (float) (my + 0.12f * hBody + offY - camPos.y);
         float az0 = (float) (mz + bz + offZ - camPos.z);
@@ -1560,7 +1460,6 @@ public class KillEffect extends Module {
 
         emitRuneLine(lightBuf, ax0, ay0, az0, ax1, ay1, az1, tangX, 0, tangZ, width, tr, tg, tb, runeAlpha);
 
-        // Глиф 1: Верхний кристаллический ромб (Diamond Glyph, t ~ 0.72)
         float sDia = 0.065f * inst.scale;
         float[] pTop = getRunePt(mx, my, mz, bx, bz, tx, tz, tangX, tangZ, offX, offY, offZ, camPos, 0.77f, 0, hBody);
         float[] pR = getRunePt(mx, my, mz, bx, bz, tx, tz, tangX, tangZ, offX, offY, offZ, camPos, 0.71f, sDia, hBody);
@@ -1573,7 +1472,6 @@ public class KillEffect extends Module {
         emitRuneLine(lightBuf, pL[0], pL[1], pL[2], pTop[0], pTop[1], pTop[2], tangX, 0, tangZ, width, tr, tg, tb, runeAlpha);
         emitRuneLine(lightBuf, pL[0], pL[1], pL[2], pR[0], pR[1], pR[2], tangX, 0, tangZ, width, tr, tg, tb, runeAlpha);
 
-        // Глиф 2: Средний шевронный узел (Chevron Sigil, t ~ 0.49)
         float sChev = 0.062f * inst.scale;
         float[] cTL = getRunePt(mx, my, mz, bx, bz, tx, tz, tangX, tangZ, offX, offY, offZ, camPos, 0.55f, -sChev, hBody);
         float[] cTR = getRunePt(mx, my, mz, bx, bz, tx, tz, tangX, tangZ, offX, offY, offZ, camPos, 0.55f, sChev, hBody);
@@ -1588,7 +1486,6 @@ public class KillEffect extends Module {
         emitRuneLine(lightBuf, cTL[0], cTL[1], cTL[2], cTR[0], cTR[1], cTR[2], tangX, 0, tangZ, width, tr, tg, tb, runeAlpha);
         emitRuneLine(lightBuf, cBL[0], cBL[1], cBL[2], cBR[0], cBR[1], cBR[2], tangX, 0, tangZ, width, tr, tg, tb, runeAlpha);
 
-        // Глиф 3: Нижний солярный знак (Solar Glyph, t ~ 0.27)
         float sSol = 0.055f * inst.scale;
         float[] sTop = getRunePt(mx, my, mz, bx, bz, tx, tz, tangX, tangZ, offX, offY, offZ, camPos, 0.32f, 0, hBody);
         float[] sR = getRunePt(mx, my, mz, bx, bz, tx, tz, tangX, tangZ, offX, offY, offZ, camPos, 0.27f, sSol, hBody);
@@ -1633,22 +1530,22 @@ public class KillEffect extends Module {
                                      double wx, double wy, double wz, Matrix4f mat,
                                      float x0, float y0, float z0, float x1, float y1, float z1,
                                      Vector3f lightDir, int alpha) {
-        // Front (+Z)
+
         emitStoneFace(buf, camPos, wx, wy, wz, mat, lightDir, alpha,
                 x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1, 0, 0, 1);
-        // Back (-Z)
+
         emitStoneFace(buf, camPos, wx, wy, wz, mat, lightDir, alpha,
                 x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0, 0, 0, -1);
-        // Top (+Y)
+
         emitStoneFace(buf, camPos, wx, wy, wz, mat, lightDir, alpha,
                 x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0, 0, 1, 0);
-        // Bottom (-Y)
+
         emitStoneFace(buf, camPos, wx, wy, wz, mat, lightDir, alpha,
                 x0, y0, z1, x0, y0, z0, x1, y0, z0, x1, y0, z1, 0, -1, 0);
-        // Left (-X)
+
         emitStoneFace(buf, camPos, wx, wy, wz, mat, lightDir, alpha,
                 x0, y0, z0, x0, y0, z1, x0, y1, z1, x0, y1, z0, -1, 0, 0);
-        // Right (+X)
+
         emitStoneFace(buf, camPos, wx, wy, wz, mat, lightDir, alpha,
                 x1, y0, z1, x1, y0, z0, x1, y1, z0, x1, y1, z1, 1, 0, 0);
     }
@@ -1712,7 +1609,7 @@ public class KillEffect extends Module {
     private static int computeStoneColor(double worldX, double worldY, double worldZ,
                                          Vec3d camPos, Vector3f normal,
                                          Vector3f lightDir) {
-        // Вектор взгляда к камере
+
         float camDx = (float) (camPos.x - worldX);
         float camDy = (float) (camPos.y - worldY);
         float camDz = (float) (camPos.z - worldZ);
@@ -1722,7 +1619,6 @@ public class KillEffect extends Module {
         float toCamY = camDy * invDist;
         float toCamZ = camDz * invDist;
 
-        // Натуральные геологические слои породы и минеральные прожилки
         double slant = worldY * 4.2 + worldX * 1.7 - worldZ * 1.5;
         float strata1 = (float) Math.sin(slant);
         float strata2 = (float) Math.sin(slant * 2.4 + 1.3);
@@ -1734,7 +1630,6 @@ public class KillEffect extends Module {
                 0.0f, 1.0f
         );
 
-        // Палитра натурального базальта, сланца и гранитных прожилок
         float rBase, gBase, bBase;
         if (mineralFactor < 0.55f) {
             float t = mineralFactor / 0.55f;
@@ -1748,11 +1643,9 @@ public class KillEffect extends Module {
             bBase = MathHelper.lerp(t, 75.0f, 134.0f);
         }
 
-        // Освещение шероховатого камня
         float NdotL = Math.max(0.0f, normal.x * lightDir.x + normal.y * lightDir.y + normal.z * lightDir.z);
         float diff = 0.32f + 0.68f * NdotL;
 
-        // Вектор полупути для матового минерального блика
         float halfX = lightDir.x + toCamX;
         float halfY = lightDir.y + toCamY;
         float halfZ = lightDir.z + toCamZ;
@@ -1763,7 +1656,6 @@ public class KillEffect extends Module {
         float NdotH = Math.max(0.0f, normal.x * halfX + normal.y * halfY + normal.z * halfZ);
         float stoneSpec = (float) Math.pow(NdotH, 12.0) * 0.28f;
 
-        // Френель минерала
         float NdotV = Math.max(0.0f, normal.x * toCamX + normal.y * toCamY + normal.z * toCamZ);
         float fresnel = (float) Math.pow(1.0f - NdotV, 3.2f) * 0.22f;
 
@@ -1778,9 +1670,6 @@ public class KillEffect extends Module {
         return (ir << 16) | (ig << 8) | ib;
     }
 
-    // =========================================================================
-    // Отрисовка и симуляция Чернил Суми-э
-    // =========================================================================
     private void renderInkSlashInstances(VertexConsumer quadBuf, VertexConsumer lightBuf,
                                         Vec3d camPos, Vector3f lightDir, float dt, MinecraftClient mc) {
         Iterator<InkSlashInstance> it = inkSlashInstances.iterator();
@@ -2078,37 +1967,31 @@ public class KillEffect extends Module {
         float uBot0 = (u + d + w) / f;
         float uBot1 = (u + d + w + w) / f;
 
-        // Front (+Z)
         emitVertex(buf, camPos, wx, wy, wz, mat, minX, minY, maxZ, uFront0, vSide1, cr, cg, cb, ca);
         emitVertex(buf, camPos, wx, wy, wz, mat, maxX, minY, maxZ, uFront1, vSide1, cr, cg, cb, ca);
         emitVertex(buf, camPos, wx, wy, wz, mat, maxX, maxY, maxZ, uFront1, vSide0, cr, cg, cb, ca);
         emitVertex(buf, camPos, wx, wy, wz, mat, minX, maxY, maxZ, uFront0, vSide0, cr, cg, cb, ca);
 
-        // Back (-Z)
         emitVertex(buf, camPos, wx, wy, wz, mat, maxX, minY, minZ, uBack0, vSide1, cr, cg, cb, ca);
         emitVertex(buf, camPos, wx, wy, wz, mat, minX, minY, minZ, uBack1, vSide1, cr, cg, cb, ca);
         emitVertex(buf, camPos, wx, wy, wz, mat, minX, maxY, minZ, uBack1, vSide0, cr, cg, cb, ca);
         emitVertex(buf, camPos, wx, wy, wz, mat, maxX, maxY, minZ, uBack0, vSide0, cr, cg, cb, ca);
 
-        // Top (+Y)
         emitVertex(buf, camPos, wx, wy, wz, mat, minX, maxY, minZ, uTop0, vTop0, cr, cg, cb, ca);
         emitVertex(buf, camPos, wx, wy, wz, mat, minX, maxY, maxZ, uTop0, vTop1, cr, cg, cb, ca);
         emitVertex(buf, camPos, wx, wy, wz, mat, maxX, maxY, maxZ, uTop1, vTop1, cr, cg, cb, ca);
         emitVertex(buf, camPos, wx, wy, wz, mat, maxX, maxY, minZ, uTop1, vTop0, cr, cg, cb, ca);
 
-        // Bottom (-Y)
         emitVertex(buf, camPos, wx, wy, wz, mat, minX, minY, maxZ, uBot0, vTop0, cr, cg, cb, ca);
         emitVertex(buf, camPos, wx, wy, wz, mat, minX, minY, minZ, uBot0, vTop1, cr, cg, cb, ca);
         emitVertex(buf, camPos, wx, wy, wz, mat, maxX, minY, minZ, uBot1, vTop1, cr, cg, cb, ca);
         emitVertex(buf, camPos, wx, wy, wz, mat, maxX, minY, maxZ, uBot1, vTop0, cr, cg, cb, ca);
 
-        // Left (+X)
         emitVertex(buf, camPos, wx, wy, wz, mat, maxX, minY, maxZ, uLeft0, vSide1, cr, cg, cb, ca);
         emitVertex(buf, camPos, wx, wy, wz, mat, maxX, minY, minZ, uLeft1, vSide1, cr, cg, cb, ca);
         emitVertex(buf, camPos, wx, wy, wz, mat, maxX, maxY, minZ, uLeft1, vSide0, cr, cg, cb, ca);
         emitVertex(buf, camPos, wx, wy, wz, mat, maxX, maxY, maxZ, uLeft0, vSide0, cr, cg, cb, ca);
 
-        // Right (-X)
         emitVertex(buf, camPos, wx, wy, wz, mat, minX, minY, minZ, uRight0, vSide1, cr, cg, cb, ca);
         emitVertex(buf, camPos, wx, wy, wz, mat, minX, minY, maxZ, uRight1, vSide1, cr, cg, cb, ca);
         emitVertex(buf, camPos, wx, wy, wz, mat, minX, maxY, maxZ, uRight1, vSide0, cr, cg, cb, ca);
@@ -2126,9 +2009,6 @@ public class KillEffect extends Module {
         buf.vertex(x, y, z).texture(u, v).color(r, g, b, a);
     }
 
-    // =========================================================================
-    // Отрисовка и обновление Осколков стекла
-    // =========================================================================
     private void renderGlassParticles(VertexConsumer quadBuffer, VertexConsumer glintBuffer,
                                       Vec3d camPos, Vector3f lightDir, float dt, MinecraftClient mc) {
         boolean doBounce = bounce.isEnabled() && mc.world != null;
@@ -2356,10 +2236,6 @@ public class KillEffect extends Module {
         recentAttacks.clear();
         deadEntities.clear();
     }
-
-    // =========================================================================
-    // Вспомогательные классы
-    // =========================================================================
 
     private static class GoldenStatueInstance {
         double x, y, z;

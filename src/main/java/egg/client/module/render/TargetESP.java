@@ -158,15 +158,11 @@ public class TargetESP extends Module {
 
     }
 
-
-
     public SliderSetting getRhombusSize() {
 
         return this.rhombusSize;
 
     }
-
-
 
     public LivingEntity getTarget() {
         return this.target;
@@ -843,13 +839,9 @@ public class TargetESP extends Module {
 
         }
 
-
-
         float userHeight = (float) this.rhombusHeight.get();
 
         float userSize = (float) this.rhombusSize.get();
-
-
 
         float timeSec = (float) ((System.currentTimeMillis() % 10000000L) / 1000.0);
 
@@ -857,13 +849,9 @@ public class TargetESP extends Module {
 
         double centerY = targetY + (height * 0.5) + userHeight + bob;
 
-
-
         double dist = Math.sqrt(targetX * targetX + centerY * centerY + targetZ * targetZ);
 
         if (dist < 0.01) return;
-
-
 
         double offset = Math.min(0.42, dist * 0.4);
 
@@ -872,8 +860,6 @@ public class TargetESP extends Module {
         float renderY = (float) (centerY - (centerY / dist) * offset);
 
         float renderZ = (float) (targetZ - (targetZ / dist) * offset);
-
-
 
         int themeColor = Theme.getAccent();
 
@@ -893,15 +879,11 @@ public class TargetESP extends Module {
 
         int activeColor = hurtFactor > 0.01f ? ColorUtil.interpolate(themeColor, hurtCol, hurtFactor) : themeColor;
 
-
-
         long cyclePeriod = 5600L;
 
         long halfPeriod = cyclePeriod / 2L;
 
         long curTime = System.currentTimeMillis() % cyclePeriod;
-
-
 
         float rotAngle;
 
@@ -923,21 +905,15 @@ public class TargetESP extends Module {
 
         }
 
-
-
         float anim = this.animProgress;
 
         float size = userSize * anim;
 
         if (size <= 0.001f || anim <= 0.001f) return;
 
-
-
         Quaternionf camRot = camera.getRotation();
 
         Quaternionf quadRot = new Quaternionf(camRot).rotateZ((float) Math.toRadians(-rotAngle));
-
-
 
         try (BufferAllocator allocGlow = new BufferAllocator(1024)) {
 
@@ -957,8 +933,6 @@ public class TargetESP extends Module {
 
         }
 
-
-
         try (BufferAllocator allocRhombus = new BufferAllocator(1024)) {
 
             BufferBuilder bufRhombus = new BufferBuilder(allocRhombus, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
@@ -976,8 +950,6 @@ public class TargetESP extends Module {
             }
 
         }
-
-
 
         try (BufferAllocator allocEdge = new BufferAllocator(1024)) {
 
@@ -998,8 +970,6 @@ public class TargetESP extends Module {
         }
 
     }
-
-
 
     private void renderLightning(MatrixStack matrices, Camera camera, float tickDelta, LivingEntity curTarget) {
         long now = System.nanoTime();

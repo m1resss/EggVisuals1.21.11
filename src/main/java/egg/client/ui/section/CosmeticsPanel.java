@@ -57,7 +57,6 @@ public class CosmeticsPanel {
         float rightPaneY = y;
         float rightPaneH = h;
 
-
         float navY = y + 2.0f;
         float navH = 17.0f;
         float pillGap = 3.5f;

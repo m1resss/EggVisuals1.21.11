@@ -1,6 +1,5 @@
 package egg.client.cosmetic;
 
-
 import egg.client.module.cosmetic.CosmeticsModule;
 
 import egg.client.util.ColorUtil;
@@ -8,7 +7,6 @@ import egg.client.util.ColorUtil;
 import net.minecraft.client.render.model.UnbakedGeometry;
 
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
-
 
 import egg.client.mixin.ItemRenderStateAccessor;
 
@@ -39,7 +37,6 @@ import net.minecraft.util.math.RotationAxis;
 import org.joml.Matrix4f;
 
 import org.joml.Vector3f;
-
 
 import java.io.InputStreamReader;
 
@@ -83,7 +80,6 @@ public final class CosmeticsManager  {
 
     private static final CosmeticsManager INSTANCE = new CosmeticsManager();
 
-
     private final Map<String, Mesh> meshes = new HashMap<>();
 
     private final Map<String, AnimatedMeshEntry> animatedMeshes = new HashMap<>();
@@ -100,16 +96,13 @@ public final class CosmeticsManager  {
 
     private boolean indexed = false;
 
-
     private CosmeticsManager() {}
-
 
     public static CosmeticsManager getInstance() {
 
         return INSTANCE;
 
     }
-
 
     public synchronized void ensureIndex() {
 
@@ -120,7 +113,6 @@ public final class CosmeticsManager  {
         MinecraftClient mc = MinecraftClient.getInstance();
 
         if (mc == null || mc.getResourceManager() == null) return;
-
 
         Identifier catId = Identifier.of("egg", "cosmetics/catalog.json");
 
@@ -150,9 +142,7 @@ public final class CosmeticsManager  {
 
                         displayName = cleanName(displayName, id);
 
-
                         if (id.isEmpty() || path.isEmpty()) continue;
-
 
                         Identifier geoId = Identifier.of("egg", "cosmetics/" + path + "/geometry.json");
 
@@ -161,7 +151,6 @@ public final class CosmeticsManager  {
                         Identifier texId = Identifier.of("egg", "cosmetics/" + path + "/texture.png");
 
                         Identifier metaId = Identifier.of("egg", "cosmetics/" + path + "/meta.json");
-
 
                         Asset asset = new Asset(id, cat, path, displayName, geoId, animId, texId, loadMetadata(metaId));
 
@@ -176,7 +165,6 @@ public final class CosmeticsManager  {
             }
 
         } catch (Exception ignored) {}
-
 
         Identifier swordCatId = Identifier.of("egg", "item_replacer/sword/catalog.json");
 
@@ -238,7 +226,6 @@ public final class CosmeticsManager  {
 
     }
 
-
     public List<Asset> getCategoryAssets(String category, String query) {
 
         ensureIndex();
@@ -269,7 +256,6 @@ public final class CosmeticsManager  {
 
     }
 
-
     public List<SwordEntry> getSwords(String query) {
 
         ensureIndex();
@@ -298,7 +284,6 @@ public final class CosmeticsManager  {
 
     }
 
-
     public Asset getAsset(String id) {
 
         if (id == null) return null;
@@ -308,7 +293,6 @@ public final class CosmeticsManager  {
         return this.assets.get(id.toLowerCase(Locale.ROOT));
 
     }
-
 
     public SwordEntry getSwordEntry(String name) {
 
@@ -330,7 +314,6 @@ public final class CosmeticsManager  {
 
     }
 
-
     public SwordEntry getSelectedSwordEntry() {
 
         if (previewOverrideSword != null && !previewOverrideSword.isEmpty()) {
@@ -351,7 +334,6 @@ public final class CosmeticsManager  {
 
     }
 
-
     public ParsedSwordModel getSwordModel(SwordEntry sword) {
 
         if (sword == null) return null;
@@ -359,7 +341,6 @@ public final class CosmeticsManager  {
         ParsedSwordModel cached = this.swordModelCache.get(sword.model());
 
         if (cached != null) return cached;
-
 
         Identifier modelId = Identifier.of("egg", "item_replacer/sword/models/" + sword.model() + ".json");
 
@@ -411,7 +392,6 @@ public final class CosmeticsManager  {
 
                 }
 
-
                 JsonUnbakedModel unbaked = JsonUnbakedModel.deserialize(new java.io.StringReader(jsonStr));
 
                 List<ModelElement> elements = Collections.emptyList();
@@ -440,20 +420,17 @@ public final class CosmeticsManager  {
 
     }
 
-
     public boolean applySwordRenderState(ItemRenderState renderState, ItemStack stack, LivingEntity entity) {
 
         return applySwordRenderState(renderState, stack, entity, null);
 
     }
 
-
     public boolean applySwordRenderState(ItemRenderState renderState, ItemStack stack, LivingEntity entity, ItemDisplayContext displayContext) {
 
         MinecraftClient mc = MinecraftClient.getInstance();
 
         if (mc == null) return false;
-
 
         SwordEntry sword = null;
 
@@ -469,7 +446,6 @@ public final class CosmeticsManager  {
 
         }
 
-
         if (sword == null) {
 
             return false;
@@ -484,7 +460,6 @@ public final class CosmeticsManager  {
 
         }
 
-
         ItemDisplayContext currentCtx = null;
 
         if (renderState instanceof ItemRenderStateAccessor accessor) {
@@ -492,7 +467,6 @@ public final class CosmeticsManager  {
             currentCtx = accessor.getDisplayContext();
 
         }
-
 
         ItemDisplayContext activeCtx = (displayContext != null && displayContext != ItemDisplayContext.NONE)
 
@@ -504,7 +478,6 @@ public final class CosmeticsManager  {
 
                     : ItemDisplayContext.THIRD_PERSON_RIGHT_HAND);
 
-
         renderState.clear();
 
         if (renderState instanceof ItemRenderStateAccessor accessor) {
@@ -512,7 +485,6 @@ public final class CosmeticsManager  {
             accessor.setDisplayContext(activeCtx);
 
         }
-
 
         ItemRenderState.LayerRenderState layer = renderState.newLayer();
 
@@ -528,16 +500,13 @@ public final class CosmeticsManager  {
 
     }
 
-
     public void renderSwordModel(SwordEntry sword, ItemDisplayContext mode, MatrixStack matrices, OrderedRenderCommandQueue queue, int light, int overlay, boolean glint) {
 
         ParsedSwordModel parsed = getSwordModel(sword);
 
         if (parsed == null || parsed.elements.isEmpty()) return;
 
-
         ItemDisplayContext activeMode = (mode != null && mode != ItemDisplayContext.NONE) ? mode : ItemDisplayContext.THIRD_PERSON_RIGHT_HAND;
-
 
         matrices.push();
 
@@ -561,11 +530,9 @@ public final class CosmeticsManager  {
 
         }
 
-
         for (ModelElement el : parsed.elements) {
 
             if (el.from() == null || el.to() == null || el.faces() == null || el.faces().isEmpty()) continue;
-
 
             matrices.push();
 
@@ -587,7 +554,6 @@ public final class CosmeticsManager  {
 
             }
 
-
             float x0 = el.from().x() * 0.0625f;
 
             float y0 = el.from().y() * 0.0625f;
@@ -600,7 +566,6 @@ public final class CosmeticsManager  {
 
             float z1 = el.to().z() * 0.0625f;
 
-
             for (Map.Entry<Direction, ModelElementFace> faceEntry : el.faces().entrySet()) {
 
                 Direction dir = faceEntry.getKey();
@@ -609,20 +574,17 @@ public final class CosmeticsManager  {
 
                 if (face == null) continue;
 
-
                 String texKey = face.textureId();
 
                 Identifier faceTex = parsed.textures.getOrDefault(texKey, sword.texture());
 
                 RenderLayer renderLayer = RenderLayers.entityCutoutNoCull(faceTex);
 
-
                 float nx = dir.getOffsetX();
 
                 float ny = dir.getOffsetY();
 
                 float nz = dir.getOffsetZ();
-
 
                 queue.submitCustom(matrices, renderLayer, (entry, vc) -> {
 
@@ -645,7 +607,6 @@ public final class CosmeticsManager  {
                         default    -> quad = new float[][]{{x0, y0, z0}, {x1, y0, z0}, {x1, y1, z0}, {x0, y1, z0}};
 
                     }
-
 
                     for (int i = 0; i < 4; i++) {
 
@@ -671,7 +632,6 @@ public final class CosmeticsManager  {
 
             }
 
-
             matrices.pop();
 
         }
@@ -679,7 +639,6 @@ public final class CosmeticsManager  {
         matrices.pop();
 
     }
-
 
     public void renderAttached(MatrixStack matrices, OrderedRenderCommandQueue queue, PlayerEntityModel model, int light) {
 
@@ -693,9 +652,7 @@ public final class CosmeticsManager  {
 
         if (mod == null) return;
 
-
         ensureIndex();
-
 
         String wingsId = CosmeticsRenderer.previewOverrideCat != null
 
@@ -703,13 +660,11 @@ public final class CosmeticsManager  {
 
                 : mod.getSelectedWingId();
 
-
         String backpackId = CosmeticsRenderer.previewOverrideCat != null
 
                 ? ("backpacks".equals(CosmeticsRenderer.previewOverrideCat) ? CosmeticsRenderer.previewOverrideId : "")
 
                 : mod.getSelectedBackpackId();
-
 
         String hatId = CosmeticsRenderer.previewOverrideCat != null
 
@@ -717,20 +672,17 @@ public final class CosmeticsManager  {
 
                 : mod.getSelectedHatId();
 
-
         String maskId = CosmeticsRenderer.previewOverrideCat != null
 
                 ? ("masks".equals(CosmeticsRenderer.previewOverrideCat) ? CosmeticsRenderer.previewOverrideId : "")
 
                 : mod.getSelectedMaskId();
 
-
         String petId = CosmeticsRenderer.previewOverrideCat != null
 
                 ? ("pets".equals(CosmeticsRenderer.previewOverrideCat) ? CosmeticsRenderer.previewOverrideId : "")
 
                 : mod.getSelectedPetId();
-
 
         renderItemQueue(matrices, queue, model, light, wingsId, "wings");
 
@@ -741,7 +693,6 @@ public final class CosmeticsManager  {
         renderItemQueue(matrices, queue, model, light, maskId, "masks");
 
         renderItemQueue(matrices, queue, model, light, petId, "pets");
-
 
         SwordEntry sword = getSelectedSwordEntry();
 
@@ -761,11 +712,9 @@ public final class CosmeticsManager  {
 
     }
 
-
     public void renderAttachedForPlayer(MatrixStack matrices, OrderedRenderCommandQueue queue, PlayerEntityModel model, int light, Map<String, String> cosmetics) {
 
         if (cosmetics == null || cosmetics.isEmpty()) return;
-
 
         renderItemQueue(matrices, queue, model, light, cosmetics.get("wings"), "wings");
 
@@ -779,7 +728,6 @@ public final class CosmeticsManager  {
 
     }
 
-
     public static boolean isSword(ItemStack stack) {
 
         if (stack == null || stack.isEmpty()) return false;
@@ -791,7 +739,6 @@ public final class CosmeticsManager  {
         return path.endsWith("_sword") || path.contains("sword");
 
     }
-
 
     public void renderSwordInHand(MatrixStack matrices, OrderedRenderCommandQueue queue, PlayerEntityModel model, int light, SwordEntry sword) {
 
@@ -813,7 +760,6 @@ public final class CosmeticsManager  {
 
     }
 
-
     private void renderItemQueue(MatrixStack matrices, OrderedRenderCommandQueue queue, PlayerEntityModel model, int light, String itemId, String cat) {
 
         if (itemId == null || itemId.isEmpty()) return;
@@ -822,14 +768,11 @@ public final class CosmeticsManager  {
 
         if (asset == null) return;
 
-
         Mesh mesh = getAnimatedMesh(asset);
 
         if (mesh == null || mesh.vertices.isEmpty()) return;
 
-
         matrices.push();
-
 
         if ("hats".equals(cat) || "masks".equals(cat)) {
 
@@ -841,9 +784,7 @@ public final class CosmeticsManager  {
 
         }
 
-
         matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees(180.0f));
-
 
         if ("hats".equals(cat)) {
 
@@ -851,13 +792,11 @@ public final class CosmeticsManager  {
 
         }
 
-
         Metadata meta = asset.metadata;
 
         float s = meta.scale;
 
         matrices.scale(s, s, s);
-
 
         float ox = meta.x;
 
@@ -886,7 +825,6 @@ public final class CosmeticsManager  {
         }
 
         matrices.translate(ox, oy, oz);
-
 
         queue.submitCustom(matrices, RenderLayers.entityCutoutNoCull(asset.texture), (entry, vc) -> {
 
@@ -902,7 +840,6 @@ public final class CosmeticsManager  {
 
                 V v3 = mesh.vertices.get(i + 5);
 
-
                 float dy1 = v1.y - v0.y;
 
                 float dz2 = v2.z - v0.z;
@@ -913,7 +850,6 @@ public final class CosmeticsManager  {
 
                 float nx = dy1 * dz2 - dz1 * dy2;
 
-
                 float dx2 = v2.x - v0.x;
 
                 float dx1 = v1.x - v0.x;
@@ -921,7 +857,6 @@ public final class CosmeticsManager  {
                 float ny = dz1 * dx2 - dx1 * dz2;
 
                 float nz = dx1 * dy2 - dy1 * dx2;
-
 
                 float len = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
 
@@ -935,7 +870,6 @@ public final class CosmeticsManager  {
 
                 }
 
-
                 putVertex(vc, entry, v0, light, nx, ny, nz);
 
                 putVertex(vc, entry, v1, light, nx, ny, nz);
@@ -948,11 +882,9 @@ public final class CosmeticsManager  {
 
         });
 
-
         matrices.pop();
 
     }
-
 
     public void renderAttached(MatrixStack matrices, VertexConsumerProvider consumers, PlayerEntityModel model, int light) {
 
@@ -960,9 +892,7 @@ public final class CosmeticsManager  {
 
         if (mod == null || !mod.isEnabled()) return;
 
-
         ensureIndex();
-
 
         renderItem(matrices, consumers, model, light, mod.getSelectedWingId(), "wings");
 
@@ -976,7 +906,6 @@ public final class CosmeticsManager  {
 
     }
 
-
     private void renderItem(MatrixStack matrices, VertexConsumerProvider consumers, PlayerEntityModel model, int light, String itemId, String cat) {
 
         if (itemId == null || itemId.isEmpty()) return;
@@ -985,14 +914,11 @@ public final class CosmeticsManager  {
 
         if (asset == null) return;
 
-
         Mesh mesh = getAnimatedMesh(asset);
 
         if (mesh == null || mesh.vertices.isEmpty()) return;
 
-
         matrices.push();
-
 
         if ("hats".equals(cat) || "masks".equals(cat)) {
 
@@ -1004,9 +930,7 @@ public final class CosmeticsManager  {
 
         }
 
-
         matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees(180.0f));
-
 
         if ("hats".equals(cat)) {
 
@@ -1014,13 +938,11 @@ public final class CosmeticsManager  {
 
         }
 
-
         Metadata meta = asset.metadata;
 
         float s = meta.scale;
 
         matrices.scale(s, s, s);
-
 
         float ox = meta.x;
 
@@ -1050,11 +972,9 @@ public final class CosmeticsManager  {
 
         matrices.translate(ox, oy, oz);
 
-
         VertexConsumer vc = consumers.getBuffer(RenderLayers.entityCutoutNoCull(asset.texture));
 
         MatrixStack.Entry entry = matrices.peek();
-
 
         int count = mesh.vertices.size();
 
@@ -1068,7 +988,6 @@ public final class CosmeticsManager  {
 
             V v3 = mesh.vertices.get(i + 5);
 
-
             float dy1 = v1.y - v0.y;
 
             float dz2 = v2.z - v0.z;
@@ -1079,7 +998,6 @@ public final class CosmeticsManager  {
 
             float nx = dy1 * dz2 - dz1 * dy2;
 
-
             float dx2 = v2.x - v0.x;
 
             float dx1 = v1.x - v0.x;
@@ -1087,7 +1005,6 @@ public final class CosmeticsManager  {
             float ny = dz1 * dx2 - dx1 * dz2;
 
             float nz = dx1 * dy2 - dy1 * dx2;
-
 
             float len = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
 
@@ -1101,7 +1018,6 @@ public final class CosmeticsManager  {
 
             }
 
-
             putVertex(vc, entry, v0, light, nx, ny, nz);
 
             putVertex(vc, entry, v1, light, nx, ny, nz);
@@ -1112,11 +1028,9 @@ public final class CosmeticsManager  {
 
         }
 
-
         matrices.pop();
 
     }
-
 
     private void putVertex(VertexConsumer vc, MatrixStack.Entry entry, V v, int light, float nx, float ny, float nz) {
 
@@ -1134,13 +1048,11 @@ public final class CosmeticsManager  {
 
     }
 
-
     public void renderGuiPreview(DrawContext context, String itemId, float x, float y, float size, float alpha) {
 
         renderGuiPreview(context, itemId, x, y, size, alpha, null);
 
     }
-
 
     public void renderGuiPreview(DrawContext context, String itemId, float x, float y, float size, float alpha, net.minecraft.client.gui.ScreenRect scissorArea) {
 
@@ -1148,16 +1060,13 @@ public final class CosmeticsManager  {
 
         ensureIndex();
 
-
         Asset asset = this.assets.get(itemId.toLowerCase(Locale.ROOT));
 
         if (asset == null || asset.texture == null) return;
 
-
         Mesh mesh = getAnimatedMesh(asset);
 
         if (mesh == null || mesh.vertices.isEmpty()) return;
-
 
         float yawRad = (float) Math.toRadians(asset.metadata.previewYaw);
 
@@ -1171,7 +1080,6 @@ public final class CosmeticsManager  {
 
         float sinPitch = (float) Math.sin(pitchRad);
 
-
         float pScale = Math.max(0.78f, Math.min(1.18f, asset.metadata.previewScale));
 
         float renderSize = size * 0.78f * pScale;
@@ -1179,7 +1087,6 @@ public final class CosmeticsManager  {
         float centerX = x + size * 0.5f;
 
         float centerY = y + size * (0.52f - asset.metadata.previewY);
-
 
         int vCount = mesh.vertices.size();
 
@@ -1201,9 +1108,7 @@ public final class CosmeticsManager  {
 
         }
 
-
         faces.sort(Comparator.comparingDouble(f -> f.depth));
-
 
         float[] quadVertices = new float[faces.size() * 16];
 
@@ -1221,11 +1126,9 @@ public final class CosmeticsManager  {
 
         }
 
-
         int a = Math.max(0, Math.min(255, Math.round(alpha * 255.0f)));
 
         int color = (a << 24) | 0x00FFFFFF;
-
 
         Matrix3x2f pose = new Matrix3x2f(context.getMatrices());
 
@@ -1235,11 +1138,9 @@ public final class CosmeticsManager  {
 
         );
 
-
         ((DrawContextAccessor) context).getState().addSimpleElement(guiState);
 
     }
-
 
     private static PreviewVertex previewVertex(V v, Mesh mesh, float cx, float cy, float renderSize,
 
@@ -1251,33 +1152,27 @@ public final class CosmeticsManager  {
 
         float nz = (v.z - mesh.cz) / mesh.span;
 
-
         float rotX = nx * cosYaw + nz * sinYaw;
 
         float rotZ1 = -nx * sinYaw + nz * cosYaw;
-
 
         float rotY = ny * cosPitch - rotZ1 * sinPitch;
 
         float depth = ny * sinPitch + rotZ1 * cosPitch;
 
-
         float sx = cx + rotX * renderSize;
 
         float sy = cy - rotY * renderSize;
 
-
         return new PreviewVertex(sx, sy, v.u, v.v, depth);
 
     }
-
 
     private Mesh getAnimatedMesh(Asset asset) {
 
         double timeSec = (double) System.nanoTime() * 1.0E-9;
 
         long frameKey = (long) Math.floor(timeSec * 120.0);
-
 
         AnimatedMeshEntry entry = this.animatedMeshes.get(asset.id);
 
@@ -1287,18 +1182,15 @@ public final class CosmeticsManager  {
 
         }
 
-
         Map<String, AnimationPose> poses = loadAnimationPose(asset.animation, timeSec);
 
         Mesh mesh = poses.isEmpty() ? loadMesh(asset) : loadMesh(asset, poses);
-
 
         this.animatedMeshes.put(asset.id, new AnimatedMeshEntry(frameKey, mesh));
 
         return mesh;
 
     }
-
 
     private Map<String, AnimationPose> loadAnimationPose(Identifier animId, double timeSec) {
 
@@ -1314,7 +1206,6 @@ public final class CosmeticsManager  {
 
             if (anims.isEmpty()) return poses;
 
-
             JsonObject firstAnim = anims.entrySet().iterator().next().getValue().getAsJsonObject();
 
             double len = firstAnim.has("animation_length") && !firstAnim.get("animation_length").isJsonNull()
@@ -1327,11 +1218,9 @@ public final class CosmeticsManager  {
 
             double cur = loop ? timeSec % len : Math.min(timeSec, len);
 
-
             JsonObject bones = firstAnim.getAsJsonObject("bones");
 
             if (bones == null) return poses;
-
 
             for (Map.Entry<String, JsonElement> e : bones.entrySet()) {
 
@@ -1355,18 +1244,15 @@ public final class CosmeticsManager  {
 
     }
 
-
     private static Vector3f sampleAnimationTrack(JsonElement el, double time, Vector3f def, boolean loop, double animLen) {
 
         if (el == null || el.isJsonNull()) return new Vector3f(def);
-
 
         if (!el.isJsonObject()) {
 
             return keyframeVector(el, def);
 
         }
-
 
         JsonObject obj = el.getAsJsonObject();
 
@@ -1375,7 +1261,6 @@ public final class CosmeticsManager  {
             return keyframeVector(obj, def);
 
         }
-
 
         List<Map.Entry<Double, JsonElement>> frames = new ArrayList<>();
 
@@ -1389,23 +1274,19 @@ public final class CosmeticsManager  {
 
         }
 
-
         if (frames.isEmpty()) {
 
             return new Vector3f(def);
 
         }
 
-
         frames.sort(Comparator.comparingDouble(Map.Entry::getKey));
-
 
         if (frames.size() == 1) {
 
             return keyframeVector(frames.get(0).getValue(), def);
 
         }
-
 
         if (loop && animLen > 0.0 && time >= 0.0) {
 
@@ -1427,18 +1308,15 @@ public final class CosmeticsManager  {
 
         }
 
-
         return sampleSortedFrames(frames, time, def);
 
     }
-
 
     private static Vector3f sampleSortedFrames(List<Map.Entry<Double, JsonElement>> frames, double time, Vector3f def) {
 
         Map.Entry<Double, JsonElement> first = frames.get(0);
 
         Map.Entry<Double, JsonElement> last = frames.get(frames.size() - 1);
-
 
         if (time <= first.getKey()) {
 
@@ -1452,11 +1330,9 @@ public final class CosmeticsManager  {
 
         }
 
-
         Map.Entry<Double, JsonElement> prev = first;
 
         Map.Entry<Double, JsonElement> next = last;
-
 
         for (int i = 1; i < frames.size(); i++) {
 
@@ -1474,11 +1350,9 @@ public final class CosmeticsManager  {
 
         }
 
-
         double span = Math.max(1.0E-9, next.getKey() - prev.getKey());
 
         float progress = (float) ((time - prev.getKey()) / span);
-
 
         if (hasEasing(next.getValue())) {
 
@@ -1490,7 +1364,6 @@ public final class CosmeticsManager  {
 
         }
 
-
         Vector3f v1 = keyframeVectorForStart(prev.getValue(), def);
 
         Vector3f v2 = keyframeVectorForEnd(next.getValue(), def);
@@ -1499,11 +1372,9 @@ public final class CosmeticsManager  {
 
     }
 
-
     private static Vector3f keyframeVector(JsonElement el, Vector3f def) {
 
         if (el == null || el.isJsonNull()) return new Vector3f(def);
-
 
         if (el.isJsonArray()) {
 
@@ -1527,7 +1398,6 @@ public final class CosmeticsManager  {
 
         }
 
-
         if (el.isJsonPrimitive()) {
 
             try {
@@ -1543,7 +1413,6 @@ public final class CosmeticsManager  {
             }
 
         }
-
 
         if (el.isJsonObject()) {
 
@@ -1569,11 +1438,9 @@ public final class CosmeticsManager  {
 
         }
 
-
         return new Vector3f(def);
 
     }
-
 
     private static Vector3f keyframeVectorForStart(JsonElement el, Vector3f def) {
 
@@ -1593,7 +1460,6 @@ public final class CosmeticsManager  {
 
     }
 
-
     private static Vector3f keyframeVectorForEnd(JsonElement el, Vector3f def) {
 
         if (el != null && el.isJsonObject()) {
@@ -1612,7 +1478,6 @@ public final class CosmeticsManager  {
 
     }
 
-
     private static boolean hasEasing(JsonElement el) {
 
         if (el != null && el.isJsonObject()) {
@@ -1626,7 +1491,6 @@ public final class CosmeticsManager  {
         return false;
 
     }
-
 
     private static float applyEasing(JsonElement el, float t) {
 
@@ -1658,7 +1522,6 @@ public final class CosmeticsManager  {
 
     }
 
-
     private static float smoothstep(float x) {
 
         x = Math.max(0.0f, Math.min(1.0f, x));
@@ -1666,7 +1529,6 @@ public final class CosmeticsManager  {
         return x * x * (3.0f - 2.0f * x);
 
     }
-
 
     private JsonObject getAnimationJson(Identifier id) {
 
@@ -1700,13 +1562,11 @@ public final class CosmeticsManager  {
 
     }
 
-
     private Mesh loadMesh(Asset asset) {
 
         return loadMesh(asset, Collections.emptyMap());
 
     }
-
 
     private Mesh loadMesh(Asset asset, Map<String, AnimationPose> poses) {
 
@@ -1716,7 +1576,6 @@ public final class CosmeticsManager  {
 
             if (res.isEmpty()) return Mesh.empty();
 
-
             try (InputStreamReader isr = new InputStreamReader(res.get().getInputStream(), StandardCharsets.UTF_8)) {
 
                 JsonObject obj = JsonParser.parseReader(isr).getAsJsonObject();
@@ -1724,7 +1583,6 @@ public final class CosmeticsManager  {
                 JsonArray geoms = obj.getAsJsonArray("minecraft:geometry");
 
                 if (geoms == null || geoms.isEmpty()) return Mesh.empty();
-
 
                 JsonObject geom = geoms.get(0).getAsJsonObject();
 
@@ -1734,11 +1592,9 @@ public final class CosmeticsManager  {
 
                 float th = desc != null && desc.has("texture_height") ? desc.get("texture_height").getAsFloat() : 64.0f;
 
-
                 JsonArray bones = geom.getAsJsonArray("bones");
 
                 if (bones == null) return Mesh.empty();
-
 
                 Map<String, Bone> boneMap = new LinkedHashMap<>();
 
@@ -1758,13 +1614,11 @@ public final class CosmeticsManager  {
 
                 }
 
-
                 float[] bounds = rawMeshBounds(bones);
 
                 List<V> vertices = new ArrayList<>();
 
                 Map<String, Matrix4f> transforms = new HashMap<>();
-
 
                 for (Bone bone : boneMap.values()) {
 
@@ -1794,7 +1648,6 @@ public final class CosmeticsManager  {
 
     }
 
-
     private Matrix4f computeBoneMatrix(Bone bone, Map<String, Bone> map, Map<String, Matrix4f> cache, Map<String, AnimationPose> poses) {
 
         if (cache.containsKey(bone.name)) return new Matrix4f(cache.get(bone.name));
@@ -1805,7 +1658,6 @@ public final class CosmeticsManager  {
 
                 : new Matrix4f();
 
-
         AnimationPose pose = poses.getOrDefault(bone.name, AnimationPose.IDENTITY);
 
         if (pose.position.lengthSquared() > 0.0f) {
@@ -1813,7 +1665,6 @@ public final class CosmeticsManager  {
             m.translate(-pose.position.x * 0.0625f, pose.position.y * 0.0625f, pose.position.z * 0.0625f);
 
         }
-
 
         float px = -bone.pivot.x * 0.0625f;
 
@@ -1823,20 +1674,17 @@ public final class CosmeticsManager  {
 
         m.translate(px, py, pz);
 
-
         m.rotateZYX((float) Math.toRadians(bone.rotation.z + pose.rotation.z),
 
                     (float) Math.toRadians(-(bone.rotation.y + pose.rotation.y)),
 
                     (float) Math.toRadians(-(bone.rotation.x + pose.rotation.x)));
 
-
         if (pose.scale.x != 1.0f || pose.scale.y != 1.0f || pose.scale.z != 1.0f) {
 
             m.scale(pose.scale.x, pose.scale.y, pose.scale.z);
 
         }
-
 
         m.translate(-px, -py, -pz);
 
@@ -1846,7 +1694,6 @@ public final class CosmeticsManager  {
 
     }
 
-
     private void bakeCube(JsonObject json, Matrix4f m, float tw, float th, List<V> vs) {
 
         Vector3f origin = vec(json.getAsJsonArray("origin")).mul(0.0625f);
@@ -1854,7 +1701,6 @@ public final class CosmeticsManager  {
         Vector3f size = vec(json.getAsJsonArray("size")).mul(0.0625f);
 
         float inf = json.has("inflate") ? json.get("inflate").getAsFloat() * 0.0625f : 0.0f;
-
 
         float x1 = -(origin.x + size.x) - inf;
 
@@ -1868,7 +1714,6 @@ public final class CosmeticsManager  {
 
         float z2 = origin.z + size.z + inf;
 
-
         Vector3f pivot = json.has("pivot") ? vec(json.getAsJsonArray("pivot")).mul(0.0625f) : new Vector3f();
 
         pivot.x = -pivot.x;
@@ -1878,7 +1723,6 @@ public final class CosmeticsManager  {
         rot.x = -rot.x;
 
         rot.y = -rot.y;
-
 
         Matrix4f local = new Matrix4f(m);
 
@@ -1892,9 +1736,7 @@ public final class CosmeticsManager  {
 
         }
 
-
         Face[] faces = cubeUvs(json, tw, th, Math.abs(size.x / 0.0625f), Math.abs(size.y / 0.0625f), Math.abs(size.z / 0.0625f));
-
 
         boolean flatX = Math.abs(size.x) < 1.0E-7f;
 
@@ -1904,7 +1746,6 @@ public final class CosmeticsManager  {
 
         boolean is3D = !flatX && !flatY && !flatZ;
 
-
         if (is3D || flatZ) {
 
             addFace(vs, local, x2, y1, z1, x1, y1, z1, x1, y2, z1, x2, y2, z1, faces[0]);
@@ -1913,7 +1754,6 @@ public final class CosmeticsManager  {
 
         }
 
-
         if (is3D || flatX) {
 
             addFace(vs, local, x1, y1, z1, x1, y1, z2, x1, y2, z2, x1, y2, z1, faces[2]);
@@ -1921,7 +1761,6 @@ public final class CosmeticsManager  {
             addFace(vs, local, x2, y1, z2, x2, y1, z1, x2, y2, z1, x2, y2, z2, faces[3]);
 
         }
-
 
         if (is3D || flatY) {
 
@@ -1932,7 +1771,6 @@ public final class CosmeticsManager  {
         }
 
     }
-
 
     private void addFace(List<V> vs, Matrix4f m, float x1, float y1, float z1, float x2, float y2, float z2,
 
@@ -1948,7 +1786,6 @@ public final class CosmeticsManager  {
 
         Vector3f p4 = m.transformPosition(new Vector3f(x4, y4, z4));
 
-
         vs.add(new V(p1.x, p1.y, p1.z, f.u1, f.v2));
 
         vs.add(new V(p2.x, p2.y, p2.z, f.u2, f.v2));
@@ -1962,7 +1799,6 @@ public final class CosmeticsManager  {
         vs.add(new V(p4.x, p4.y, p4.z, f.u1, f.v1));
 
     }
-
 
     private Face[] cubeUvs(JsonObject json, float tw, float th, float sx, float sy, float sz) {
 
@@ -1988,7 +1824,6 @@ public final class CosmeticsManager  {
 
         }
 
-
         float u = 0.0f, v = 0.0f;
 
         if (json.has("uv") && json.get("uv").isJsonArray()) {
@@ -2005,7 +1840,6 @@ public final class CosmeticsManager  {
 
         }
 
-
         faces[2] = rect(u + sz + sx, v + sz, sz, sy, tw, th);
 
         faces[3] = rect(u, v + sz, sz, sy, tw, th);
@@ -2021,7 +1855,6 @@ public final class CosmeticsManager  {
         return faces;
 
     }
-
 
     private static Face faceUv(JsonObject json, String name, float tw, float th) {
 
@@ -2053,13 +1886,11 @@ public final class CosmeticsManager  {
 
     }
 
-
     private static Face rect(float x, float y, float w, float h, float tw, float th) {
 
         return new Face(x / tw, y / th, (x + w) / tw, (y + h) / th);
 
     }
-
 
     private static float[] rawMeshBounds(JsonArray bones) {
 
@@ -2068,7 +1899,6 @@ public final class CosmeticsManager  {
         float maxX = Float.NEGATIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY, maxZ = Float.NEGATIVE_INFINITY;
 
         boolean hasCubes = false;
-
 
         for (JsonElement bEl : bones) {
 
@@ -2100,7 +1930,6 @@ public final class CosmeticsManager  {
 
                         float sz = s.get(2).getAsFloat();
 
-
                         float x1 = -(ox + sx) - inf;
 
                         float x2 = -ox + inf;
@@ -2112,7 +1941,6 @@ public final class CosmeticsManager  {
                         float z1 = oz - inf;
 
                         float z2 = oz + sz + inf;
-
 
                         minX = Math.min(minX, Math.min(x1, x2));
 
@@ -2136,7 +1964,6 @@ public final class CosmeticsManager  {
 
         }
 
-
         if (!hasCubes) return new float[]{0.0f, 0.0f, 0.0f, 0.0f};
 
         return new float[] {
@@ -2153,7 +1980,6 @@ public final class CosmeticsManager  {
 
     }
 
-
     private static Mesh normalizeMesh(List<V> vs, float[] bounds) {
 
         if (vs.isEmpty()) return Mesh.empty();
@@ -2161,7 +1987,6 @@ public final class CosmeticsManager  {
         float minX = Float.POSITIVE_INFINITY, minY = Float.POSITIVE_INFINITY, minZ = Float.POSITIVE_INFINITY;
 
         float maxX = Float.NEGATIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY, maxZ = Float.NEGATIVE_INFINITY;
-
 
         for (V v : vs) {
 
@@ -2173,7 +1998,6 @@ public final class CosmeticsManager  {
 
         }
 
-
         float cx = (minX + maxX) * 0.5f;
 
         float cy = (minY + maxY) * 0.5f;
@@ -2181,7 +2005,6 @@ public final class CosmeticsManager  {
         float cz = (minZ + maxZ) * 0.5f;
 
         float span = Math.max(maxX - minX, Math.max(maxY - minY, maxZ - minZ));
-
 
         float rawX = bounds != null && bounds.length > 0 ? bounds[0] : 0.0f;
 
@@ -2191,11 +2014,9 @@ public final class CosmeticsManager  {
 
         boolean playerSpaceMesh = Math.abs(rawY) > 0.85f;
 
-
         return new Mesh(List.copyOf(vs), cx, cy, cz, Math.max(0.05f, span), rawX, rawY, rawZ, playerSpaceMesh);
 
     }
-
 
     private Metadata loadMetadata(Identifier id) {
 
@@ -2241,20 +2062,17 @@ public final class CosmeticsManager  {
 
     }
 
-
     private static String str(JsonObject obj, String key, String def) {
 
         return obj.has(key) && !obj.get(key).isJsonNull() ? obj.get(key).getAsString() : def;
 
     }
 
-
     private static float number(JsonObject obj, String key, float def) {
 
         return obj.has(key) && !obj.get(key).isJsonNull() ? obj.get(key).getAsFloat() : def;
 
     }
-
 
     private static Vector3f vec(JsonArray a) {
 
@@ -2263,7 +2081,6 @@ public final class CosmeticsManager  {
         return new Vector3f(a.get(0).getAsFloat(), a.get(1).getAsFloat(), a.get(2).getAsFloat());
 
     }
-
 
     private static String cleanName(String name, String fallback) {
 
@@ -2279,14 +2096,11 @@ public final class CosmeticsManager  {
 
     }
 
-
     public record Asset(String id, String category, String path, String displayName,
 
                         Identifier geometry, Identifier animation, Identifier texture, Metadata metadata) {}
 
-
     public record SwordEntry(String name, String model, Identifier texture) {}
-
 
     public record Metadata(float scale, float x, float y, float z,
 
@@ -2296,9 +2110,7 @@ public final class CosmeticsManager  {
 
     }
 
-
     public record Face(float u1, float v1, float u2, float v2) {}
-
 
     public record Mesh(List<V> vertices, float cx, float cy, float cz, float span,
 
@@ -2312,12 +2124,9 @@ public final class CosmeticsManager  {
 
     }
 
-
     public record V(float x, float y, float z, float u, float v) {}
 
-
     public record Bone(String name, String parent, Vector3f pivot, Vector3f rotation, JsonArray cubes) {}
-
 
     public record AnimationPose(Vector3f rotation, Vector3f position, Vector3f scale) {
 
@@ -2325,15 +2134,11 @@ public final class CosmeticsManager  {
 
     }
 
-
     private record AnimatedMeshEntry(long frame, Mesh mesh) {}
-
 
     private record PreviewVertex(float x, float y, float u, float v, float depth) {}
 
-
     private record PreviewFace(PreviewVertex a, PreviewVertex b, PreviewVertex c, PreviewVertex d, float depth) {}
-
 
     public static class ParsedSwordModel {
 
@@ -2342,7 +2147,6 @@ public final class CosmeticsManager  {
         public final ModelTransformation transformation;
 
         public final Map<String, Identifier> textures;
-
 
         public ParsedSwordModel(List<ModelElement> elements, ModelTransformation transformation, Map<String, Identifier> textures) {
 
@@ -2356,7 +2160,4 @@ public final class CosmeticsManager  {
 
     }
 
-
 }
-
-

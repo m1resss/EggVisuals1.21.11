@@ -941,7 +941,6 @@ public class Interface extends Module {
         }
     }
 
-
     public static int extractVibrantAccent(net.minecraft.client.texture.NativeImage img) {
         if (img == null) return 0xFF3888FF;
 

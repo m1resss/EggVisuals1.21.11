@@ -1,7 +1,5 @@
 package egg.client.mixin;
 
-
-
 import com.llamalad7.mixinextras.sugar.Local;
 
 import egg.client.command.waypoint.WaypointManager;
@@ -42,13 +40,9 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
 
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-
-
 @Mixin(GameRenderer.class)
 
 public abstract class GameRendererMixin {
-
-
 
     @Shadow
 
@@ -58,13 +52,9 @@ public abstract class GameRendererMixin {
 
     }
 
-
-
     @Shadow
 
     public abstract Matrix4f getBasicProjectionMatrix(float fov);
-
-
 
     @ModifyArg(method = "getBasicProjectionMatrix", at = @At(value = "INVOKE", target = "Lorg/joml/Matrix4f;perspective(FFFF)Lorg/joml/Matrix4f;"), index = 1)
 
@@ -82,8 +72,6 @@ public abstract class GameRendererMixin {
 
     }
 
-
-
     @Inject(method = "tiltViewWhenHurt", at = @At("HEAD"), cancellable = true)
 
     private void onTiltViewWhenHurt(MatrixStack matrices, float tickDelta, CallbackInfo ci) {
@@ -97,8 +85,6 @@ public abstract class GameRendererMixin {
         }
 
     }
-
-
 
     @Inject(method = "render", at = @At("HEAD"))
 
@@ -115,8 +101,6 @@ public abstract class GameRendererMixin {
         }
 
     }
-
-
 
     @Inject(
 
@@ -144,13 +128,9 @@ public abstract class GameRendererMixin {
 
         }
 
-
-
         renderCustomHud(context, tickCounter);
 
     }
-
-
 
     @Unique
 
@@ -163,8 +143,6 @@ public abstract class GameRendererMixin {
 
         }
 
-
-
         PotionHUD potionHUD = ModuleManager.getInstance().getModule(PotionHUD.class);
 
         if (potionHUD != null && potionHUD.isEnabled()) {
@@ -172,8 +150,6 @@ public abstract class GameRendererMixin {
             potionHUD.render(context, tickCounter);
 
         }
-
-
 
         Cooldowns cooldowns = ModuleManager.getInstance().getModule(Cooldowns.class);
 
@@ -193,8 +169,6 @@ public abstract class GameRendererMixin {
             keybinds.render(context, tickCounter);
         }
 
-
-
         Hitmarker hitmarker = ModuleManager.getInstance().getModule(Hitmarker.class);
 
         if (hitmarker != null && hitmarker.isEnabled()) {
@@ -202,8 +176,6 @@ public abstract class GameRendererMixin {
             hitmarker.render(context, tickCounter);
 
         }
-
-
 
         ViewModel vm = ModuleManager.getInstance().getModule(ViewModel.class);
 
@@ -213,8 +185,6 @@ public abstract class GameRendererMixin {
 
         }
 
-
-
         BreakBlock bb = ModuleManager.getInstance().getModule(BreakBlock.class);
 
         if (bb != null && bb.isEnabled()) {
@@ -223,8 +193,6 @@ public abstract class GameRendererMixin {
 
         }
 
-
-
         TargetESP targetESP = ModuleManager.getInstance().getModule(TargetESP.class);
 
         if (targetESP != null && targetESP.isEnabled()) {
@@ -232,8 +200,6 @@ public abstract class GameRendererMixin {
             targetESP.render2D(context, tickCounter);
 
         }
-
-
 
         TargetHUD targetHUD = ModuleManager.getInstance().getModule(TargetHUD.class);
 
@@ -248,15 +214,11 @@ public abstract class GameRendererMixin {
             nameTags.render2D(context, tickCounter);
         }
 
-
-
         WaypointManager.getInstance().render(context);
 
         DrawBatcher.flushPending();
 
     }
-
-
 
     @ModifyArg(
         method = "renderWorld",
@@ -297,4 +259,3 @@ public abstract class GameRendererMixin {
     }
 
 }
-

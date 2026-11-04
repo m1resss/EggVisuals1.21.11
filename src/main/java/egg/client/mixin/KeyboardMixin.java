@@ -47,14 +47,6 @@ public class KeyboardMixin {
                 }
             }
 
-            /*
-                        if (client.currentScreen == null) {
-                if (egg.client.module.cosmetic.MeleeSkins.INSTANCE != null) {
-                    egg.client.module.cosmetic.MeleeSkins.INSTANCE.onKeyPressed(key);
-                }
-                ModuleManager.getInstance().onKey(key, action);
-            }
-            */
             if (client.currentScreen == null) {
                 ModuleManager.getInstance().onKey(key, action);
             }

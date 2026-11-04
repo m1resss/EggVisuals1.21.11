@@ -198,7 +198,6 @@ public class Cooldowns extends Module {
             Render2D.drawDiagonalSheen(context, px, py, pillW, pillH, pillRadius, 1200L);
         }
 
-
         for (int i = 0; i < count; i++) {
             DisplayEntry entry = list.get(i);
             float slotStartX = px + padSide + i * slotW;
