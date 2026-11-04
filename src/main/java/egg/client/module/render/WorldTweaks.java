@@ -932,6 +932,10 @@ public class WorldTweaks extends Module {
                 continue;
             }
 
+            if (!s.blocksMovement()) {
+                continue;
+            }
+
             if (isTerrainGroundBlock(s)) {
                 return y;
             }
@@ -962,7 +966,7 @@ public class WorldTweaks extends Module {
         return nTopY - baseTopY;
     }
 
-    private void buildSnowBlock(MinecraftClient mc, int bx, int topY, int bz, int distSq, int lod0RadSq) {
+    private void buildSnowBlock(MinecraftClient mc, int bx, int topY, int bz) {
         BlockPos pos = new BlockPos(bx, topY, bz);
         BlockPos posAbove = pos.up();
         BlockState aboveState = mc.world.getBlockState(posAbove);
@@ -972,77 +976,127 @@ public class WorldTweaks extends Module {
 
         int light = WorldRenderer.getLightmapCoordinates(mc.world, posAbove);
         float baseY = topY + 1.002f;
-        boolean isLod0 = distSq <= lod0RadSq;
 
+        float dCenter = getSnowDepthAt(bx + 0.5, bz + 0.5);
+        float dN      = getSnowDepthAt(bx + 0.5, bz);
+        float dS      = getSnowDepthAt(bx + 0.5, bz + 1.0);
+        float dW      = getSnowDepthAt(bx, bz + 0.5);
+        float dE      = getSnowDepthAt(bx + 1.0, bz + 0.5);
+
+        float d00     = getSnowDepthAt(bx, bz);
+        float d10     = getSnowDepthAt(bx + 1.0, bz);
+        float d11     = getSnowDepthAt(bx + 1.0, bz + 1.0);
+        float d01     = getSnowDepthAt(bx, bz + 1.0);
+
+        float cy  = baseY + dCenter;
+        float mNy = baseY + dN;
+        float mSy = baseY + dS;
+        float mWy = baseY + dW;
+        float mEy = baseY + dE;
+
+        float c00 = baseY + d00;
+        float c10 = baseY + d10;
+        float c11 = baseY + d11;
+        float c01 = baseY + d01;
+
+        int cr = Math.min(255, (int) (240 + dCenter * 70));
+        int cg = Math.min(255, (int) (246 + dCenter * 40));
+        int cb = 255;
+
+        int mrN = Math.min(255, (int) (232 + dN * 70));
+        int mgN = Math.min(255, (int) (240 + dN * 50));
+
+        int mrS = Math.min(255, (int) (232 + dS * 70));
+        int mgS = Math.min(255, (int) (240 + dS * 50));
+
+        int mrW = Math.min(255, (int) (232 + dW * 70));
+        int mgW = Math.min(255, (int) (240 + dW * 50));
+
+        int mrE = Math.min(255, (int) (232 + dE * 70));
+        int mgE = Math.min(255, (int) (240 + dE * 50));
+
+        SnowVertex pCenter = new SnowVertex(bx + 0.5f, cy, bz + 0.5f, 0.5f, 0.5f, cr, cg, cb, 255, light);
+        SnowVertex p00     = new SnowVertex(bx, c00, bz, 0.0f, 0.0f, 226, 235, 246, 255, light);
+        SnowVertex p10     = new SnowVertex(bx + 1.0f, c10, bz, 1.0f, 0.0f, 226, 235, 246, 255, light);
+        SnowVertex p11     = new SnowVertex(bx + 1.0f, c11, bz + 1.0f, 1.0f, 1.0f, 226, 235, 246, 255, light);
+        SnowVertex p01     = new SnowVertex(bx, c01, bz + 1.0f, 0.0f, 1.0f, 226, 235, 246, 255, light);
+
+        SnowVertex mN = new SnowVertex(bx + 0.5f, mNy, bz, 0.5f, 0.0f, mrN, mgN, 250, 255, light);
+        SnowVertex mS = new SnowVertex(bx + 0.5f, mSy, bz + 1.0f, 0.5f, 1.0f, mrS, mgS, 250, 255, light);
+        SnowVertex mW = new SnowVertex(bx, mWy, bz + 0.5f, 0.0f, 0.5f, mrW, mgW, 250, 255, light);
+        SnowVertex mE = new SnowVertex(bx + 1.0f, mEy, bz + 0.5f, 1.0f, 0.5f, mrE, mgE, 250, 255, light);
+
+        // 4 symmetric quadrants radiating outward from pCenter
+        this.cachedSnowMesh.add(new SnowQuad(pCenter, mW, p00, mN));
+        this.cachedSnowMesh.add(new SnowQuad(pCenter, mN, p10, mE));
+        this.cachedSnowMesh.add(new SnowQuad(pCenter, mE, p11, mS));
+        this.cachedSnowMesh.add(new SnowQuad(pCenter, mS, p01, mW));
+
+        // Side skirts for exposed drops:
         int diffN = getElevationDiff(mc, bx, bz - 1, topY);
         int diffS = getElevationDiff(mc, bx, bz + 1, topY);
         int diffW = getElevationDiff(mc, bx - 1, bz, topY);
         int diffE = getElevationDiff(mc, bx + 1, bz, topY);
 
-        if (isLod0) {
+        float skirtBottomY = topY + 0.999f;
+        int skirtR = 218;
+        int skirtG = 226;
+        int skirtB = 242;
 
-            float dCenter = getSnowDepthAt(bx + 0.5, bz + 0.5);
-            float dN      = getSnowDepthAt(bx + 0.5, bz);
-            float dS      = getSnowDepthAt(bx + 0.5, bz + 1.0);
-            float dW      = getSnowDepthAt(bx, bz + 0.5);
-            float dE      = getSnowDepthAt(bx + 1.0, bz + 0.5);
+        if (diffN < 0) {
+            int nLight = WorldRenderer.getLightmapCoordinates(mc.world, new BlockPos(bx, topY, bz - 1));
+            int lightN = Math.max(light, nLight);
+            SnowVertex top00 = new SnowVertex(bx, c00, bz, 0.0f, 0.0f, skirtR, skirtG, skirtB, 255, lightN);
+            SnowVertex topN  = new SnowVertex(bx + 0.5f, mNy, bz, 0.5f, 0.0f, skirtR, skirtG, skirtB, 255, lightN);
+            SnowVertex top10 = new SnowVertex(bx + 1.0f, c10, bz, 1.0f, 0.0f, skirtR, skirtG, skirtB, 255, lightN);
+            SnowVertex b00   = new SnowVertex(bx, skirtBottomY, bz, 0.0f, 1.0f, skirtR, skirtG, skirtB, 255, lightN);
+            SnowVertex bN    = new SnowVertex(bx + 0.5f, skirtBottomY, bz, 0.5f, 1.0f, skirtR, skirtG, skirtB, 255, lightN);
+            SnowVertex b10   = new SnowVertex(bx + 1.0f, skirtBottomY, bz, 1.0f, 1.0f, skirtR, skirtG, skirtB, 255, lightN);
 
-            float d00     = getSnowDepthAt(bx, bz);
-            float d10     = getSnowDepthAt(bx + 1.0, bz);
-            float d11     = getSnowDepthAt(bx + 1.0, bz + 1.0);
-            float d01     = getSnowDepthAt(bx, bz + 1.0);
+            this.cachedSnowMesh.add(new SnowQuad(top00, topN, bN, b00));
+            this.cachedSnowMesh.add(new SnowQuad(topN, top10, b10, bN));
+        }
 
-            float mNy = (diffN < 0) ? (baseY + dN * 0.45f) : (baseY + dN);
-            float mSy = (diffS < 0) ? (baseY + dS * 0.45f) : (baseY + dS);
-            float mWy = (diffW < 0) ? (baseY + dW * 0.45f) : (baseY + dW);
-            float mEy = (diffE < 0) ? (baseY + dE * 0.45f) : (baseY + dE);
+        if (diffS < 0) {
+            int sLight = WorldRenderer.getLightmapCoordinates(mc.world, new BlockPos(bx, topY, bz + 1));
+            int lightS = Math.max(light, sLight);
+            SnowVertex top11 = new SnowVertex(bx + 1.0f, c11, bz + 1.0f, 1.0f, 0.0f, skirtR, skirtG, skirtB, 255, lightS);
+            SnowVertex topS  = new SnowVertex(bx + 0.5f, mSy, bz + 1.0f, 0.5f, 0.0f, skirtR, skirtG, skirtB, 255, lightS);
+            SnowVertex top01 = new SnowVertex(bx, c01, bz + 1.0f, 0.0f, 0.0f, skirtR, skirtG, skirtB, 255, lightS);
+            SnowVertex b11   = new SnowVertex(bx + 1.0f, skirtBottomY, bz + 1.0f, 1.0f, 1.0f, skirtR, skirtG, skirtB, 255, lightS);
+            SnowVertex bS    = new SnowVertex(bx + 0.5f, skirtBottomY, bz + 1.0f, 0.5f, 1.0f, skirtR, skirtG, skirtB, 255, lightS);
+            SnowVertex b01   = new SnowVertex(bx, skirtBottomY, bz + 1.0f, 0.0f, 1.0f, skirtR, skirtG, skirtB, 255, lightS);
 
-            float cy = baseY + dCenter;
+            this.cachedSnowMesh.add(new SnowQuad(top11, topS, bS, b11));
+            this.cachedSnowMesh.add(new SnowQuad(topS, top01, b01, bS));
+        }
 
-            float c00 = (diffN < 0 || diffW < 0) ? (baseY + d00 * 0.45f) : (baseY + d00);
-            float c10 = (diffN < 0 || diffE < 0) ? (baseY + d10 * 0.45f) : (baseY + d10);
-            float c11 = (diffS < 0 || diffE < 0) ? (baseY + d11 * 0.45f) : (baseY + d11);
-            float c01 = (diffS < 0 || diffW < 0) ? (baseY + d01 * 0.45f) : (baseY + d01);
+        if (diffW < 0) {
+            int wLight = WorldRenderer.getLightmapCoordinates(mc.world, new BlockPos(bx - 1, topY, bz));
+            int lightW = Math.max(light, wLight);
+            SnowVertex top01 = new SnowVertex(bx, c01, bz + 1.0f, 1.0f, 0.0f, skirtR, skirtG, skirtB, 255, lightW);
+            SnowVertex topW  = new SnowVertex(bx, mWy, bz + 0.5f, 0.5f, 0.0f, skirtR, skirtG, skirtB, 255, lightW);
+            SnowVertex top00 = new SnowVertex(bx, c00, bz, 0.0f, 0.0f, skirtR, skirtG, skirtB, 255, lightW);
+            SnowVertex b01   = new SnowVertex(bx, skirtBottomY, bz + 1.0f, 1.0f, 1.0f, skirtR, skirtG, skirtB, 255, lightW);
+            SnowVertex bW    = new SnowVertex(bx, skirtBottomY, bz + 0.5f, 0.5f, 1.0f, skirtR, skirtG, skirtB, 255, lightW);
+            SnowVertex b00   = new SnowVertex(bx, skirtBottomY, bz, 0.0f, 1.0f, skirtR, skirtG, skirtB, 255, lightW);
 
-            int cr = Math.min(255, (int) (240 + dCenter * 70));
-            int cg = Math.min(255, (int) (246 + dCenter * 40));
-            int cb = 255;
+            this.cachedSnowMesh.add(new SnowQuad(top01, topW, bW, b01));
+            this.cachedSnowMesh.add(new SnowQuad(topW, top00, b00, bW));
+        }
 
-            int mrN = Math.min(255, (int) (232 + dN * 70));
-            int mgN = Math.min(255, (int) (240 + dN * 50));
+        if (diffE < 0) {
+            int eLight = WorldRenderer.getLightmapCoordinates(mc.world, new BlockPos(bx + 1, topY, bz));
+            int lightE = Math.max(light, eLight);
+            SnowVertex top10 = new SnowVertex(bx + 1.0f, c10, bz, 0.0f, 0.0f, skirtR, skirtG, skirtB, 255, lightE);
+            SnowVertex topE  = new SnowVertex(bx + 1.0f, mEy, bz + 0.5f, 0.5f, 0.0f, skirtR, skirtG, skirtB, 255, lightE);
+            SnowVertex top11 = new SnowVertex(bx + 1.0f, c11, bz + 1.0f, 1.0f, 0.0f, skirtR, skirtG, skirtB, 255, lightE);
+            SnowVertex b10   = new SnowVertex(bx + 1.0f, skirtBottomY, bz, 0.0f, 1.0f, skirtR, skirtG, skirtB, 255, lightE);
+            SnowVertex bE    = new SnowVertex(bx + 1.0f, skirtBottomY, bz + 0.5f, 0.5f, 1.0f, skirtR, skirtG, skirtB, 255, lightE);
+            SnowVertex b11   = new SnowVertex(bx + 1.0f, skirtBottomY, bz + 1.0f, 1.0f, 1.0f, skirtR, skirtG, skirtB, 255, lightE);
 
-            int mrS = Math.min(255, (int) (232 + dS * 70));
-            int mgS = Math.min(255, (int) (240 + dS * 50));
-
-            int mrW = Math.min(255, (int) (232 + dW * 70));
-            int mgW = Math.min(255, (int) (240 + dW * 50));
-
-            int mrE = Math.min(255, (int) (232 + dE * 70));
-            int mgE = Math.min(255, (int) (240 + dE * 50));
-
-            SnowVertex pCenter = new SnowVertex(bx + 0.5f, cy, bz + 0.5f, 0.5f, 0.5f, cr, cg, cb, 255, light);
-            SnowVertex p00     = new SnowVertex(bx, c00, bz, 0.0f, 0.0f, 226, 235, 246, 255, light);
-            SnowVertex p10     = new SnowVertex(bx + 1.0f, c10, bz, 1.0f, 0.0f, 226, 235, 246, 255, light);
-            SnowVertex p11     = new SnowVertex(bx + 1.0f, c11, bz + 1.0f, 1.0f, 1.0f, 226, 235, 246, 255, light);
-            SnowVertex p01     = new SnowVertex(bx, c01, bz + 1.0f, 0.0f, 1.0f, 226, 235, 246, 255, light);
-
-            SnowVertex mN = new SnowVertex(bx + 0.5f, mNy, bz, 0.5f, 0.0f, mrN, mgN, 250, 255, light);
-            SnowVertex mS = new SnowVertex(bx + 0.5f, mSy, bz + 1.0f, 0.5f, 1.0f, mrS, mgS, 250, 255, light);
-            SnowVertex mW = new SnowVertex(bx, mWy, bz + 0.5f, 0.0f, 0.5f, mrW, mgW, 250, 255, light);
-            SnowVertex mE = new SnowVertex(bx + 1.0f, mEy, bz + 0.5f, 1.0f, 0.5f, mrE, mgE, 250, 255, light);
-
-            this.cachedSnowMesh.add(new SnowQuad(p00, mN, pCenter, mW));
-            this.cachedSnowMesh.add(new SnowQuad(mN, p10, mE, pCenter));
-            this.cachedSnowMesh.add(new SnowQuad(pCenter, mE, p11, mS));
-            this.cachedSnowMesh.add(new SnowQuad(mW, pCenter, mS, p01));
-        } else {
-
-            float flatY = baseY + Math.min(0.04f, getSnowDepthAt(bx + 0.5, bz + 0.5) * 0.4f);
-            SnowVertex v0 = new SnowVertex(bx, flatY, bz, 0.0f, 0.0f, 246, 250, 255, 255, light);
-            SnowVertex v1 = new SnowVertex(bx + 1.0f, flatY, bz, 1.0f, 0.0f, 246, 250, 255, 255, light);
-            SnowVertex v2 = new SnowVertex(bx + 1.0f, flatY, bz + 1.0f, 1.0f, 1.0f, 246, 250, 255, 255, light);
-            SnowVertex v3 = new SnowVertex(bx, flatY, bz + 1.0f, 0.0f, 1.0f, 246, 250, 255, 255, light);
-            this.cachedSnowMesh.add(new SnowQuad(v0, v1, v2, v3));
+            this.cachedSnowMesh.add(new SnowQuad(top10, topE, bE, b10));
+            this.cachedSnowMesh.add(new SnowQuad(topE, top11, b11, bE));
         }
     }
 
@@ -1067,10 +1121,10 @@ public class WorldTweaks extends Module {
         SnowVertex mW = new SnowVertex(bx, baseY + depth * 0.5f, bz + 0.5f, 0.0f, 0.5f, 246, 250, 255, 255, light);
         SnowVertex mE = new SnowVertex(bx + 1.0f, baseY + depth * 0.5f, bz + 0.5f, 1.0f, 0.5f, 246, 250, 255, 255, light);
 
-        this.cachedSnowMesh.add(new SnowQuad(p00, mN, pCenter, mW));
-        this.cachedSnowMesh.add(new SnowQuad(mN, p10, mE, pCenter));
+        this.cachedSnowMesh.add(new SnowQuad(pCenter, mW, p00, mN));
+        this.cachedSnowMesh.add(new SnowQuad(pCenter, mN, p10, mE));
         this.cachedSnowMesh.add(new SnowQuad(pCenter, mE, p11, mS));
-        this.cachedSnowMesh.add(new SnowQuad(mW, pCenter, mS, p01));
+        this.cachedSnowMesh.add(new SnowQuad(pCenter, mS, p01, mW));
     }
 
     private void rebuildSnowMesh(MinecraftClient mc, int camBx, int camBy, int camBz) {
@@ -1079,7 +1133,6 @@ public class WorldTweaks extends Module {
 
         int maxRadius = 38;
         int maxRadSq = maxRadius * maxRadius;
-        int lod0RadSq = 22 * 22;
 
         for (int dx = -maxRadius; dx <= maxRadius; dx++) {
             for (int dz = -maxRadius; dz <= maxRadius; dz++) {
@@ -1091,7 +1144,7 @@ public class WorldTweaks extends Module {
 
                 int groundY = findGroundY(mc, bx, bz, camBy);
                 if (groundY != Integer.MIN_VALUE) {
-                    buildSnowBlock(mc, bx, groundY, bz, distSq, lod0RadSq);
+                    buildSnowBlock(mc, bx, groundY, bz);
                 }
 
                 int searchLeafY = Math.min(mc.world.getTopY(Heightmap.Type.MOTION_BLOCKING, bx, bz) - 1, groundY + 36);
@@ -1107,6 +1160,7 @@ public class WorldTweaks extends Module {
             }
         }
     }
+
     private void updateGroundLeaves(MinecraftClient mc, int camBx, int camBy, int camBz) {
         double densityVal = this.groundLeavesDensity.get();
         if (!this.groundLeavesDirty &&
