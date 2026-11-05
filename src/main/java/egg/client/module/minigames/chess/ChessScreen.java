@@ -47,6 +47,9 @@ public class ChessScreen extends Screen {
     private boolean roomInputFocused = false;
     private long lastBlinkTime = 0;
 
+    private float historyScroll = 0.0f;
+    private int lastHistorySize = 0;
+
     public ChessScreen() {
         super(Text.literal("Chess"));
     }
@@ -99,27 +102,42 @@ public class ChessScreen extends Screen {
         float hH = 34.0f;
         Render2D.drawRoundedRect(context, panelX + 1.0f, panelY + 1.0f, panelW - 2.0f, hH, 9.0f, 0x22FFFFFF);
 
-        IconRenderer.drawTextureScaled(context, MODS_ICON, panelX + 10.0f, panelY + 10.0f, 14.0f, 14.0f, 64, 64, Theme.getAccent());
-        ClientFont.draw(context, "CHESS", panelX + 28.0f, panelY + 13.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
+        IconRenderer.drawTextureScaled(context, MODS_ICON, panelX + 11.0f, panelY + 10.0f, 14.0f, 14.0f, 64, 64, Theme.getAccent());
+        ClientFont.draw(context, "CHESS", panelX + 30.0f, panelY + 13.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
 
+        float chessW = ClientFont.getWidth("CHESS", ClientFont.SF_BOLD);
         boolean isOnline = ChessRelay.isConnected();
-        String statusLabel = isOnline ? "\u25CF \u041E\u043D\u043B\u0430\u0439\u043D" : "\u25CB \u041E\u0444\u043B\u0430\u0439\u043D";
+        String statusText = isOnline ? "\u041E\u043D\u043B\u0430\u0439\u043D" : "\u041E\u0444\u043B\u0430\u0439\u043D";
         int badgeCol = isOnline ? Theme.getAccent() : 0xFF7A8294;
-        float badgeW = 60.0f;
-        float badgeH = 14.0f;
-        float badgeX = panelX + 76.0f;
-        float badgeY = panelY + 10.0f;
-        Render2D.drawRoundedRect(context, badgeX, badgeY, badgeW, badgeH, 3.0f, ColorUtil.withAlphaFloat(badgeCol, 0.22f));
-        Render2D.drawRoundedOutline(context, badgeX, badgeY, badgeW, badgeH, 3.0f, 0.8f, ColorUtil.withAlphaFloat(badgeCol, 0.55f));
-        ClientFont.drawCentered(context, statusLabel, badgeX + badgeW / 2.0f, badgeY + badgeH / 2.0f, ClientFont.SF_MEDIUM, badgeCol);
 
-        float closeX = panelX + panelW - 25.0f;
-        float closeY = panelY + 9.0f;
+        float textW = ClientFont.getWidth(statusText, ClientFont.SF_MEDIUM);
+        float dotD = 5.0f;
+        float padL = 6.0f;
+        float dotGap = 5.0f;
+        float padR = 6.0f;
+        float badgeW = padL + dotD + dotGap + textW + padR;
+        float badgeH = 15.0f;
+        float badgeX = panelX + 30.0f + chessW + 10.0f;
+        float badgeY = panelY + (hH - badgeH) / 2.0f;
+
+        Render2D.drawRoundedRect(context, badgeX, badgeY, badgeW, badgeH, 4.0f, ColorUtil.withAlphaFloat(badgeCol, 0.18f));
+        Render2D.drawRoundedOutline(context, badgeX, badgeY, badgeW, badgeH, 4.0f, 0.8f, ColorUtil.withAlphaFloat(badgeCol, 0.45f));
+
+        float dotX = badgeX + padL;
+        float dotY = badgeY + (badgeH - dotD) / 2.0f;
+        Render2D.drawRoundedRect(context, dotX, dotY, dotD, dotD, dotD / 2.0f, badgeCol);
+
+        float textX = dotX + dotD + dotGap;
+        float textY = badgeY + (badgeH - 8.0f) / 2.0f;
+        ClientFont.draw(context, statusText, textX, textY, ClientFont.SF_MEDIUM, badgeCol);
+
         float closeSize = 16.0f;
+        float closeX = panelX + panelW - 25.0f;
+        float closeY = panelY + (hH - closeSize) / 2.0f;
         boolean closeHover = mouseX >= closeX && mouseX <= closeX + closeSize && mouseY >= closeY && mouseY <= closeY + closeSize;
         int closeBg = closeHover ? ColorUtil.rgba(230, 60, 60, 160) : ColorUtil.rgba(255, 255, 255, 18);
         Render2D.drawRoundedRect(context, closeX, closeY, closeSize, closeSize, 4.0f, closeBg);
-        ClientFont.drawCentered(context, "\u2715", closeX + closeSize / 2.0f, closeY + closeSize / 2.0f, ClientFont.SF_BOLD, closeHover ? 0xFFFFFFFF : 0xFFA0A5B5);
+        ClientFont.drawCentered(context, "x", closeX + closeSize / 2.0f, closeY + closeSize / 2.0f - 0.5f, ClientFont.SF_BOLD, closeHover ? 0xFFFFFFFF : 0xFFA0A5B5);
 
         Render2D.drawRect(context, panelX + 1.0f, panelY + hH, panelW - 2.0f, 1.0f, ColorUtil.rgba(255, 255, 255, 15));
     }
@@ -358,21 +376,72 @@ public class ChessScreen extends Screen {
         ClientFont.draw(context, "\u0418\u0441\u0442\u043E\u0440\u0438\u044F \u0445\u043E\u0434\u043E\u0432", x + 10.0f, y + 6.0f, ClientFont.SF_MEDIUM, 0xFF8890A5);
 
         List<ChessMove> history = board.getMoveHistory();
-        float lineY = y + 20.0f;
-        int startIdx = Math.max(0, history.size() - 6);
+        int totalTurns = (history.size() + 1) / 2;
+        float visibleY = y + 19.0f;
+        float visibleH = h - 23.0f;
+        float rowH = 13.0f;
+        float contentH = totalTurns * rowH;
+        float maxScroll = Math.max(0.0f, contentH - visibleH);
 
-        for (int i = startIdx; i < history.size(); i++) {
-            ChessMove m = history.get(i);
-            String moveNum = (i + 1) + ". ";
-            String notation = moveNum + m.getNotation();
-            int col = (i % 2 == 0) ? 0xFFFFFFFF : 0xFFA5B0C5;
-            ClientFont.draw(context, notation, x + 10.0f, lineY, ClientFont.SF_REGULAR, col);
-            lineY += 13.0f;
+        if (history.size() != lastHistorySize) {
+            lastHistorySize = history.size();
+            historyScroll = maxScroll;
         }
 
         if (history.isEmpty()) {
-            ClientFont.draw(context, "\u0425\u043E\u0434\u043E\u0432 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442", x + 10.0f, lineY, ClientFont.SF_REGULAR, 0xFF555C6E);
+            ClientFont.draw(context, "\u0425\u043E\u0434\u043E\u0432 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442", x + 10.0f, visibleY + 2.0f, ClientFont.SF_REGULAR, 0xFF555C6E);
+            return;
         }
+
+        historyScroll = Math.max(0.0f, Math.min(maxScroll, historyScroll));
+
+        context.enableScissor((int) x, (int) visibleY, (int) (x + w), (int) (y + h - 3.0f));
+
+        for (int t = 0; t < totalTurns; t++) {
+            float rowY = visibleY + t * rowH - historyScroll;
+            if (rowY + rowH < visibleY || rowY > y + h) continue;
+
+            int turnNum = t + 1;
+            String whiteNotation = history.get(t * 2).getNotation();
+            String blackNotation = (t * 2 + 1 < history.size()) ? history.get(t * 2 + 1).getNotation() : "";
+
+            ClientFont.draw(context, turnNum + ".", x + 8.0f, rowY, ClientFont.SF_MEDIUM, 0xFF6E768A);
+            ClientFont.draw(context, whiteNotation, x + 28.0f, rowY, ClientFont.SF_REGULAR, 0xFFFFFFFF);
+            if (!blackNotation.isEmpty()) {
+                ClientFont.draw(context, blackNotation, x + 98.0f, rowY, ClientFont.SF_REGULAR, 0xFFB5BFD6);
+            }
+        }
+
+        context.disableScissor();
+
+        if (maxScroll > 0.0f) {
+            float barH = Math.max(12.0f, visibleH * (visibleH / contentH));
+            float barY = visibleY + (visibleH - barH) * (historyScroll / maxScroll);
+            Render2D.drawRoundedRect(context, x + w - 4.5f, barY, 2.0f, barH, 1.0f, 0x55FFFFFF);
+        }
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        Chess mod = Chess.getInstance();
+        if (mod != null) {
+            float sX = panelX + 330.0f;
+            float oppY = panelY + 44.0f + 64.0f;
+            float actY = oppY + 128.0f;
+            float histY = actY + 38.0f;
+            float sW = panelW - 344.0f;
+            float h = panelH - (histY - panelY) - 12.0f;
+
+            if (mouseX >= sX && mouseX <= sX + sW && mouseY >= histY && mouseY <= histY + h) {
+                int totalTurns = (mod.getBoard().getMoveHistory().size() + 1) / 2;
+                float visibleH = h - 23.0f;
+                float contentH = totalTurns * 13.0f;
+                float maxScroll = Math.max(0.0f, contentH - visibleH);
+                historyScroll = (float) Math.max(0.0f, Math.min(maxScroll, historyScroll - verticalAmount * 13.0));
+                return true;
+            }
+        }
+        return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
     }
 
     @Override
