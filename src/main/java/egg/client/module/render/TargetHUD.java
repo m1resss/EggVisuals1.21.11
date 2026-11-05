@@ -32,11 +32,14 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.consume.UseAction;
 import org.joml.Matrix3x2f;
 import org.joml.Vector2f;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -56,6 +59,7 @@ public class TargetHUD extends Module {
     private final SliderSetting hudGradientStrength = new SliderSetting("Сила градиента", 60.0, 5.0, 100.0, 5.0, "Интенсивность градиента");
     private final BooleanSetting showFps = new BooleanSetting("Показывать FPS", true, "Отображать метку FPS на карточке");
     private final BooleanSetting showDistance = new BooleanSetting("Дистанция", true, "Отображать дистанцию до цели");
+    private final BooleanSetting eatIndicator = new BooleanSetting("Индикатор еды", true, "Отображать процесс еды и зелий поверх головы");
     private final SliderSetting posX = new SliderSetting("X", 0.52, 0.0, 1.0, 0.001, "Позиция X");
     private final SliderSetting posY = new SliderSetting("Y", 0.68, 0.0, 1.0, 0.001, "Позиция Y");
 
@@ -95,6 +99,11 @@ public class TargetHUD extends Module {
     private final RollingNumber hpRolling = new RollingNumber();
     private LivingEntity lastHpTarget = null;
 
+    private LivingEntity lastEatTarget = null;
+    private float smoothEatProgress = 0.0f;
+    private ItemStack lastEatStack = ItemStack.EMPTY;
+    private float eatTimerSeconds = 0.0f;
+
     public TargetHUD() {
         super("Target HUD", "Показывает здоровье, броню и имя противника в прицеле", Category.ESP);
         instance = this;
@@ -108,8 +117,9 @@ public class TargetHUD extends Module {
         contextMenu.addToggle("Градиент HUD", () -> hudThemeGradient.isEnabled(), () -> hudThemeGradient.toggle());
         contextMenu.addToggle("Дистанция", () -> showDistance.isEnabled(), () -> showDistance.toggle());
         contextMenu.addToggle("Показывать FPS", () -> showFps.isEnabled(), () -> showFps.toggle());
+        contextMenu.addToggle("Индикатор еды", () -> eatIndicator.isEnabled(), () -> eatIndicator.toggle());
 
-        addSettings(mode, hudScale, opacity, targetTimeout, onlyPlayers, hitParticles, hudThemeGradient, hudGradientStrength, showFps, showDistance, posX, posY);
+        addSettings(mode, hudScale, opacity, targetTimeout, onlyPlayers, hitParticles, hudThemeGradient, hudGradientStrength, showFps, showDistance, eatIndicator, posX, posY);
     }
 
     public static TargetHUD getInstance() {
@@ -124,6 +134,10 @@ public class TargetHUD extends Module {
         this.lastKnownHp = -1.0f;
         this.lastHpTarget = null;
         this.hpRolling.reset(-1);
+        this.lastEatTarget = null;
+        this.smoothEatProgress = 0.0f;
+        this.lastEatStack = ItemStack.EMPTY;
+        this.eatTimerSeconds = 0.0f;
     }
 
     public void render(DrawContext context, RenderTickCounter tickCounter) {
@@ -268,6 +282,57 @@ public class TargetHUD extends Module {
             Render2D.drawDiagonalSheen(context, x, y, w, h, radius, 0L);
         }
 
+        MinecraftClient mc = MinecraftClient.getInstance();
+
+        if (lastEatTarget != target) {
+            lastEatTarget = target;
+            smoothEatProgress = 0.0f;
+            lastEatStack = ItemStack.EMPTY;
+            eatTimerSeconds = 0.0f;
+        }
+
+        boolean eating = false;
+        ItemStack activeStack = target.isUsingItem() ? target.getActiveItem() : ItemStack.EMPTY;
+        if (activeStack.isEmpty() && target.isUsingItem()) {
+            if (isConsumable(target.getMainHandStack())) {
+                activeStack = target.getMainHandStack();
+            } else if (isConsumable(target.getOffHandStack())) {
+                activeStack = target.getOffHandStack();
+            }
+        }
+        if (target.isUsingItem() && isConsumable(activeStack)) {
+            eating = true;
+            lastEatStack = activeStack.copy();
+            int timeLeft = target.getItemUseTimeLeft();
+            if (timeLeft > 0) {
+                float tickDelta = (mc != null && mc.getRenderTickCounter() != null) ? mc.getRenderTickCounter().getTickProgress(false) : 0.0f;
+                eatTimerSeconds = Math.max(0.0f, (float) timeLeft - tickDelta) * 0.05f;
+            } else {
+                if (eatTimerSeconds <= 0.0f) {
+                    int maxTime = lastEatStack.getMaxUseTime(target);
+                    eatTimerSeconds = (maxTime > 0 ? maxTime : 32) * 0.05f;
+                } else {
+                    eatTimerSeconds = Math.max(0.0f, eatTimerSeconds - dt);
+                }
+            }
+        } else {
+            eatTimerSeconds = Math.max(0.0f, eatTimerSeconds - dt);
+        }
+
+        float targetEatProgress = (eating && eatIndicator.get()) ? 1.0f : 0.0f;
+        if (smoothEatProgress < targetEatProgress) {
+            smoothEatProgress = Math.min(targetEatProgress, smoothEatProgress + dt * 10.0f);
+        } else if (smoothEatProgress > targetEatProgress) {
+            smoothEatProgress = Math.max(targetEatProgress, smoothEatProgress - dt * 8.0f);
+        }
+        if (smoothEatProgress <= 0.001f) {
+            smoothEatProgress = 0.0f;
+            if (!eating) {
+                lastEatStack = ItemStack.EMPTY;
+                eatTimerSeconds = 0.0f;
+            }
+        }
+
         float headSize = 30.0f;
         float headX = x + 7.0f;
         float headY = y + 7.0f;
@@ -282,8 +347,44 @@ public class TargetHUD extends Module {
 
         Identifier skinTex = getTargetSkin(target);
         if (skinTex != null) {
+            if (smoothEatProgress > 0.01f) {
+                renderBlurredHead(mat, skinTex, target, headX, headY, headSize, headRadius, alpha, smoothEatProgress);
+            } else {
+                Draw2DProcessor.INSTANCE.a(mat, skinTex, target, headX, headY, headSize, headSize, headRadius, alpha);
+            }
+        } else if (smoothEatProgress > 0.01f) {
+            int frostDark = ColorUtil.rgba(12, 12, 18, (int) (185 * smoothEatProgress * alpha));
+            Draw2DProcessor.INSTANCE.drawRect(mat, headX, headY, headSize, headSize, headRadius, frostDark);
+            int accentBorder = ColorUtil.withAlpha(Theme.getAccent(), (int) (160 * smoothEatProgress * alpha));
+            Draw2DProcessor.INSTANCE.drawOutline(mat, headX, headY, headSize, headSize, headRadius, 1.0f, accentBorder);
+        }
 
-            Draw2DProcessor.INSTANCE.a(mat, skinTex, target, headX, headY, headSize, headSize, headRadius, alpha);
+        if (smoothEatProgress > 0.01f && !lastEatStack.isEmpty()) {
+            DrawBatcher.flushPending();
+
+            float itemScale = 0.82f * (0.85f + 0.15f * smoothEatProgress);
+            float itemCx = headX + headSize * 0.5f;
+            float itemCy = headY + 8.5f;
+
+            context.getMatrices().pushMatrix();
+            context.getMatrices().translate(itemCx, itemCy);
+            context.getMatrices().scale(itemScale, itemScale);
+            context.getMatrices().translate(-8.0f, -8.0f);
+            context.drawItem(lastEatStack, 0, 0);
+            context.getMatrices().popMatrix();
+
+            String timerStr = String.format(Locale.US, "%.2fсек", Math.max(0.0f, eatTimerSeconds));
+            float tw = Fonts.b.a(timerStr, 7.0f);
+            float pillW = tw + 4.0f;
+            float pillH = 7.5f;
+            float pillX = headX + (headSize - pillW) * 0.5f;
+            float pillY = headY + 19.5f;
+
+            int pillBg = ColorUtil.rgba(8, 8, 12, (int) (185 * smoothEatProgress * alpha));
+            Draw2DProcessor.INSTANCE.drawRect(mat, pillX, pillY, pillW, pillH, 2.5f, pillBg);
+
+            int textCol = ColorUtil.rgba(255, 255, 255, (int) (245 * smoothEatProgress * alpha));
+            Fonts.b.a(mat, timerStr, headX + (headSize - tw) * 0.5f, pillY + 0.5f, 7.0f, textCol);
         }
 
         float textX = x + 43.0f;
@@ -739,5 +840,43 @@ public class TargetHUD extends Module {
             posX.setValue(Math.clamp(snap.snappedX / maxAvailX, 0.0, 1.0));
             posY.setValue(Math.clamp(snap.snappedY / maxAvailY, 0.0, 1.0));
         }
+    }
+
+    private void renderBlurredHead(Matrix3x2f mat, Identifier skin, LivingEntity target,
+                                   float x, float y, float size, float radius, float alpha, float blurFactor) {
+        if (skin == null) return;
+        float blurSpread = blurFactor * 1.8f;
+        float baseAlpha = alpha * (1.0f - blurFactor * 0.35f);
+
+        float[][] samples = {
+            {0.0f, 0.0f, 0.28f},
+            {-blurSpread, 0.0f, 0.12f},
+            {blurSpread, 0.0f, 0.12f},
+            {0.0f, -blurSpread, 0.12f},
+            {0.0f, blurSpread, 0.12f},
+            {-blurSpread * 0.7f, -blurSpread * 0.7f, 0.06f},
+            {-blurSpread * 0.7f, blurSpread * 0.7f, 0.06f},
+            {blurSpread * 0.7f, -blurSpread * 0.7f, 0.06f},
+            {blurSpread * 0.7f, blurSpread * 0.7f, 0.06f}
+        };
+
+        for (float[] s : samples) {
+            Draw2DProcessor.INSTANCE.a(mat, skin, target, x + s[0], y + s[1], size, size, radius, baseAlpha * (s[2] / 0.28f));
+        }
+
+        int frostDark = ColorUtil.rgba(12, 12, 18, (int) (185 * blurFactor * alpha));
+        Draw2DProcessor.INSTANCE.drawRect(mat, x, y, size, size, radius, frostDark);
+
+        int accentBorder = ColorUtil.withAlpha(Theme.getAccent(), (int) (160 * blurFactor * alpha));
+        Draw2DProcessor.INSTANCE.drawOutline(mat, x, y, size, size, radius, 1.0f, accentBorder);
+
+        int accentGlow = ColorUtil.withAlpha(Theme.getAccent(), (int) (50 * blurFactor * alpha));
+        Draw2DProcessor.INSTANCE.drawGlow(mat, x, y, size, size, radius, accentGlow, 3.5f);
+    }
+
+    private static boolean isConsumable(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return false;
+        UseAction action = stack.getUseAction();
+        return action == UseAction.EAT || action == UseAction.DRINK;
     }
 }
