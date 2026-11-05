@@ -100,6 +100,13 @@ public abstract class GameRendererMixin {
 
         }
 
+        BlockOverlay blockOverlay = ModuleManager.getInstance().getModule(BlockOverlay.class);
+        if (blockOverlay != null && blockOverlay.isEnabled()) {
+            self.setBlockOutlineEnabled(false);
+        } else {
+            self.setBlockOutlineEnabled(true);
+        }
+
     }
 
     @Inject(

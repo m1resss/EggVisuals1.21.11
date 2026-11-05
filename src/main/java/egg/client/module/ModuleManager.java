@@ -76,6 +76,7 @@ public class ModuleManager {
         register(new AspectRatio());
 
         register(new BreakBlock());
+        register(new BlockOverlay());
 
         register(new SmoothEat());
 

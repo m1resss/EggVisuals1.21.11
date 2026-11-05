@@ -113,6 +113,11 @@ public class EggClient implements ClientModInitializer {
                 lyrics.renderWorld3D(matrices, camera, tickDelta, immediate, camPos);
             }
 
+            egg.client.module.render.BlockOverlay blockOverlay = ModuleManager.getInstance().getModule(egg.client.module.render.BlockOverlay.class);
+            if (blockOverlay != null && blockOverlay.isEnabled()) {
+                blockOverlay.renderWorld3D(matrices, camera, tickDelta, immediate, camPos);
+            }
+
             immediate.draw();
         } finally {
             snapshot.restore();

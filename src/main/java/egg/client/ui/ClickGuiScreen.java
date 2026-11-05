@@ -664,6 +664,7 @@ public class ClickGuiScreen extends Screen {
         MODULE_KEYWORDS.put("ViewModel", new String[]{"вьюмодель", "руки", "положение", "оружие", "вид рук", "рука", "view model"});
         MODULE_KEYWORDS.put("AspectRatio", new String[]{"аспект", "соотношение", "растяг", "экран", "4:3", "разрешение", "aspect ratio"});
         MODULE_KEYWORDS.put("BreakBlock", new String[]{"брейк", "ломание", "прогресс", "анимация ломания", "break block"});
+        MODULE_KEYWORDS.put("Block Overlay", new String[]{"блок", "блок оверлей", "оверлей", "подсветка блока", "выделение", "шейдер", "неон", "куб", "block overlay", "overlay"});
         MODULE_KEYWORDS.put("HpCounter", new String[]{"хп", "хпшка", "здоровье", "сердечки", "жизни", "хп каунтер", "hp counter"});
         MODULE_KEYWORDS.put("SmoothEat", new String[]{"еда", "анимация еды", "плавная еда", "кушать", "smooth eat"});
         MODULE_KEYWORDS.put("Trajectories", new String[]{"траектории", "предикшен", "стрелы", "перлы", "зелья", "прицел", "траектория", "арбалет", "prediction", "trajectories"});
