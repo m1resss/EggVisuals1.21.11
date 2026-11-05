@@ -45,6 +45,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import it.unimi.dsi.fastutil.ints.IntList;
 
 public class KillEffect extends Module {
 
@@ -90,6 +91,8 @@ public class KillEffect extends Module {
     private final List<MonolithInstance> monolithInstances = new ArrayList<>();
     private final List<DeathGlassShard> particles = new ArrayList<>();
     private final Map<Integer, Long> recentAttacks = new ConcurrentHashMap<>();
+    private final Map<Integer, TrackedVictim> victimsById = new ConcurrentHashMap<>();
+    private final Map<String, TrackedVictim> victimsByName = new ConcurrentHashMap<>();
     private final Set<Integer> deadEntities = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Random random = new Random();
     private long lastFrameNanos = 0L;
@@ -128,9 +131,57 @@ public class KillEffect extends Module {
         return instance;
     }
 
+    public static class TrackedVictim {
+        public final int id;
+        public final String name;
+        public final boolean isPlayer;
+        public volatile Vec3d lastPos;
+        public volatile double height;
+        public volatile float yaw;
+        public volatile float pitch;
+        public volatile float headYaw;
+        public volatile boolean isSneaking;
+        public volatile long lastAttackTime;
+        public volatile float lastHealth;
+
+        public TrackedVictim(Entity e) {
+            this.id = e.getId();
+            this.name = e.getName() != null ? e.getName().getString() : "";
+            this.isPlayer = e instanceof PlayerEntity;
+            this.lastPos = new Vec3d(e.getX(), e.getY(), e.getZ());
+            this.height = e.getHeight();
+            this.yaw = e.getYaw();
+            this.pitch = e.getPitch();
+            this.headYaw = e.getHeadYaw();
+            this.isSneaking = e.isSneaking();
+            this.lastAttackTime = System.currentTimeMillis();
+            this.lastHealth = (e instanceof LivingEntity living) ? living.getHealth() : 20.0f;
+        }
+
+        public void update(Entity e) {
+            this.lastPos = new Vec3d(e.getX(), e.getY(), e.getZ());
+            this.height = e.getHeight();
+            this.yaw = e.getYaw();
+            this.pitch = e.getPitch();
+            this.headYaw = e.getHeadYaw();
+            this.isSneaking = e.isSneaking();
+            if (e instanceof LivingEntity living) {
+                this.lastHealth = living.getHealth();
+            }
+        }
+    }
+
     public void onAttack(Entity target) {
         if (!isEnabled() || target == null) return;
-        recentAttacks.put(target.getId(), System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        recentAttacks.put(target.getId(), now);
+
+        TrackedVictim v = victimsById.computeIfAbsent(target.getId(), id -> new TrackedVictim(target));
+        v.lastAttackTime = now;
+        v.update(target);
+        if (v.name != null && !v.name.isEmpty()) {
+            victimsByName.put(v.name.toLowerCase(), v);
+        }
     }
 
     public void onEntityDeath(Entity entity) {
@@ -152,6 +203,7 @@ public class KillEffect extends Module {
 
         if (deadEntities.add(entityId)) {
             recentAttacks.remove(entityId);
+            victimsById.remove(entityId);
             String curMode = mode.get();
             if ("Бабочки".equals(curMode)) {
                 spawnButterflySwarm(entity);
@@ -163,13 +215,119 @@ public class KillEffect extends Module {
         }
     }
 
-    public void spawnButterflySwarm(Entity entity) {
+    public void onEntitiesDestroy(IntList entityIds) {
+        if (!isEnabled() || entityIds == null || entityIds.isEmpty()) return;
         MinecraftClient mc = MinecraftClient.getInstance();
-        double bx = entity.getX();
-        double by = entity.getY();
-        double bz = entity.getZ();
-        double height = entity.getHeight();
+        if (mc.world == null || mc.player == null) return;
 
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < entityIds.size(); i++) {
+            int id = entityIds.getInt(i);
+            if (id == mc.player.getId()) continue;
+
+            Entity entity = mc.world.getEntityById(id);
+            TrackedVictim v = victimsById.get(id);
+
+            if (onlyTarget.isEnabled()) {
+                if (v == null || (now - v.lastAttackTime) > 5500L) {
+                    continue;
+                }
+            } else if (entity != null && onlyPlayers.isEnabled() && !(entity instanceof PlayerEntity)) {
+                continue;
+            }
+
+            Vec3d deathPos = null;
+            double height = 1.8;
+            float yaw = 0.0f, pitch = 0.0f, headYaw = 0.0f;
+            boolean sneaking = false;
+
+            if (entity != null) {
+                deathPos = new Vec3d(entity.getX(), entity.getY(), entity.getZ());
+                height = entity.getHeight();
+                yaw = entity.getYaw();
+                pitch = entity.getPitch();
+                headYaw = entity.getHeadYaw();
+                sneaking = entity.isSneaking();
+            } else if (v != null) {
+                deathPos = v.lastPos;
+                height = v.height;
+                yaw = v.yaw;
+                pitch = v.pitch;
+                headYaw = v.headYaw;
+                sneaking = v.isSneaking;
+            }
+
+            if (deathPos != null) {
+                double distSq = deathPos.squaredDistanceTo(mc.player.getX(), mc.player.getY(), mc.player.getZ());
+                if (distSq <= 256.0) {
+                    if (deadEntities.add(id)) {
+                        triggerEffectAt(deathPos.x, deathPos.y, deathPos.z, height, yaw, pitch, headYaw, sneaking);
+                        recentAttacks.remove(id);
+                        victimsById.remove(id);
+                    }
+                }
+            }
+        }
+    }
+
+    public void onChatMessage(String rawText) {
+        if (!isEnabled() || rawText == null || rawText.isEmpty()) return;
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc.player == null) return;
+
+        String lower = rawText.toLowerCase();
+        boolean hasKillKeyword = lower.contains("убил")
+                || lower.contains("убита")
+                || lower.contains("убит")
+                || lower.contains("погиб")
+                || lower.contains("казнен")
+                || lower.contains("зарубил")
+                || lower.contains("пал")
+                || lower.contains("смерть")
+                || lower.contains("killed")
+                || lower.contains("slain")
+                || lower.contains("shot")
+                || lower.contains("eliminated")
+                || lower.contains("was killed by");
+
+        if (!hasKillKeyword) return;
+
+        long now = System.currentTimeMillis();
+        for (Map.Entry<String, TrackedVictim> entry : victimsByName.entrySet()) {
+            String victimName = entry.getKey();
+            if (victimName.length() >= 3 && lower.contains(victimName)) {
+                TrackedVictim v = entry.getValue();
+                if ((now - v.lastAttackTime) <= 8000L) {
+                    if (deadEntities.add(v.id)) {
+                        if (v.lastPos != null && v.lastPos.squaredDistanceTo(mc.player.getX(), mc.player.getY(), mc.player.getZ()) <= 576.0) {
+                            triggerEffectAt(v.lastPos.x, v.lastPos.y, v.lastPos.z, v.height, v.yaw, v.pitch, v.headYaw, v.isSneaking);
+                        }
+                        recentAttacks.remove(v.id);
+                        victimsById.remove(v.id);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    public void triggerEffectAt(double bx, double by, double bz, double height, float yaw, float pitch, float headYaw, boolean isSneaking) {
+        String curMode = mode.get();
+        if ("Бабочки".equals(curMode)) {
+            spawnButterflySwarmAt(bx, by, bz, height);
+        } else if ("Обелиск".equals(curMode)) {
+            spawnMonolithEffectAt(bx, by, bz, yaw, pitch, headYaw, isSneaking, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+        } else {
+            spawnGlassBurstAt(bx, by, bz, height);
+        }
+    }
+
+    public void spawnButterflySwarm(Entity entity) {
+        spawnButterflySwarmAt(entity.getX(), entity.getY(), entity.getZ(), entity.getHeight());
+    }
+
+    public void spawnButterflySwarmAt(double bx, double by, double bz, double height) {
+        MinecraftClient mc = MinecraftClient.getInstance();
         int count = Math.clamp((int) butterflyAmount.get(), 10, 150);
         float baseSpeed = (float) butterflySpeed.get();
         float baseSize = (float) butterflySize.get();
@@ -199,15 +357,6 @@ public class KillEffect extends Module {
     }
 
     public void spawnMonolithEffect(Entity entity) {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        double bx = entity.getX();
-        double by = entity.getY();
-        double bz = entity.getZ();
-        float yaw = entity.getYaw();
-        float pitch = entity.getPitch();
-        float headYaw = entity.getHeadYaw();
-        boolean isSneaking = entity.isSneaking();
-
         float limbProgress = 0.0f;
         float limbSpeed = 0.0f;
         float swingProgress = 0.0f;
@@ -227,6 +376,14 @@ public class KillEffect extends Module {
             rArmRoll += swingProgress * 0.35f;
         }
 
+        spawnMonolithEffectAt(entity.getX(), entity.getY(), entity.getZ(),
+                entity.getYaw(), entity.getPitch(), entity.getHeadYaw(), entity.isSneaking(),
+                rLegPitch, lLegPitch, rArmPitch, lArmPitch, rArmRoll);
+    }
+
+    public void spawnMonolithEffectAt(double bx, double by, double bz, float yaw, float pitch, float headYaw, boolean isSneaking,
+                                      float rLegPitch, float lLegPitch, float rArmPitch, float lArmPitch, float rArmRoll) {
+        MinecraftClient mc = MinecraftClient.getInstance();
         if (sound.isEnabled() && mc.world != null) {
             mc.world.playSoundClient(bx, by + 3.0, bz,
                     SoundEvents.BLOCK_RESPAWN_ANCHOR_CHARGE, SoundCategory.PLAYERS,
@@ -255,9 +412,12 @@ public class KillEffect extends Module {
     }
 
     public void spawnGlassBurst(Entity entity) {
+        spawnGlassBurstAt(entity.getX(), entity.getY(), entity.getZ(), entity.getHeight());
+    }
+
+    public void spawnGlassBurstAt(double bx, double by, double bz, double height) {
         MinecraftClient mc = MinecraftClient.getInstance();
-        Vec3d basePos = new Vec3d(entity.getX(), entity.getY(), entity.getZ());
-        double height = entity.getHeight();
+        Vec3d basePos = new Vec3d(bx, by, bz);
 
         int count = Math.clamp((int) amount.get(), 10, 300);
         float baseSpeed = (float) speed.get();
@@ -331,25 +491,60 @@ public class KillEffect extends Module {
             if (!particles.isEmpty()) particles.clear();
             if (!butterflySwarms.isEmpty()) butterflySwarms.clear();
             recentAttacks.clear();
+            victimsById.clear();
+            victimsByName.clear();
             deadEntities.clear();
             return;
         }
 
         MinecraftClient mc = MinecraftClient.getInstance();
 
-        if (mc.world != null && !recentAttacks.isEmpty()) {
+        if (mc.world != null && mc.player != null) {
             long nowMs = System.currentTimeMillis();
-            recentAttacks.entrySet().removeIf(entry -> {
-                if (nowMs - entry.getValue() > 6000L) {
-                    return true;
+
+            for (Entity e : mc.world.getEntities()) {
+                if (e == mc.player) continue;
+                if (onlyPlayers.isEnabled() && !(e instanceof PlayerEntity)) continue;
+                if (e instanceof LivingEntity living) {
+                    if (living.getHealth() <= 0.0f || living.isDead()) {
+                        onEntityDeath(living);
+                    }
                 }
-                Entity target = mc.world.getEntityById(entry.getKey());
-                if (target instanceof LivingEntity living && (!living.isAlive() || living.getHealth() <= 0.0f)) {
-                    onEntityDeath(living);
-                    return true;
+            }
+
+            for (Iterator<Map.Entry<Integer, TrackedVictim>> it = victimsById.entrySet().iterator(); it.hasNext(); ) {
+                Map.Entry<Integer, TrackedVictim> entry = it.next();
+                int id = entry.getKey();
+                TrackedVictim v = entry.getValue();
+
+                if (nowMs - v.lastAttackTime > 10000L) {
+                    it.remove();
+                    continue;
                 }
-                return false;
-            });
+
+                Entity e = mc.world.getEntityById(id);
+                if (e != null) {
+                    Vec3d currentPos = new Vec3d(e.getX(), e.getY(), e.getZ());
+                    if (v.lastPos != null && !deadEntities.contains(id)) {
+                        double distSq = currentPos.squaredDistanceTo(v.lastPos);
+                        long timeSinceAttack = nowMs - v.lastAttackTime;
+                        double distToPlayerSq = v.lastPos.squaredDistanceTo(mc.player.getX(), mc.player.getY(), mc.player.getZ());
+                        if (distSq > 400.0 && timeSinceAttack <= 3500L && distToPlayerSq <= 144.0) {
+                            if (deadEntities.add(id)) {
+                                triggerEffectAt(v.lastPos.x, v.lastPos.y, v.lastPos.z, v.height, v.yaw, v.pitch, v.headYaw, v.isSneaking);
+                                recentAttacks.remove(id);
+                                it.remove();
+                                continue;
+                            }
+                        }
+                    }
+                    v.update(e);
+                }
+            }
+
+            if (deadEntities.size() > 200) {
+                deadEntities.clear();
+            }
         }
 
         long now = System.nanoTime();
@@ -1346,6 +1541,8 @@ public class KillEffect extends Module {
         butterflySwarms.clear();
         monolithInstances.clear();
         recentAttacks.clear();
+        victimsById.clear();
+        victimsByName.clear();
         deadEntities.clear();
     }
 

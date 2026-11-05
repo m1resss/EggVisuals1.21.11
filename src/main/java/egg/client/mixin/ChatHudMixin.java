@@ -63,6 +63,11 @@ public class ChatHudMixin {
         if (auth != null && auth.isEnabled()) {
             auth.onChatMessage(text);
         }
+
+        egg.client.module.render.KillEffect killEffect = ModuleManager.getInstance().getModule(egg.client.module.render.KillEffect.class);
+        if (killEffect != null && killEffect.isEnabled()) {
+            killEffect.onChatMessage(text);
+        }
     }
 
     @Inject(method = "addMessage(Lnet/minecraft/text/Text;Lnet/minecraft/network/message/MessageSignatureData;Lnet/minecraft/client/gui/hud/MessageIndicator;)V", at = @At("HEAD"), cancellable = true)
@@ -76,6 +81,11 @@ public class ChatHudMixin {
             if (handled) {
                 ci.cancel();
             }
+        }
+
+        egg.client.module.render.KillEffect killEffect = ModuleManager.getInstance().getModule(egg.client.module.render.KillEffect.class);
+        if (killEffect != null && killEffect.isEnabled()) {
+            killEffect.onChatMessage(text);
         }
     }
 }

@@ -3,10 +3,12 @@ package egg.client.mixin;
 import egg.client.command.CommandManager;
 import egg.client.module.ModuleManager;
 import egg.client.module.render.Hitmarker;
+import egg.client.module.render.KillEffect;
 import egg.client.module.render.TotemPopConfetti;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.entity.Entity;
+import net.minecraft.network.packet.s2c.play.EntitiesDestroyS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntityStatusS2CPacket;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvents;
@@ -61,12 +63,20 @@ public class ClientPlayNetworkHandlerMixin {
                         hitmarker.onPacket(packet);
                     }
                 } else if (packet.getStatus() == 3) {
-                    egg.client.module.render.KillEffect killEffect = ModuleManager.getInstance().getModule(egg.client.module.render.KillEffect.class);
+                    KillEffect killEffect = ModuleManager.getInstance().getModule(KillEffect.class);
                     if (killEffect != null && killEffect.isEnabled()) {
                         killEffect.onEntityDeath(entity);
                     }
                 }
             }
+        }
+    }
+
+    @Inject(method = "onEntitiesDestroy", at = @At("HEAD"))
+    private void onEntitiesDestroy(EntitiesDestroyS2CPacket packet, CallbackInfo ci) {
+        KillEffect killEffect = ModuleManager.getInstance().getModule(KillEffect.class);
+        if (killEffect != null && killEffect.isEnabled()) {
+            killEffect.onEntitiesDestroy(packet.getEntityIds());
         }
     }
 }
