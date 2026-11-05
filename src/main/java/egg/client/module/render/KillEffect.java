@@ -50,12 +50,30 @@ public class KillEffect extends Module {
 
     private static KillEffect instance;
 
-    private final ModeSetting mode = new ModeSetting("Эффект", "Статуя", "Тип эффекта при смерти противника", "Статуя", "Обелиск", "Чернила", "Стекло");
+    private static final int[] BUTTERFLY_PALETTE = {
+            0xFF00E5FF,
+            0xFFBF00FF,
+            0xFFFF4081,
+            0xFFFFD700,
+            0xFF00E676,
+            0xFF448AFF,
+            0xFFFF9100,
+            0xFFE040FB
+    };
+
+    private final ModeSetting mode = new ModeSetting("Эффект", "Бабочки", "Тип эффекта при смерти противника", "Бабочки", "Статуя", "Обелиск", "Чернила", "Стекло");
     private final BooleanSetting onlyTarget = new BooleanSetting("Только цель", true, "Создавать эффект только для атакованных вами врагов");
     private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", false, "Создавать эффект только при смерти игроков");
     private final BooleanSetting sound = new BooleanSetting("Звуки", true, "Звуковые эффекты при убийстве");
     private final BooleanSetting syncColor = new BooleanSetting("Синхр. цвета", false, "Использовать цвет темы клиента для эффекта");
     private final ColorSetting color = new ColorSetting("Цвет", 0xFFFFD700, "Пользовательский цвет эффекта (по умолч. золото)");
+
+    private final SliderSetting butterflyAmount = new SliderSetting("Бабочки", 48, 15, 120, 1, "Количество вылетающих бабочек");
+    private final SliderSetting butterflySize = new SliderSetting("Размер бабочек", 0.22, 0.08, 0.55, 0.01, "Размер крыльев бабочек");
+    private final SliderSetting butterflySpeed = new SliderSetting("Скорость взлёта", 3.8, 1.0, 9.0, 0.2, "Начальная скорость разлёта бабочек");
+    private final SliderSetting butterflyLifetime = new SliderSetting("Жизнь бабочек", 4.2, 1.5, 8.0, 0.1, "Длительность полёта бабочек (сек)");
+    private final BooleanSetting butterflyTrails = new BooleanSetting("Пыльца", true, "Искрящийся шлейф пыльцы за крыльями бабочек");
+    private final BooleanSetting butterflyRainbow = new BooleanSetting("Разноцветные", false, "Радужные переливы крыльев каждой бабочки");
 
     private final SliderSetting statueSpeed = new SliderSetting("Скорость льда", 5.2, 1.0, 12.0, 0.5, "Скорость скольжения золотой статуи по земле");
     private final SliderSetting meltDuration = new SliderSetting("Время плавления", 2.6, 1.5, 5.0, 0.1, "Длительность плавления статуи в лужу (сек)");
@@ -74,6 +92,7 @@ public class KillEffect extends Module {
     private final BooleanSetting bounce = new BooleanSetting("Отскок стекла", true, "Отскок осколков стекла от блоков и пола");
     private final BooleanSetting sparkle = new BooleanSetting("Блики стекла", true, "Яркие вспышки и отблески на гранях стекла");
 
+    private final List<ButterflySwarmInstance> butterflySwarms = new ArrayList<>();
     private final List<GoldenStatueInstance> statueInstances = new ArrayList<>();
     private final List<MonolithInstance> monolithInstances = new ArrayList<>();
     private final List<InkSlashInstance> inkSlashInstances = new ArrayList<>();
@@ -86,6 +105,13 @@ public class KillEffect extends Module {
     public KillEffect() {
         super("KillEffect", "Воспроизводит визуальный эффект на месте гибели игрока", Category.ESP);
         instance = this;
+
+        butterflyAmount.setVisible(() -> "Бабочки".equals(mode.get()));
+        butterflySize.setVisible(() -> "Бабочки".equals(mode.get()));
+        butterflySpeed.setVisible(() -> "Бабочки".equals(mode.get()));
+        butterflyLifetime.setVisible(() -> "Бабочки".equals(mode.get()));
+        butterflyTrails.setVisible(() -> "Бабочки".equals(mode.get()));
+        butterflyRainbow.setVisible(() -> "Бабочки".equals(mode.get()));
 
         statueSpeed.setVisible(() -> "Статуя".equals(mode.get()));
         meltDuration.setVisible(() -> "Статуя".equals(mode.get()));
@@ -107,6 +133,7 @@ public class KillEffect extends Module {
         color.setVisible(() -> !syncColor.isEnabled());
 
         addSettings(mode, onlyTarget, onlyPlayers, sound, syncColor, color,
+                butterflyAmount, butterflySize, butterflySpeed, butterflyLifetime, butterflyTrails, butterflyRainbow,
                 statueSpeed, meltDuration,
                 monolithHeight, monolithScale, monolithRunes,
                 slashScale, inkDrops,
@@ -142,7 +169,9 @@ public class KillEffect extends Module {
         if (deadEntities.add(entityId)) {
             recentAttacks.remove(entityId);
             String curMode = mode.get();
-            if ("Статуя".equals(curMode)) {
+            if ("Бабочки".equals(curMode)) {
+                spawnButterflySwarm(entity);
+            } else if ("Статуя".equals(curMode)) {
                 spawnStatueEffect(entity);
             } else if ("Обелиск".equals(curMode)) {
                 spawnMonolithEffect(entity);
@@ -151,6 +180,41 @@ public class KillEffect extends Module {
             } else {
                 spawnGlassBurst(entity);
             }
+        }
+    }
+
+    public void spawnButterflySwarm(Entity entity) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        double bx = entity.getX();
+        double by = entity.getY();
+        double bz = entity.getZ();
+        double height = entity.getHeight();
+
+        int count = Math.clamp((int) butterflyAmount.get(), 10, 150);
+        float baseSpeed = (float) butterflySpeed.get();
+        float baseSize = (float) butterflySize.get();
+        float baseLife = (float) butterflyLifetime.get();
+        int baseColor = syncColor.isEnabled() ? Theme.getAccent() : color.get();
+        boolean rainbow = butterflyRainbow.isEnabled();
+        boolean trails = butterflyTrails.isEnabled();
+
+        if (sound.isEnabled() && mc.world != null) {
+            mc.world.playSoundClient(bx, by + height * 0.5, bz,
+                    SoundEvents.BLOCK_AMETHYST_BLOCK_RESONATE, SoundCategory.PLAYERS,
+                    1.4f, 1.25f, false);
+            mc.world.playSoundClient(bx, by + height * 0.5, bz,
+                    SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME, SoundCategory.PLAYERS,
+                    1.5f, 1.55f, false);
+        }
+
+        butterflySwarms.add(new ButterflySwarmInstance(
+                bx, by, bz, height,
+                count, baseSpeed, baseSize, baseLife,
+                baseColor, rainbow, trails, random
+        ));
+
+        while (butterflySwarms.size() > 8) {
+            butterflySwarms.remove(0);
         }
     }
 
@@ -403,6 +467,7 @@ public class KillEffect extends Module {
             if (!monolithInstances.isEmpty()) monolithInstances.clear();
             if (!inkSlashInstances.isEmpty()) inkSlashInstances.clear();
             if (!particles.isEmpty()) particles.clear();
+            if (!butterflySwarms.isEmpty()) butterflySwarms.clear();
             recentAttacks.clear();
             deadEntities.clear();
             return;
@@ -437,6 +502,10 @@ public class KillEffect extends Module {
         VertexConsumer quadBuffer = immediate.getBuffer(RenderLayers.debugQuads());
         VertexConsumer lightBuffer = immediate.getBuffer(RenderLayers.lightning());
         Vector3f lightDir = new Vector3f(0.35f, 0.90f, 0.25f).normalize();
+
+        if (!butterflySwarms.isEmpty()) {
+            renderButterflySwarms(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
+        }
 
         if (!statueInstances.isEmpty()) {
             renderGoldenStatues(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
@@ -2736,6 +2805,417 @@ public class KillEffect extends Module {
             this.rotR = rotR;
             this.size = size;
             this.life = life;
+        }
+    }
+
+    private void renderButterflySwarms(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                       Vec3d camPos, Vector3f lightDir, float dt, MinecraftClient mc) {
+        butterflySwarms.removeIf(swarm -> !swarm.updateAndRender(quadBuf, lightBuf, camPos, lightDir, dt, mc));
+    }
+
+    private static void emitButterflyBody(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                          float cx, float cy, float cz, Matrix4f mat,
+                                          float scale, int color, float fade) {
+        int bodyAlpha = (int) (240 * fade);
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+
+        int darkR = Math.max(15, (int) (r * 0.25f));
+        int darkG = Math.max(15, (int) (g * 0.25f));
+        int darkB = Math.max(20, (int) (b * 0.25f));
+
+        Vector3f pFront = new Vector3f(0.0f, 0.0f, 0.28f * scale);
+        Vector3f pBack = new Vector3f(0.0f, 0.0f, -0.38f * scale);
+        Vector3f pLeft = new Vector3f(-0.045f * scale, 0.0f, -0.05f * scale);
+        Vector3f pRight = new Vector3f(0.045f * scale, 0.0f, -0.05f * scale);
+
+        mat.transformPosition(pFront);
+        mat.transformPosition(pBack);
+        mat.transformPosition(pLeft);
+        mat.transformPosition(pRight);
+
+        quadBuf.vertex(cx + pFront.x, cy + pFront.y, cz + pFront.z).color(darkR, darkG, darkB, bodyAlpha);
+        quadBuf.vertex(cx + pLeft.x, cy + pLeft.y, cz + pLeft.z).color(darkR, darkG, darkB, bodyAlpha);
+        quadBuf.vertex(cx + pBack.x, cy + pBack.y, cz + pBack.z).color(darkR, darkG, darkB, bodyAlpha);
+        quadBuf.vertex(cx + pRight.x, cy + pRight.y, cz + pRight.z).color(darkR, darkG, darkB, bodyAlpha);
+
+        quadBuf.vertex(cx + pFront.x, cy + pFront.y, cz + pFront.z).color(darkR, darkG, darkB, bodyAlpha);
+        quadBuf.vertex(cx + pRight.x, cy + pRight.y, cz + pRight.z).color(darkR, darkG, darkB, bodyAlpha);
+        quadBuf.vertex(cx + pBack.x, cy + pBack.y, cz + pBack.z).color(darkR, darkG, darkB, bodyAlpha);
+        quadBuf.vertex(cx + pLeft.x, cy + pLeft.y, cz + pLeft.z).color(darkR, darkG, darkB, bodyAlpha);
+
+        int coreAlpha = (int) (180 * fade);
+        lightBuf.vertex(cx + pFront.x, cy + pFront.y, cz + pFront.z).color(r, g, b, coreAlpha);
+        lightBuf.vertex(cx + pLeft.x, cy + pLeft.y, cz + pLeft.z).color(r, g, b, coreAlpha);
+        lightBuf.vertex(cx + pBack.x, cy + pBack.y, cz + pBack.z).color(r, g, b, coreAlpha);
+        lightBuf.vertex(cx + pRight.x, cy + pRight.y, cz + pRight.z).color(r, g, b, coreAlpha);
+    }
+
+    private static void emitButterflyWings(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                           float cx, float cy, float cz, Matrix4f mat,
+                                           float scale, float wingAngle, int color, float fade,
+                                           Vector3f lightDir) {
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+
+        int innerR = Math.min(255, (int) (r * 0.75f + 85));
+        int innerG = Math.min(255, (int) (g * 0.75f + 85));
+        int innerB = Math.min(255, (int) (b * 0.75f + 85));
+
+        int tipR = r;
+        int tipG = g;
+        int tipB = b;
+
+        int edgeR = (int) (r * 0.85f);
+        int edgeG = (int) (g * 0.85f);
+        int edgeB = (int) (b * 0.85f);
+
+        int qAlpha = (int) (215 * fade);
+        int lAlpha = (int) (135 * fade);
+
+        float cosW = (float) Math.cos(wingAngle);
+        float sinW = (float) Math.sin(wingAngle);
+
+        emitSingleWing(quadBuf, lightBuf, cx, cy, cz, mat,
+                0.0f, 0.22f * scale,
+                0.0f, -0.05f * scale,
+                -0.78f * scale, -0.05f * scale,
+                -1.12f * scale, 0.42f * scale,
+                cosW, sinW, true,
+                innerR, innerG, innerB, tipR, tipG, tipB, edgeR, edgeG, edgeB, qAlpha, lAlpha);
+
+        emitSingleWing(quadBuf, lightBuf, cx, cy, cz, mat,
+                0.0f, -0.05f * scale,
+                0.0f, -0.32f * scale,
+                -0.62f * scale, -0.45f * scale,
+                -0.78f * scale, -0.05f * scale,
+                cosW, sinW, true,
+                innerR, innerG, innerB, tipR, tipG, tipB, edgeR, edgeG, edgeB, qAlpha, lAlpha);
+
+        emitSingleWing(quadBuf, lightBuf, cx, cy, cz, mat,
+                0.0f, 0.22f * scale,
+                1.12f * scale, 0.42f * scale,
+                0.78f * scale, -0.05f * scale,
+                0.0f, -0.05f * scale,
+                cosW, sinW, false,
+                innerR, innerG, innerB, tipR, tipG, tipB, edgeR, edgeG, edgeB, qAlpha, lAlpha);
+
+        emitSingleWing(quadBuf, lightBuf, cx, cy, cz, mat,
+                0.0f, -0.05f * scale,
+                0.78f * scale, -0.05f * scale,
+                0.62f * scale, -0.45f * scale,
+                0.0f, -0.32f * scale,
+                cosW, sinW, false,
+                innerR, innerG, innerB, tipR, tipG, tipB, edgeR, edgeG, edgeB, qAlpha, lAlpha);
+    }
+
+    private static void emitSingleWing(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                       float cx, float cy, float cz, Matrix4f mat,
+                                       float x0, float z0,
+                                       float x1, float z1,
+                                       float x2, float z2,
+                                       float x3, float z3,
+                                       float cosW, float sinW, boolean isLeft,
+                                       int inR, int inG, int inB,
+                                       int tipR, int tipG, int tipB,
+                                       int edR, int edG, int edB,
+                                       int qAlpha, int lAlpha) {
+        Vector3f v0 = rotateWingVertex(x0, z0, cosW, sinW, isLeft);
+        Vector3f v1 = rotateWingVertex(x1, z1, cosW, sinW, isLeft);
+        Vector3f v2 = rotateWingVertex(x2, z2, cosW, sinW, isLeft);
+        Vector3f v3 = rotateWingVertex(x3, z3, cosW, sinW, isLeft);
+
+        mat.transformPosition(v0);
+        mat.transformPosition(v1);
+        mat.transformPosition(v2);
+        mat.transformPosition(v3);
+
+        quadBuf.vertex(cx + v0.x, cy + v0.y, cz + v0.z).color(inR, inG, inB, qAlpha);
+        quadBuf.vertex(cx + v1.x, cy + v1.y, cz + v1.z).color(tipR, tipG, tipB, qAlpha);
+        quadBuf.vertex(cx + v2.x, cy + v2.y, cz + v2.z).color(edR, edG, edB, qAlpha);
+        quadBuf.vertex(cx + v3.x, cy + v3.y, cz + v3.z).color(inR, inG, inB, qAlpha);
+
+        quadBuf.vertex(cx + v3.x, cy + v3.y, cz + v3.z).color(inR, inG, inB, qAlpha);
+        quadBuf.vertex(cx + v2.x, cy + v2.y, cz + v2.z).color(edR, edG, edB, qAlpha);
+        quadBuf.vertex(cx + v1.x, cy + v1.y, cz + v1.z).color(tipR, tipG, tipB, qAlpha);
+        quadBuf.vertex(cx + v0.x, cy + v0.y, cz + v0.z).color(inR, inG, inB, qAlpha);
+
+        lightBuf.vertex(cx + v0.x, cy + v0.y, cz + v0.z).color(inR, inG, inB, lAlpha);
+        lightBuf.vertex(cx + v1.x, cy + v1.y, cz + v1.z).color(tipR, tipG, tipB, lAlpha);
+        lightBuf.vertex(cx + v2.x, cy + v2.y, cz + v2.z).color(edR, edG, edB, lAlpha);
+        lightBuf.vertex(cx + v3.x, cy + v3.y, cz + v3.z).color(inR, inG, inB, lAlpha);
+
+        lightBuf.vertex(cx + v3.x, cy + v3.y, cz + v3.z).color(inR, inG, inB, lAlpha);
+        lightBuf.vertex(cx + v2.x, cy + v2.y, cz + v2.z).color(edR, edG, edB, lAlpha);
+        lightBuf.vertex(cx + v1.x, cy + v1.y, cz + v1.z).color(tipR, tipG, tipB, lAlpha);
+        lightBuf.vertex(cx + v0.x, cy + v0.y, cz + v0.z).color(inR, inG, inB, lAlpha);
+    }
+
+    private static Vector3f rotateWingVertex(float lx, float lz, float cosW, float sinW, boolean isLeft) {
+        float rx = lx * cosW;
+        float ry = isLeft ? (-lx * sinW) : (lx * sinW);
+        return new Vector3f(rx, ry, lz);
+    }
+
+    private static class ButterflySwarmInstance {
+        final double originX, originY, originZ;
+        final List<Butterfly> butterflies = new ArrayList<>();
+        final List<ButterflyTrailParticle> trails = new ArrayList<>();
+        final boolean enableTrails;
+
+        ButterflySwarmInstance(double bx, double by, double bz, double height,
+                               int count, float baseSpeed, float baseSize, float baseLife,
+                               int baseColor, boolean rainbow, boolean enableTrails, Random rnd) {
+            this.originX = bx;
+            this.originY = by + height * 0.5;
+            this.originZ = bz;
+            this.enableTrails = enableTrails;
+
+            for (int i = 0; i < count; i++) {
+                double sx = bx + (rnd.nextDouble() - 0.5) * 0.45;
+                double sy = by + rnd.nextDouble() * height;
+                double sz = bz + (rnd.nextDouble() - 0.5) * 0.45;
+
+                double angle = rnd.nextDouble() * Math.PI * 2.0;
+                double hSpd = baseSpeed * (0.35 + 0.65 * rnd.nextDouble());
+                double vx = Math.cos(angle) * hSpd;
+                double vz = Math.sin(angle) * hSpd;
+                double vy = (1.5 + rnd.nextDouble() * 2.8) * (baseSpeed / 3.8);
+
+                float bSize = baseSize * (0.80f + 0.45f * rnd.nextFloat());
+                float bLife = baseLife * (0.80f + 0.45f * rnd.nextFloat());
+                float flapSpd = 16.0f + rnd.nextFloat() * 10.0f;
+                float flapPhase = rnd.nextFloat() * 6.28f;
+                float wanderOff = rnd.nextFloat() * 100.0f;
+                float spiralDir = rnd.nextBoolean() ? 1.0f : -1.0f;
+
+                int bColor;
+                if (rainbow) {
+                    bColor = BUTTERFLY_PALETTE[rnd.nextInt(BUTTERFLY_PALETTE.length)];
+                } else {
+                    float factor = 0.88f + 0.24f * rnd.nextFloat();
+                    int r = Math.clamp((int) (((baseColor >> 16) & 0xFF) * factor), 0, 255);
+                    int g = Math.clamp((int) (((baseColor >> 8) & 0xFF) * factor), 0, 255);
+                    int b = Math.clamp((int) ((baseColor & 0xFF) * factor), 0, 255);
+                    bColor = (0xFF << 24) | (r << 16) | (g << 8) | b;
+                }
+
+                butterflies.add(new Butterfly(
+                        sx, sy, sz, vx, vy, vz,
+                        bSize, bLife, flapSpd, flapPhase,
+                        wanderOff, spiralDir, bColor
+                ));
+            }
+
+            if (enableTrails) {
+                for (int i = 0; i < 24; i++) {
+                    double px = bx + (rnd.nextDouble() - 0.5) * 0.6;
+                    double py = by + rnd.nextDouble() * height;
+                    double pz = bz + (rnd.nextDouble() - 0.5) * 0.6;
+                    double vx = (rnd.nextDouble() - 0.5) * 2.5;
+                    double vy = 1.0 + rnd.nextDouble() * 2.5;
+                    double vz = (rnd.nextDouble() - 0.5) * 2.5;
+                    int sparkCol = rainbow ? BUTTERFLY_PALETTE[rnd.nextInt(BUTTERFLY_PALETTE.length)] : baseColor;
+                    trails.add(new ButterflyTrailParticle(px, py, pz, vx, vy, vz, 0.05f + rnd.nextFloat() * 0.06f, 1.2f + rnd.nextFloat() * 0.8f, sparkCol));
+                }
+            }
+        }
+
+        boolean updateAndRender(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                Vec3d camPos, Vector3f lightDir, float dt, MinecraftClient mc) {
+            Iterator<Butterfly> itB = butterflies.iterator();
+            while (itB.hasNext()) {
+                Butterfly b = itB.next();
+                b.age += dt;
+                if (b.age >= b.life) {
+                    itB.remove();
+                    continue;
+                }
+
+                b.update(dt, originX, originZ);
+
+                if (enableTrails) {
+                    b.trailTimer += dt;
+                    if (b.trailTimer >= 0.045f) {
+                        b.trailTimer = 0.0f;
+                        if (trails.size() < 300) {
+                            float sSize = b.size * 0.28f;
+                            trails.add(new ButterflyTrailParticle(
+                                    b.x, b.y, b.z,
+                                    b.vx * 0.15 + (Math.random() - 0.5) * 0.3,
+                                    b.vy * 0.15 - 0.15,
+                                    b.vz * 0.15 + (Math.random() - 0.5) * 0.3,
+                                    sSize, 0.75f, b.color
+                            ));
+                        }
+                    }
+                }
+
+                b.render(quadBuf, lightBuf, camPos, lightDir);
+            }
+
+            Iterator<ButterflyTrailParticle> itT = trails.iterator();
+            while (itT.hasNext()) {
+                ButterflyTrailParticle t = itT.next();
+                t.age += dt;
+                if (t.age >= t.life) {
+                    itT.remove();
+                    continue;
+                }
+                t.vy -= 0.65 * dt;
+                t.x += t.vx * dt;
+                t.y += t.vy * dt;
+                t.z += t.vz * dt;
+                t.render(lightBuf, camPos);
+            }
+
+            return !butterflies.isEmpty() || !trails.isEmpty();
+        }
+    }
+
+    private static class Butterfly {
+        double x, y, z;
+        double vx, vy, vz;
+        float yaw, pitch, roll;
+        final float size;
+        final float life;
+        final float flapSpeed;
+        final float flapPhase;
+        final float wanderOffset;
+        final float spiralDir;
+        final int color;
+        float age = 0.0f;
+        float trailTimer = 0.0f;
+
+        Butterfly(double x, double y, double z,
+                  double vx, double vy, double vz,
+                  float size, float life,
+                  float flapSpeed, float flapPhase,
+                  float wanderOffset, float spiralDir, int color) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.vx = vx;
+            this.vy = vy;
+            this.vz = vz;
+            this.size = size;
+            this.life = life;
+            this.flapSpeed = flapSpeed;
+            this.flapPhase = flapPhase;
+            this.wanderOffset = wanderOffset;
+            this.spiralDir = spiralDir;
+            this.color = color;
+            this.yaw = (float) Math.toDegrees(Math.atan2(-vx, vz));
+            this.pitch = (float) Math.toDegrees(-Math.atan2(vy, Math.max(0.1, Math.sqrt(vx * vx + vz * vz))));
+            this.roll = 0.0f;
+        }
+
+        void update(float dt, double originX, double originZ) {
+            float flap = (float) Math.sin((age + flapPhase) * flapSpeed);
+            float lift = flap > 0.0f ? 2.4f : 0.8f;
+            vy += (lift - 1.15f) * dt;
+
+            double dx = x - originX;
+            double dz = z - originZ;
+            double dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist > 0.01) {
+                double swirl = 1.4 * spiralDir;
+                vx += (-dz / dist) * swirl * dt;
+                vz += (dx / dist) * swirl * dt;
+            }
+
+            float wanderTime = age * 2.2f + wanderOffset;
+            vx += Math.cos(wanderTime) * 1.6f * dt;
+            vz += Math.sin(wanderTime * 1.25f) * 1.6f * dt;
+
+            float drag = (float) Math.exp(-0.75f * dt);
+            vx *= drag;
+            vz *= drag;
+
+            x += vx * dt;
+            y += vy * dt;
+            z += vz * dt;
+
+            double hSpeed = Math.sqrt(vx * vx + vz * vz);
+            float targetYaw = (float) Math.toDegrees(Math.atan2(-vx, vz));
+            float targetPitch = (float) Math.toDegrees(-Math.atan2(vy, Math.max(0.1, hSpeed)));
+
+            yaw = MathHelper.lerpAngleDegrees(Math.min(1.0f, dt * 8.0f), yaw, targetYaw);
+            pitch = MathHelper.lerpAngleDegrees(Math.min(1.0f, dt * 8.0f), pitch, targetPitch);
+            roll = flap * 12.0f;
+        }
+
+        void render(VertexConsumer quadBuf, VertexConsumer lightBuf, Vec3d camPos, Vector3f lightDir) {
+            float progress = age / life;
+            float fade = 1.0f;
+            if (progress < 0.12f) {
+                fade = progress / 0.12f;
+            } else if (progress > 0.65f) {
+                fade = (1.0f - progress) / 0.35f;
+            }
+            if (fade <= 0.01f) return;
+
+            float currentScale = size * (0.85f + 0.15f * fade);
+            float flap = (float) Math.sin((age + flapPhase) * flapSpeed);
+            float wingAngle = flap * 0.88f;
+
+            Matrix4f mat = new Matrix4f()
+                    .rotateY((float) Math.toRadians(yaw))
+                    .rotateX((float) Math.toRadians(pitch))
+                    .rotateZ((float) Math.toRadians(roll));
+
+            float cx = (float) (x - camPos.x);
+            float cy = (float) (y - camPos.y);
+            float cz = (float) (z - camPos.z);
+
+            emitButterflyBody(quadBuf, lightBuf, cx, cy, cz, mat, currentScale, color, fade);
+            emitButterflyWings(quadBuf, lightBuf, cx, cy, cz, mat, currentScale, wingAngle, color, fade, lightDir);
+        }
+    }
+
+    private static class ButterflyTrailParticle {
+        double x, y, z;
+        double vx, vy, vz;
+        final float size;
+        final float life;
+        final int color;
+        float age = 0.0f;
+
+        ButterflyTrailParticle(double x, double y, double z,
+                               double vx, double vy, double vz,
+                               float size, float life, int color) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.vx = vx;
+            this.vy = vy;
+            this.vz = vz;
+            this.size = size;
+            this.life = life;
+            this.color = color;
+        }
+
+        void render(VertexConsumer lightBuf, Vec3d camPos) {
+            float progress = age / life;
+            float sparkle = (1.0f - progress) * (0.6f + 0.4f * (float) Math.sin(age * 18.0f));
+            int alpha = (int) (235 * sparkle);
+            if (alpha <= 2) return;
+
+            float px = (float) (x - camPos.x);
+            float py = (float) (y - camPos.y);
+            float pz = (float) (z - camPos.z);
+            float s = size * (0.8f + 0.4f * (1.0f - progress));
+
+            int r = (color >> 16) & 0xFF;
+            int g = (color >> 8) & 0xFF;
+            int b = color & 0xFF;
+
+            lightBuf.vertex(px - s, py, pz).color(r, g, b, 0);
+            lightBuf.vertex(px, py + s, pz).color(255, 255, 255, alpha);
+            lightBuf.vertex(px + s, py, pz).color(r, g, b, 0);
+            lightBuf.vertex(px, py - s, pz).color(255, 255, 255, alpha);
         }
     }
 }
