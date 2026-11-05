@@ -152,6 +152,8 @@ public class ConfigManager {
                         settingsObj.addProperty(s.getName(), cs.get());
                     } else if (s instanceof StringSetting ss) {
                         settingsObj.addProperty(s.getName(), ss.get());
+                    } else if (s instanceof BindSetting bs) {
+                        settingsObj.addProperty(s.getName(), bs.getKey());
                     }
                 }
                 mObj.add("settings", settingsObj);
@@ -228,6 +230,8 @@ public class ConfigManager {
                                         cs.set(el.getAsInt());
                                     } else if (s instanceof StringSetting ss && el.isJsonPrimitive()) {
                                         ss.set(el.getAsString());
+                                    } else if (s instanceof BindSetting bs && el.isJsonPrimitive()) {
+                                        bs.setKey(el.getAsInt());
                                     }
                                 }
                             }

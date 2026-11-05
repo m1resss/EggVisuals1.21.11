@@ -9,6 +9,7 @@ import egg.client.module.render.WorldTweaks;
 import egg.client.module.render.Keybinds;
 
 import egg.client.ui.widget.WorldTweaksUI;
+import egg.client.module.setting.BindSetting;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ButtonSetting;
 import egg.client.module.setting.ColorSetting;
@@ -131,6 +132,7 @@ public class ClickGuiScreen extends Screen {
     private float dragTrackX = 0.0f;
     private float dragTrackW = 100.0f;
     private Module listeningKeybindModule = null;
+    private BindSetting listeningBindSetting = null;
 
     private ColorSetting openColorPickerSetting = null;
     private float colorPopupX = 0.0f;
@@ -272,6 +274,7 @@ public class ClickGuiScreen extends Screen {
             animStartTime = System.nanoTime();
             searchFocused = false;
             listeningKeybindModule = null;
+            listeningBindSetting = null;
             draggingSlider = null;
             openColorPickerSetting = null;
             colorDragMode = ColorDragMode.NONE;
@@ -355,7 +358,7 @@ public class ClickGuiScreen extends Screen {
         float gx = (float) Math.round((width - guiWidth) / 2.0f);
         float gy = (float) Math.round((height - guiHeight) / 2.0f);
 
-        if ("Простая".equals(animMode) || "�".equals(animMode)) {
+        if ("Простая".equals(animMode)) {
             renderDirectWindow(context, gx, gy, guiWidth, guiHeight, mouseX, mouseY, p, p);
             renderOpenDropdown(context, mouseX, mouseY, 1.0f);
             this.lateMouseX = mouseX;
@@ -679,6 +682,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
         MODULE_KEYWORDS.put("ClientSettings", new String[]{"настройки", "клиент", "тема", "блюр", "шрифт", "акцент", "цвета", "звук", "громкость", "звук меню", "client settings"});
         MODULE_KEYWORDS.put("StreamerMode", new String[]{"стример", "стрим", "скрыть ник", "ютуб", "защита", "streamer mode"});
+        MODULE_KEYWORDS.put("Server Assistant", new String[]{"server assistant", "сервер ассистент", "ассистент", "донки", "трапка", "аукцион", "донат"});
 
     }
 
@@ -999,6 +1003,8 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                 baseH = 24.0f;
             } else if (s instanceof ButtonSetting) {
                 baseH = 26.0f;
+            } else if (s instanceof BindSetting) {
+                baseH = 26.0f;
             }
             h += baseH * progress;
         }
@@ -1066,6 +1072,15 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                 if (progress < 0.99f) {
                     context.disableScissor();
                 }
+            } else if (setting instanceof BindSetting bind) {
+                setH = 26.0f * progress;
+                if (progress < 0.99f) {
+                    context.enableScissor((int) x, (int) currentY, (int) (x + width), (int) (currentY + setH));
+                }
+                renderBindSetting(context, bind, x, currentY, width, setAlpha);
+                if (progress < 0.99f) {
+                    context.disableScissor();
+                }
             }
             currentY += setH;
         }
@@ -1085,6 +1100,29 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         Render2D.drawRoundedOutline(context, btnX, btnY, btnW, btnH, 5.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (35 * alpha)));
 
         ClientFont.drawCentered(context, btn.getName(), btnX + btnW / 2.0f, btnY + btnH / 2.0f, ClientFont.SF_REGULAR, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha));
+    }
+
+    private void renderBindSetting(DrawContext context, BindSetting bind, float x, float y, float width, float alpha) {
+        int labelColor = ColorUtil.withAlphaFloat(Theme.TEXT_SUB, alpha);
+        if (!FpsBenchmark.overrideNoText) {
+            ClientFont.draw(context, bind.getName(), x + 6.0f, y + 4.0f, ClientFont.SF_REGULAR, labelColor);
+        }
+        boolean isListening = (listeningBindSetting == bind);
+        String keyText = isListening ? "Press Key/Mouse..." : bind.getKeyName();
+        float btnW = ClientFont.getWidth(keyText, ClientFont.SF_REGULAR) + 16.0f;
+        float btnH = 18.0f;
+        float btnX = x + width - btnW - 6.0f;
+        float btnY = y + 1.0f;
+
+        int btnBg = isListening ? Theme.getAccentMuted() : ColorUtil.rgba(255, 255, 255, (int) (16 * alpha));
+        int btnBorder = isListening ? Theme.getAccent() : ColorUtil.rgba(255, 255, 255, (int) (26 * alpha));
+        Render2D.drawRoundedRect(context, btnX, btnY, btnW, btnH, 5.0f, btnBg);
+        Render2D.drawRoundedOutline(context, btnX, btnY, btnW, btnH, 5.0f, 1.0f, btnBorder);
+
+        if (!FpsBenchmark.overrideNoText) {
+            int textColor = isListening ? Theme.getAccentHover() : Theme.TEXT_TITLE;
+            ClientFont.drawCentered(context, keyText, btnX + btnW / 2.0f, btnY + btnH / 2.0f, ClientFont.SF_REGULAR, ColorUtil.withAlphaFloat(textColor, alpha));
+        }
     }
 
     private void renderBooleanSetting(DrawContext context, BooleanSetting bool, float x, float y, float width, float alpha) {
@@ -1591,6 +1629,24 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         float mouseY = (float) click.y();
         int button = click.button();
 
+        if (listeningBindSetting != null) {
+            if (button == 1) {
+                listeningBindSetting.setKey(0);
+                egg.client.config.ConfigManager.save();
+                listeningBindSetting = null;
+                GuiSoundManager.playClick();
+                return true;
+            } else if (button >= 3) {
+                listeningBindSetting.setKey(1000 + button);
+                egg.client.config.ConfigManager.save();
+                listeningBindSetting = null;
+                GuiSoundManager.playClick();
+                return true;
+            } else if (button == 0) {
+                listeningBindSetting = null;
+            }
+        }
+
         if (listeningKeybindModule != null) {
             if (button == 1) {
                 listeningKeybindModule.setKey(0);
@@ -1882,6 +1938,9 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         if (listeningKeybindModule != null && button == 2) {
             listeningKeybindModule = null;
         }
+        if (listeningBindSetting != null && button == 2) {
+            listeningBindSetting = null;
+        }
 
         return super.mouseClicked(click, bl);
     }
@@ -2016,6 +2075,20 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                     float bY = sY + 2.0f;
                     if (progress > 0.6f && mouseX >= bX && mouseX <= (bX + bW) && mouseY >= bY && mouseY <= (bY + bH)) {
                         btn.run();
+                        return true;
+                    }
+                    sY += itemH;
+                } else if (s instanceof BindSetting bind) {
+                    float itemH = 26.0f * progress;
+                    if (progress > 0.6f && mouseY >= sY && mouseY <= (sY + 22.0f)) {
+                        if (button == 1) {
+                            bind.setKey(0);
+                            listeningBindSetting = null;
+                            egg.client.config.ConfigManager.save();
+                        } else {
+                            listeningBindSetting = (listeningBindSetting == bind) ? null : bind;
+                        }
+                        GuiSoundManager.playClick();
                         return true;
                     }
                     sY += itemH;
@@ -2175,6 +2248,17 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                 return true;
             }
             return false;
+        }
+
+        if (listeningBindSetting != null) {
+            if (key == GLFW.GLFW_KEY_ESCAPE || key == GLFW.GLFW_KEY_DELETE) {
+                listeningBindSetting.setKey(0);
+            } else {
+                listeningBindSetting.setKey(key);
+            }
+            egg.client.config.ConfigManager.save();
+            listeningBindSetting = null;
+            return true;
         }
 
         if (listeningKeybindModule != null) {

@@ -127,6 +127,7 @@ public class ModuleManager {
 
         register(new egg.client.module.misc.ZakoOptimization());
         register(new egg.client.module.misc.DiscordRPC());
+        register(new egg.client.module.misc.ServerAssistant());
 
         register(new egg.client.module.cosmetic.CosmeticsModule());
 
@@ -241,25 +242,23 @@ public class ModuleManager {
             if (m.isBlocked()) continue;
 
             if (m.getKey() != 0 && m.getKey() == key) {
-
                 if (m instanceof egg.client.module.combat.AutoSwap as) {
-
                     if (as.isEnabled()) {
-
                         as.triggerSwap();
-
                     } else {
-
                         as.toggle();
-
                     }
-
                 } else {
-
                     m.toggle();
-
                 }
+            }
 
+            if (m.isEnabled()) {
+                for (egg.client.module.setting.Setting s : m.getSettings()) {
+                    if (s instanceof egg.client.module.setting.BindSetting bs && bs.isVisible() && bs.getKey() != 0 && bs.getKey() == key) {
+                        bs.trigger();
+                    }
+                }
             }
 
         }

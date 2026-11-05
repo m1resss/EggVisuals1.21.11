@@ -29,6 +29,7 @@
     "OverlayTextureAccessor",
     "EquipmentRendererMixin",
     "HandledScreenAccessor",
+    "HandledScreenMixin",
     "InventoryScreenMixin",
     "BiomeColorsMixin",
     "WorldMixin",
