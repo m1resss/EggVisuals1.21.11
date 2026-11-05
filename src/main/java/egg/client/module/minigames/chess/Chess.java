@@ -29,6 +29,7 @@ public class Chess extends Module {
     private String roomOrOpponent = "";
     private int myColor = ChessBoard.COLOR_WHITE;
     private boolean inGame = false;
+    private boolean isHost = false;
     private String pendingInviteFrom = null;
     private boolean pendingInviteAsWhite = true;
 
@@ -84,6 +85,7 @@ public class Chess extends Module {
     }
 
     public void hostGame(String targetRoomOrNick, boolean asWhite) {
+        this.isHost = true;
         this.myColor = asWhite ? ChessBoard.COLOR_WHITE : ChessBoard.COLOR_BLACK;
         this.board.reset();
         this.inGame = true;
@@ -93,7 +95,7 @@ public class Chess extends Module {
         ChessRelay.connect(room);
 
         String myName = getMyPlayerName();
-        String payload = "INV:" + (asWhite ? "W" : "B") + ":" + myName;
+        String payload = "HOST:" + (asWhite ? "W" : "B") + ":" + myName;
         ChessRelay.send(payload);
 
         if (!isCloudTransport() && !this.roomOrOpponent.isEmpty()) {
@@ -102,12 +104,13 @@ public class Chess extends Module {
     }
 
     public void joinGame(String targetRoomOrNick) {
+        this.isHost = false;
         this.roomOrOpponent = targetRoomOrNick.trim();
         String room = computeRoomCode(this.roomOrOpponent);
         ChessRelay.connect(room);
 
         String myName = getMyPlayerName();
-        String payload = "ACC::" + myName;
+        String payload = "JOIN::" + myName;
         ChessRelay.send(payload);
 
         if (!isCloudTransport() && !this.roomOrOpponent.isEmpty()) {
@@ -118,6 +121,7 @@ public class Chess extends Module {
     public void acceptInvite() {
         if (pendingInviteFrom == null) return;
 
+        this.isHost = false;
         this.roomOrOpponent = pendingInviteFrom;
         this.myColor = pendingInviteAsWhite ? ChessBoard.COLOR_BLACK : ChessBoard.COLOR_WHITE;
         this.board.reset();
@@ -228,6 +232,51 @@ public class Chess extends Module {
         }
 
         switch (type) {
+            case "HOST" -> {
+                pendingInviteFrom = sender;
+                pendingInviteAsWhite = data.equals("W");
+                if (roomOrOpponent.isEmpty() || roomOrOpponent.equalsIgnoreCase(sender)) {
+                    roomOrOpponent = sender;
+                }
+                if (!isHost) {
+                    myColor = pendingInviteAsWhite ? ChessBoard.COLOR_BLACK : ChessBoard.COLOR_WHITE;
+                }
+                if (autoOpenSetting.get()) {
+                    MinecraftClient.getInstance().setScreen(ChessScreen.getInstance());
+                }
+                if (soundSetting.get()) {
+                    GuiSoundManager.playSelect();
+                }
+            }
+            case "JOIN" -> {
+                if (isHost) {
+                    if (roomOrOpponent.isEmpty() || roomOrOpponent.equalsIgnoreCase(sender)) {
+                        roomOrOpponent = sender;
+                    }
+                    inGame = true;
+                    board.reset();
+                    String reply = "START:" + (myColor == ChessBoard.COLOR_WHITE ? "W" : "B") + ":" + myName;
+                    ChessRelay.send(reply);
+                    if (soundSetting.get()) {
+                        GuiSoundManager.playSelect();
+                    }
+                }
+            }
+            case "START" -> {
+                boolean hostIsWhite = data.equals("W");
+                myColor = hostIsWhite ? ChessBoard.COLOR_BLACK : ChessBoard.COLOR_WHITE;
+                if (roomOrOpponent.isEmpty() || roomOrOpponent.equalsIgnoreCase(sender)) {
+                    roomOrOpponent = sender;
+                }
+                inGame = true;
+                board.reset();
+                if (autoOpenSetting.get()) {
+                    MinecraftClient.getInstance().setScreen(ChessScreen.getInstance());
+                }
+                if (soundSetting.get()) {
+                    GuiSoundManager.playSelect();
+                }
+            }
             case "INV" -> {
                 pendingInviteFrom = sender;
                 pendingInviteAsWhite = data.equals("W");
@@ -268,7 +317,18 @@ public class Chess extends Module {
                     int tr = Character.getNumericValue(data.charAt(3));
                     char promoChar = data.length() > 4 ? data.charAt(4) : '0';
                     ChessPiece promo = ChessPiece.fromChar(promoChar);
+
+                    int movingColor = board.getColor(fc, fr);
+                    if (movingColor != ChessBoard.COLOR_NONE && movingColor == myColor) {
+                        myColor = (movingColor == ChessBoard.COLOR_WHITE) ? ChessBoard.COLOR_BLACK : ChessBoard.COLOR_WHITE;
+                    }
+
                     board.forceMove(fc, fr, tc, tr, promo);
+                    inGame = true;
+                    if (!sender.isEmpty()) {
+                        roomOrOpponent = sender;
+                    }
+
                     if (soundSetting.get()) {
                         GuiSoundManager.playClick();
                     }
