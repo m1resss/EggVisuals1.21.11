@@ -74,6 +74,22 @@ public final class Pipelines {
             .build()
     );
 
+    public static final RenderPipeline AURA_TEXTURE = register(
+        RenderPipeline.builder()
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/aura_texture"))
+            .withVertexShader("core/position_tex_color")
+            .withFragmentShader("core/position_tex_color")
+            .withSampler("Sampler0")
+            .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
+            .withUniform("Projection", UniformType.UNIFORM_BUFFER)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .withVertexFormat(VertexFormats.POSITION_TEXTURE_COLOR, DrawMode.QUADS)
+            .build()
+    );
+
     public static final RenderPipeline AURA_TEXTURE_DEPTH = register(
         RenderPipeline.builder()
             .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/aura_texture_depth"))

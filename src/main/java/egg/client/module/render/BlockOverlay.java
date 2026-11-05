@@ -18,16 +18,16 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.BuiltBuffer;
 import net.minecraft.client.render.Camera;
-import net.minecraft.client.render.RenderLayers;
-import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.VertexFormats;
 import net.minecraft.client.util.BufferAllocator;
 import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.shape.VoxelShape;
@@ -38,6 +38,9 @@ public class BlockOverlay extends Module {
     public static BlockOverlay getInstance() {
         return instance;
     }
+
+    private static final Identifier WHITE_TEXTURE = Identifier.of("egg", "textures/misc/white.png");
+    private static final float VIEW_SHRINK = 0.9962f;
 
     private final ModeSetting mode = new ModeSetting("Режим", "Неон", "Стиль подсветки блока", "Неон", "Только грани", "Заливка");
     private final ModeSetting colorMode = new ModeSetting("Режим цвета", "Кастом", "Цветовая схема", "Кастом", "Тема", "Градиент");
@@ -103,7 +106,7 @@ public class BlockOverlay extends Module {
             BlockPos pos = bhr.getBlockPos();
             BlockState state = mc.world.getBlockState(pos);
             VoxelShape shape = state.getOutlineShape(mc.world, pos);
-            Box targetBox = shape.getBoundingBox().offset(pos).expand(0.002);
+            Box targetBox = shape.getBoundingBox().offset(pos).expand(0.001);
 
             if (!hasBox) {
                 curMinX = targetBox.minX;
@@ -155,9 +158,16 @@ public class BlockOverlay extends Module {
         boolean doNeon = curMode.equals("Неон") || curMode.equals("Только грани");
 
         if (doFill) {
-            VertexConsumer quadBuf = immediate.getBuffer(RenderLayers.debugQuads());
-            renderFaceGlow(quadBuf, x1, y1, z1, x2, y2, z2, r, g, b, totalAlpha, curMode.equals("Неон"));
-            immediate.draw();
+            RenderPipeline facePipeline = throughWalls.get() ? Pipelines.AURA_TEXTURE : Pipelines.AURA_TEXTURE_DEPTH;
+            try (BufferAllocator allocQuads = new BufferAllocator(32768)) {
+                BufferBuilder bufQuads = new BufferBuilder(allocQuads, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+                BlockPos targetPos = bhr != null ? bhr.getBlockPos() : null;
+                renderFaceGlow(bufQuads, targetPos, x1, y1, z1, x2, y2, z2, r, g, b, totalAlpha, curMode.equals("Неон"));
+                BuiltBuffer builtQuads = bufQuads.endNullable();
+                if (builtQuads != null) {
+                    MeshDrawUtil.drawLabeledTextured(facePipeline, builtQuads, "egg block overlay face", WHITE_TEXTURE);
+                }
+            }
         }
 
         if (doNeon) {
@@ -165,99 +175,149 @@ public class BlockOverlay extends Module {
         }
     }
 
-    private void renderFaceGlow(VertexConsumer buf, float x1, float y1, float z1, float x2, float y2, float z2, int r, int g, int b, float alphaMult, boolean vignette) {
+    private boolean isOccludedFace(MinecraftClient mc, BlockPos pos, Direction dir) {
+        if (pos == null || mc.world == null) return false;
+        BlockPos neighborPos = pos.offset(dir);
+        BlockState state = mc.world.getBlockState(neighborPos);
+        return state.isOpaqueFullCube();
+    }
+
+    private void renderFaceGlow(BufferBuilder buf, BlockPos pos, float x1, float y1, float z1, float x2, float y2, float z2, int r, int g, int b, float alphaMult, boolean vignette) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        boolean passWalls = throughWalls.get();
+
+        boolean showBottom = (y1 > -0.01f) && (passWalls || !isOccludedFace(mc, pos, Direction.DOWN));
+        boolean showTop    = (y2 < 0.01f)  && (passWalls || !isOccludedFace(mc, pos, Direction.UP));
+        boolean showNorth  = (z1 > -0.01f) && (passWalls || !isOccludedFace(mc, pos, Direction.NORTH));
+        boolean showSouth  = (z2 < 0.01f)  && (passWalls || !isOccludedFace(mc, pos, Direction.SOUTH));
+        boolean showWest   = (x1 > -0.01f) && (passWalls || !isOccludedFace(mc, pos, Direction.WEST));
+        boolean showEast   = (x2 < 0.01f)  && (passWalls || !isOccludedFace(mc, pos, Direction.EAST));
+
         if (!vignette) {
             int fillA = MathHelper.clamp((int) (40.0f * alphaMult), 0, 255);
-            drawBoxFaces(buf, x1, y1, z1, x2, y2, z2, r, g, b, fillA);
+            if (showBottom) emitFlatFace(buf, x1, y1, z1, x2, y1, z2, Direction.DOWN, r, g, b, fillA);
+            if (showTop)    emitFlatFace(buf, x1, y2, z1, x2, y2, z2, Direction.UP, r, g, b, fillA);
+            if (showNorth)  emitFlatFace(buf, x1, y1, z1, x2, y2, z1, Direction.NORTH, r, g, b, fillA);
+            if (showSouth)  emitFlatFace(buf, x1, y1, z2, x2, y2, z2, Direction.SOUTH, r, g, b, fillA);
+            if (showWest)   emitFlatFace(buf, x1, y1, z1, x1, y2, z2, Direction.WEST, r, g, b, fillA);
+            if (showEast)   emitFlatFace(buf, x2, y1, z1, x2, y2, z2, Direction.EAST, r, g, b, fillA);
             return;
         }
 
-        int centerA = MathHelper.clamp((int) (22.0f * alphaMult), 0, 255);
-        int edgeA = MathHelper.clamp((int) (95.0f * alphaMult), 0, 255);
+        int centerA = MathHelper.clamp((int) (20.0f * alphaMult), 0, 255);
+        int edgeA = MathHelper.clamp((int) (85.0f * alphaMult), 0, 255);
 
-        renderVignetteFace(buf, x1, y1, z1, x2, y1, z2, 0, 1, 0, r, g, b, edgeA, centerA);
-        renderVignetteFace(buf, x1, y2, z1, x2, y2, z2, 0, -1, 0, r, g, b, edgeA, centerA);
-        renderVignetteFace(buf, x1, y1, z1, x2, y2, z1, 0, 0, 1, r, g, b, edgeA, centerA);
-        renderVignetteFace(buf, x1, y1, z2, x2, y2, z2, 0, 0, -1, r, g, b, edgeA, centerA);
-        renderVignetteFace(buf, x1, y1, z1, x1, y2, z2, 1, 0, 0, r, g, b, edgeA, centerA);
-        renderVignetteFace(buf, x2, y1, z1, x2, y2, z2, -1, 0, 0, r, g, b, edgeA, centerA);
+        if (showBottom) renderVignetteBottom(buf, x1, y1, z1, x2, z2, r, g, b, edgeA, centerA);
+        if (showTop)    renderVignetteTop(buf, x1, y2, z1, x2, z2, r, g, b, edgeA, centerA);
+        if (showNorth)  renderVignetteNorth(buf, x1, y1, z1, x2, y2, r, g, b, edgeA, centerA);
+        if (showSouth)  renderVignetteSouth(buf, x1, y1, z2, x2, y2, r, g, b, edgeA, centerA);
+        if (showWest)   renderVignetteWest(buf, x1, y1, z1, y2, z2, r, g, b, edgeA, centerA);
+        if (showEast)   renderVignetteEast(buf, x2, y1, z1, y2, z2, r, g, b, edgeA, centerA);
     }
 
-    private void renderVignetteFace(VertexConsumer buf, float minA, float minB, float minC, float maxA, float maxB, float maxC,
-                                    int nx, int ny, int nz, int r, int g, int b, int edgeA, int centerA) {
-        if (ny != 0) {
-            float y = ny > 0 ? minB : maxB;
-            float insetX = (maxA - minA) * 0.22f;
-            float insetZ = (maxC - minC) * 0.22f;
-            float ix1 = minA + insetX, ix2 = maxA - insetX;
-            float iz1 = minC + insetZ, iz2 = maxC - insetZ;
-
-            drawQuadGradient(buf, minA, y, minC, edgeA, maxA, y, minC, edgeA, ix2, y, iz1, centerA, ix1, y, iz1, centerA, r, g, b);
-            drawQuadGradient(buf, minA, y, maxC, edgeA, ix1, y, iz2, centerA, ix2, y, iz2, centerA, maxA, y, maxC, edgeA, r, g, b);
-            drawQuadGradient(buf, minA, y, minC, edgeA, ix1, y, iz1, centerA, ix1, y, iz2, centerA, minA, y, maxC, edgeA, r, g, b);
-            drawQuadGradient(buf, maxA, y, minC, edgeA, maxA, y, maxC, edgeA, ix2, y, iz2, centerA, ix2, y, iz1, centerA, r, g, b);
-
-            drawQuadFlat(buf, ix1, y, iz1, ix2, y, iz1, ix2, y, iz2, ix1, y, iz2, r, g, b, centerA);
-        } else if (nz != 0) {
-            float z = nz > 0 ? minC : maxC;
-            float insetX = (maxA - minA) * 0.22f;
-            float insetY = (maxB - minB) * 0.22f;
-            float ix1 = minA + insetX, ix2 = maxA - insetX;
-            float iy1 = minB + insetY, iy2 = maxB - insetY;
-
-            drawQuadGradient(buf, minA, minB, z, edgeA, maxA, minB, z, edgeA, ix2, iy1, z, centerA, ix1, iy1, z, centerA, r, g, b);
-            drawQuadGradient(buf, minA, maxB, z, edgeA, ix1, iy2, z, centerA, ix2, iy2, z, centerA, maxA, maxB, z, edgeA, r, g, b);
-            drawQuadGradient(buf, minA, minB, z, edgeA, ix1, iy1, z, centerA, ix1, iy2, z, centerA, minA, maxB, z, edgeA, r, g, b);
-            drawQuadGradient(buf, maxA, minB, z, edgeA, maxA, maxB, z, edgeA, ix2, iy2, z, centerA, ix2, iy1, z, centerA, r, g, b);
-
-            drawQuadFlat(buf, ix1, iy1, z, ix2, iy1, z, ix2, iy2, z, ix1, iy2, z, r, g, b, centerA);
-        } else {
-            float x = nx > 0 ? minA : maxA;
-            float insetY = (maxB - minB) * 0.22f;
-            float insetZ = (maxC - minC) * 0.22f;
-            float iy1 = minB + insetY, iy2 = maxB - insetY;
-            float iz1 = minC + insetZ, iz2 = maxC - insetZ;
-
-            drawQuadGradient(buf, x, minB, minC, edgeA, x, maxB, minC, edgeA, x, iy2, iz1, centerA, x, iy1, iz1, centerA, r, g, b);
-            drawQuadGradient(buf, x, minB, maxC, edgeA, x, iy1, iz2, centerA, x, iy2, iz2, centerA, x, maxB, maxC, edgeA, r, g, b);
-            drawQuadGradient(buf, x, minB, minC, edgeA, x, iy1, iz1, centerA, x, iy1, iz2, centerA, x, minB, maxC, edgeA, r, g, b);
-            drawQuadGradient(buf, x, maxB, minC, edgeA, x, maxB, maxC, edgeA, x, iy2, iz2, centerA, x, iy2, iz1, centerA, r, g, b);
-
-            drawQuadFlat(buf, x, iy1, iz1, x, iy2, iz1, x, iy2, iz2, x, iy1, iz2, r, g, b, centerA);
+    private void emitFlatFace(BufferBuilder buf, float x1, float y1, float z1, float x2, float y2, float z2, Direction dir, int r, int g, int b, int a) {
+        switch (dir) {
+            case DOWN -> emitQuad(buf, x1, y1, z1, a, x2, y1, z1, a, x2, y1, z2, a, x1, y1, z2, a, r, g, b);
+            case UP -> emitQuad(buf, x1, y2, z1, a, x1, y2, z2, a, x2, y2, z2, a, x2, y2, z1, a, r, g, b);
+            case NORTH -> emitQuad(buf, x2, y1, z1, a, x1, y1, z1, a, x1, y2, z1, a, x2, y2, z1, a, r, g, b);
+            case SOUTH -> emitQuad(buf, x1, y1, z2, a, x2, y1, z2, a, x2, y2, z2, a, x1, y2, z2, a, r, g, b);
+            case WEST -> emitQuad(buf, x1, y1, z1, a, x1, y1, z2, a, x1, y2, z2, a, x1, y2, z1, a, r, g, b);
+            case EAST -> emitQuad(buf, x2, y1, z2, a, x2, y1, z1, a, x2, y2, z1, a, x2, y2, z2, a, r, g, b);
         }
     }
 
-    private void drawQuadGradient(VertexConsumer buf, float x1, float y1, float z1, int a1,
-                                  float x2, float y2, float z2, int a2,
-                                  float x3, float y3, float z3, int a3,
-                                  float x4, float y4, float z4, int a4,
-                                  int r, int g, int b) {
-        buf.vertex(x1, y1, z1).color(r, g, b, a1);
-        buf.vertex(x2, y2, z2).color(r, g, b, a2);
-        buf.vertex(x3, y3, z3).color(r, g, b, a3);
-        buf.vertex(x4, y4, z4).color(r, g, b, a4);
+    private void renderVignetteBottom(BufferBuilder buf, float x1, float y, float z1, float x2, float z2, int r, int g, int b, int edgeA, int centerA) {
+        float insetX = (x2 - x1) * 0.22f;
+        float insetZ = (z2 - z1) * 0.22f;
+        float ix1 = x1 + insetX, ix2 = x2 - insetX;
+        float iz1 = z1 + insetZ, iz2 = z2 - insetZ;
 
-        buf.vertex(x4, y4, z4).color(r, g, b, a4);
-        buf.vertex(x3, y3, z3).color(r, g, b, a3);
-        buf.vertex(x2, y2, z2).color(r, g, b, a2);
-        buf.vertex(x1, y1, z1).color(r, g, b, a1);
+        emitQuad(buf, ix1, y, iz1, centerA, ix2, y, iz1, centerA, ix2, y, iz2, centerA, ix1, y, iz2, centerA, r, g, b);
+        emitQuad(buf, x1, y, z1, edgeA, x2, y, z1, edgeA, ix2, y, iz1, centerA, ix1, y, iz1, centerA, r, g, b);
+        emitQuad(buf, ix1, y, iz2, centerA, ix2, y, iz2, centerA, x2, y, z2, edgeA, x1, y, z2, edgeA, r, g, b);
+        emitQuad(buf, x1, y, z1, edgeA, ix1, y, iz1, centerA, ix1, y, iz2, centerA, x1, y, z2, edgeA, r, g, b);
+        emitQuad(buf, ix2, y, iz1, centerA, x2, y, z1, edgeA, x2, y, z2, edgeA, ix2, y, iz2, centerA, r, g, b);
     }
 
-    private void drawQuadFlat(VertexConsumer buf, float x1, float y1, float z1,
-                              float x2, float y2, float z2,
-                              float x3, float y3, float z3,
-                              float x4, float y4, float z4,
-                              int r, int g, int b, int a) {
-        drawQuadGradient(buf, x1, y1, z1, a, x2, y2, z2, a, x3, y3, z3, a, x4, y4, z4, a, r, g, b);
+    private void renderVignetteTop(BufferBuilder buf, float x1, float y, float z1, float x2, float z2, int r, int g, int b, int edgeA, int centerA) {
+        float insetX = (x2 - x1) * 0.22f;
+        float insetZ = (z2 - z1) * 0.22f;
+        float ix1 = x1 + insetX, ix2 = x2 - insetX;
+        float iz1 = z1 + insetZ, iz2 = z2 - insetZ;
+
+        emitQuad(buf, ix1, y, iz1, centerA, ix1, y, iz2, centerA, ix2, y, iz2, centerA, ix2, y, iz1, centerA, r, g, b);
+        emitQuad(buf, x1, y, z1, edgeA, ix1, y, iz1, centerA, ix2, y, iz1, centerA, x2, y, z1, edgeA, r, g, b);
+        emitQuad(buf, ix1, y, iz2, centerA, x1, y, z2, edgeA, x2, y, z2, edgeA, ix2, y, iz2, centerA, r, g, b);
+        emitQuad(buf, x1, y, z1, edgeA, x1, y, z2, edgeA, ix1, y, iz2, centerA, ix1, y, iz1, centerA, r, g, b);
+        emitQuad(buf, ix2, y, iz1, centerA, ix2, y, iz2, centerA, x2, y, z2, edgeA, x2, y, z1, edgeA, r, g, b);
     }
 
-    private void drawBoxFaces(VertexConsumer buf, float x1, float y1, float z1, float x2, float y2, float z2, int r, int g, int b, int a) {
-        drawQuadFlat(buf, x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, r, g, b, a);
-        drawQuadFlat(buf, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, r, g, b, a);
-        drawQuadFlat(buf, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, r, g, b, a);
-        drawQuadFlat(buf, x1, y1, z2, x2, y1, z2, x2, y2, z2, x1, y2, z2, r, g, b, a);
-        drawQuadFlat(buf, x1, y1, z1, x1, y1, z2, x1, y2, z2, x1, y2, z1, r, g, b, a);
-        drawQuadFlat(buf, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, a);
+    private void renderVignetteNorth(BufferBuilder buf, float x1, float y1, float z, float x2, float y2, int r, int g, int b, int edgeA, int centerA) {
+        float insetX = (x2 - x1) * 0.22f;
+        float insetY = (y2 - y1) * 0.22f;
+        float ix1 = x1 + insetX, ix2 = x2 - insetX;
+        float iy1 = y1 + insetY, iy2 = y2 - insetY;
+
+        emitQuad(buf, ix2, iy1, z, centerA, ix1, iy1, z, centerA, ix1, iy2, z, centerA, ix2, iy2, z, centerA, r, g, b);
+        emitQuad(buf, x2, y1, z, edgeA, x1, y1, z, edgeA, ix1, iy1, z, centerA, ix2, iy1, z, centerA, r, g, b);
+        emitQuad(buf, ix2, iy2, z, centerA, ix1, iy2, z, centerA, x1, y2, z, edgeA, x2, y2, z, edgeA, r, g, b);
+        emitQuad(buf, ix1, iy1, z, centerA, x1, y1, z, edgeA, x1, y2, z, edgeA, ix1, iy2, z, centerA, r, g, b);
+        emitQuad(buf, x2, y1, z, edgeA, ix2, iy1, z, centerA, ix2, iy2, z, centerA, x2, y2, z, edgeA, r, g, b);
+    }
+
+    private void renderVignetteSouth(BufferBuilder buf, float x1, float y1, float z, float x2, float y2, int r, int g, int b, int edgeA, int centerA) {
+        float insetX = (x2 - x1) * 0.22f;
+        float insetY = (y2 - y1) * 0.22f;
+        float ix1 = x1 + insetX, ix2 = x2 - insetX;
+        float iy1 = y1 + insetY, iy2 = y2 - insetY;
+
+        emitQuad(buf, ix1, iy1, z, centerA, ix2, iy1, z, centerA, ix2, iy2, z, centerA, ix1, iy2, z, centerA, r, g, b);
+        emitQuad(buf, x1, y1, z, edgeA, x2, y1, z, edgeA, ix2, iy1, z, centerA, ix1, iy1, z, centerA, r, g, b);
+        emitQuad(buf, ix1, iy2, z, centerA, ix2, iy2, z, centerA, x2, y2, z, edgeA, x1, y2, z, edgeA, r, g, b);
+        emitQuad(buf, x1, y1, z, edgeA, ix1, iy1, z, centerA, ix1, iy2, z, centerA, x1, y2, z, edgeA, r, g, b);
+        emitQuad(buf, ix2, iy1, z, centerA, x2, y1, z, edgeA, x2, y2, z, edgeA, ix2, iy2, z, centerA, r, g, b);
+    }
+
+    private void renderVignetteWest(BufferBuilder buf, float x, float y1, float z1, float y2, float z2, int r, int g, int b, int edgeA, int centerA) {
+        float insetZ = (z2 - z1) * 0.22f;
+        float insetY = (y2 - y1) * 0.22f;
+        float iz1 = z1 + insetZ, iz2 = z2 - insetZ;
+        float iy1 = y1 + insetY, iy2 = y2 - insetY;
+
+        emitQuad(buf, x, iy1, iz1, centerA, x, iy1, iz2, centerA, x, iy2, iz2, centerA, x, iy2, iz1, centerA, r, g, b);
+        emitQuad(buf, x, y1, z1, edgeA, x, y1, z2, edgeA, x, iy1, iz2, centerA, x, iy1, iz1, centerA, r, g, b);
+        emitQuad(buf, x, iy2, iz1, centerA, x, iy2, iz2, centerA, x, y2, z2, edgeA, x, y2, z1, edgeA, r, g, b);
+        emitQuad(buf, x, y1, z1, edgeA, x, iy1, iz1, centerA, x, iy2, iz1, centerA, x, y2, z1, edgeA, r, g, b);
+        emitQuad(buf, x, iy1, iz2, centerA, x, y1, z2, edgeA, x, y2, z2, edgeA, x, iy2, iz2, centerA, r, g, b);
+    }
+
+    private void renderVignetteEast(BufferBuilder buf, float x, float y1, float z1, float y2, float z2, int r, int g, int b, int edgeA, int centerA) {
+        float insetZ = (z2 - z1) * 0.22f;
+        float insetY = (y2 - y1) * 0.22f;
+        float iz1 = z1 + insetZ, iz2 = z2 - insetZ;
+        float iy1 = y1 + insetY, iy2 = y2 - insetY;
+
+        emitQuad(buf, x, iy1, iz2, centerA, x, iy1, iz1, centerA, x, iy2, iz1, centerA, x, iy2, iz2, centerA, r, g, b);
+        emitQuad(buf, x, y1, z2, edgeA, x, y1, z1, edgeA, x, iy1, iz1, centerA, x, iy1, iz2, centerA, r, g, b);
+        emitQuad(buf, x, iy2, iz2, centerA, x, iy2, iz1, centerA, x, y2, z1, edgeA, x, y2, z2, edgeA, r, g, b);
+        emitQuad(buf, x, iy1, iz1, centerA, x, y1, z1, edgeA, x, y2, z1, edgeA, x, iy2, iz1, centerA, r, g, b);
+        emitQuad(buf, x, y1, z2, edgeA, x, iy1, iz2, centerA, x, iy2, iz2, centerA, x, y2, z2, edgeA, r, g, b);
+    }
+
+    private void emitQuad(BufferBuilder buf,
+                          float x1, float y1, float z1, int a1,
+                          float x2, float y2, float z2, int a2,
+                          float x3, float y3, float z3, int a3,
+                          float x4, float y4, float z4, int a4,
+                          int r, int g, int b) {
+        emitVertex(buf, x1, y1, z1, r, g, b, a1);
+        emitVertex(buf, x2, y2, z2, r, g, b, a2);
+        emitVertex(buf, x3, y3, z3, r, g, b, a3);
+        emitVertex(buf, x4, y4, z4, r, g, b, a4);
+    }
+
+    private void emitVertex(BufferBuilder buf, float x, float y, float z, int r, int g, int b, int a) {
+        buf.vertex(x * VIEW_SHRINK, y * VIEW_SHRINK, z * VIEW_SHRINK).texture(0.5f, 0.5f).color(r, g, b, a);
     }
 
     private void renderNeonOutline(MatrixStack matrices, Vec3d camPos, float x1, float y1, float z1, float x2, float y2, float z2, int r, int g, int b, float alphaMult) {
