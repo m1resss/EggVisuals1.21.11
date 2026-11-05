@@ -37,7 +37,7 @@ public class ServerAssistant extends Module {
         return instance;
     }
 
-    private final ModeSetting server = new ModeSetting("Сервер", "Funtime", "Funtime", "HolyWorld");
+    private final ModeSetting server = new ModeSetting("Сервер", "Funtime", "Выбор целевого сервера", "Funtime", "HolyWorld");
     private final BooleanSetting hold = new BooleanSetting("Зажатие", false, "Возврат в предыдущий слот при отжатии бинда");
 
     private final BooleanSetting auctionAssist = new BooleanSetting("Аукционный ассистент", true, "Подсветка самого дешевого товара в аукционе");
