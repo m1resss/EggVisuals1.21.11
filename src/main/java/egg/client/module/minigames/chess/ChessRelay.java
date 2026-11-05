@@ -1,5 +1,7 @@
 package egg.client.module.minigames.chess;
 
+import net.minecraft.client.MinecraftClient;
+
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -26,7 +28,7 @@ public final class ChessRelay {
     private static Thread listenerThread;
     private static volatile boolean active = false;
     private static String currentRoom = "";
-    private static boolean connected = false;
+    private static volatile boolean connected = false;
 
     private ChessRelay() {}
 
@@ -54,7 +56,10 @@ public final class ChessRelay {
                             while (active && (line = reader.readLine()) != null) {
                                 String msg = line.trim();
                                 if (!msg.isEmpty()) {
-                                    Chess.getInstance().handleIncomingPayload(msg);
+                                    MinecraftClient mc = MinecraftClient.getInstance();
+                                    if (mc != null) {
+                                        mc.execute(() -> Chess.getInstance().handleIncomingPayload(msg));
+                                    }
                                 }
                             }
                         }

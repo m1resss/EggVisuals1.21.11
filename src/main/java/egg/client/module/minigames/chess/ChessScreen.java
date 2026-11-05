@@ -141,10 +141,10 @@ public class ChessScreen extends Screen {
 
         ChessMove lastMove = board.getLastMove();
 
-        for (int r = 0; r < 8; r++) {
-            for (int c = 0; c < 8; c++) {
-                int drawC = asWhite ? c : (7 - c);
-                int drawR = asWhite ? r : (7 - r);
+        for (int drawR = 0; drawR < 8; drawR++) {
+            for (int drawC = 0; drawC < 8; drawC++) {
+                int c = asWhite ? drawC : (7 - drawC);
+                int r = asWhite ? drawR : (7 - drawR);
 
                 float tX = bX + drawC * tileSize;
                 float tY = bY + drawR * tileSize;
@@ -204,12 +204,14 @@ public class ChessScreen extends Screen {
                 }
 
                 if (drawC == 0) {
-                    String rankStr = String.valueOf(8 - r);
+                    int rank = 8 - r;
+                    String rankStr = String.valueOf(rank);
                     int labelColor = isLight ? 0x88FFFFFF : 0x66FFFFFF;
                     ClientFont.draw(context, rankStr, tX + 2.0f, tY + 2.0f, ClientFont.SF_MEDIUM, labelColor);
                 }
                 if (drawR == 7) {
-                    String fileStr = String.valueOf((char) ('a' + c));
+                    char fileChar = (char) ('a' + c);
+                    String fileStr = String.valueOf(fileChar);
                     int labelColor = isLight ? 0x88FFFFFF : 0x66FFFFFF;
                     ClientFont.draw(context, fileStr, tX + tileSize - 8.0f, tY + tileSize - 9.0f, ClientFont.SF_MEDIUM, labelColor);
                 }

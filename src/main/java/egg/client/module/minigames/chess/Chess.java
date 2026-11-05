@@ -8,12 +8,16 @@ import egg.client.module.setting.ModeSetting;
 import egg.client.util.GuiSoundManager;
 import net.minecraft.client.MinecraftClient;
 
+import java.util.UUID;
+
 public class Chess extends Module {
     private static Chess instance;
 
     public static Chess getInstance() {
         return instance;
     }
+
+    public static final String SESSION_ID = UUID.randomUUID().toString().substring(0, 8);
 
     private final ButtonSetting openBoardSetting = new ButtonSetting("Открыть шахматы", "Открыть интерактивную плашку с шахматами", () -> {
         MinecraftClient mc = MinecraftClient.getInstance();
@@ -75,31 +79,21 @@ public class Chess extends Module {
         return transportSetting.get().startsWith("Облако");
     }
 
-    public String getMyPlayerName() {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.player != null) {
-            String name = mc.player.getNameForScoreboard();
-            if (name != null && !name.isEmpty()) return name;
-        }
-        return "Player";
-    }
-
     public void hostGame(String targetRoomOrNick, boolean asWhite) {
         this.isHost = true;
         this.myColor = asWhite ? ChessBoard.COLOR_WHITE : ChessBoard.COLOR_BLACK;
         this.board.reset();
-        this.inGame = true;
+        this.inGame = false;
         this.roomOrOpponent = targetRoomOrNick.trim();
 
         String room = computeRoomCode(this.roomOrOpponent);
         ChessRelay.connect(room);
 
-        String myName = getMyPlayerName();
-        String payload = "HOST:" + (asWhite ? "W" : "B") + ":" + myName;
+        String payload = "HOST:" + (asWhite ? "W" : "B") + ":" + SESSION_ID;
         ChessRelay.send(payload);
 
         if (!isCloudTransport() && !this.roomOrOpponent.isEmpty()) {
-            sendRawMsg(this.roomOrOpponent, ChessProtocol.buildInvite(asWhite, myName));
+            sendRawMsg(this.roomOrOpponent, ChessProtocol.buildInvite(asWhite, SESSION_ID));
         }
     }
 
@@ -109,12 +103,11 @@ public class Chess extends Module {
         String room = computeRoomCode(this.roomOrOpponent);
         ChessRelay.connect(room);
 
-        String myName = getMyPlayerName();
-        String payload = "JOIN::" + myName;
+        String payload = "JOIN::" + SESSION_ID;
         ChessRelay.send(payload);
 
         if (!isCloudTransport() && !this.roomOrOpponent.isEmpty()) {
-            sendRawMsg(this.roomOrOpponent, ChessProtocol.buildAccept(myName));
+            sendRawMsg(this.roomOrOpponent, ChessProtocol.buildAccept(SESSION_ID));
         }
     }
 
@@ -130,12 +123,11 @@ public class Chess extends Module {
         String room = computeRoomCode(this.roomOrOpponent);
         ChessRelay.connect(room);
 
-        String myName = getMyPlayerName();
-        String payload = "ACC::" + myName;
+        String payload = "ACC::" + SESSION_ID;
         ChessRelay.send(payload);
 
         if (!isCloudTransport()) {
-            sendRawMsg(pendingInviteFrom, ChessProtocol.buildAccept(myName));
+            sendRawMsg(pendingInviteFrom, ChessProtocol.buildAccept(SESSION_ID));
         }
 
         this.pendingInviteFrom = null;
@@ -143,10 +135,9 @@ public class Chess extends Module {
 
     public void declineInvite() {
         if (pendingInviteFrom == null) return;
-        String myName = getMyPlayerName();
-        ChessRelay.send("DEC::" + myName);
+        ChessRelay.send("DEC::" + SESSION_ID);
         if (!isCloudTransport()) {
-            sendRawMsg(pendingInviteFrom, ChessProtocol.buildDecline(myName));
+            sendRawMsg(pendingInviteFrom, ChessProtocol.buildDecline(SESSION_ID));
         }
         this.pendingInviteFrom = null;
     }
@@ -156,18 +147,18 @@ public class Chess extends Module {
 
         boolean success = board.makeMove(fc, fr, tc, tr, promo);
         if (success) {
+            inGame = true;
             if (soundSetting.get()) {
                 GuiSoundManager.playClick();
             }
 
             char promoChar = (promo != null && promo != ChessPiece.NONE) ? promo.getNotation().charAt(0) : '0';
-            String myName = getMyPlayerName();
-            String payload = "MOV:" + fc + "" + fr + "" + tc + "" + tr + "" + promoChar + ":" + myName;
+            String payload = "MOV:" + fc + "" + fr + "" + tc + "" + tr + "" + promoChar + ":" + SESSION_ID;
 
             ChessRelay.send(payload);
 
             if (!isCloudTransport() && !roomOrOpponent.isEmpty()) {
-                sendRawMsg(roomOrOpponent, ChessProtocol.buildMove(fc, fr, tc, tr, promo, myName));
+                sendRawMsg(roomOrOpponent, ChessProtocol.buildMove(fc, fr, tc, tr, promo, SESSION_ID));
             }
             return true;
         }
@@ -177,19 +168,17 @@ public class Chess extends Module {
     public void sendResign() {
         if (board.isGameOver()) return;
         board.resign(myColor);
-        String myName = getMyPlayerName();
-        ChessRelay.send("RES::" + myName);
+        ChessRelay.send("RES::" + SESSION_ID);
         if (!isCloudTransport() && !roomOrOpponent.isEmpty()) {
-            sendRawMsg(roomOrOpponent, ChessProtocol.buildResign(myName));
+            sendRawMsg(roomOrOpponent, ChessProtocol.buildResign(SESSION_ID));
         }
     }
 
     public void sendReset() {
         board.reset();
-        String myName = getMyPlayerName();
-        ChessRelay.send("RST::" + myName);
+        ChessRelay.send("RST::" + SESSION_ID);
         if (!isCloudTransport() && !roomOrOpponent.isEmpty()) {
-            sendRawMsg(roomOrOpponent, ChessProtocol.buildReset(myName));
+            sendRawMsg(roomOrOpponent, ChessProtocol.buildReset(SESSION_ID));
         }
     }
 
@@ -203,10 +192,6 @@ public class Chess extends Module {
     public String computeRoomCode(String input) {
         String s = input.trim().toLowerCase();
         if (s.isEmpty()) return "default";
-        String myName = getMyPlayerName().toLowerCase();
-        if (!s.matches("\\d+") && !s.contains("_")) {
-            return (myName.compareTo(s) < 0) ? (myName + "_" + s) : (s + "_" + myName);
-        }
         return s;
     }
 
@@ -226,8 +211,7 @@ public class Chess extends Module {
         String data = parts.length >= 3 ? parts[1] : "";
         String sender = parts.length >= 3 ? parts[2] : parts[1];
 
-        String myName = getMyPlayerName();
-        if (sender != null && !sender.isEmpty() && sender.equalsIgnoreCase(myName)) {
+        if (sender != null && sender.equals(SESSION_ID)) {
             return true;
         }
 
@@ -235,9 +219,6 @@ public class Chess extends Module {
             case "HOST" -> {
                 pendingInviteFrom = sender;
                 pendingInviteAsWhite = data.equals("W");
-                if (roomOrOpponent.isEmpty() || roomOrOpponent.equalsIgnoreCase(sender)) {
-                    roomOrOpponent = sender;
-                }
                 if (!isHost) {
                     myColor = pendingInviteAsWhite ? ChessBoard.COLOR_BLACK : ChessBoard.COLOR_WHITE;
                 }
@@ -250,12 +231,9 @@ public class Chess extends Module {
             }
             case "JOIN" -> {
                 if (isHost) {
-                    if (roomOrOpponent.isEmpty() || roomOrOpponent.equalsIgnoreCase(sender)) {
-                        roomOrOpponent = sender;
-                    }
                     inGame = true;
                     board.reset();
-                    String reply = "START:" + (myColor == ChessBoard.COLOR_WHITE ? "W" : "B") + ":" + myName;
+                    String reply = "START:" + (myColor == ChessBoard.COLOR_WHITE ? "W" : "B") + ":" + SESSION_ID;
                     ChessRelay.send(reply);
                     if (soundSetting.get()) {
                         GuiSoundManager.playSelect();
@@ -265,9 +243,6 @@ public class Chess extends Module {
             case "START" -> {
                 boolean hostIsWhite = data.equals("W");
                 myColor = hostIsWhite ? ChessBoard.COLOR_BLACK : ChessBoard.COLOR_WHITE;
-                if (roomOrOpponent.isEmpty() || roomOrOpponent.equalsIgnoreCase(sender)) {
-                    roomOrOpponent = sender;
-                }
                 inGame = true;
                 board.reset();
                 if (autoOpenSetting.get()) {
@@ -280,7 +255,6 @@ public class Chess extends Module {
             case "INV" -> {
                 pendingInviteFrom = sender;
                 pendingInviteAsWhite = data.equals("W");
-                roomOrOpponent = pendingInviteFrom;
                 if (autoOpenSetting.get()) {
                     MinecraftClient.getInstance().setScreen(ChessScreen.getInstance());
                 }
@@ -289,9 +263,6 @@ public class Chess extends Module {
                 }
             }
             case "ACC" -> {
-                if (roomOrOpponent.isEmpty() || roomOrOpponent.equalsIgnoreCase(sender)) {
-                    roomOrOpponent = sender;
-                }
                 inGame = true;
                 if (board.getMoveHistory().isEmpty()) {
                     board.reset();
@@ -325,9 +296,6 @@ public class Chess extends Module {
 
                     board.forceMove(fc, fr, tc, tr, promo);
                     inGame = true;
-                    if (!sender.isEmpty()) {
-                        roomOrOpponent = sender;
-                    }
 
                     if (soundSetting.get()) {
                         GuiSoundManager.playClick();
