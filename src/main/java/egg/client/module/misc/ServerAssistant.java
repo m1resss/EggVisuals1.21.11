@@ -37,21 +37,21 @@ public class ServerAssistant extends Module {
         return instance;
     }
 
-    private final ModeSetting server = new ModeSetting("Сервер", "FunTime", "FunTime", "SpookyTime", "HolyWorld");
+    private final ModeSetting server = new ModeSetting("Сервер", "Funtime", "Funtime", "HolyWorld");
 
     private final BooleanSetting auctionAssist = new BooleanSetting("Аукционный ассистент", true, "Подсветка самого дешевого товара в аукционе");
     private final BooleanSetting slotPrices = new BooleanSetting("Цены на слотах", true, "Отображение цены прямо над слотами в аукционе");
     private final BooleanSetting unitPriceTooltip = new BooleanSetting("Цена за штуку", true, "Отображение цены за одну штуку в описании товара");
     private final BooleanSetting storageTotal = new BooleanSetting("Сумма хранилища", true, "Отображение общей стоимости в заголовке хранилища");
 
-    private final BindSetting bindTrap = new BindSetting("Трапка", 0, () -> triggerItem("Трапка", Items.NETHERITE_SCRAP), "FunTime / SpookyTime");
-    private final BindSetting bindSnowball = new BindSetting("Снежок заморозка", 0, () -> triggerItem("Снежок заморозка", Items.SNOWBALL), "FunTime / SpookyTime");
-    private final BindSetting bindPlast = new BindSetting("Пласт", 0, () -> triggerItem("Пласт", Items.DRIED_KELP), "FunTime / SpookyTime");
-    private final BindSetting bindDisorient = new BindSetting("Дезориентация", 0, () -> triggerItem("Дезориентация", Items.ENDER_EYE), "FunTime / SpookyTime");
-    private final BindSetting bindDust = new BindSetting("Явная пыль", 0, () -> triggerItem("Явная пыль", Items.SUGAR), "FunTime / SpookyTime");
-    private final BindSetting bindWind = new BindSetting("Заряд ветра", 0, () -> triggerItem("Заряд ветра", Items.WIND_CHARGE), "FunTime / SpookyTime");
-    private final BindSetting bindFire = new BindSetting("Огненный заряд", 0, () -> triggerItem("Огненный заряд", Items.FIRE_CHARGE), "FunTime / SpookyTime");
-    private final BindSetting bindAura = new BindSetting("Божья аура", 0, () -> triggerItem("Божья аура", Items.PHANTOM_MEMBRANE), "FunTime / SpookyTime");
+    private final BindSetting bindTrap = new BindSetting("Трапка", 0, () -> triggerItem("Трапка", Items.NETHERITE_SCRAP), "Funtime");
+    private final BindSetting bindSnowball = new BindSetting("Снежок заморозка", 0, () -> triggerItem("Снежок заморозка", Items.SNOWBALL), "Funtime");
+    private final BindSetting bindPlast = new BindSetting("Пласт", 0, () -> triggerItem("Пласт", Items.DRIED_KELP), "Funtime");
+    private final BindSetting bindDisorient = new BindSetting("Дезориентация", 0, () -> triggerItem("Дезориентация", Items.ENDER_EYE), "Funtime");
+    private final BindSetting bindDust = new BindSetting("Явная пыль", 0, () -> triggerItem("Явная пыль", Items.SUGAR), "Funtime");
+    private final BindSetting bindWind = new BindSetting("Заряд ветра", 0, () -> triggerItem("Заряд ветра", Items.WIND_CHARGE), "Funtime");
+    private final BindSetting bindFire = new BindSetting("Огненный заряд", 0, () -> triggerItem("Огненный заряд", Items.FIRE_CHARGE), "Funtime");
+    private final BindSetting bindAura = new BindSetting("Божья аура", 0, () -> triggerItem("Божья аура", Items.PHANTOM_MEMBRANE), "Funtime");
 
     private final BindSetting bindHolyStuff = new BindSetting("Взрывная штучка", 0, () -> triggerItem("Взрывная штучка", Items.FIRE_CHARGE), "HolyWorld");
     private final BindSetting bindHolyStick = new BindSetting("Взрывная палочка", 0, () -> triggerItem("Взрывная палочка", Items.BLAZE_ROD), "HolyWorld");
@@ -63,19 +63,19 @@ public class ServerAssistant extends Module {
         super("Server Assistant", "Помощник для работы с донат-предметами и аукционом на серверах", Category.MISC);
         instance = this;
 
-        auctionAssist.setVisible(() -> isFunTimeOrSpooky());
-        slotPrices.setVisible(() -> isFunTimeOrSpooky());
-        unitPriceTooltip.setVisible(() -> isFunTimeOrSpooky());
-        storageTotal.setVisible(() -> isFunTimeOrSpooky());
+        auctionAssist.setVisible(() -> isFuntime());
+        slotPrices.setVisible(() -> isFuntime());
+        unitPriceTooltip.setVisible(() -> isFuntime());
+        storageTotal.setVisible(() -> isFuntime());
 
-        bindTrap.setVisible(() -> isFunTimeOrSpooky());
-        bindSnowball.setVisible(() -> isFunTimeOrSpooky());
-        bindPlast.setVisible(() -> isFunTimeOrSpooky());
-        bindDisorient.setVisible(() -> isFunTimeOrSpooky());
-        bindDust.setVisible(() -> isFunTimeOrSpooky());
-        bindWind.setVisible(() -> isFunTimeOrSpooky());
-        bindFire.setVisible(() -> isFunTimeOrSpooky());
-        bindAura.setVisible(() -> isFunTimeOrSpooky());
+        bindTrap.setVisible(() -> isFuntime());
+        bindSnowball.setVisible(() -> isFuntime());
+        bindPlast.setVisible(() -> isFuntime());
+        bindDisorient.setVisible(() -> isFuntime());
+        bindDust.setVisible(() -> isFuntime());
+        bindWind.setVisible(() -> isFuntime());
+        bindFire.setVisible(() -> isFuntime());
+        bindAura.setVisible(() -> isFuntime());
 
         bindHolyStuff.setVisible(() -> server.is("HolyWorld"));
         bindHolyStick.setVisible(() -> server.is("HolyWorld"));
@@ -105,8 +105,8 @@ public class ServerAssistant extends Module {
         );
     }
 
-    public boolean isFunTimeOrSpooky() {
-        return server.is("FunTime") || server.is("SpookyTime");
+    public boolean isFuntime() {
+        return server.is("Funtime") || server.is("FunTime");
     }
 
     public void triggerItem(String name, Item item) {
