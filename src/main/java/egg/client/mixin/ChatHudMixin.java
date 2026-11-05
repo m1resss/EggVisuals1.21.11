@@ -45,7 +45,7 @@ public class ChatHudMixin {
 
         egg.client.module.minigames.chess.Chess chess = egg.client.module.minigames.chess.Chess.getInstance();
         if (chess != null && text.contains(egg.client.module.minigames.chess.ChessProtocol.PREFIX)) {
-            boolean handled = chess.handleIncomingChat(text);
+            boolean handled = chess.handleIncomingPayload(text);
             if (handled) {
                 ci.cancel();
                 return;
@@ -72,7 +72,7 @@ public class ChatHudMixin {
 
         egg.client.module.minigames.chess.Chess chess = egg.client.module.minigames.chess.Chess.getInstance();
         if (chess != null && text.contains(egg.client.module.minigames.chess.ChessProtocol.PREFIX)) {
-            boolean handled = chess.handleIncomingChat(text);
+            boolean handled = chess.handleIncomingPayload(text);
             if (handled) {
                 ci.cancel();
             }

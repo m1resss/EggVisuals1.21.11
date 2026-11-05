@@ -6,7 +6,6 @@ import egg.client.render.font.ClientFont;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
 import egg.client.util.GuiSoundManager;
-import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -17,6 +16,7 @@ import net.minecraft.util.Identifier;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
+import java.util.Random;
 
 public class ChessScreen extends Screen {
     private static ChessScreen instance;
@@ -43,8 +43,8 @@ public class ChessScreen extends Screen {
     private int selectedRow = -1;
     private List<ChessMove> currentLegalMoves = null;
 
-    private String opponentInput = "";
-    private boolean opponentInputFocused = false;
+    private String roomInput = "";
+    private boolean roomInputFocused = false;
     private long lastBlinkTime = 0;
 
     public ChessScreen() {
@@ -59,8 +59,8 @@ public class ChessScreen extends Screen {
             panelY = (this.height - panelH) / 2.0f;
         }
         Chess mod = Chess.getInstance();
-        if (mod != null && (opponentInput == null || opponentInput.isEmpty())) {
-            opponentInput = mod.getOpponentName();
+        if (mod != null && (roomInput == null || roomInput.isEmpty())) {
+            roomInput = mod.getRoomOrOpponent();
         }
     }
 
@@ -102,13 +102,16 @@ public class ChessScreen extends Screen {
         IconRenderer.drawTextureScaled(context, MODS_ICON, panelX + 10.0f, panelY + 10.0f, 14.0f, 14.0f, 64, 64, Theme.getAccent());
         ClientFont.draw(context, "CHESS", panelX + 28.0f, panelY + 12.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
 
-        float badgeW = 46.0f;
+        boolean isOnline = ChessRelay.isConnected();
+        String statusLabel = isOnline ? "\u25CF " + ChessRelay.getCurrentRoom() : "\u25CB Offline";
+        int badgeCol = isOnline ? Theme.getAccent() : 0xFF7A8294;
+        float badgeW = Math.max(54.0f, ClientFont.getWidth(statusLabel, ClientFont.SF_MEDIUM) + 12.0f);
         float badgeH = 13.0f;
         float badgeX = panelX + 70.0f;
         float badgeY = panelY + 11.0f;
-        Render2D.drawRoundedRect(context, badgeX, badgeY, badgeW, badgeH, 3.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), 0.25f));
-        Render2D.drawRoundedOutline(context, badgeX, badgeY, badgeW, badgeH, 3.0f, 0.8f, ColorUtil.withAlphaFloat(Theme.getAccent(), 0.6f));
-        ClientFont.drawCentered(context, "1v1 /msg", badgeX + badgeW / 2.0f, badgeY + 2.5f, ClientFont.SF_MEDIUM, Theme.getAccent());
+        Render2D.drawRoundedRect(context, badgeX, badgeY, badgeW, badgeH, 3.0f, ColorUtil.withAlphaFloat(badgeCol, 0.22f));
+        Render2D.drawRoundedOutline(context, badgeX, badgeY, badgeW, badgeH, 3.0f, 0.8f, ColorUtil.withAlphaFloat(badgeCol, 0.55f));
+        ClientFont.drawCentered(context, statusLabel, badgeX + badgeW / 2.0f, badgeY + 2.5f, ClientFont.SF_MEDIUM, badgeCol);
 
         float closeX = panelX + panelW - 24.0f;
         float closeY = panelY + 9.0f;
@@ -228,10 +231,10 @@ public class ChessScreen extends Screen {
         float oppY = sY + 68.0f;
         renderOpponentCard(context, mod, sX, oppY, sW, mouseX, mouseY);
 
-        float actY = oppY + 118.0f;
+        float actY = oppY + 120.0f;
         renderActionsCard(context, mod, sX, actY, sW, mouseX, mouseY);
 
-        float histY = actY + 40.0f;
+        float histY = actY + 38.0f;
         renderHistoryCard(context, board, sX, histY, sW);
     }
 
@@ -265,76 +268,81 @@ public class ChessScreen extends Screen {
         Render2D.drawRoundedRect(context, x + 10.0f, y + 12.0f, 8.0f, 8.0f, 4.0f, statusDotCol);
         ClientFont.draw(context, turnText, x + 23.0f, y + 11.5f, ClientFont.SF_BOLD, 0xFFFFFFFF);
 
-        String oppStr = mod.getOpponentName().isEmpty() ? "Противник: не выбран" : "Противник: " + mod.getOpponentName();
-        ClientFont.draw(context, oppStr, x + 10.0f, y + 27.0f, ClientFont.SF_REGULAR, 0xFFA0A5B5);
+        String roomStr = mod.getRoomOrOpponent().isEmpty() ? "Комната: не выбрана" : "Комната: " + mod.getRoomOrOpponent();
+        ClientFont.draw(context, roomStr, x + 10.0f, y + 27.0f, ClientFont.SF_REGULAR, 0xFFA0A5B5);
 
         String capturedStr = "Взято: " + board.getCapturedByWhite().size() + "Б / " + board.getCapturedByBlack().size() + "Ч";
         ClientFont.draw(context, capturedStr, x + 10.0f, y + 42.0f, ClientFont.SF_REGULAR, 0xFF757D90);
     }
 
     private void renderOpponentCard(DrawContext context, Chess mod, float x, float y, float w, int mouseX, int mouseY) {
-        float h = 110.0f;
+        float h = 114.0f;
         Render2D.drawRoundedRect(context, x, y, w, h, 6.0f, 0xFF191D27);
         Render2D.drawRoundedOutline(context, x, y, w, h, 6.0f, 1.0f, ColorUtil.rgba(255, 255, 255, 18));
 
-        ClientFont.draw(context, "Вызов игрока", x + 10.0f, y + 8.0f, ClientFont.SF_MEDIUM, 0xFFD0D5E5);
+        ClientFont.draw(context, "Подключение к игре", x + 10.0f, y + 8.0f, ClientFont.SF_MEDIUM, 0xFFD0D5E5);
 
         float inX = x + 8.0f;
-        float inY = y + 24.0f;
+        float inY = y + 23.0f;
         float inW = w - 16.0f;
         float inH = 20.0f;
-        int inBg = opponentInputFocused ? 0xFF222838 : 0xFF1C202C;
-        int inBorder = opponentInputFocused ? Theme.getAccent() : ColorUtil.rgba(255, 255, 255, 24);
+        int inBg = roomInputFocused ? 0xFF222838 : 0xFF1C202C;
+        int inBorder = roomInputFocused ? Theme.getAccent() : ColorUtil.rgba(255, 255, 255, 24);
         Render2D.drawRoundedRect(context, inX, inY, inW, inH, 4.0f, inBg);
         Render2D.drawRoundedOutline(context, inX, inY, inW, inH, 4.0f, 1.0f, inBorder);
 
-        String displayInput = (opponentInput == null || opponentInput.isEmpty()) ? (opponentInputFocused ? "" : "Ник игрока...") : opponentInput;
-        int textCol = (opponentInput == null || opponentInput.isEmpty()) && !opponentInputFocused ? 0xFF656B7D : 0xFFFFFFFF;
+        String displayInput = (roomInput == null || roomInput.isEmpty()) ? (roomInputFocused ? "" : "Код (напр. 7777) или ник") : roomInput;
+        int textCol = (roomInput == null || roomInput.isEmpty()) && !roomInputFocused ? 0xFF656B7D : 0xFFFFFFFF;
         ClientFont.draw(context, displayInput, inX + 6.0f, inY + 5.5f, ClientFont.SF_REGULAR, textCol);
 
-        if (opponentInputFocused) {
+        if (roomInputFocused) {
             long now = System.currentTimeMillis();
             if ((now - lastBlinkTime) % 1000 < 500) {
-                float curX = inX + 6.0f + ClientFont.getWidth(opponentInput, ClientFont.SF_REGULAR);
+                float curX = inX + 6.0f + ClientFont.getWidth(roomInput, ClientFont.SF_REGULAR);
                 Render2D.drawRect(context, curX + 1.0f, inY + 4.0f, 1.0f, 12.0f, Theme.getAccent());
             }
         }
 
         if (mod.getPendingInviteFrom() != null) {
-            float invBoxY = inY + 26.0f;
-            float invBoxH = 52.0f;
+            float invBoxY = inY + 25.0f;
+            float invBoxH = 58.0f;
             Render2D.drawRoundedRect(context, inX, invBoxY, inW, invBoxH, 4.0f, 0xFF222938);
             Render2D.drawRoundedOutline(context, inX, invBoxY, inW, invBoxH, 4.0f, 1.0f, Theme.getAccent());
 
             String invText = "Вызов: " + mod.getPendingInviteFrom();
-            ClientFont.draw(context, invText, inX + 6.0f, invBoxY + 5.0f, ClientFont.SF_MEDIUM, 0xFFFFFFFF);
+            ClientFont.draw(context, invText, inX + 6.0f, invBoxY + 6.0f, ClientFont.SF_MEDIUM, 0xFFFFFFFF);
 
             float bW = (inW - 6.0f) / 2.0f;
-            float bH = 18.0f;
-            float bY = invBoxY + 26.0f;
+            float bH = 20.0f;
+            float bY = invBoxY + 30.0f;
 
             boolean accHov = mouseX >= inX && mouseX <= inX + bW && mouseY >= bY && mouseY <= bY + bH;
             Render2D.drawRoundedRect(context, inX, bY, bW, bH, 4.0f, accHov ? Theme.getAccentHover() : Theme.getAccent());
-            ClientFont.drawCentered(context, "Принять", inX + bW / 2.0f, bY + 4.5f, ClientFont.SF_BOLD, 0xFFFFFFFF);
+            ClientFont.drawCentered(context, "Принять", inX + bW / 2.0f, bY + 5.5f, ClientFont.SF_BOLD, 0xFFFFFFFF);
 
             float decX = inX + bW + 6.0f;
             boolean decHov = mouseX >= decX && mouseX <= decX + bW && mouseY >= bY && mouseY <= bY + bH;
             Render2D.drawRoundedRect(context, decX, bY, bW, bH, 4.0f, decHov ? 0xFFD03E3E : 0xFFAA2E2E);
-            ClientFont.drawCentered(context, "Отклонить", decX + bW / 2.0f, bY + 4.5f, ClientFont.SF_BOLD, 0xFFFFFFFF);
+            ClientFont.drawCentered(context, "Отклонить", decX + bW / 2.0f, bY + 5.5f, ClientFont.SF_BOLD, 0xFFFFFFFF);
         } else {
-            float btnW = (inW - 6.0f) / 2.0f;
-            float btnH = 22.0f;
-            float btnY1 = inY + 26.0f;
-            float btnY2 = btnY1 + 27.0f;
+            float btnH = 19.0f;
+            float btnY1 = inY + 24.0f;
+            float btnY2 = btnY1 + 22.0f;
+            float btnY3 = btnY2 + 22.0f;
 
             boolean wHov = mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY1 && mouseY <= btnY1 + btnH;
             Render2D.drawRoundedRect(context, inX, btnY1, inW, btnH, 4.0f, wHov ? Theme.getAccentHover() : Theme.getAccent());
-            ClientFont.drawCentered(context, "\u2654 Вызвать (Белые)", inX + inW / 2.0f, btnY1 + 6.5f, ClientFont.SF_BOLD, 0xFFFFFFFF);
+            ClientFont.drawCentered(context, "\u2654 Создать (Белые)", inX + inW / 2.0f, btnY1 + 5.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
 
             boolean bHov = mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY2 && mouseY <= btnY2 + btnH;
             Render2D.drawRoundedRect(context, inX, btnY2, inW, btnH, 4.0f, bHov ? 0xFF2D3446 : 0xFF232836);
             Render2D.drawRoundedOutline(context, inX, btnY2, inW, btnH, 4.0f, 1.0f, ColorUtil.rgba(255, 255, 255, 25));
-            ClientFont.drawCentered(context, "\u265A Вызвать (Черные)", inX + inW / 2.0f, btnY2 + 6.5f, ClientFont.SF_BOLD, 0xFFD0D5E5);
+            ClientFont.drawCentered(context, "\u265A Создать (Черные)", inX + inW / 2.0f, btnY2 + 5.0f, ClientFont.SF_BOLD, 0xFFD0D5E5);
+
+            boolean jHov = mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY3 && mouseY <= btnY3 + btnH;
+            Render2D.drawRoundedRect(context, inX, btnY3, inW, btnH, 4.0f, jHov ? 0xFF353D52 : 0xFF282E3E);
+            Render2D.drawRoundedOutline(context, inX, btnY3, inW, btnH, 4.0f, 1.0f, ColorUtil.rgba(255, 255, 255, 30));
+            ClientFont.drawCentered(context, "\u25B6 Войти по коду / нику", inX + inW / 2.0f, btnY3 + 5.0f, ClientFont.SF_MEDIUM, 0xFFE0E5F5);
         }
     }
 
@@ -496,23 +504,23 @@ public class ChessScreen extends Screen {
         float oppY = panelY + 44.0f + 68.0f;
         float w = panelW - 342.0f;
         float inX = sX + 8.0f;
-        float inY = oppY + 24.0f;
+        float inY = oppY + 23.0f;
         float inW = w - 16.0f;
         float inH = 20.0f;
 
         if (mouseX >= inX && mouseX <= inX + inW && mouseY >= inY && mouseY <= inY + inH) {
-            opponentInputFocused = true;
+            roomInputFocused = true;
             lastBlinkTime = System.currentTimeMillis();
             return true;
         } else {
-            opponentInputFocused = false;
+            roomInputFocused = false;
         }
 
         if (mod.getPendingInviteFrom() != null) {
-            float invBoxY = inY + 26.0f;
+            float invBoxY = inY + 25.0f;
             float bW = (inW - 6.0f) / 2.0f;
-            float bH = 18.0f;
-            float bY = invBoxY + 26.0f;
+            float bH = 20.0f;
+            float bY = invBoxY + 30.0f;
 
             if (mouseX >= inX && mouseX <= inX + bW && mouseY >= bY && mouseY <= bY + bH) {
                 GuiSoundManager.playClick();
@@ -527,28 +535,35 @@ public class ChessScreen extends Screen {
                 return true;
             }
         } else {
-            float btnH = 22.0f;
-            float btnY1 = inY + 26.0f;
-            float btnY2 = btnY1 + 27.0f;
+            float btnH = 19.0f;
+            float btnY1 = inY + 24.0f;
+            float btnY2 = btnY1 + 22.0f;
+            float btnY3 = btnY2 + 22.0f;
 
             if (mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY1 && mouseY <= btnY1 + btnH) {
                 GuiSoundManager.playClick();
-                if (!opponentInput.isEmpty()) {
-                    mod.sendInvite(opponentInput.trim(), true);
-                }
+                ensureRoomCode();
+                mod.hostGame(roomInput, true);
                 return true;
             }
 
             if (mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY2 && mouseY <= btnY2 + btnH) {
                 GuiSoundManager.playClick();
-                if (!opponentInput.isEmpty()) {
-                    mod.sendInvite(opponentInput.trim(), false);
+                ensureRoomCode();
+                mod.hostGame(roomInput, false);
+                return true;
+            }
+
+            if (mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY3 && mouseY <= btnY3 + btnH) {
+                GuiSoundManager.playClick();
+                if (!roomInput.isEmpty()) {
+                    mod.joinGame(roomInput);
                 }
                 return true;
             }
         }
 
-        float actY = oppY + 118.0f;
+        float actY = oppY + 120.0f;
         float btnW = (w - 18.0f) / 2.0f;
         float btnH = 20.0f;
         float bY = actY + 6.0f;
@@ -570,21 +585,32 @@ public class ChessScreen extends Screen {
         return false;
     }
 
+    private void ensureRoomCode() {
+        if (roomInput == null || roomInput.trim().isEmpty()) {
+            int code = 1000 + new Random().nextInt(9000);
+            roomInput = String.valueOf(code);
+            Chess.getInstance().setRoomOrOpponent(roomInput);
+        }
+    }
+
     @Override
     public boolean keyPressed(KeyInput input) {
         int key = input.key();
-        if (opponentInputFocused) {
+        if (roomInputFocused) {
             if (key == GLFW.GLFW_KEY_ESCAPE) {
-                opponentInputFocused = false;
+                roomInputFocused = false;
                 return true;
             }
-            if (key == GLFW.GLFW_KEY_BACKSPACE && !opponentInput.isEmpty()) {
-                opponentInput = opponentInput.substring(0, opponentInput.length() - 1);
-                Chess.getInstance().setOpponentName(opponentInput);
+            if (key == GLFW.GLFW_KEY_BACKSPACE && !roomInput.isEmpty()) {
+                roomInput = roomInput.substring(0, roomInput.length() - 1);
+                Chess.getInstance().setRoomOrOpponent(roomInput);
                 return true;
             }
             if (key == GLFW.GLFW_KEY_ENTER) {
-                opponentInputFocused = false;
+                roomInputFocused = false;
+                if (!roomInput.isEmpty()) {
+                    Chess.getInstance().joinGame(roomInput);
+                }
                 return true;
             }
             return true;
@@ -600,11 +626,11 @@ public class ChessScreen extends Screen {
 
     @Override
     public boolean charTyped(CharInput input) {
-        if (opponentInputFocused) {
+        if (roomInputFocused) {
             String ch = input.asString();
-            if (ch != null && !ch.isEmpty() && opponentInput.length() < 24) {
-                opponentInput += ch;
-                Chess.getInstance().setOpponentName(opponentInput);
+            if (ch != null && !ch.isEmpty() && roomInput.length() < 24) {
+                roomInput += ch;
+                Chess.getInstance().setRoomOrOpponent(roomInput);
                 return true;
             }
         }

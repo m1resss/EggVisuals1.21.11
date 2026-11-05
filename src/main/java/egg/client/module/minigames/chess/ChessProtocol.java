@@ -76,7 +76,7 @@ public class ChessProtocol {
     }
 
     public static String buildMove(int fc, int fr, int tc, int tr, ChessPiece promo, String sender) {
-        char promoChar = (promo != null && promo != ChessPiece.NONE) ? promo.getNotation().charAt(0) : 'N';
+        char promoChar = (promo != null && promo != ChessPiece.NONE) ? promo.getNotation().charAt(0) : '0';
         String moveData = "" + fc + fr + tc + tr + promoChar;
         return "." + encode("MOV:" + moveData + ":" + sender);
     }

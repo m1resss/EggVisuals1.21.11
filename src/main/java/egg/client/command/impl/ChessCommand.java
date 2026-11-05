@@ -23,7 +23,7 @@ public class ChessCommand extends Command {
             }
             Chess chess = Chess.getInstance();
             if (chess != null) {
-                chess.sendInvite(target, asWhite);
+                chess.hostGame(target, asWhite);
             }
             mc.setScreen(ChessScreen.getInstance());
         }

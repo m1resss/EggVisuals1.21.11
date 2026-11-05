@@ -408,8 +408,12 @@ public class ChessBoard {
                         break;
                     }
                 } else {
-                    chosen = m;
-                    break;
+                    if (m.getPromoPiece() == ChessPiece.NONE) {
+                        chosen = m;
+                        break;
+                    } else if (chosen == null) {
+                        chosen = m;
+                    }
                 }
             }
         }
@@ -431,8 +435,12 @@ public class ChessBoard {
                         break;
                     }
                 } else {
-                    chosen = m;
-                    break;
+                    if (m.getPromoPiece() == ChessPiece.NONE) {
+                        chosen = m;
+                        break;
+                    } else if (chosen == null) {
+                        chosen = m;
+                    }
                 }
             }
         }
