@@ -30,6 +30,9 @@ public class KeyboardMixin {
                     return;
                 }
             }
+            if (client.currentScreen == null) {
+                ModuleManager.getInstance().onKey(keyInput.key(), action);
+            }
         }
 
         if (action == GLFW.GLFW_PRESS) {

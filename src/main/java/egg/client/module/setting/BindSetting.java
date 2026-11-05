@@ -6,11 +6,17 @@ import java.util.Locale;
 public class BindSetting extends Setting {
     private int key;
     private final Runnable action;
+    private Runnable onRelease;
 
     public BindSetting(String name, int defaultKey, Runnable action, String description) {
+        this(name, defaultKey, action, null, description);
+    }
+
+    public BindSetting(String name, int defaultKey, Runnable action, Runnable onRelease, String description) {
         super(name, description);
         this.key = defaultKey;
         this.action = action;
+        this.onRelease = onRelease;
     }
 
     public int getKey() {
@@ -21,9 +27,19 @@ public class BindSetting extends Setting {
         this.key = key;
     }
 
+    public void setOnRelease(Runnable onRelease) {
+        this.onRelease = onRelease;
+    }
+
     public void trigger() {
         if (action != null) {
             action.run();
+        }
+    }
+
+    public void release() {
+        if (onRelease != null) {
+            onRelease.run();
         }
     }
 

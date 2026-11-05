@@ -128,7 +128,7 @@ public class MouseMixin {
             }
         }
 
-        if (action == GLFW.GLFW_PRESS && client != null && client.currentScreen == null) {
+        if ((action == GLFW.GLFW_PRESS || action == GLFW.GLFW_RELEASE) && client != null && client.currentScreen == null) {
             ModuleManager.getInstance().onKey(1000 + button, action);
         }
     }

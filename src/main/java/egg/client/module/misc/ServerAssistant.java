@@ -38,26 +38,36 @@ public class ServerAssistant extends Module {
     }
 
     private final ModeSetting server = new ModeSetting("Сервер", "Funtime", "Funtime", "HolyWorld");
+    private final BooleanSetting hold = new BooleanSetting("Зажатие", false, "Возврат в предыдущий слот при отжатии бинда");
 
     private final BooleanSetting auctionAssist = new BooleanSetting("Аукционный ассистент", true, "Подсветка самого дешевого товара в аукционе");
     private final BooleanSetting slotPrices = new BooleanSetting("Цены на слотах", true, "Отображение цены прямо над слотами в аукционе");
     private final BooleanSetting unitPriceTooltip = new BooleanSetting("Цена за штуку", true, "Отображение цены за одну штуку в описании товара");
     private final BooleanSetting storageTotal = new BooleanSetting("Сумма хранилища", true, "Отображение общей стоимости в заголовке хранилища");
 
-    private final BindSetting bindTrap = new BindSetting("Трапка", 0, () -> triggerItem("Трапка", Items.NETHERITE_SCRAP), "Funtime");
-    private final BindSetting bindSnowball = new BindSetting("Снежок заморозка", 0, () -> triggerItem("Снежок заморозка", Items.SNOWBALL), "Funtime");
-    private final BindSetting bindPlast = new BindSetting("Пласт", 0, () -> triggerItem("Пласт", Items.DRIED_KELP), "Funtime");
-    private final BindSetting bindDisorient = new BindSetting("Дезориентация", 0, () -> triggerItem("Дезориентация", Items.ENDER_EYE), "Funtime");
-    private final BindSetting bindDust = new BindSetting("Явная пыль", 0, () -> triggerItem("Явная пыль", Items.SUGAR), "Funtime");
-    private final BindSetting bindWind = new BindSetting("Заряд ветра", 0, () -> triggerItem("Заряд ветра", Items.WIND_CHARGE), "Funtime");
-    private final BindSetting bindFire = new BindSetting("Огненный заряд", 0, () -> triggerItem("Огненный заряд", Items.FIRE_CHARGE), "Funtime");
-    private final BindSetting bindAura = new BindSetting("Божья аура", 0, () -> triggerItem("Божья аура", Items.PHANTOM_MEMBRANE), "Funtime");
+    private int prevSlot = -1;
+    private BindSetting activeHoldBind = null;
 
-    private final BindSetting bindHolyStuff = new BindSetting("Взрывная штучка", 0, () -> triggerItem("Взрывная штучка", Items.FIRE_CHARGE), "HolyWorld");
-    private final BindSetting bindHolyStick = new BindSetting("Взрывная палочка", 0, () -> triggerItem("Взрывная палочка", Items.BLAZE_ROD), "HolyWorld");
-    private final BindSetting bindHolyTrap = new BindSetting("Взрывная трапка", 0, () -> triggerItem("Взрывная трапка", Items.PRISMARINE_SHARD), "HolyWorld");
-    private final BindSetting bindHolyStun = new BindSetting("Стан", 0, () -> triggerItem("Стан", Items.NETHER_STAR), "HolyWorld");
-    private final BindSetting bindHolySnow = new BindSetting("Ком снега", 0, () -> triggerItem("Ком снега", Items.SNOWBALL), "HolyWorld");
+    private BindSetting createBind(String name, Item item, String desc) {
+        BindSetting[] ref = new BindSetting[1];
+        ref[0] = new BindSetting(name, 0, () -> triggerItem(name, item, ref[0]), () -> releaseItem(ref[0]), desc);
+        return ref[0];
+    }
+
+    private final BindSetting bindTrap = createBind("Трапка", Items.NETHERITE_SCRAP, "Funtime");
+    private final BindSetting bindSnowball = createBind("Снежок заморозка", Items.SNOWBALL, "Funtime");
+    private final BindSetting bindPlast = createBind("Пласт", Items.DRIED_KELP, "Funtime");
+    private final BindSetting bindDisorient = createBind("Дезориентация", Items.ENDER_EYE, "Funtime");
+    private final BindSetting bindDust = createBind("Явная пыль", Items.SUGAR, "Funtime");
+    private final BindSetting bindWind = createBind("Заряд ветра", Items.WIND_CHARGE, "Funtime");
+    private final BindSetting bindFire = createBind("Огненный заряд", Items.FIRE_CHARGE, "Funtime");
+    private final BindSetting bindAura = createBind("Божья аура", Items.PHANTOM_MEMBRANE, "Funtime");
+
+    private final BindSetting bindHolyStuff = createBind("Взрывная штучка", Items.FIRE_CHARGE, "HolyWorld");
+    private final BindSetting bindHolyStick = createBind("Взрывная палочка", Items.BLAZE_ROD, "HolyWorld");
+    private final BindSetting bindHolyTrap = createBind("Взрывная трапка", Items.PRISMARINE_SHARD, "HolyWorld");
+    private final BindSetting bindHolyStun = createBind("Стан", Items.NETHER_STAR, "HolyWorld");
+    private final BindSetting bindHolySnow = createBind("Ком снега", Items.SNOWBALL, "HolyWorld");
 
     public ServerAssistant() {
         super("Server Assistant", "Помощник для работы с донат-предметами и аукционом на серверах", Category.MISC);
@@ -85,6 +95,7 @@ public class ServerAssistant extends Module {
 
         addSettings(
                 server,
+                hold,
                 auctionAssist,
                 slotPrices,
                 unitPriceTooltip,
@@ -109,7 +120,14 @@ public class ServerAssistant extends Module {
         return server.is("Funtime") || server.is("FunTime");
     }
 
-    public void triggerItem(String name, Item item) {
+    @Override
+    public void onDisable() {
+        super.onDisable();
+        prevSlot = -1;
+        activeHoldBind = null;
+    }
+
+    public void triggerItem(String name, Item item, BindSetting bind) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc == null || mc.player == null || mc.world == null) return;
 
@@ -139,9 +157,31 @@ public class ServerAssistant extends Module {
             return;
         }
 
+        if (hold.get()) {
+            if (prevSlot == -1) {
+                prevSlot = mc.player.getInventory().getSelectedSlot();
+            }
+            activeHoldBind = bind;
+        }
+
         mc.player.getInventory().setSelectedSlot(hotbarSlot);
         if (mc.player.networkHandler != null) {
             mc.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(hotbarSlot));
+        }
+    }
+
+    public void releaseItem(BindSetting bind) {
+        if (!isEnabled() || !hold.get()) return;
+        if (activeHoldBind == bind && prevSlot != -1) {
+            MinecraftClient mc = MinecraftClient.getInstance();
+            if (mc != null && mc.player != null && prevSlot >= 0 && prevSlot < 9) {
+                mc.player.getInventory().setSelectedSlot(prevSlot);
+                if (mc.player.networkHandler != null) {
+                    mc.player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(prevSlot));
+                }
+            }
+            prevSlot = -1;
+            activeHoldBind = null;
         }
     }
 

@@ -234,35 +234,41 @@ public class ModuleManager {
     }
 
     public void onKey(int key, int action) {
+        if (action == 1) {
+            for (Module m : modules) {
+                if (m.isBlocked()) continue;
 
-        if (action != 1) return;
-
-        for (Module m : modules) {
-
-            if (m.isBlocked()) continue;
-
-            if (m.getKey() != 0 && m.getKey() == key) {
-                if (m instanceof egg.client.module.combat.AutoSwap as) {
-                    if (as.isEnabled()) {
-                        as.triggerSwap();
+                if (m.getKey() != 0 && m.getKey() == key) {
+                    if (m instanceof egg.client.module.combat.AutoSwap as) {
+                        if (as.isEnabled()) {
+                            as.triggerSwap();
+                        } else {
+                            as.toggle();
+                        }
                     } else {
-                        as.toggle();
+                        m.toggle();
                     }
-                } else {
-                    m.toggle();
+                }
+
+                if (m.isEnabled()) {
+                    for (egg.client.module.setting.Setting s : m.getSettings()) {
+                        if (s instanceof egg.client.module.setting.BindSetting bs && bs.isVisible() && bs.getKey() != 0 && bs.getKey() == key) {
+                            bs.trigger();
+                        }
+                    }
                 }
             }
+        } else if (action == 0) {
+            for (Module m : modules) {
+                if (m.isBlocked() || !m.isEnabled()) continue;
 
-            if (m.isEnabled()) {
                 for (egg.client.module.setting.Setting s : m.getSettings()) {
                     if (s instanceof egg.client.module.setting.BindSetting bs && bs.isVisible() && bs.getKey() != 0 && bs.getKey() == key) {
-                        bs.trigger();
+                        bs.release();
                     }
                 }
             }
-
         }
-
     }
 
 }
