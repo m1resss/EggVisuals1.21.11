@@ -30,6 +30,7 @@ public final class IconRenderer {
             case PLAYER -> PLAYER_ICON;
             case INVENTORY -> MODS_ICON;
             case COSMETICS -> COSMETIC_ICON;
+            case MINI_GAMES -> MODS_ICON;
             case MISC -> MISC_ICON;
             case SETTINGS -> SETTINGS_ICON;
             default -> MODS_ICON;

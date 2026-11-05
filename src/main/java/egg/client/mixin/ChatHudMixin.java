@@ -38,11 +38,21 @@ public class ChatHudMixin {
         }
     }
 
-    @Inject(method = "addMessage(Lnet/minecraft/text/Text;)V", at = @At("HEAD"))
+    @Inject(method = "addMessage(Lnet/minecraft/text/Text;)V", at = @At("HEAD"), cancellable = true)
     private void onAddMessage(Text message, CallbackInfo ci) {
-        HudAnimations.INSTANCE.onChatMessage();
         if (message == null) return;
         String text = message.getString();
+
+        egg.client.module.minigames.chess.Chess chess = egg.client.module.minigames.chess.Chess.getInstance();
+        if (chess != null && text.contains(egg.client.module.minigames.chess.ChessProtocol.PREFIX)) {
+            boolean handled = chess.handleIncomingChat(text);
+            if (handled) {
+                ci.cancel();
+                return;
+            }
+        }
+
+        HudAnimations.INSTANCE.onChatMessage();
 
         AutoAccept accept = ModuleManager.getInstance().getModule(AutoAccept.class);
         if (accept != null && accept.isEnabled()) {
@@ -52,6 +62,20 @@ public class ChatHudMixin {
         egg.client.module.player.AutoAuth auth = ModuleManager.getInstance().getModule(egg.client.module.player.AutoAuth.class);
         if (auth != null && auth.isEnabled()) {
             auth.onChatMessage(text);
+        }
+    }
+
+    @Inject(method = "addMessage(Lnet/minecraft/text/Text;Lnet/minecraft/network/message/MessageSignatureData;Lnet/minecraft/client/gui/hud/MessageIndicator;)V", at = @At("HEAD"), cancellable = true)
+    private void onAddSignedMessage(Text message, net.minecraft.network.message.MessageSignatureData signatureData, net.minecraft.client.gui.hud.MessageIndicator indicator, CallbackInfo ci) {
+        if (message == null) return;
+        String text = message.getString();
+
+        egg.client.module.minigames.chess.Chess chess = egg.client.module.minigames.chess.Chess.getInstance();
+        if (chess != null && text.contains(egg.client.module.minigames.chess.ChessProtocol.PREFIX)) {
+            boolean handled = chess.handleIncomingChat(text);
+            if (handled) {
+                ci.cancel();
+            }
         }
     }
 }

@@ -12,6 +12,8 @@ public enum Category {
     MISC("Misc", "Разное", "D", "Other"),
     COSMETICS("Cosmetics", "Косметика", "C", "Other"),
 
+    MINI_GAMES("Mini Games", "Мини-игры", "M", "Games"),
+
     SETTINGS("Settings", "Настройки", "*", "Addons");
 
     private final String name;

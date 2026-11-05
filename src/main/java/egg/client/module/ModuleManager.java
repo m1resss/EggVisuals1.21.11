@@ -132,6 +132,8 @@ public class ModuleManager {
 
         register(new egg.client.module.cosmetic.CosmeticsModule());
 
+        register(new egg.client.module.minigames.chess.Chess());
+
     }
 
     public static ModuleManager getInstance() {
