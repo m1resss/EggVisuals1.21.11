@@ -60,7 +60,7 @@ public class ChessScreen extends Screen {
         }
         Chess mod = Chess.getInstance();
         if (mod != null && (roomInput == null || roomInput.isEmpty())) {
-            roomInput = mod.getRoomOrOpponent();
+            roomInput = mod.getRoomCode();
         }
     }
 
@@ -271,7 +271,7 @@ public class ChessScreen extends Screen {
         Render2D.drawRoundedRect(context, x + 10.0f, y + 11.0f, 8.0f, 8.0f, 4.0f, statusDotCol);
         ClientFont.draw(context, turnText, x + 23.0f, y + 10.5f, ClientFont.SF_BOLD, 0xFFFFFFFF);
 
-        String roomStr = mod.getRoomOrOpponent().isEmpty() ? "\u041A\u043E\u043C\u043D\u0430\u0442\u0430: \u043D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D\u0430" : "\u041A\u043E\u043C\u043D\u0430\u0442\u0430: " + mod.getRoomOrOpponent();
+        String roomStr = ChessRelay.isConnected() ? ("\u041A\u043E\u043C\u043D\u0430\u0442\u0430: " + ChessRelay.getCurrentRoom()) : "\u041A\u043E\u043C\u043D\u0430\u0442\u0430: \u043D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D\u0430";
         ClientFont.draw(context, roomStr, x + 10.0f, y + 26.0f, ClientFont.SF_REGULAR, 0xFFA0A5B5);
 
         String capturedStr = "\u0412\u0437\u044F\u0442\u043E: " + board.getCapturedByWhite().size() + "\u0411 / " + board.getCapturedByBlack().size() + "\u0427";
@@ -294,7 +294,7 @@ public class ChessScreen extends Screen {
         Render2D.drawRoundedRect(context, inX, inY, inW, inH, 4.0f, inBg);
         Render2D.drawRoundedOutline(context, inX, inY, inW, inH, 4.0f, 1.0f, inBorder);
 
-        String displayInput = (roomInput == null || roomInput.isEmpty()) ? (roomInputFocused ? "" : "\u041A\u043E\u0434 (\u043D\u0430\u043F\u0440. 7777) \u0438\u043B\u0438 \u043D\u0438\u043A") : roomInput;
+        String displayInput = (roomInput == null || roomInput.isEmpty()) ? (roomInputFocused ? "" : "\u041A\u043E\u0434 (\u043D\u0430\u043F\u0440. zako, 7777)") : roomInput;
         int textCol = (roomInput == null || roomInput.isEmpty()) && !roomInputFocused ? 0xFF656B7D : 0xFFFFFFFF;
         ClientFont.draw(context, displayInput, inX + 6.0f, inY + 5.5f, ClientFont.SF_REGULAR, textCol);
 
@@ -306,47 +306,24 @@ public class ChessScreen extends Screen {
             }
         }
 
-        if (mod.getPendingInviteFrom() != null) {
-            float invBoxY = inY + 25.0f;
-            float invBoxH = 68.0f;
-            Render2D.drawRoundedRect(context, inX, invBoxY, inW, invBoxH, 4.0f, 0xFF222938);
-            Render2D.drawRoundedOutline(context, inX, invBoxY, inW, invBoxH, 4.0f, 1.0f, Theme.getAccent());
+        float btnH = 21.0f;
+        float btnY1 = inY + 24.0f;
+        float btnY2 = btnY1 + 24.0f;
+        float btnY3 = btnY2 + 24.0f;
 
-            String invText = "\u0412\u044B\u0437\u043E\u0432: " + mod.getPendingInviteFrom();
-            ClientFont.draw(context, invText, inX + 8.0f, invBoxY + 8.0f, ClientFont.SF_MEDIUM, 0xFFFFFFFF);
+        boolean wHov = mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY1 && mouseY <= btnY1 + btnH;
+        Render2D.drawRoundedRect(context, inX, btnY1, inW, btnH, 4.0f, wHov ? Theme.getAccentHover() : Theme.getAccent());
+        ClientFont.drawCentered(context, "\u0421\u043E\u0437\u0434\u0430\u0442\u044C (\u0411\u0435\u043B\u044B\u0435)", inX + inW / 2.0f, btnY1 + btnH / 2.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
 
-            float bW = (inW - 8.0f) / 2.0f;
-            float bH = 22.0f;
-            float bY = invBoxY + 34.0f;
+        boolean bHov = mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY2 && mouseY <= btnY2 + btnH;
+        Render2D.drawRoundedRect(context, inX, btnY2, inW, btnH, 4.0f, bHov ? 0xFF2D3448 : 0xFF222838);
+        Render2D.drawRoundedOutline(context, inX, btnY2, inW, btnH, 4.0f, 1.0f, ColorUtil.rgba(255, 255, 255, 25));
+        ClientFont.drawCentered(context, "\u0421\u043E\u0437\u0434\u0430\u0442\u044C (\u0427\u0435\u0440\u043D\u044B\u0435)", inX + inW / 2.0f, btnY2 + btnH / 2.0f, ClientFont.SF_BOLD, 0xFFD0D5E5);
 
-            boolean accHov = mouseX >= inX && mouseX <= inX + bW && mouseY >= bY && mouseY <= bY + bH;
-            Render2D.drawRoundedRect(context, inX, bY, bW, bH, 4.0f, accHov ? Theme.getAccentHover() : Theme.getAccent());
-            ClientFont.drawCentered(context, "\u041F\u0440\u0438\u043D\u044F\u0442\u044C", inX + bW / 2.0f, bY + bH / 2.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
-
-            float decX = inX + bW + 8.0f;
-            boolean decHov = mouseX >= decX && mouseX <= decX + bW && mouseY >= bY && mouseY <= bY + bH;
-            Render2D.drawRoundedRect(context, decX, bY, bW, bH, 4.0f, decHov ? 0xFFD03E3E : 0xFFAA2E2E);
-            ClientFont.drawCentered(context, "\u041E\u0442\u043A\u043B\u043E\u043D\u0438\u0442\u044C", decX + bW / 2.0f, bY + bH / 2.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
-        } else {
-            float btnH = 21.0f;
-            float btnY1 = inY + 24.0f;
-            float btnY2 = btnY1 + 24.0f;
-            float btnY3 = btnY2 + 24.0f;
-
-            boolean wHov = mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY1 && mouseY <= btnY1 + btnH;
-            Render2D.drawRoundedRect(context, inX, btnY1, inW, btnH, 4.0f, wHov ? Theme.getAccentHover() : Theme.getAccent());
-            ClientFont.drawCentered(context, "\u0421\u043E\u0437\u0434\u0430\u0442\u044C (\u0411\u0435\u043B\u044B\u0435)", inX + inW / 2.0f, btnY1 + btnH / 2.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
-
-            boolean bHov = mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY2 && mouseY <= btnY2 + btnH;
-            Render2D.drawRoundedRect(context, inX, btnY2, inW, btnH, 4.0f, bHov ? 0xFF2D3448 : 0xFF222838);
-            Render2D.drawRoundedOutline(context, inX, btnY2, inW, btnH, 4.0f, 1.0f, ColorUtil.rgba(255, 255, 255, 25));
-            ClientFont.drawCentered(context, "\u0421\u043E\u0437\u0434\u0430\u0442\u044C (\u0427\u0435\u0440\u043D\u044B\u0435)", inX + inW / 2.0f, btnY2 + btnH / 2.0f, ClientFont.SF_BOLD, 0xFFD0D5E5);
-
-            boolean jHov = mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY3 && mouseY <= btnY3 + btnH;
-            Render2D.drawRoundedRect(context, inX, btnY3, inW, btnH, 4.0f, jHov ? 0xFF353D52 : 0xFF282E3E);
-            Render2D.drawRoundedOutline(context, inX, btnY3, inW, btnH, 4.0f, 1.0f, ColorUtil.rgba(255, 255, 255, 30));
-            ClientFont.drawCentered(context, "\u0412\u043E\u0439\u0442\u0438 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443", inX + inW / 2.0f, btnY3 + btnH / 2.0f, ClientFont.SF_MEDIUM, 0xFFE0E5F5);
-        }
+        boolean jHov = mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY3 && mouseY <= btnY3 + btnH;
+        Render2D.drawRoundedRect(context, inX, btnY3, inW, btnH, 4.0f, jHov ? 0xFF353D52 : 0xFF282E3E);
+        Render2D.drawRoundedOutline(context, inX, btnY3, inW, btnH, 4.0f, 1.0f, ColorUtil.rgba(255, 255, 255, 30));
+        ClientFont.drawCentered(context, "\u0412\u043E\u0439\u0442\u0438 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443", inX + inW / 2.0f, btnY3 + btnH / 2.0f, ClientFont.SF_MEDIUM, 0xFFE0E5F5);
     }
 
     private void renderActionsCard(DrawContext context, Chess mod, float x, float y, float w, int mouseX, int mouseY) {
@@ -519,67 +496,47 @@ public class ChessScreen extends Screen {
             roomInputFocused = false;
         }
 
-        if (mod.getPendingInviteFrom() != null) {
-            float invBoxY = inY + 25.0f;
-            float bW = (inW - 8.0f) / 2.0f;
-            float bH = 22.0f;
-            float bY = invBoxY + 34.0f;
+        float btnH = 21.0f;
+        float btnY1 = inY + 24.0f;
+        float btnY2 = btnY1 + 24.0f;
+        float btnY3 = btnY2 + 24.0f;
 
-            if (mouseX >= inX && mouseX <= inX + bW && mouseY >= bY && mouseY <= bY + bH) {
-                GuiSoundManager.playClick();
-                mod.acceptInvite();
-                return true;
-            }
+        if (mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY1 && mouseY <= btnY1 + btnH) {
+            GuiSoundManager.playClick();
+            ensureRoomCode();
+            mod.hostGame(roomInput, true);
+            return true;
+        }
 
-            float decX = inX + bW + 8.0f;
-            if (mouseX >= decX && mouseX <= decX + bW && mouseY >= bY && mouseY <= bY + bH) {
-                GuiSoundManager.playClick();
-                mod.declineInvite();
-                return true;
-            }
-        } else {
-            float btnH = 21.0f;
-            float btnY1 = inY + 24.0f;
-            float btnY2 = btnY1 + 24.0f;
-            float btnY3 = btnY2 + 24.0f;
+        if (mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY2 && mouseY <= btnY2 + btnH) {
+            GuiSoundManager.playClick();
+            ensureRoomCode();
+            mod.hostGame(roomInput, false);
+            return true;
+        }
 
-            if (mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY1 && mouseY <= btnY1 + btnH) {
-                GuiSoundManager.playClick();
-                ensureRoomCode();
-                mod.hostGame(roomInput, true);
-                return true;
+        if (mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY3 && mouseY <= btnY3 + btnH) {
+            GuiSoundManager.playClick();
+            if (!roomInput.isEmpty()) {
+                mod.joinGame(roomInput);
             }
-
-            if (mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY2 && mouseY <= btnY2 + btnH) {
-                GuiSoundManager.playClick();
-                ensureRoomCode();
-                mod.hostGame(roomInput, false);
-                return true;
-            }
-
-            if (mouseX >= inX && mouseX <= inX + inW && mouseY >= btnY3 && mouseY <= btnY3 + btnH) {
-                GuiSoundManager.playClick();
-                if (!roomInput.isEmpty()) {
-                    mod.joinGame(roomInput);
-                }
-                return true;
-            }
+            return true;
         }
 
         float actY = oppY + 128.0f;
         float btnW = (w - 18.0f) / 2.0f;
-        float btnH = 20.0f;
+        float bH = 20.0f;
         float bY = actY + 6.0f;
 
         float rX = sX + 6.0f;
-        if (mouseX >= rX && mouseX <= rX + btnW && mouseY >= bY && mouseY <= bY + btnH) {
+        if (mouseX >= rX && mouseX <= rX + btnW && mouseY >= bY && mouseY <= bY + bH) {
             GuiSoundManager.playClick();
             mod.sendResign();
             return true;
         }
 
         float nX = rX + btnW + 6.0f;
-        if (mouseX >= nX && mouseX <= nX + btnW && mouseY >= bY && mouseY <= bY + btnH) {
+        if (mouseX >= nX && mouseX <= nX + btnW && mouseY >= bY && mouseY <= bY + bH) {
             GuiSoundManager.playClick();
             mod.sendReset();
             return true;
@@ -592,7 +549,7 @@ public class ChessScreen extends Screen {
         if (roomInput == null || roomInput.trim().isEmpty()) {
             int code = 1000 + new Random().nextInt(9000);
             roomInput = String.valueOf(code);
-            Chess.getInstance().setRoomOrOpponent(roomInput);
+            Chess.getInstance().setRoomCode(roomInput);
         }
     }
 
@@ -604,9 +561,21 @@ public class ChessScreen extends Screen {
                 roomInputFocused = false;
                 return true;
             }
+            if (key == GLFW.GLFW_KEY_V && (input.modifiers() & GLFW.GLFW_MOD_CONTROL) != 0) {
+                net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
+                if (mc != null && mc.keyboard != null) {
+                    String clip = mc.keyboard.getClipboard();
+                    if (clip != null && !clip.isEmpty()) {
+                        roomInput = (roomInput + clip).trim();
+                        if (roomInput.length() > 24) roomInput = roomInput.substring(0, 24);
+                        Chess.getInstance().setRoomCode(roomInput);
+                        return true;
+                    }
+                }
+            }
             if (key == GLFW.GLFW_KEY_BACKSPACE && !roomInput.isEmpty()) {
                 roomInput = roomInput.substring(0, roomInput.length() - 1);
-                Chess.getInstance().setRoomOrOpponent(roomInput);
+                Chess.getInstance().setRoomCode(roomInput);
                 return true;
             }
             if (key == GLFW.GLFW_KEY_ENTER) {
@@ -633,7 +602,7 @@ public class ChessScreen extends Screen {
             String ch = input.asString();
             if (ch != null && !ch.isEmpty() && roomInput.length() < 24) {
                 roomInput += ch;
-                Chess.getInstance().setRoomOrOpponent(roomInput);
+                Chess.getInstance().setRoomCode(roomInput);
                 return true;
             }
         }

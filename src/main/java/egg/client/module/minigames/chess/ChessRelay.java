@@ -33,10 +33,15 @@ public final class ChessRelay {
     private ChessRelay() {}
 
     public static synchronized void connect(String roomCode) {
-        disconnect();
         if (roomCode == null || roomCode.trim().isEmpty()) return;
+        String normalized = roomCode.trim().toLowerCase();
 
-        currentRoom = roomCode.trim().toLowerCase();
+        if (active && normalized.equals(currentRoom) && listenerThread != null && listenerThread.isAlive()) {
+            return;
+        }
+
+        disconnect();
+        currentRoom = normalized;
         active = true;
 
         listenerThread = new Thread(() -> {
@@ -70,7 +75,7 @@ public final class ChessRelay {
                 if (active) {
                     connected = false;
                     try {
-                        Thread.sleep(1500L);
+                        Thread.sleep(1200L);
                     } catch (InterruptedException e) {
                         break;
                     }
@@ -105,7 +110,7 @@ public final class ChessRelay {
                         .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
                         .build();
 
-                client.sendAsync(post, HttpResponse.BodyHandlers.discarding());
+                client.send(post, HttpResponse.BodyHandlers.discarding());
             } catch (Exception ignored) {
             }
         });

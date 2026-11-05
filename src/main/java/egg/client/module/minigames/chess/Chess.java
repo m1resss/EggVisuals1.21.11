@@ -4,7 +4,6 @@ import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ButtonSetting;
-import egg.client.module.setting.ModeSetting;
 import egg.client.util.GuiSoundManager;
 import net.minecraft.client.MinecraftClient;
 
@@ -24,23 +23,19 @@ public class Chess extends Module {
         mc.setScreen(ChessScreen.getInstance());
     });
 
-    private final ModeSetting transportSetting = new ModeSetting("Транспорт", "Облако (P2P)", "Облако (P2P)", "Чат (/msg)");
     private final BooleanSetting autoOpenSetting = new BooleanSetting("Авто-открытие", true, "Открывать доску при входящем вызове");
     private final BooleanSetting soundSetting = new BooleanSetting("Звуки", true, "Воспроизводить звуки щелчка при ходах");
-    private final ModeSetting cmdPrefixSetting = new ModeSetting("Команда /msg", "msg", "msg", "tell", "w");
 
     private final ChessBoard board = new ChessBoard();
-    private String roomOrOpponent = "";
+    private String roomCode = "";
     private int myColor = ChessBoard.COLOR_WHITE;
     private boolean inGame = false;
     private boolean isHost = false;
-    private String pendingInviteFrom = null;
-    private boolean pendingInviteAsWhite = true;
 
     public Chess() {
         super("Chess", "Шахматы между игроками", Category.MINI_GAMES);
         instance = this;
-        addSettings(openBoardSetting, transportSetting, autoOpenSetting, soundSetting, cmdPrefixSetting);
+        addSettings(openBoardSetting, autoOpenSetting, soundSetting);
     }
 
     public ChessBoard getBoard() {
@@ -63,83 +58,39 @@ public class Chess extends Module {
         this.inGame = inGame;
     }
 
-    public String getRoomOrOpponent() {
-        return roomOrOpponent;
+    public String getRoomCode() {
+        return roomCode;
     }
 
-    public void setRoomOrOpponent(String val) {
-        this.roomOrOpponent = val != null ? val : "";
+    public void setRoomCode(String val) {
+        this.roomCode = val != null ? val : "";
     }
 
-    public String getPendingInviteFrom() {
-        return pendingInviteFrom;
-    }
-
-    public boolean isCloudTransport() {
-        return transportSetting.get().startsWith("Облако");
-    }
-
-    public void hostGame(String targetRoomOrNick, boolean asWhite) {
+    public void hostGame(String targetRoom, boolean asWhite) {
         this.isHost = true;
         this.myColor = asWhite ? ChessBoard.COLOR_WHITE : ChessBoard.COLOR_BLACK;
         this.board.reset();
-        this.inGame = false;
-        this.roomOrOpponent = targetRoomOrNick.trim();
+        this.inGame = true;
+        this.roomCode = sanitizeRoom(targetRoom);
 
-        String room = computeRoomCode(this.roomOrOpponent);
-        ChessRelay.connect(room);
+        ChessRelay.connect(this.roomCode);
 
-        String payload = "HOST:" + (asWhite ? "W" : "B") + ":" + SESSION_ID;
+        String hostTag = asWhite ? "HOST_W" : "HOST_B";
+        String payload = "HELLO:" + hostTag + ":" + SESSION_ID;
         ChessRelay.send(payload);
-
-        if (!isCloudTransport() && !this.roomOrOpponent.isEmpty()) {
-            sendRawMsg(this.roomOrOpponent, ChessProtocol.buildInvite(asWhite, SESSION_ID));
-        }
     }
 
-    public void joinGame(String targetRoomOrNick) {
+    public void joinGame(String targetRoom) {
         this.isHost = false;
-        this.roomOrOpponent = targetRoomOrNick.trim();
-        String room = computeRoomCode(this.roomOrOpponent);
-        ChessRelay.connect(room);
-
-        String payload = "JOIN::" + SESSION_ID;
-        ChessRelay.send(payload);
-
-        if (!isCloudTransport() && !this.roomOrOpponent.isEmpty()) {
-            sendRawMsg(this.roomOrOpponent, ChessProtocol.buildAccept(SESSION_ID));
-        }
-    }
-
-    public void acceptInvite() {
-        if (pendingInviteFrom == null) return;
-
-        this.isHost = false;
-        this.roomOrOpponent = pendingInviteFrom;
-        this.myColor = pendingInviteAsWhite ? ChessBoard.COLOR_BLACK : ChessBoard.COLOR_WHITE;
+        this.myColor = ChessBoard.COLOR_BLACK;
         this.board.reset();
         this.inGame = true;
+        this.roomCode = sanitizeRoom(targetRoom);
 
-        String room = computeRoomCode(this.roomOrOpponent);
-        ChessRelay.connect(room);
+        ChessRelay.connect(this.roomCode);
 
-        String payload = "ACC::" + SESSION_ID;
+        String payload = "HELLO:JOIN:" + SESSION_ID;
         ChessRelay.send(payload);
-
-        if (!isCloudTransport()) {
-            sendRawMsg(pendingInviteFrom, ChessProtocol.buildAccept(SESSION_ID));
-        }
-
-        this.pendingInviteFrom = null;
-    }
-
-    public void declineInvite() {
-        if (pendingInviteFrom == null) return;
-        ChessRelay.send("DEC::" + SESSION_ID);
-        if (!isCloudTransport()) {
-            sendRawMsg(pendingInviteFrom, ChessProtocol.buildDecline(SESSION_ID));
-        }
-        this.pendingInviteFrom = null;
     }
 
     public boolean makeMyMove(int fc, int fr, int tc, int tr, ChessPiece promo) {
@@ -154,12 +105,7 @@ public class Chess extends Module {
 
             char promoChar = (promo != null && promo != ChessPiece.NONE) ? promo.getNotation().charAt(0) : '0';
             String payload = "MOV:" + fc + "" + fr + "" + tc + "" + tr + "" + promoChar + ":" + SESSION_ID;
-
             ChessRelay.send(payload);
-
-            if (!isCloudTransport() && !roomOrOpponent.isEmpty()) {
-                sendRawMsg(roomOrOpponent, ChessProtocol.buildMove(fc, fr, tc, tr, promo, SESSION_ID));
-            }
             return true;
         }
         return false;
@@ -169,27 +115,14 @@ public class Chess extends Module {
         if (board.isGameOver()) return;
         board.resign(myColor);
         ChessRelay.send("RES::" + SESSION_ID);
-        if (!isCloudTransport() && !roomOrOpponent.isEmpty()) {
-            sendRawMsg(roomOrOpponent, ChessProtocol.buildResign(SESSION_ID));
-        }
     }
 
     public void sendReset() {
         board.reset();
         ChessRelay.send("RST::" + SESSION_ID);
-        if (!isCloudTransport() && !roomOrOpponent.isEmpty()) {
-            sendRawMsg(roomOrOpponent, ChessProtocol.buildReset(SESSION_ID));
-        }
     }
 
-    private void sendRawMsg(String target, String payload) {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.player == null || mc.player.networkHandler == null) return;
-        String cmd = cmdPrefixSetting.get() + " " + target + " " + payload;
-        mc.player.networkHandler.sendChatCommand(cmd);
-    }
-
-    public String computeRoomCode(String input) {
+    private String sanitizeRoom(String input) {
         String s = input.trim().toLowerCase();
         if (s.isEmpty()) return "default";
         return s;
@@ -216,68 +149,45 @@ public class Chess extends Module {
         }
 
         switch (type) {
-            case "HOST" -> {
-                pendingInviteFrom = sender;
-                pendingInviteAsWhite = data.equals("W");
-                if (!isHost) {
-                    myColor = pendingInviteAsWhite ? ChessBoard.COLOR_BLACK : ChessBoard.COLOR_WHITE;
-                }
-                if (autoOpenSetting.get()) {
-                    MinecraftClient.getInstance().setScreen(ChessScreen.getInstance());
-                }
-                if (soundSetting.get()) {
-                    GuiSoundManager.playSelect();
-                }
-            }
-            case "JOIN" -> {
-                if (isHost) {
-                    inGame = true;
-                    board.reset();
-                    String reply = "START:" + (myColor == ChessBoard.COLOR_WHITE ? "W" : "B") + ":" + SESSION_ID;
-                    ChessRelay.send(reply);
+            case "HELLO" -> {
+                if ("JOIN".equals(data)) {
+                    if (isHost) {
+                        String hostTag = (myColor == ChessBoard.COLOR_WHITE) ? "HOST_W" : "HOST_B";
+                        ChessRelay.send("HELLO:" + hostTag + ":" + SESSION_ID);
+                        for (ChessMove m : board.getMoveHistory()) {
+                            char promoChar = (m.getPromoPiece() != null && m.getPromoPiece() != ChessPiece.NONE) ? m.getPromoPiece().getNotation().charAt(0) : '0';
+                            String movPayload = "MOV:" + m.getFromCol() + "" + m.getFromRow() + "" + m.getToCol() + "" + m.getToRow() + "" + promoChar + ":" + SESSION_ID;
+                            ChessRelay.send(movPayload);
+                        }
+                    }
+                } else if ("HOST_W".equals(data) || "W".equals(data)) {
+                    if (!isHost) {
+                        this.myColor = ChessBoard.COLOR_BLACK;
+                    }
+                    this.inGame = true;
+                    if (board.getMoveHistory().isEmpty()) {
+                        this.board.reset();
+                    }
+                    if (autoOpenSetting.get()) {
+                        MinecraftClient.getInstance().setScreen(ChessScreen.getInstance());
+                    }
                     if (soundSetting.get()) {
                         GuiSoundManager.playSelect();
                     }
-                }
-            }
-            case "START" -> {
-                boolean hostIsWhite = data.equals("W");
-                myColor = hostIsWhite ? ChessBoard.COLOR_BLACK : ChessBoard.COLOR_WHITE;
-                inGame = true;
-                board.reset();
-                if (autoOpenSetting.get()) {
-                    MinecraftClient.getInstance().setScreen(ChessScreen.getInstance());
-                }
-                if (soundSetting.get()) {
-                    GuiSoundManager.playSelect();
-                }
-            }
-            case "INV" -> {
-                pendingInviteFrom = sender;
-                pendingInviteAsWhite = data.equals("W");
-                if (autoOpenSetting.get()) {
-                    MinecraftClient.getInstance().setScreen(ChessScreen.getInstance());
-                }
-                if (soundSetting.get()) {
-                    GuiSoundManager.playSelect();
-                }
-            }
-            case "ACC" -> {
-                inGame = true;
-                if (board.getMoveHistory().isEmpty()) {
-                    board.reset();
-                }
-                if (autoOpenSetting.get()) {
-                    MinecraftClient.getInstance().setScreen(ChessScreen.getInstance());
-                }
-                if (soundSetting.get()) {
-                    GuiSoundManager.playSelect();
-                }
-            }
-            case "DEC" -> {
-                pendingInviteFrom = null;
-                if (soundSetting.get()) {
-                    GuiSoundManager.playClick();
+                } else if ("HOST_B".equals(data) || "B".equals(data)) {
+                    if (!isHost) {
+                        this.myColor = ChessBoard.COLOR_WHITE;
+                    }
+                    this.inGame = true;
+                    if (board.getMoveHistory().isEmpty()) {
+                        this.board.reset();
+                    }
+                    if (autoOpenSetting.get()) {
+                        MinecraftClient.getInstance().setScreen(ChessScreen.getInstance());
+                    }
+                    if (soundSetting.get()) {
+                        GuiSoundManager.playSelect();
+                    }
                 }
             }
             case "MOV" -> {
