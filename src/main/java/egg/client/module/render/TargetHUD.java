@@ -444,9 +444,9 @@ public class TargetHUD extends Module {
             target.getMainHandStack()
         };
 
-        float equipY = y + 15.5f;
+        float equipY = y + 16.0f;
         float slotW = 14.0f;
-        float slotH = 14.5f;
+        float slotH = 14.0f;
         float slotGap = 3.0f;
         float slotSep = 5.0f;
 
@@ -458,24 +458,6 @@ public class TargetHUD extends Module {
             int slotBorder = ColorUtil.rgba(255, 255, 255, (int) ((empty ? 12 : 24) * alpha));
             Draw2DProcessor.INSTANCE.drawRect(mat, slotX, equipY, slotW, slotH, 2.5f, slotBg);
             Draw2DProcessor.INSTANCE.drawOutline(mat, slotX, equipY, slotW, slotH, 2.5f, 0.6f, slotBorder);
-        }
-
-        DrawBatcher.flushPending();
-
-        for (int i = 0; i < 5; i++) {
-            ItemStack stack = equipStacks[i];
-            if (stack == null || stack.isEmpty()) continue;
-            float slotX = textX + i * (slotW + slotGap) + (i == 4 ? (slotSep - slotGap) : 0.0f);
-            float itemCx = slotX + slotW * 0.5f;
-            float itemCy = equipY + 4.2f;
-            float itemScale = 0.45f;
-
-            context.getMatrices().pushMatrix();
-            context.getMatrices().translate(itemCx, itemCy);
-            context.getMatrices().scale(itemScale, itemScale);
-            context.getMatrices().translate(-8.0f, -8.0f);
-            context.drawItem(stack, 0, 0);
-            context.getMatrices().popMatrix();
         }
 
         for (int i = 0; i < 5; i++) {
@@ -504,18 +486,72 @@ public class TargetHUD extends Module {
 
                     Draw2DProcessor.INSTANCE.drawRect(mat, barX, barY, barWidth, barHeight, 0.5f, ColorUtil.rgba(0, 0, 0, (int) (180 * alpha)));
                     Draw2DProcessor.INSTANCE.drawRect(mat, barX, barY, Math.max(1.0f, barWidth * durRatio), barHeight, 0.5f, ColorUtil.withAlpha(durColor, (int) (240 * alpha)));
+                }
+            }
+        }
 
+        DrawBatcher.flushPending();
+
+        for (int i = 0; i < 5; i++) {
+            ItemStack stack = equipStacks[i];
+            if (stack == null || stack.isEmpty()) continue;
+            float slotX = textX + i * (slotW + slotGap) + (i == 4 ? (slotSep - slotGap) : 0.0f);
+            float itemCx = slotX + slotW * 0.5f;
+            float itemCy = equipY + 6.0f;
+            float itemScale = 0.60f;
+
+            context.getMatrices().pushMatrix();
+            context.getMatrices().translate(itemCx, itemCy);
+            context.getMatrices().scale(itemScale, itemScale);
+            context.getMatrices().translate(-8.0f, -8.0f);
+            context.drawItem(stack, 0, 0);
+            context.getMatrices().popMatrix();
+        }
+
+        for (int i = 0; i < 5; i++) {
+            ItemStack stack = equipStacks[i];
+            if (stack == null || stack.isEmpty()) continue;
+            float slotX = textX + i * (slotW + slotGap) + (i == 4 ? (slotSep - slotGap) : 0.0f);
+
+            if (stack.isDamageable() && stack.getMaxDamage() > 0) {
+                int maxDmg = stack.getMaxDamage();
+                int curDmg = stack.getDamage();
+                int curDurability = Math.max(0, maxDmg - curDmg);
+                float durRatio = Math.clamp((float) curDurability / (float) maxDmg, 0.0f, 1.0f);
+
+                if (durRatio < 1.0f) {
                     int pct = (int) Math.round(durRatio * 100.0f);
                     String pctStr = pct + "%";
-                    float pw = Fonts.b.a(pctStr, 4.2f);
-                    int pctColor = ColorUtil.withAlpha(durColor, (int) (240 * alpha));
-                    Fonts.b.a(mat, pctStr, slotX + (slotW - pw) * 0.5f, equipY + 8.4f, 4.2f, pctColor);
+                    float textScale = 0.55f;
+                    int textW = mc.textRenderer.getWidth(pctStr);
+                    int textH = mc.textRenderer.fontHeight;
+
+                    int durColor;
+                    if (durRatio > 0.5f) {
+                        durColor = ColorUtil.interpolate(0xFFFFD700, 0xFF33FF55, (durRatio - 0.5f) * 2.0f);
+                    } else {
+                        durColor = ColorUtil.interpolate(0xFFFF3333, 0xFFFFD700, durRatio * 2.0f);
+                    }
+                    int pctColor = ColorUtil.withAlpha(durColor, (int) (255 * alpha));
+
+                    context.getMatrices().pushMatrix();
+                    context.getMatrices().translate(slotX + slotW * 0.5f, equipY + 6.0f);
+                    context.getMatrices().scale(textScale, textScale);
+                    context.drawTextWithShadow(mc.textRenderer, pctStr, -textW / 2, -textH / 2, pctColor);
+                    context.getMatrices().popMatrix();
                 }
             } else if (stack.getCount() > 1) {
                 String countStr = String.valueOf(stack.getCount());
-                float cw = Fonts.b.a(countStr, 4.5f);
-                int countColor = ColorUtil.rgba(255, 255, 255, (int) (235 * alpha));
-                Fonts.b.a(mat, countStr, slotX + slotW - cw - 1.2f, equipY + 8.4f, 4.5f, countColor);
+                float countScale = 0.55f;
+                int cw = mc.textRenderer.getWidth(countStr);
+                int ch = mc.textRenderer.fontHeight;
+                int countColor = ColorUtil.rgba(255, 255, 255, (int) (245 * alpha));
+
+                context.getMatrices().pushMatrix();
+                context.getMatrices().translate(slotX + slotW - 1.0f - (cw * countScale), equipY + slotH - 1.5f - (ch * countScale));
+                context.getMatrices().scale(countScale, countScale);
+                context.drawTextWithShadow(mc.textRenderer, countStr, 0, 0, countColor);
+                context.getMatrices().popMatrix();
             }
         }
 
