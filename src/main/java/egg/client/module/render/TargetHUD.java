@@ -22,6 +22,7 @@ import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.util.Identifier;
@@ -82,8 +83,8 @@ public class TargetHUD extends Module {
 
     private float lastRenderX = 0.0f;
     private float lastRenderY = 0.0f;
-    private float lastRenderW = 152.0f;
-    private float lastRenderH = 44.0f;
+    private float lastRenderW = 156.0f;
+    private float lastRenderH = 62.0f;
 
     public ModeSetting getMode() { return mode; }
     public float getLastX() { return lastRenderX; }
@@ -192,8 +193,8 @@ public class TargetHUD extends Module {
         visualHp += (actualHealth - visualHp) * Math.min(1.0f, dt * 10.0f);
         visualAbsorption += (actualAbsorption - visualAbsorption) * Math.min(1.0f, dt * 10.0f);
 
-        float cardW = 152.0f;
-        float cardH = 44.0f;
+        float cardW = 156.0f;
+        float cardH = 62.0f;
         float cardRadius = 12.0f;
         float scale = hudScale.getValueFloat();
 
@@ -333,10 +334,10 @@ public class TargetHUD extends Module {
             }
         }
 
-        float headSize = 30.0f;
+        float headSize = 38.0f;
         float headX = x + 7.0f;
-        float headY = y + 7.0f;
-        float headRadius = 7.0f;
+        float headY = y + 12.0f;
+        float headRadius = 8.0f;
 
         int headBgColor = ColorUtil.rgba(30, 30, 36, (int) (240 * alpha));
         if (target.hurtTime > 0) {
@@ -364,7 +365,7 @@ public class TargetHUD extends Module {
 
             float itemScale = 0.82f * (0.85f + 0.15f * smoothEatProgress);
             float itemCx = headX + headSize * 0.5f;
-            float itemCy = headY + 8.5f;
+            float itemCy = headY + 12.0f;
 
             context.getMatrices().pushMatrix();
             context.getMatrices().translate(itemCx, itemCy);
@@ -378,7 +379,7 @@ public class TargetHUD extends Module {
             float pillW = tw + 4.0f;
             float pillH = 7.5f;
             float pillX = headX + (headSize - pillW) * 0.5f;
-            float pillY = headY + 19.5f;
+            float pillY = headY + 24.5f;
 
             int pillBg = ColorUtil.rgba(8, 8, 12, (int) (185 * smoothEatProgress * alpha));
             Draw2DProcessor.INSTANCE.drawRect(mat, pillX, pillY, pillW, pillH, 2.5f, pillBg);
@@ -387,22 +388,103 @@ public class TargetHUD extends Module {
             Fonts.b.a(mat, timerStr, headX + (headSize - tw) * 0.5f, pillY + 0.5f, 7.0f, textCol);
         }
 
-        float textX = x + 43.0f;
-        float nameY = y + 5.5f;
+        float textX = x + 51.0f;
+        float nameY = y + 6.0f;
         String name = target.getName().getString();
         if (egg.client.module.misc.Globals.isEggUser(target)) {
             name = "🥚 " + name;
         }
-        int maxNameLen = 15;
+        int maxNameLen = 14;
         if (name.length() > maxNameLen) {
             name = name.substring(0, maxNameLen) + "...";
         }
 
         int nameColor = ColorUtil.rgba(255, 255, 255, (int) (255 * alpha));
-        Fonts.b.a(mat, name, textX, nameY, 11.0f, nameColor);
+        Fonts.b.a(mat, name, textX, nameY, 10.5f, nameColor);
 
-        float hpY = y + 20.0f;
-        float heartSize = 10.0f;
+        ItemStack[] equipStacks = new ItemStack[] {
+            target.getEquippedStack(EquipmentSlot.HEAD),
+            target.getEquippedStack(EquipmentSlot.CHEST),
+            target.getEquippedStack(EquipmentSlot.LEGS),
+            target.getEquippedStack(EquipmentSlot.FEET),
+            target.getMainHandStack()
+        };
+
+        float equipY = y + 17.5f;
+        float slotW = 15.0f;
+        float slotH = 17.0f;
+        float slotGap = 3.0f;
+        float slotSep = 5.5f;
+
+        for (int i = 0; i < 5; i++) {
+            ItemStack stack = equipStacks[i];
+            float slotX = textX + i * (slotW + slotGap) + (i == 4 ? (slotSep - slotGap) : 0.0f);
+            boolean empty = stack == null || stack.isEmpty();
+            int slotBg = ColorUtil.rgba(255, 255, 255, (int) ((empty ? 7 : 14) * alpha));
+            int slotBorder = ColorUtil.rgba(255, 255, 255, (int) ((empty ? 14 : 26) * alpha));
+            Draw2DProcessor.INSTANCE.drawRect(mat, slotX, equipY, slotW, slotH, 3.0f, slotBg);
+            Draw2DProcessor.INSTANCE.drawOutline(mat, slotX, equipY, slotW, slotH, 3.0f, 0.75f, slotBorder);
+        }
+
+        DrawBatcher.flushPending();
+
+        for (int i = 0; i < 5; i++) {
+            ItemStack stack = equipStacks[i];
+            if (stack == null || stack.isEmpty()) continue;
+            float slotX = textX + i * (slotW + slotGap) + (i == 4 ? (slotSep - slotGap) : 0.0f);
+            float itemCx = slotX + slotW * 0.5f;
+            float itemCy = equipY + 6.0f;
+            float itemScale = 0.65f;
+
+            context.getMatrices().pushMatrix();
+            context.getMatrices().translate(itemCx, itemCy);
+            context.getMatrices().scale(itemScale, itemScale);
+            context.getMatrices().translate(-8.0f, -8.0f);
+            context.drawItem(stack, 0, 0);
+            context.getMatrices().popMatrix();
+        }
+
+        for (int i = 0; i < 5; i++) {
+            ItemStack stack = equipStacks[i];
+            if (stack == null || stack.isEmpty()) continue;
+            float slotX = textX + i * (slotW + slotGap) + (i == 4 ? (slotSep - slotGap) : 0.0f);
+
+            if (stack.isDamageable() && stack.getMaxDamage() > 0) {
+                int maxDmg = stack.getMaxDamage();
+                int curDmg = stack.getDamage();
+                int curDurability = Math.max(0, maxDmg - curDmg);
+                float durRatio = Math.clamp((float) curDurability / (float) maxDmg, 0.0f, 1.0f);
+
+                float barX = slotX + 1.5f;
+                float barY = equipY + slotH - 2.5f;
+                float barWidth = slotW - 3.0f;
+                float barHeight = 1.5f;
+
+                int durColor;
+                if (durRatio > 0.5f) {
+                    durColor = ColorUtil.interpolate(0xFFFFD700, 0xFF33FF55, (durRatio - 0.5f) * 2.0f);
+                } else {
+                    durColor = ColorUtil.interpolate(0xFFFF3333, 0xFFFFD700, durRatio * 2.0f);
+                }
+
+                Draw2DProcessor.INSTANCE.drawRect(mat, barX, barY, barWidth, barHeight, 0.75f, ColorUtil.rgba(0, 0, 0, (int) (180 * alpha)));
+                Draw2DProcessor.INSTANCE.drawRect(mat, barX, barY, Math.max(1.0f, barWidth * durRatio), barHeight, 0.75f, ColorUtil.withAlpha(durColor, (int) (240 * alpha)));
+
+                int pct = (int) Math.round(durRatio * 100.0f);
+                String pctStr = pct + "%";
+                float pw = Fonts.b.a(pctStr, 5.0f);
+                int pctColor = ColorUtil.withAlpha(durColor, (int) (240 * alpha));
+                Fonts.b.a(mat, pctStr, slotX + (slotW - pw) * 0.5f, equipY + 9.5f, 5.0f, pctColor);
+            } else if (stack.getCount() > 1) {
+                String countStr = String.valueOf(stack.getCount());
+                float cw = Fonts.b.a(countStr, 6.0f);
+                int countColor = ColorUtil.rgba(255, 255, 255, (int) (235 * alpha));
+                Fonts.b.a(mat, countStr, slotX + slotW - cw - 1.5f, equipY + slotH - 6.5f, 6.0f, countColor);
+            }
+        }
+
+        float hpY = y + 38.0f;
+        float heartSize = 9.5f;
         int heartGlowColor = ColorUtil.rgba(255, 30, 80, (int) (160 * alpha));
         Draw2DProcessor.INSTANCE.drawGlow(mat, textX - 2.0f, hpY - 1.5f, heartSize + 4.0f, heartSize + 4.0f, (heartSize + 4.0f) / 2.0f, heartGlowColor, 4.0f);
         int heartColor = ColorUtil.rgba(255, 255, 255, (int) (255 * alpha));
@@ -429,8 +511,8 @@ public class TargetHUD extends Module {
         }
 
         float barX = textX;
-        float barY = y + 32.0f;
-        float barW = w - 43.0f - 10.0f;
+        float barY = y + 50.5f;
+        float barW = w - 51.0f - 8.0f;
         float barH = 5.0f;
         float barRadius = 2.5f;
 
