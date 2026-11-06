@@ -467,8 +467,8 @@ public class TargetHUD extends Module {
             if (stack == null || stack.isEmpty()) continue;
             float slotX = textX + i * (slotW + slotGap) + (i == 4 ? (slotSep - slotGap) : 0.0f);
             float itemCx = slotX + slotW * 0.5f;
-            float itemCy = equipY + 4.4f;
-            float itemScale = 0.48f;
+            float itemCy = equipY + 4.2f;
+            float itemScale = 0.45f;
 
             context.getMatrices().pushMatrix();
             context.getMatrices().translate(itemCx, itemCy);
@@ -489,22 +489,22 @@ public class TargetHUD extends Module {
                 int curDurability = Math.max(0, maxDmg - curDmg);
                 float durRatio = Math.clamp((float) curDurability / (float) maxDmg, 0.0f, 1.0f);
 
-                float barX = slotX + 1.2f;
-                float barY = equipY + slotH - 1.6f;
-                float barWidth = slotW - 2.4f;
-                float barHeight = 1.0f;
-
-                int durColor;
-                if (durRatio > 0.5f) {
-                    durColor = ColorUtil.interpolate(0xFFFFD700, 0xFF33FF55, (durRatio - 0.5f) * 2.0f);
-                } else {
-                    durColor = ColorUtil.interpolate(0xFFFF3333, 0xFFFFD700, durRatio * 2.0f);
-                }
-
-                Draw2DProcessor.INSTANCE.drawRect(mat, barX, barY, barWidth, barHeight, 0.5f, ColorUtil.rgba(0, 0, 0, (int) (180 * alpha)));
-                Draw2DProcessor.INSTANCE.drawRect(mat, barX, barY, Math.max(1.0f, barWidth * durRatio), barHeight, 0.5f, ColorUtil.withAlpha(durColor, (int) (240 * alpha)));
-
                 if (durRatio < 1.0f) {
+                    float barX = slotX + 1.2f;
+                    float barY = equipY + slotH - 1.6f;
+                    float barWidth = slotW - 2.4f;
+                    float barHeight = 1.0f;
+
+                    int durColor;
+                    if (durRatio > 0.5f) {
+                        durColor = ColorUtil.interpolate(0xFFFFD700, 0xFF33FF55, (durRatio - 0.5f) * 2.0f);
+                    } else {
+                        durColor = ColorUtil.interpolate(0xFFFF3333, 0xFFFFD700, durRatio * 2.0f);
+                    }
+
+                    Draw2DProcessor.INSTANCE.drawRect(mat, barX, barY, barWidth, barHeight, 0.5f, ColorUtil.rgba(0, 0, 0, (int) (180 * alpha)));
+                    Draw2DProcessor.INSTANCE.drawRect(mat, barX, barY, Math.max(1.0f, barWidth * durRatio), barHeight, 0.5f, ColorUtil.withAlpha(durColor, (int) (240 * alpha)));
+
                     int pct = (int) Math.round(durRatio * 100.0f);
                     String pctStr = pct + "%";
                     float pw = Fonts.b.a(pctStr, 4.2f);
