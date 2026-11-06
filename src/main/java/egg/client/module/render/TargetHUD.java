@@ -390,18 +390,53 @@ public class TargetHUD extends Module {
         }
 
         float textX = x + 43.0f;
-        float nameY = y + 4.5f;
+        float rightX = x + w - 8.0f;
+        float topY = y + 5.5f;
+
+        float heartSize = 8.5f;
+        int curHp = (int) Math.ceil(target.getHealth());
+        if (lastHpTarget != target) {
+            lastHpTarget = target;
+            hpRolling.reset(curHp);
+        } else {
+            hpRolling.update(curHp);
+        }
+
+        String hpValueStr = String.valueOf(curHp);
+        float hpValW = Fonts.b.a(hpValueStr, 9.5f);
+        String absStr = absorption > 0.0f ? " +" + String.format("%.0f", Math.ceil(absorption)) : "";
+        float absTextW = absorption > 0.0f ? Fonts.b.a(absStr, 9.5f) : 0.0f;
+        float hpTotalW = heartSize + 3.0f + hpValW + absTextW;
+        float hpStartX = rightX - hpTotalW;
+
+        int heartGlowColor = ColorUtil.rgba(255, 30, 80, (int) (160 * alpha));
+        Draw2DProcessor.INSTANCE.drawGlow(mat, hpStartX - 1.5f, topY - 1.0f, heartSize + 3.0f, heartSize + 3.0f, (heartSize + 3.0f) / 2.0f, heartGlowColor, 3.5f);
+        int heartColor = ColorUtil.rgba(255, 255, 255, (int) (255 * alpha));
+        Draw2DProcessor.INSTANCE.a(mat, HEART_ICON, hpStartX, topY + 0.5f, heartSize, heartSize, 0.0f, heartColor);
+
+        float hpTextX = hpStartX + heartSize + 3.0f;
+        int hpTextColor = ColorUtil.rgba(255, 255, 255, (int) (230 * alpha));
+        hpRolling.render(mat, hpTextX, topY, 9.5f, hpTextColor, 1.0f);
+
+        if (absorption > 0.0f) {
+            int absTextColor = ColorUtil.rgba(255, 215, 0, (int) (255 * alpha));
+            Fonts.b.a(mat, absStr, hpTextX + hpValW, topY, 9.5f, absTextColor);
+        }
+
         String name = target.getName().getString();
         if (egg.client.module.misc.Globals.isEggUser(target)) {
             name = "🥚 " + name;
         }
-        int maxNameLen = 14;
-        if (name.length() > maxNameLen) {
-            name = name.substring(0, maxNameLen) + "...";
+        float availNameW = hpStartX - textX - 4.0f;
+        String displayName = name;
+        if (Fonts.b.a(displayName, 9.5f) > availNameW) {
+            while (displayName.length() > 3 && Fonts.b.a(displayName + "...", 9.5f) > availNameW) {
+                displayName = displayName.substring(0, displayName.length() - 1);
+            }
+            displayName += "...";
         }
-
         int nameColor = ColorUtil.rgba(255, 255, 255, (int) (255 * alpha));
-        Fonts.b.a(mat, name, textX, nameY, 9.5f, nameColor);
+        Fonts.b.a(mat, displayName, textX, topY, 9.5f, nameColor);
 
         ItemStack[] equipStacks = new ItemStack[] {
             target.getEquippedStack(EquipmentSlot.HEAD),
@@ -411,11 +446,11 @@ public class TargetHUD extends Module {
             target.getMainHandStack()
         };
 
-        float equipY = y + 14.0f;
-        float slotW = 12.5f;
-        float slotH = 11.5f;
-        float slotGap = 2.5f;
-        float slotSep = 4.5f;
+        float equipY = y + 17.5f;
+        float slotW = 14.0f;
+        float slotH = 13.0f;
+        float slotGap = 3.0f;
+        float slotSep = 5.5f;
 
         for (int i = 0; i < 5; i++) {
             ItemStack stack = equipStacks[i];
@@ -423,8 +458,8 @@ public class TargetHUD extends Module {
             boolean empty = stack == null || stack.isEmpty();
             int slotBg = ColorUtil.rgba(255, 255, 255, (int) ((empty ? 6 : 13) * alpha));
             int slotBorder = ColorUtil.rgba(255, 255, 255, (int) ((empty ? 12 : 24) * alpha));
-            Draw2DProcessor.INSTANCE.drawRect(mat, slotX, equipY, slotW, slotH, 2.0f, slotBg);
-            Draw2DProcessor.INSTANCE.drawOutline(mat, slotX, equipY, slotW, slotH, 2.0f, 0.6f, slotBorder);
+            Draw2DProcessor.INSTANCE.drawRect(mat, slotX, equipY, slotW, slotH, 2.5f, slotBg);
+            Draw2DProcessor.INSTANCE.drawOutline(mat, slotX, equipY, slotW, slotH, 2.5f, 0.6f, slotBorder);
         }
 
         DrawBatcher.flushPending();
@@ -434,8 +469,8 @@ public class TargetHUD extends Module {
             if (stack == null || stack.isEmpty()) continue;
             float slotX = textX + i * (slotW + slotGap) + (i == 4 ? (slotSep - slotGap) : 0.0f);
             float itemCx = slotX + slotW * 0.5f;
-            float itemCy = equipY + 5.0f;
-            float itemScale = 0.56f;
+            float itemCy = equipY + 5.5f;
+            float itemScale = 0.60f;
 
             context.getMatrices().pushMatrix();
             context.getMatrices().translate(itemCx, itemCy);
@@ -456,9 +491,9 @@ public class TargetHUD extends Module {
                 int curDurability = Math.max(0, maxDmg - curDmg);
                 float durRatio = Math.clamp((float) curDurability / (float) maxDmg, 0.0f, 1.0f);
 
-                float barX = slotX + 1.0f;
+                float barX = slotX + 1.2f;
                 float barY = equipY + slotH - 1.8f;
-                float barWidth = slotW - 2.0f;
+                float barWidth = slotW - 2.4f;
                 float barHeight = 1.0f;
 
                 int durColor;
@@ -476,7 +511,7 @@ public class TargetHUD extends Module {
                     String pctStr = pct + "%";
                     float pw = Fonts.b.a(pctStr, 4.5f);
                     int pctColor = ColorUtil.withAlpha(durColor, (int) (240 * alpha));
-                    Fonts.b.a(mat, pctStr, slotX + (slotW - pw) * 0.5f, equipY + 5.5f, 4.5f, pctColor);
+                    Fonts.b.a(mat, pctStr, slotX + (slotW - pw) * 0.5f, equipY + 6.0f, 4.5f, pctColor);
                 }
             } else if (stack.getCount() > 1) {
                 String countStr = String.valueOf(stack.getCount());
@@ -486,38 +521,11 @@ public class TargetHUD extends Module {
             }
         }
 
-        float hpY = y + 26.5f;
-        float heartSize = 8.5f;
-        int heartGlowColor = ColorUtil.rgba(255, 30, 80, (int) (160 * alpha));
-        Draw2DProcessor.INSTANCE.drawGlow(mat, textX - 1.5f, hpY - 1.0f, heartSize + 3.0f, heartSize + 3.0f, (heartSize + 3.0f) / 2.0f, heartGlowColor, 3.5f);
-        int heartColor = ColorUtil.rgba(255, 255, 255, (int) (255 * alpha));
-        Draw2DProcessor.INSTANCE.a(mat, HEART_ICON, textX, hpY + 0.5f, heartSize, heartSize, 0.0f, heartColor);
-
-        float hpTextX = textX + heartSize + 3.5f;
-        int curHp = (int) Math.ceil(target.getHealth());
-        if (lastHpTarget != target) {
-            lastHpTarget = target;
-            hpRolling.reset(curHp);
-        } else {
-            hpRolling.update(curHp);
-        }
-
-        int hpTextColor = ColorUtil.rgba(255, 255, 255, (int) (230 * alpha));
-        hpRolling.render(mat, hpTextX, hpY, 8.5f, hpTextColor, 1.0f);
-
-        String hpValueStr = String.valueOf(curHp);
-        float nextTextX = hpTextX + Fonts.b.a(hpValueStr, 8.5f);
-        if (absorption > 0.0f) {
-            String absStr = " +" + String.format("%.0f", Math.ceil(absorption));
-            int absTextColor = ColorUtil.rgba(255, 215, 0, (int) (255 * alpha));
-            Fonts.b.a(mat, absStr, nextTextX, hpY, 8.5f, absTextColor);
-        }
-
         float barX = textX;
-        float barY = y + 36.5f;
+        float barY = y + 34.0f;
         float barW = w - 43.0f - 8.0f;
-        float barH = 3.5f;
-        float barRadius = 1.75f;
+        float barH = 4.5f;
+        float barRadius = 2.25f;
 
         int trackColor = ColorUtil.rgba(255, 255, 255, (int) (38 * alpha));
         Draw2DProcessor.INSTANCE.drawRect(mat, barX, barY, barW, barH, barRadius, trackColor);
