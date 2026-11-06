@@ -96,6 +96,7 @@ public class ModuleManager {
         register(new KillEffect());
         register(new Lyrics());
         register(new Trail());
+        register(new JumpCircles());
 
         register(new egg.client.module.player.InventorySorter());
 

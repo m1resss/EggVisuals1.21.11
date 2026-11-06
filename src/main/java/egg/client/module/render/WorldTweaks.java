@@ -89,6 +89,9 @@ public class WorldTweaks extends Module {
     private final BooleanSetting customFog = new BooleanSetting("Кастомный туман", false, "Атмосферный цвет тумана горизонта");
     private final ModeSetting fogColorMode = new ModeSetting("Цвет тумана", "По сезону", "Режим цвета тумана", "По сезону", "Кастом", "Ванилла");
     private final ColorSetting fogCustomColor = new ColorSetting("Цвет", 0xFF9FC5E8, "Цвет кастомного тумана");
+    private final BooleanSetting customFogDistance = new BooleanSetting("Дальность тумана", false, "Ручная настройка дистанции и плотности тумана");
+    private final SliderSetting fogDistanceMultiplier = new SliderSetting("Множитель дальности", 1.0, 0.1, 5.0, 0.05, "Множитель дистанции тумана (1.0 = ванилла, больше = дальше туман)");
+    private final SliderSetting fogStartRatio = new SliderSetting("Начало тумана", 0.75, 0.0, 1.0, 0.05, "Точка старта тумана (0.0 = прямо перед игроком, 1.0 = у края горизонта)");
 
     private final BooleanSetting reflections = new BooleanSetting("Отражения", false, "SSR отражения в реальном времени на воде и блоках");
     private final SliderSetting timeHour = new SliderSetting("Время (ч)", 12.0, 0.0, 24.0, 0.1, "Время суток в часах");
@@ -146,6 +149,8 @@ public class WorldTweaks extends Module {
 
     public WorldTweaks() {
         super("World Tweaks", "Изменяет визуальный стиль погоды, листвы и снежного покрова", Category.MISC);
+        this.fogDistanceMultiplier.setVisible(() -> this.customFogDistance.isEnabled());
+        this.fogStartRatio.setVisible(() -> this.customFogDistance.isEnabled());
         addSettings(
                 this.timeMode, this.timeOfDay, this.timeHour,
                 this.season, this.weather,
@@ -155,6 +160,7 @@ public class WorldTweaks extends Module {
                 this.bloom, this.bloomIntensity, this.bloomThreshold,
                 this.colorGrade, this.colorGradeSaturation, this.colorGradeContrast, this.colorGradeBrightness, this.colorGradeTemperature,
                 this.customFog, this.fogColorMode, this.fogCustomColor,
+                this.customFogDistance, this.fogDistanceMultiplier, this.fogStartRatio,
                 this.customSound, this.soundVolume,
                 this.customClouds, this.cloudMode, this.cloudCoverage, this.cloudDistance, this.cloudHeight, this.cloudSpeed, this.cloudColor,
                 this.customThunder, this.lightningFrequency
@@ -216,6 +222,21 @@ public class WorldTweaks extends Module {
 
     public boolean isCustomFogColorEnabled() {
         return isEnabled() && this.customFog.get() && !"Ванилла".equals(this.fogColorMode.get());
+    }
+
+    public boolean isCustomFogDistanceEnabled() {
+        return isEnabled() && this.customFogDistance.get();
+    }
+
+    public void applyFogDistance(net.minecraft.client.render.fog.FogData fogData, float baseViewBlocks) {
+        if (!isCustomFogDistanceEnabled()) return;
+        float mult = (float) this.fogDistanceMultiplier.get();
+        float end = Math.max(8.0f, baseViewBlocks * mult);
+        float start = end * MathHelper.clamp((float) this.fogStartRatio.get(), 0.0f, 0.99f);
+        fogData.renderDistanceEnd = end;
+        fogData.renderDistanceStart = start;
+        fogData.environmentalEnd = Math.max(fogData.environmentalEnd, end);
+        fogData.environmentalStart = Math.min(fogData.environmentalStart, start);
     }
 
     @Override
