@@ -423,29 +423,34 @@ public class Interface extends Module {
             Render2D.drawDiagonalSheen(context, baseX, baseY, totalW, pillHeight, radius, 0L);
         }
 
-        float cursor = baseX + 7.0f;
+        float cursor = baseX;
         float centerY = baseY + pillHeight / 2.0f;
 
         int tintWithAlpha = ColorUtil.rgba(255, 255, 255, (int) (255 * alphaFactor));
 
         if (hasLogo) {
-            float badgeSize = 24.0f;
-            float badgeX = cursor;
-            float badgeY = centerY - badgeSize / 2.0f;
+            float badgeSize = 22.0f;
+            float badgeMargin = (pillHeight - badgeSize) / 2.0f;
+            float badgeX = baseX + badgeMargin;
+            float badgeY = baseY + badgeMargin;
             float badgeR = badgeSize / 2.0f;
 
             Draw2DProcessor.INSTANCE.drawRect(mat, badgeX, badgeY, badgeSize, badgeSize, badgeR, ColorUtil.rgba(10, 11, 15, (int) (250 * alphaFactor)));
             Draw2DProcessor.INSTANCE.drawOutline(mat, badgeX, badgeY, badgeSize, badgeSize, badgeR, 0.8f, ColorUtil.rgba(255, 255, 255, (int) (28 * alphaFactor)));
 
-            IconRenderer.drawTextureScaled(context, EGG_LOGO, badgeX + 2.0f, badgeY + 2.0f, 20.0f, 20.0f, 128, 128, tintWithAlpha);
+            IconRenderer.drawTextureScaled(context, EGG_LOGO, badgeX, badgeY, badgeSize, badgeSize, 128, 128, tintWithAlpha);
             if (halloween.isEnabled()) {
                 HalloweenGuiRenderer.renderWitchHatDirect(context, badgeX + badgeSize * 0.5f - 0.5f, badgeY + 1.2f, 13.0f, alphaFactor);
             }
-            cursor += badgeSize + 8.0f;
 
             if (hasBrand || !items.isEmpty()) {
-                drawDivider(mat, cursor - 4.0f, baseY, pillHeight, alphaFactor);
+                cursor = badgeX + badgeSize + 12.0f;
+                drawDivider(mat, badgeX + badgeSize + 6.0f, baseY, pillHeight, alphaFactor);
+            } else {
+                cursor = badgeX + badgeSize + badgeMargin;
             }
+        } else {
+            cursor = baseX + 8.0f;
         }
 
         if (hasBrand && brandStr != null && !brandStr.isEmpty()) {
@@ -515,9 +520,17 @@ public class Interface extends Module {
     }
 
     private float calculateWatermarkWidth(boolean hasLogo, boolean hasBrand, String brandStr, List<WatermarkItem> items) {
-        float curW = 14.0f;
+        float curW = 0.0f;
         if (hasLogo) {
-            curW += 22.0f + 8.0f;
+            float badgeSize = 22.0f;
+            float badgeMargin = (28.0f - badgeSize) / 2.0f;
+            if (hasBrand || !items.isEmpty()) {
+                curW += badgeMargin + badgeSize + 12.0f;
+            } else {
+                curW += badgeMargin + badgeSize + badgeMargin;
+            }
+        } else {
+            curW += 8.0f;
         }
         if (hasBrand && brandStr != null && !brandStr.isEmpty()) {
             curW += Fonts.e.a(brandStr, 13.0f) + 8.0f;
@@ -536,7 +549,7 @@ public class Interface extends Module {
                     : Fonts.d.a(item.valText, valFontSize);
             curW += colW + 8.5f;
         }
-        return Math.max(curW + 4.0f, 60.0f);
+        return Math.max(curW, 60.0f);
     }
 
     private void drawDivider(Matrix3x2f mat, float cx, float baseY, float pillH, float alphaFactor) {
