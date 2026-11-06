@@ -230,8 +230,7 @@ public class PotionHUD extends Module {
         Draw2DProcessor.INSTANCE.drawOutline(null, px, py, cardW, cardH, radius, 0.8f, borderColor);
 
         if (iface != null && iface.isHudThemeGradient()) {
-            float str = iface.getHudGradientStrength() / 100.0f;
-            int gradC = ColorUtil.rgba(168, 85, 247, (int) (str * 45.0f * combatAlpha));
+            int gradC = iface.computeHudGradientColor(iface.getHudGradientStrength(), combatAlpha);
             Draw2DProcessor.INSTANCE.drawGradient(null, px, py, cardW, cardH, radius, gradC, 0x00000000, 0x00000000, gradC);
         }
 

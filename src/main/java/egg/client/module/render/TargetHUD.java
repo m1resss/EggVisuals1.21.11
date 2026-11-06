@@ -274,8 +274,9 @@ public class TargetHUD extends Module {
         Draw2DProcessor.INSTANCE.drawRect(mat, x, y, w, h, radius, bgColor);
 
         if (hudThemeGradient.isEnabled()) {
-            float str = hudGradientStrength.getValueFloat() / 100.0f;
-            int gradC = ColorUtil.rgba(168, 85, 247, (int) (str * 45.0f * alpha * op));
+            Interface iface = Interface.getInstance();
+            int gradC = iface != null ? iface.computeHudGradientColor(hudGradientStrength.getValueFloat(), alpha * op)
+                    : ColorUtil.rgba(168, 85, 247, (int) ((hudGradientStrength.getValueFloat() / 100.0f) * 45.0f * alpha * op));
             Draw2DProcessor.INSTANCE.drawGradient(mat, x, y, w, h, radius, gradC, 0x00000000, 0x00000000, gradC);
         }
         DrawBatcher.flushPending();

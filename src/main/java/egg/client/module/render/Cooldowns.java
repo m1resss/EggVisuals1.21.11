@@ -189,8 +189,8 @@ public class Cooldowns extends Module {
         Draw2DProcessor.INSTANCE.drawRect(null, px, py, pillW, pillH, pillRadius, ColorUtil.withAlphaFloat(bgColor.get(), combatAlpha));
 
         if (hudThemeGradient.isEnabled()) {
-            float str = hudGradientStrength.getValueFloat() / 100.0f;
-            int gradC = ColorUtil.rgba(168, 85, 247, (int) (str * 45.0f * combatAlpha));
+            int gradC = iface != null ? iface.computeHudGradientColor(hudGradientStrength.getValueFloat(), combatAlpha)
+                    : ColorUtil.rgba(168, 85, 247, (int) ((hudGradientStrength.getValueFloat() / 100.0f) * 45.0f * combatAlpha));
             Draw2DProcessor.INSTANCE.drawGradient(null, px, py, pillW, pillH, pillRadius, gradC, 0x00000000, 0x00000000, gradC);
         }
         DrawBatcher.flushPending();

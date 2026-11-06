@@ -100,6 +100,7 @@ public class Interface extends Module {
     private final SliderSetting opacity = new SliderSetting("Непрозрачность", 225.0, 20.0, 255.0, 5.0, "Прозрачность фона интерфейса");
     private final BooleanSetting hudThemeGradient = new BooleanSetting("Градиент HUD", false, "Мягкий градиент на фоне элементов");
     private final SliderSetting hudGradientStrength = new SliderSetting("Сила градиента", 60.0, 5.0, 100.0, 5.0, "Интенсивность градиента");
+    private final ColorSetting hudGradientColor = new ColorSetting("Цвет градиента HUD", 0xFFA855F7, "Цвет градиента фона элементов HUD");
     private final BooleanSetting halloween = new BooleanSetting("Хэллоуин", true, "Хеллоуинское оформление элементов интерфейса (мини-тыковка, шляпка и акценты)");
 
     private final SliderSetting posX = new SliderSetting("X", 0.015, 0.0, 1.0, 0.001, "Позиция X");
@@ -195,11 +196,15 @@ public class Interface extends Module {
         contextMenu.addToggle("Координаты", () -> showCoords.isEnabled(), () -> showCoords.toggle());
         contextMenu.addToggle("Скорость", () -> showSpeed.isEnabled(), () -> showSpeed.toggle());
         contextMenu.addToggle("Боковой режим", () -> sideMode.isEnabled(), () -> sideMode.toggle());
+        contextMenu.addToggle("Градиент HUD", () -> hudThemeGradient.isEnabled(), () -> hudThemeGradient.toggle());
+
+        hudGradientStrength.setVisible(() -> hudThemeGradient.isEnabled());
+        hudGradientColor.setVisible(() -> hudThemeGradient.isEnabled());
 
         addSettings(
                 showDynamicIsland, islandScale,
                 brand, showLogo, showNick, showServer, showFps, showTps, showPing, showTime, showCoords, showSpeed, sideMode,
-                watermarkBgColor, titleColor1, titleColor2, rounding, opacity, hudThemeGradient, hudGradientStrength,
+                watermarkBgColor, titleColor1, titleColor2, rounding, opacity, hudThemeGradient, hudGradientStrength, hudGradientColor,
                 halloween,
                 hudScale,
                 combatMode, combatAction, combatElements, combatScale, combatOpacity, combatTimeout
@@ -370,8 +375,7 @@ public class Interface extends Module {
         Draw2DProcessor.INSTANCE.drawOutline(mat, baseX, baseY, totalW, pillHeight, radius, 0.8f, borderColor);
 
         if (hudThemeGradient.isEnabled()) {
-            float str = hudGradientStrength.getValueFloat() / 100.0f;
-            int gradC = ColorUtil.rgba(168, 85, 247, (int) (str * 45.0f * alphaFactor));
+            int gradC = computeHudGradientColor(hudGradientStrength.getValueFloat(), alphaFactor);
             Draw2DProcessor.INSTANCE.drawGradient(mat, baseX, baseY, totalW, pillHeight, radius, gradC, 0x00000000, 0x00000000, gradC);
         }
 
@@ -1355,6 +1359,19 @@ public class Interface extends Module {
 
     public float getHudGradientStrength() {
         return hudGradientStrength.getValueFloat();
+    }
+
+    public int getHudGradientColor() {
+        return hudGradientColor.get();
+    }
+
+    public int computeHudGradientColor(float strengthPercent, float alphaMultiplier) {
+        float str = strengthPercent / 100.0f;
+        int col = hudGradientColor.get();
+        float pickerAlpha = ((col >> 24) & 0xFF) / 255.0f;
+        if (pickerAlpha <= 0.0f) pickerAlpha = 1.0f;
+        int a = (int) (str * 45.0f * pickerAlpha * alphaMultiplier);
+        return ColorUtil.withAlpha(col, a);
     }
 
     public float getOpacityVal() {
