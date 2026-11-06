@@ -5,7 +5,6 @@ import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ColorSetting;
-import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.render.shader.MeshDrawUtil;
 import egg.client.render.shader.ParticleBlurRenderer;
@@ -34,14 +33,13 @@ public class JumpCircles extends Module {
     private static final Identifier BLOOM_TEXTURE = Identifier.of("delta", "pictures/bloom.png");
     private static final Identifier WHITE_TEXTURE = Identifier.of("delta", "textures/white.png");
 
-    private final ModeSetting mode = new ModeSetting("Стиль волн", "Морская волна", "Стиль и цветовая палитра водных волн", "Морская волна", "Лазурный берег", "Глубокий океан", "Кастом");
-    private final ColorSetting customColor = new ColorSetting("Кастомный цвет", 0xFF00A6FB, "Цвет волн при кастомном стиле");
-    private final SliderSetting maxRadius = new SliderSetting("Радиус", 2.8, 1.0, 6.0, 0.1, "Конечный радиус расхождения волны");
-    private final SliderSetting expandSpeed = new SliderSetting("Скорость", 1.1, 0.4, 3.0, 0.1, "Скорость распространения волн по земле");
-    private final SliderSetting waveRings = new SliderSetting("Кол-во гребней", 3.0, 1.0, 4.0, 1.0, "Количество концентрических гребней волны");
-    private final SliderSetting thickness = new SliderSetting("Толщина волны", 0.35, 0.1, 0.8, 0.02, "Ширина гребня волны");
-    private final BooleanSetting textureOverlay = new BooleanSetting("Текстура ряби", true, "Отображать реалистичную водную рябь на поверхности");
-    private final BooleanSetting glow = new BooleanSetting("Свечение воды", true, "Мягкое рассеянное свечение и блики на воде");
+    private final ColorSetting color = new ColorSetting("Цвет", 0xFF0096C7, "Цвет расходящихся волн");
+    private final SliderSetting maxRadius = new SliderSetting("Радиус", 2.8, 1.0, 6.0, 0.1, "Размер расхождения волн");
+    private final SliderSetting expandSpeed = new SliderSetting("Скорость", 1.1, 0.4, 3.0, 0.1, "Скорость распространения волн");
+    private final SliderSetting waveRings = new SliderSetting("Количество волн", 3.0, 1.0, 4.0, 1.0, "Количество расходящихся кругов волны");
+    private final SliderSetting thickness = new SliderSetting("Толщина", 0.35, 0.1, 0.8, 0.02, "Толщина линий кругов");
+    private final BooleanSetting textureOverlay = new BooleanSetting("Водная рябь", true, "Реалистичная рябь на поверхности воды");
+    private final BooleanSetting glow = new BooleanSetting("Свечение", true, "Мягкое неоновое свечение вокруг кругов");
 
     private final List<WaveCircle> waves = new ArrayList<>();
     private boolean wasOnGround = true;
@@ -81,12 +79,10 @@ public class JumpCircles extends Module {
     }
 
     public JumpCircles() {
-        super("Jump Circles", "Создает реалистичные расходящиеся водные волны при прыжке", Category.ESP);
+        super("Jump Circles", "Создает реалистичные расходящиеся круги на земле при прыжке", Category.ESP);
         instance = this;
 
-        customColor.setVisible(() -> "Кастом".equals(mode.get()));
-
-        addSettings(mode, customColor, maxRadius, expandSpeed, waveRings, thickness, textureOverlay, glow);
+        addSettings(this.color, this.maxRadius, this.expandSpeed, this.waveRings, this.thickness, this.textureOverlay, this.glow);
     }
 
     public static JumpCircles getInstance() {
@@ -141,18 +137,10 @@ public class JumpCircles extends Module {
     }
 
     private WavePalette resolvePalette() {
-        String st = mode.get();
-        if ("Лазурный берег".equals(st)) {
-            return new WavePalette(0xFF0096C7, 0xFF48CAE4, 0xFFE0F7FA);
-        } else if ("Глубокий океан".equals(st)) {
-            return new WavePalette(0xFF023E8A, 0xFF0077B6, 0xFF90E0EF);
-        } else if ("Кастом".equals(st)) {
-            int base = customColor.get();
-            int foam = ColorUtil.lerp(base, 0xFFFFFFFF, 0.45f);
-            int crest = ColorUtil.lerp(base, 0xFFFFFFFF, 0.80f);
-            return new WavePalette(base, foam, crest);
-        }
-        return new WavePalette(0xFF0077B6, 0xFF00B4D8, 0xFFCAF0F8);
+        int base = this.color.get();
+        int foam = ColorUtil.lerp(base, 0xFFFFFFFF, 0.45f);
+        int crest = ColorUtil.lerp(base, 0xFFFFFFFF, 0.80f);
+        return new WavePalette(base, foam, crest);
     }
 
     public void renderWorld3D(MatrixStack matrices, Camera camera, float tickDelta, VertexConsumerProvider immediate, Vec3d camPos) {
