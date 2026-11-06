@@ -92,6 +92,8 @@ public class WorldTweaks extends Module {
     private final BooleanSetting customFogDistance = new BooleanSetting("Дальность тумана", false, "Ручная настройка дистанции и плотности тумана");
     private final SliderSetting fogDistanceMultiplier = new SliderSetting("Множитель дальности", 1.0, 0.1, 5.0, 0.05, "Множитель дистанции тумана (1.0 = ванилла, больше = дальше туман)");
     private final SliderSetting fogStartRatio = new SliderSetting("Начало тумана", 0.75, 0.0, 1.0, 0.05, "Точка старта тумана (0.0 = прямо перед игроком, 1.0 = у края горизонта)");
+    private final BooleanSetting fogTransparency = new BooleanSetting("Прозрачность тумана", false, "Включает прозрачность тумана горизонта");
+    private final SliderSetting fogOpacity = new SliderSetting("Непрозрачность тумана", 0.5, 0.0, 1.0, 0.05, "Степень видимости тумана (0 = полностью прозрачный, 1 = стандартный плотный)");
 
     private final BooleanSetting reflections = new BooleanSetting("Отражения", false, "SSR отражения в реальном времени на воде и блоках");
     private final SliderSetting timeHour = new SliderSetting("Время (ч)", 12.0, 0.0, 24.0, 0.1, "Время суток в часах");
@@ -151,6 +153,7 @@ public class WorldTweaks extends Module {
         super("World Tweaks", "Изменяет визуальный стиль погоды, листвы и снежного покрова", Category.MISC);
         this.fogDistanceMultiplier.setVisible(() -> this.customFogDistance.isEnabled());
         this.fogStartRatio.setVisible(() -> this.customFogDistance.isEnabled());
+        this.fogOpacity.setVisible(() -> this.fogTransparency.isEnabled());
         addSettings(
                 this.timeMode, this.timeOfDay, this.timeHour,
                 this.season, this.weather,
@@ -161,6 +164,7 @@ public class WorldTweaks extends Module {
                 this.colorGrade, this.colorGradeSaturation, this.colorGradeContrast, this.colorGradeBrightness, this.colorGradeTemperature,
                 this.customFog, this.fogColorMode, this.fogCustomColor,
                 this.customFogDistance, this.fogDistanceMultiplier, this.fogStartRatio,
+                this.fogTransparency, this.fogOpacity,
                 this.customSound, this.soundVolume,
                 this.customClouds, this.cloudMode, this.cloudCoverage, this.cloudDistance, this.cloudHeight, this.cloudSpeed, this.cloudColor,
                 this.customThunder, this.lightningFrequency
@@ -226,6 +230,14 @@ public class WorldTweaks extends Module {
 
     public boolean isCustomFogDistanceEnabled() {
         return isEnabled() && this.customFogDistance.get();
+    }
+
+    public boolean isFogTransparencyEnabled() {
+        return isEnabled() && this.fogTransparency.get();
+    }
+
+    public float getFogAlpha() {
+        return (float) this.fogOpacity.get();
     }
 
     public void applyFogDistance(net.minecraft.client.render.fog.FogData fogData, float baseViewBlocks) {
@@ -485,32 +497,35 @@ public class WorldTweaks extends Module {
     }
 
     public Vector4f getCustomFogColor(Vector4f vanilla) {
-        if (!isCustomFogColorEnabled()) return vanilla;
+        float alpha = isFogTransparencyEnabled() ? getFogAlpha() : 1.0f;
+        if (!isCustomFogColorEnabled()) {
+            return isFogTransparencyEnabled() ? new Vector4f(vanilla.x, vanilla.y, vanilla.z, alpha) : vanilla;
+        }
 
         String mode = this.fogColorMode.get();
         if ("Кастом".equals(mode)) {
             int c = this.fogCustomColor.get();
-            return new Vector4f(ColorUtil.red(c) / 255.0f, ColorUtil.green(c) / 255.0f, ColorUtil.blue(c) / 255.0f, 1.0f);
+            return new Vector4f(ColorUtil.red(c) / 255.0f, ColorUtil.green(c) / 255.0f, ColorUtil.blue(c) / 255.0f, alpha);
         }
 
         if ("Гроза".equals(this.weather.get())) {
-            return new Vector4f(0.28f, 0.34f, 0.45f, 1.0f);
+            return new Vector4f(0.28f, 0.34f, 0.45f, alpha);
         }
         if ("Дождь".equals(this.weather.get())) {
-            return new Vector4f(0.48f, 0.55f, 0.65f, 1.0f);
+            return new Vector4f(0.48f, 0.55f, 0.65f, alpha);
         }
 
         String s = this.season.get();
         if ("Зима".equals(s)) {
-            return new Vector4f(0.84f, 0.90f, 0.97f, 1.0f);
+            return new Vector4f(0.84f, 0.90f, 0.97f, alpha);
         } else if ("Весна".equals(s)) {
-            return new Vector4f(0.96f, 0.86f, 0.90f, 1.0f);
+            return new Vector4f(0.96f, 0.86f, 0.90f, alpha);
         } else if ("Лето".equals(s)) {
-            return new Vector4f(0.96f, 0.93f, 0.80f, 1.0f);
+            return new Vector4f(0.96f, 0.93f, 0.80f, alpha);
         } else if ("Осень".equals(s)) {
-            return new Vector4f(0.92f, 0.78f, 0.62f, 1.0f);
+            return new Vector4f(0.92f, 0.78f, 0.62f, alpha);
         }
-        return vanilla;
+        return new Vector4f(vanilla.x, vanilla.y, vanilla.z, alpha);
     }
 
     public boolean renderWeatherPass(VertexConsumerProvider consumers, Vec3d camPos) {

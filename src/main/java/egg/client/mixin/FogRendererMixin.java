@@ -20,7 +20,7 @@ public class FogRendererMixin {
     @Inject(method = "getFogColor", at = @At("RETURN"), cancellable = true)
     private void onGetFogColor(Camera camera, float tickProgress, ClientWorld world, int viewDistance, float skyDarkness, CallbackInfoReturnable<Vector4f> cir) {
         WorldTweaks wt = WorldTweaks.getInstance();
-        if (wt != null && wt.isEnabled() && wt.isCustomFogColorEnabled()) {
+        if (wt != null && wt.isEnabled() && (wt.isCustomFogColorEnabled() || wt.isFogTransparencyEnabled())) {
             if (camera != null && camera.getSubmersionType() == CameraSubmersionType.NONE) {
                 Vector4f custom = wt.getCustomFogColor(cir.getReturnValue());
                 if (custom != null) {

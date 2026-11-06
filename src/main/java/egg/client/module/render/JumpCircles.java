@@ -10,7 +10,6 @@ import egg.client.module.setting.SliderSetting;
 import egg.client.render.shader.MeshDrawUtil;
 import egg.client.render.shader.ParticleBlurRenderer;
 import egg.client.render.shader.Pipelines;
-import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.BufferBuilder;
@@ -25,47 +24,54 @@ import net.minecraft.util.Identifier;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 
-import java.awt.Color;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class JumpCircles extends Module {
     private static JumpCircles instance;
 
     private static final Identifier RIPPLE_TEXTURE = Identifier.of("egg", "textures/world/puddle_ripple.png");
     private static final Identifier BLOOM_TEXTURE = Identifier.of("delta", "pictures/bloom.png");
+    private static final Identifier WHITE_TEXTURE = Identifier.of("delta", "textures/white.png");
 
-    private final ModeSetting mode = new ModeSetting("Стиль", "Комбо", "Стиль отображения кругов", "Комбо", "Кольцо", "Волна");
-    private final ModeSetting colorMode = new ModeSetting("Цвет", "Градиент HUD", "Источник цвета", "Градиент HUD", "Тема", "Кастом", "Радуга");
-    private final ColorSetting customColor = new ColorSetting("Кастомный цвет", 0xFFA855F7, "Цвет кругов при кастомном режиме");
-    private final SliderSetting maxRadius = new SliderSetting("Радиус", 2.2, 0.8, 5.0, 0.1, "Конечный радиус круга в блоках");
-    private final SliderSetting expandSpeed = new SliderSetting("Скорость", 1.2, 0.4, 3.0, 0.1, "Скорость расширения круга");
-    private final SliderSetting thickness = new SliderSetting("Толщина", 0.35, 0.1, 1.0, 0.05, "Толщина кольца");
-    private final BooleanSetting glow = new BooleanSetting("Свечение", true, "Мягкое неоновое свечение вокруг круга");
-    private final ModeSetting triggerMode = new ModeSetting("Событие", "Прыжок и приземление", "Когда создавать круги", "Прыжок и приземление", "Только прыжок", "Только приземление");
-    private final ModeSetting targetMode = new ModeSetting("Игроки", "Только я", "Для кого создавать круги", "Только я", "Все игроки");
+    private final ModeSetting mode = new ModeSetting("Стиль волн", "Морская волна", "Стиль и цветовая палитра водных волн", "Морская волна", "Лазурный берег", "Глубокий океан", "Кастом");
+    private final ColorSetting customColor = new ColorSetting("Кастомный цвет", 0xFF00A6FB, "Цвет волн при кастомном стиле");
+    private final SliderSetting maxRadius = new SliderSetting("Радиус", 2.8, 1.0, 6.0, 0.1, "Конечный радиус расхождения волны");
+    private final SliderSetting expandSpeed = new SliderSetting("Скорость", 1.1, 0.4, 3.0, 0.1, "Скорость распространения волн по земле");
+    private final SliderSetting waveRings = new SliderSetting("Кол-во гребней", 3.0, 1.0, 4.0, 1.0, "Количество концентрических гребней волны");
+    private final SliderSetting thickness = new SliderSetting("Толщина волны", 0.35, 0.1, 0.8, 0.02, "Ширина гребня волны");
+    private final BooleanSetting textureOverlay = new BooleanSetting("Текстура ряби", true, "Отображать реалистичную водную рябь на поверхности");
+    private final BooleanSetting glow = new BooleanSetting("Свечение воды", true, "Мягкое рассеянное свечение и блики на воде");
 
-    private final List<Circle> circles = new ArrayList<>();
-    private final Map<UUID, PlayerTrackState> trackStates = new HashMap<>();
+    private final List<WaveCircle> waves = new ArrayList<>();
+    private boolean wasOnGround = true;
+    private double lastGroundY = 0.0;
     private long lastFrameNanos = 0L;
 
-    private static class PlayerTrackState {
-        boolean wasOnGround = true;
-        double lastY = 0.0;
-        double fallDist = 0.0;
+    private static class WavePalette {
+        final int water;
+        final int foam;
+        final int crest;
+
+        WavePalette(int water, int foam, int crest) {
+            this.water = water;
+            this.foam = foam;
+            this.crest = crest;
+        }
     }
 
-    private static class Circle {
+    private static class WaveCircle {
         final double x, y, z;
         float age = 0.0f;
         final float maxLife;
-        final int color;
+        final WavePalette palette;
 
-        Circle(double x, double y, double z, float maxLife, int color) {
+        WaveCircle(double x, double y, double z, float maxLife, WavePalette palette) {
             this.x = x;
             this.y = y;
             this.z = z;
             this.maxLife = maxLife;
-            this.color = color;
+            this.palette = palette;
         }
 
         boolean update(float dt) {
@@ -75,12 +81,12 @@ public class JumpCircles extends Module {
     }
 
     public JumpCircles() {
-        super("Jump Circles", "Создает расходящиеся неоновые круги на земле при прыжке и приземлении", Category.ESP);
+        super("Jump Circles", "Создает реалистичные расходящиеся водные волны при прыжке", Category.ESP);
         instance = this;
 
-        customColor.setVisible(() -> "Кастом".equals(colorMode.get()));
+        customColor.setVisible(() -> "Кастом".equals(mode.get()));
 
-        addSettings(mode, colorMode, customColor, maxRadius, expandSpeed, thickness, glow, triggerMode, targetMode);
+        addSettings(mode, customColor, maxRadius, expandSpeed, waveRings, thickness, textureOverlay, glow);
     }
 
     public static JumpCircles getInstance() {
@@ -90,92 +96,63 @@ public class JumpCircles extends Module {
     @Override
     public void onDisable() {
         super.onDisable();
-        this.circles.clear();
-        this.trackStates.clear();
+        this.waves.clear();
+        this.wasOnGround = true;
+        this.lastGroundY = 0.0;
         this.lastFrameNanos = 0L;
     }
 
     @Override
     public void onTick(MinecraftClient client) {
-        if (!isEnabled() || client.world == null) {
-            this.circles.clear();
-            this.trackStates.clear();
+        if (!isEnabled() || client.world == null || client.player == null) {
+            this.waves.clear();
+            this.wasOnGround = true;
+            this.lastGroundY = 0.0;
             return;
         }
 
-        List<PlayerEntity> players = new ArrayList<>();
-        if ("Только я".equals(targetMode.get())) {
-            if (client.player != null) players.add(client.player);
-        } else {
-            players.addAll(client.world.getPlayers());
+        PlayerEntity player = client.player;
+        if (player.isSpectator() || player.getAbilities().flying || player.isTouchingWater() || player.isClimbing()) {
+            this.wasOnGround = player.isOnGround();
+            this.lastGroundY = player.getY();
+            return;
         }
 
-        Set<UUID> currentUuids = new HashSet<>();
-        for (PlayerEntity p : players) {
-            currentUuids.add(p.getUuid());
-            PlayerTrackState state = trackStates.computeIfAbsent(p.getUuid(), k -> {
-                PlayerTrackState s = new PlayerTrackState();
-                s.wasOnGround = p.isOnGround();
-                s.lastY = p.getY();
-                s.fallDist = p.fallDistance;
-                return s;
-            });
+        boolean onGround = player.isOnGround();
+        double curY = player.getY();
+        Vec3d vel = player.getVelocity();
 
-            if (p.isSpectator() || p.getAbilities().flying) {
-                state.wasOnGround = p.isOnGround();
-                state.lastY = p.getY();
-                state.fallDist = 0.0;
-                continue;
-            }
+        boolean jumped = this.wasOnGround && !onGround && vel.y > 0.05;
 
-            boolean onGround = p.isOnGround();
-            double curY = p.getY();
-            Vec3d vel = p.getVelocity();
-
-            boolean jumped = state.wasOnGround && !onGround && vel.y > 0.05;
-            boolean landed = !state.wasOnGround && onGround && (state.fallDist > 0.35f || (state.lastY - curY) > 0.35);
-
-            String trg = triggerMode.get();
-            boolean allowJump = "Прыжок и приземление".equals(trg) || "Только прыжок".equals(trg);
-            boolean allowLand = "Прыжок и приземление".equals(trg) || "Только приземление".equals(trg);
-
-            if (jumped && allowJump) {
-                spawnCircle(p.getX(), curY, p.getZ());
-            } else if (landed && allowLand) {
-                spawnCircle(p.getX(), curY, p.getZ());
-            }
-
-            state.wasOnGround = onGround;
-            state.lastY = curY;
-            state.fallDist = p.fallDistance;
+        if (jumped) {
+            spawnWave(player.getX(), this.lastGroundY, player.getZ());
         }
 
-        trackStates.keySet().removeIf(uuid -> !currentUuids.contains(uuid));
+        if (onGround) {
+            this.lastGroundY = curY;
+        }
+        this.wasOnGround = onGround;
     }
 
-    private void spawnCircle(double x, double y, double z) {
-        float life = Math.max(0.3f, 1.0f / expandSpeed.getValueFloat());
-        int col = resolveColor();
-        circles.add(new Circle(x, y, z, life, col));
+    private void spawnWave(double x, double y, double z) {
+        float life = Math.max(0.4f, 1.3f / expandSpeed.getValueFloat());
+        WavePalette pal = resolvePalette();
+        waves.add(new WaveCircle(x, y, z, life, pal));
     }
 
-    private int resolveColor() {
-        String cm = colorMode.get();
-        if ("Градиент HUD".equals(cm)) {
-            Interface iface = Interface.getInstance();
-            if (iface != null) {
-                return iface.getHudGradientColor();
-            }
-            return 0xFFA855F7;
-        } else if ("Тема".equals(cm)) {
-            return Theme.getAccent();
-        } else if ("Кастом".equals(cm)) {
-            return customColor.get();
-        } else if ("Радуга".equals(cm)) {
-            float hue = (float) ((System.currentTimeMillis() % 4000L) / 4000.0);
-            return Color.HSBtoRGB(hue, 0.85f, 1.0f);
+    private WavePalette resolvePalette() {
+        String st = mode.get();
+        if ("Лазурный берег".equals(st)) {
+            return new WavePalette(0xFF0096C7, 0xFF48CAE4, 0xFFE0F7FA);
+        } else if ("Глубокий океан".equals(st)) {
+            return new WavePalette(0xFF023E8A, 0xFF0077B6, 0xFF90E0EF);
+        } else if ("Кастом".equals(st)) {
+            int base = customColor.get();
+            int foam = ColorUtil.lerp(base, 0xFFFFFFFF, 0.45f);
+            int crest = ColorUtil.lerp(base, 0xFFFFFFFF, 0.80f);
+            return new WavePalette(base, foam, crest);
         }
-        return 0xFFA855F7;
+        return new WavePalette(0xFF0077B6, 0xFF00B4D8, 0xFFCAF0F8);
     }
 
     public void renderWorld3D(MatrixStack matrices, Camera camera, float tickDelta, VertexConsumerProvider immediate, Vec3d camPos) {
@@ -187,78 +164,106 @@ public class JumpCircles extends Module {
         lastFrameNanos = now;
         final float dt = (rawDt <= 0.0f || rawDt > 0.1f) ? 0.016f : rawDt;
 
-        circles.removeIf(c -> !c.update(dt));
-        if (circles.isEmpty()) return;
-
-        String st = mode.get();
-        boolean doRipple = "Комбо".equals(st) || "Волна".equals(st);
-        boolean doRing = "Комбо".equals(st) || "Кольцо".equals(st);
-        boolean doGlow = glow.isEnabled();
+        waves.removeIf(w -> !w.update(dt));
+        if (waves.isEmpty()) return;
 
         float maxR = maxRadius.getValueFloat();
-        float thick = thickness.getValueFloat();
+        float baseThick = thickness.getValueFloat();
+        int ringsCount = Math.max(1, Math.min(4, Math.round(waveRings.getValueFloat())));
 
-        if (doRipple) {
+        if (textureOverlay.isEnabled()) {
             try (BufferAllocator alloc = new BufferAllocator(32768)) {
                 BufferBuilder buf = new BufferBuilder(alloc, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
-                for (Circle c : circles) {
-                    float progress = c.age / c.maxLife;
-                    float eased = 1.0f - (float) Math.pow(1.0f - progress, 3.0);
-                    float r = Math.max(0.1f, eased * maxR);
+                for (WaveCircle w : waves) {
+                    float progress = w.age / w.maxLife;
+                    float eased = 1.0f - (float) Math.pow(1.0f - progress, 2.2);
+                    float r = Math.max(0.2f, eased * maxR * 1.15f);
                     float alpha = 1.0f - progress;
                     if (progress < 0.08f) alpha *= (progress / 0.08f);
 
-                    int col = ColorUtil.withAlphaFloat(c.color, alpha * 0.70f);
-                    emitGroundQuad(buf, (float) (c.x - camPos.x), (float) (c.y - camPos.y + 0.018), (float) (c.z - camPos.z), r, col);
+                    int col = ColorUtil.withAlphaFloat(w.palette.water, alpha * 0.70f);
+                    emitGroundQuad(buf, (float) (w.x - camPos.x), (float) (w.y - camPos.y + 0.012), (float) (w.z - camPos.z), r, col);
                 }
                 BuiltBuffer built = buf.endNullable();
                 if (built != null) {
-                    MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_BLOOM_DEPTH, built, "jump circles ripple", RIPPLE_TEXTURE);
+                    MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_TEXTURE_DEPTH, built, "jump wave ripple sheet", RIPPLE_TEXTURE);
                 }
             }
         }
 
-        if (doGlow) {
+        if (glow.isEnabled()) {
             try (BufferAllocator alloc = new BufferAllocator(32768)) {
                 BufferBuilder buf = new BufferBuilder(alloc, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
-                float avgAlpha = 0.0f;
-                for (Circle c : circles) {
-                    float progress = c.age / c.maxLife;
-                    float eased = 1.0f - (float) Math.pow(1.0f - progress, 3.0);
-                    float r = Math.max(0.1f, eased * maxR * 1.25f);
-                    float alpha = (1.0f - progress) * 0.40f;
+                float maxAlpha = 0.0f;
+                for (WaveCircle w : waves) {
+                    float progress = w.age / w.maxLife;
+                    float eased = 1.0f - (float) Math.pow(1.0f - progress, 2.5);
+                    float r = Math.max(0.2f, eased * maxR * 1.25f);
+                    float alpha = (1.0f - progress) * 0.35f;
                     if (progress < 0.08f) alpha *= (progress / 0.08f);
-                    avgAlpha = Math.max(avgAlpha, alpha);
+                    maxAlpha = Math.max(maxAlpha, alpha);
 
-                    int col = ColorUtil.withAlphaFloat(c.color, alpha);
-                    emitGroundQuad(buf, (float) (c.x - camPos.x), (float) (c.y - camPos.y + 0.015), (float) (c.z - camPos.z), r, col);
+                    int col = ColorUtil.withAlphaFloat(w.palette.foam, alpha);
+                    emitGroundQuad(buf, (float) (w.x - camPos.x), (float) (w.y - camPos.y + 0.010), (float) (w.z - camPos.z), r, col);
                 }
                 BuiltBuffer built = buf.endNullable();
                 if (built != null) {
-                    float finalAlpha = avgAlpha;
-                    ParticleBlurRenderer.INSTANCE.render(3.2f, finalAlpha, () ->
-                            MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_BLOOM_DEPTH, built, "jump circles glow", BLOOM_TEXTURE));
+                    float finalAlpha = maxAlpha;
+                    ParticleBlurRenderer.INSTANCE.render(3.5f, finalAlpha, () ->
+                            MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_BLOOM_DEPTH, built, "jump wave glow", BLOOM_TEXTURE));
                 }
             }
         }
 
-        if (doRing) {
-            try (BufferAllocator alloc = new BufferAllocator(65536)) {
-                BufferBuilder buf = new BufferBuilder(alloc, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
-                for (Circle c : circles) {
-                    float progress = c.age / c.maxLife;
-                    float eased = 1.0f - (float) Math.pow(1.0f - progress, 3.0);
-                    float r = Math.max(0.1f, eased * maxR);
-                    float alpha = 1.0f - progress;
-                    if (progress < 0.08f) alpha *= (progress / 0.08f);
+        try (
+                BufferAllocator allocBody = new BufferAllocator(131072);
+                BufferAllocator allocSparkle = new BufferAllocator(65536)
+        ) {
+            BufferBuilder bufBody = new BufferBuilder(allocBody, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+            BufferBuilder bufSparkle = new BufferBuilder(allocSparkle, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
 
-                    int col = ColorUtil.withAlphaFloat(c.color, alpha * 0.95f);
-                    emitGroundRing(buf, (float) (c.x - camPos.x), (float) (c.y - camPos.y + 0.022), (float) (c.z - camPos.z), r, thick, col);
+            for (WaveCircle w : waves) {
+                float baseProg = w.age / w.maxLife;
+
+                for (int i = 0; i < ringsCount; i++) {
+                    float delay = i * 0.18f;
+                    if (baseProg < delay) continue;
+                    float ringProg = (baseProg - delay) / (1.0f - delay);
+                    if (ringProg >= 1.0f) continue;
+
+                    float eased = 1.0f - (float) Math.pow(1.0f - ringProg, 2.6);
+                    float r = Math.max(0.12f, eased * maxR);
+                    float ringAlpha = (1.0f - ringProg) * (1.0f - i * 0.22f);
+                    if (ringProg < 0.08f) ringAlpha *= (ringProg / 0.08f);
+
+                    float t = baseThick * (0.8f + 0.45f * eased);
+                    float rInner = Math.max(0.02f, r - t);
+                    float rCrest = r - t * 0.28f;
+                    float rOuter = r;
+
+                    float rx = (float) (w.x - camPos.x);
+                    float ry = (float) (w.y - camPos.y + 0.016 + i * 0.002);
+                    float rz = (float) (w.z - camPos.z);
+
+                    int colWater = ColorUtil.withAlphaFloat(w.palette.water, ringAlpha * 0.50f);
+                    int colFoam = ColorUtil.withAlphaFloat(w.palette.foam, ringAlpha * 0.88f);
+                    int colCrest = ColorUtil.withAlphaFloat(w.palette.crest, ringAlpha * 0.95f);
+
+                    emitWaveBand(bufBody, rx, ry, rz, rInner, rCrest, rOuter, colWater, colFoam, colCrest);
+
+                    int sparkleCol = ColorUtil.withAlphaFloat(w.palette.crest, ringAlpha * 0.40f);
+                    emitGroundRing(bufSparkle, rx, ry + 0.001f, rz, rOuter, t * 0.35f, sparkleCol);
                 }
-                BuiltBuffer built = buf.endNullable();
-                if (built != null) {
-                    MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_BLOOM_DEPTH, built, "jump circles ring", BLOOM_TEXTURE);
-                }
+            }
+
+            BuiltBuffer builtBody = bufBody.endNullable();
+            if (builtBody != null) {
+                MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_TEXTURE_DEPTH, builtBody, "jump wave body", WHITE_TEXTURE);
+            }
+
+            BuiltBuffer builtSparkle = bufSparkle.endNullable();
+            if (builtSparkle != null) {
+                MeshDrawUtil.drawLabeledTextured(Pipelines.AURA_BLOOM_DEPTH, builtSparkle, "jump wave crest sparkle", BLOOM_TEXTURE);
             }
         }
     }
@@ -273,7 +278,7 @@ public class JumpCircles extends Module {
 
     private static void emitGroundRing(BufferBuilder b, float rx, float ry, float rz, float r, float t, int color) {
         if ((color & 0xFF000000) == 0 || r <= 0.001f) return;
-        int segments = 40;
+        int segments = 48;
         float rInner = Math.max(0.02f, r - t);
         float rOuter = r;
 
@@ -290,6 +295,31 @@ public class JumpCircles extends Module {
             b.vertex(rx + c0 * rOuter, ry, rz + s0 * rOuter).texture(0.5f, 1.0f).color(color);
             b.vertex(rx + c1 * rOuter, ry, rz + s1 * rOuter).texture(1.0f, 1.0f).color(color);
             b.vertex(rx + c1 * rInner, ry, rz + s1 * rInner).texture(1.0f, 0.5f).color(color);
+        }
+    }
+
+    private static void emitWaveBand(BufferBuilder b, float rx, float ry, float rz, float rInner, float rCrest, float rOuter, int cWater, int cFoam, int cCrest) {
+        if (rOuter <= 0.001f) return;
+        int segments = 48;
+
+        for (int i = 0; i < segments; i++) {
+            float a0 = (float) (i * 2.0 * Math.PI / segments);
+            float a1 = (float) ((i + 1) * 2.0 * Math.PI / segments);
+
+            float c0 = MathHelper.cos(a0);
+            float s0 = MathHelper.sin(a0);
+            float c1 = MathHelper.cos(a1);
+            float s1 = MathHelper.sin(a1);
+
+            b.vertex(rx + c0 * rInner, ry, rz + s0 * rInner).texture(0.0f, 0.0f).color(cWater);
+            b.vertex(rx + c0 * rCrest, ry, rz + s0 * rCrest).texture(0.5f, 0.0f).color(cFoam);
+            b.vertex(rx + c1 * rCrest, ry, rz + s1 * rCrest).texture(0.5f, 1.0f).color(cFoam);
+            b.vertex(rx + c1 * rInner, ry, rz + s1 * rInner).texture(0.0f, 1.0f).color(cWater);
+
+            b.vertex(rx + c0 * rCrest, ry, rz + s0 * rCrest).texture(0.5f, 0.0f).color(cFoam);
+            b.vertex(rx + c0 * rOuter, ry, rz + s0 * rOuter).texture(1.0f, 0.0f).color(cCrest);
+            b.vertex(rx + c1 * rOuter, ry, rz + s1 * rOuter).texture(1.0f, 1.0f).color(cCrest);
+            b.vertex(rx + c1 * rCrest, ry, rz + s1 * rCrest).texture(0.5f, 1.0f).color(cFoam);
         }
     }
 }
