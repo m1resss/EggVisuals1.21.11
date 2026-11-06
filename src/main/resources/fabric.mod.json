@@ -17,7 +17,8 @@
     ]
   },
   "mixins": [
-    "egg.mixins.json"
+    "egg.mixins.json",
+    "holdmyitems.mixins.json"
   ],
   "accessWidener": "egg.accesswidener",
   "depends": {

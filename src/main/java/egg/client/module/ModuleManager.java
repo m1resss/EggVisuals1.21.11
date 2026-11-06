@@ -72,6 +72,7 @@ public class ModuleManager {
         register(new NameTags());
 
         register(new ViewModel());
+        register(new HMI());
 
         register(new AspectRatio());
 

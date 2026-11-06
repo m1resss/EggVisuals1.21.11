@@ -47,6 +47,8 @@ dependencies {
     modImplementation "net.lenni0451:reflect:1.6.2"
     include "net.lenni0451:reflect:1.6.2"
 
+    shade 'org.luaj:luaj-jse:3.0.1'
+
     implementation 'com.google.code.findbugs:jsr305:3.0.2'
     implementation 'com.google.code.gson:gson:2.11.0'
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'

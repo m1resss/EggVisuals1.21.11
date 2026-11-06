@@ -36,6 +36,7 @@ public class EggClient implements ClientModInitializer {
         LOGGER.info("[Egg Visual] Initializing client...");
 
         ModuleManager.getInstance();
+        com.holdmylua.source.LuaTestHMI.init();
         egg.client.config.ConfigManager.load();
         egg.client.liteapi.LiteApiFeatureControl.getInstance().init();
 
