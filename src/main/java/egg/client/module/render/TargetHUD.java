@@ -61,6 +61,7 @@ public class TargetHUD extends Module {
     private final BooleanSetting showFps = new BooleanSetting("Показывать FPS", true, "Отображать метку FPS на карточке");
     private final BooleanSetting showDistance = new BooleanSetting("Дистанция", true, "Отображать дистанцию до цели");
     private final BooleanSetting eatIndicator = new BooleanSetting("Индикатор еды", true, "Отображать процесс еды и зелий поверх головы");
+    private final BooleanSetting showDurabilityPercent = new BooleanSetting("Прочность в %", false, "Показывать процент прочности текстом поверх брони");
     private final SliderSetting posX = new SliderSetting("X", 0.52, 0.0, 1.0, 0.001, "Позиция X");
     private final SliderSetting posY = new SliderSetting("Y", 0.68, 0.0, 1.0, 0.001, "Позиция Y");
 
@@ -119,8 +120,9 @@ public class TargetHUD extends Module {
         contextMenu.addToggle("Дистанция", () -> showDistance.isEnabled(), () -> showDistance.toggle());
         contextMenu.addToggle("Показывать FPS", () -> showFps.isEnabled(), () -> showFps.toggle());
         contextMenu.addToggle("Индикатор еды", () -> eatIndicator.isEnabled(), () -> eatIndicator.toggle());
+        contextMenu.addToggle("Прочность в %", () -> showDurabilityPercent.isEnabled(), () -> showDurabilityPercent.toggle());
 
-        addSettings(mode, hudScale, opacity, targetTimeout, onlyPlayers, hitParticles, hudThemeGradient, hudGradientStrength, showFps, showDistance, eatIndicator, posX, posY);
+        addSettings(mode, hudScale, opacity, targetTimeout, onlyPlayers, hitParticles, hudThemeGradient, hudGradientStrength, showFps, showDistance, eatIndicator, showDurabilityPercent, posX, posY);
     }
 
     public static TargetHUD getInstance() {
@@ -519,7 +521,7 @@ public class TargetHUD extends Module {
                 int curDurability = Math.max(0, maxDmg - curDmg);
                 float durRatio = Math.clamp((float) curDurability / (float) maxDmg, 0.0f, 1.0f);
 
-                if (durRatio < 1.0f) {
+                if (showDurabilityPercent.isEnabled() && durRatio < 1.0f) {
                     int pct = (int) Math.round(durRatio * 100.0f);
                     String pctStr = pct + "%";
                     float textScale = 0.55f;

@@ -178,6 +178,14 @@ public class MouseMixin {
                     return;
                 }
             }
+
+            egg.client.module.render.TargetHUD targetHUD = ModuleManager.getInstance().getModule(egg.client.module.render.TargetHUD.class);
+            if (targetHUD != null && targetHUD.isEnabled()) {
+                if (targetHUD.onMouseScrolled(mouseX, mouseY, vertical)) {
+                    ci.cancel();
+                    return;
+                }
+            }
         }
 
         egg.client.module.render.ViewModel vm = ModuleManager.getInstance().getModule(egg.client.module.render.ViewModel.class);
