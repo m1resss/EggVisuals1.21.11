@@ -43,6 +43,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -79,6 +80,7 @@ public class Interface extends Module {
 
     private final BooleanSetting showDynamicIsland = new BooleanSetting("Динамик айленд", true, "Отображать Dynamic Island при воспроизведении музыки");
     private final SliderSetting islandScale = new SliderSetting("Размер острова", 1.0, 0.5, 1.5, 0.05, "Масштаб Dynamic Island");
+    private final BooleanSetting islandAdaptBossBar = new BooleanSetting("Подстраивать под босс бар", true, "Плавно сдвигать Dynamic Island при появлении полосы босса");
     private final ColorSetting dynamicIslandBgColor = new ColorSetting("Цвет фона айленда", 0xFF0D0E14);
 
     private final ModeSetting brand = new ModeSetting("Бренд", "Egg", "Бренд в ватермарке", "Egg", "Egg Visuals", "none");
@@ -121,6 +123,7 @@ public class Interface extends Module {
     private float lastIslandY = 0.0f;
     private float lastIslandW = 185.0f;
     private float lastIslandH = 30.0f;
+    private final Animation islandYAnim = new Animation(8.0f, 360L, Easing.EASE_OUT_CUBIC);
 
     private float animatedFps = 60.0f;
     private float animatedPing = 0.0f;
@@ -201,8 +204,11 @@ public class Interface extends Module {
         hudGradientStrength.setVisible(() -> hudThemeGradient.isEnabled());
         hudGradientColor.setVisible(() -> hudThemeGradient.isEnabled());
 
+        islandScale.setVisible(() -> showDynamicIsland.isEnabled());
+        islandAdaptBossBar.setVisible(() -> showDynamicIsland.isEnabled());
+
         addSettings(
-                showDynamicIsland, islandScale,
+                showDynamicIsland, islandScale, islandAdaptBossBar,
                 brand, showLogo, showNick, showServer, showFps, showTps, showPing, showTime, showCoords, showSpeed, sideMode,
                 watermarkBgColor, titleColor1, titleColor2, rounding, opacity, hudThemeGradient, hudGradientStrength, hudGradientColor,
                 halloween,
@@ -210,6 +216,25 @@ public class Interface extends Module {
                 combatMode, combatAction, combatElements, combatScale, combatOpacity, combatTimeout
         );
         setEnabled(true);
+    }
+
+    private float getTargetIslandY(int screenH) {
+        float defaultY = 8.0f;
+        if (!this.islandAdaptBossBar.isEnabled()) {
+            return defaultY;
+        }
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc == null || mc.inGameHud == null || mc.inGameHud.getBossBarHud() == null) {
+            return defaultY;
+        }
+        Map<?, ?> bars = ((egg.client.mixin.BossBarHudAccessor) mc.inGameHud.getBossBarHud()).getBossBars();
+        if (bars == null || bars.isEmpty()) {
+            return defaultY;
+        }
+        int count = bars.size();
+        int maxDisplayable = Math.max(1, (screenH / 3 - 12) / 19);
+        int visibleCount = Math.min(count, maxDisplayable);
+        return 12.0f + visibleCount * 19.0f + 6.0f;
     }
 
     public void render(DrawContext context, RenderTickCounter tickCounter) {
@@ -229,8 +254,19 @@ public class Interface extends Module {
         boolean inCombat = isInCombat();
         combatAnim.setTarget(inCombat ? 1.0f : 0.0f);
 
+        float targetIslandY = getTargetIslandY(screenH);
+        if (targetIslandY > this.islandYAnim.getTarget()) {
+            this.islandYAnim.setEasing(Easing.EASE_OUT_BACK);
+            this.islandYAnim.setDuration(420L);
+        } else if (targetIslandY < this.islandYAnim.getTarget()) {
+            this.islandYAnim.setEasing(Easing.EASE_OUT_CUBIC);
+            this.islandYAnim.setDuration(340L);
+        }
+        this.islandYAnim.setTarget(targetIslandY);
+        float currentIslandY = this.islandYAnim.get();
+
         boolean islandActive = false;
-        float islandBottom = 8.0f;
+        float islandBottom = currentIslandY;
         if (showDynamicIsland.isEnabled()) {
             boolean inChat = (mc.currentScreen instanceof net.minecraft.client.gui.screen.ChatScreen);
             if (!inChat || !hasActiveMedia || !isMediaPlaying) {
@@ -258,9 +294,12 @@ public class Interface extends Module {
             boolean playing = hasActiveMedia && isMediaPlaying;
             if (playing) {
                 islandActive = true;
-                renderDynamicIsland(context, screenW);
+                renderDynamicIsland(context, screenW, currentIslandY);
                 float curH = MathHelper.lerp(this.islandExpandAnim, 30.0f, 70.0f);
-                islandBottom = 8.0f + curH + 6.0f;
+                float baseIslandS = islandScale.getValueFloat();
+                float combatS = getCombatScaleFactor("island");
+                float islandS = baseIslandS * combatS;
+                islandBottom = currentIslandY + curH * islandS + 6.0f;
             }
         }
 
@@ -506,7 +545,7 @@ public class Interface extends Module {
         Draw2DProcessor.INSTANCE.drawRect(mat, cx, lineY, 1.0f, lineH, 0.0f, ColorUtil.rgba(255, 255, 255, (int) (24 * alphaFactor)));
     }
 
-    private void renderDynamicIsland(DrawContext context, int screenW) {
+    private void renderDynamicIsland(DrawContext context, int screenW, float y) {
         float collapsedW = 185.0f;
         float collapsedH = 30.0f;
         float expandedW = 242.0f;
@@ -524,7 +563,6 @@ public class Interface extends Module {
         float alphaFactor = getCombatAlphaFactor("island");
 
         float x = (screenW - curW) / 2.0f;
-        float y = 8.0f;
         float centerX = x + curW / 2.0f;
 
         this.lastIslandX = (screenW - curW * islandS) / 2.0f;
@@ -1419,7 +1457,7 @@ public class Interface extends Module {
             float curW = MathHelper.lerp(this.islandExpandAnim, collapsedW, expandedW);
             float curH = MathHelper.lerp(this.islandExpandAnim, 30.0f, 70.0f);
             float x = (screenW - curW) / 2.0f;
-            float y = 8.0f;
+            float y = this.lastIslandY;
             float centerX = x + curW / 2.0f;
 
             float baseIslandS = islandScale.getValueFloat();

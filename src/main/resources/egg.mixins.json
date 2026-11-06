@@ -54,7 +54,8 @@
     "WorldRendererCloudMixin",
     "CloudRendererMixin",
     "SkyRenderingAmbienceMixin",
-    "GlyphAtlasTextureMixin"
+    "GlyphAtlasTextureMixin",
+    "BossBarHudAccessor"
   ],
   "client": [],
   "injectors": {
