@@ -83,7 +83,7 @@ public class TargetHUD extends Module {
 
     private float lastRenderX = 0.0f;
     private float lastRenderY = 0.0f;
-    private float lastRenderW = 152.0f;
+    private float lastRenderW = 134.0f;
     private float lastRenderH = 44.0f;
 
     public ModeSetting getMode() { return mode; }
@@ -193,7 +193,7 @@ public class TargetHUD extends Module {
         visualHp += (actualHealth - visualHp) * Math.min(1.0f, dt * 10.0f);
         visualAbsorption += (actualAbsorption - visualAbsorption) * Math.min(1.0f, dt * 10.0f);
 
-        float cardW = 152.0f;
+        float cardW = 134.0f;
         float cardH = 44.0f;
         float cardRadius = 12.0f;
         float scale = hudScale.getValueFloat();
@@ -390,10 +390,10 @@ public class TargetHUD extends Module {
         }
 
         float textX = x + 43.0f;
-        float rightX = x + w - 8.0f;
+        float contentW = 84.0f;
+        float rightX = textX + contentW;
         float topY = y + 5.5f;
 
-        float heartSize = 8.5f;
         int curHp = (int) Math.ceil(target.getHealth());
         if (lastHpTarget != target) {
             lastHpTarget = target;
@@ -404,23 +404,21 @@ public class TargetHUD extends Module {
 
         String hpValueStr = String.valueOf(curHp);
         float hpValW = Fonts.b.a(hpValueStr, 9.5f);
+        float hpSuffixW = Fonts.b.a("hp", 6.5f);
         String absStr = absorption > 0.0f ? " +" + String.format("%.0f", Math.ceil(absorption)) : "";
-        float absTextW = absorption > 0.0f ? Fonts.b.a(absStr, 9.5f) : 0.0f;
-        float hpTotalW = heartSize + 3.0f + hpValW + absTextW;
+        float absTextW = absorption > 0.0f ? Fonts.b.a(absStr, 8.5f) : 0.0f;
+        float hpTotalW = hpValW + hpSuffixW + (absorption > 0.0f ? 2.0f + absTextW : 0.0f);
         float hpStartX = rightX - hpTotalW;
 
-        int heartGlowColor = ColorUtil.rgba(255, 30, 80, (int) (160 * alpha));
-        Draw2DProcessor.INSTANCE.drawGlow(mat, hpStartX - 1.5f, topY - 1.0f, heartSize + 3.0f, heartSize + 3.0f, (heartSize + 3.0f) / 2.0f, heartGlowColor, 3.5f);
-        int heartColor = ColorUtil.rgba(255, 255, 255, (int) (255 * alpha));
-        Draw2DProcessor.INSTANCE.a(mat, HEART_ICON, hpStartX, topY + 0.5f, heartSize, heartSize, 0.0f, heartColor);
+        int hpTextColor = ColorUtil.rgba(255, 255, 255, (int) (240 * alpha));
+        hpRolling.render(mat, hpStartX, topY, 9.5f, hpTextColor, 1.0f);
 
-        float hpTextX = hpStartX + heartSize + 3.0f;
-        int hpTextColor = ColorUtil.rgba(255, 255, 255, (int) (230 * alpha));
-        hpRolling.render(mat, hpTextX, topY, 9.5f, hpTextColor, 1.0f);
+        int hpSuffixColor = ColorUtil.rgba(156, 163, 175, (int) (210 * alpha));
+        Fonts.b.a(mat, "hp", hpStartX + hpValW + 0.5f, topY + 2.5f, 6.5f, hpSuffixColor);
 
         if (absorption > 0.0f) {
             int absTextColor = ColorUtil.rgba(255, 215, 0, (int) (255 * alpha));
-            Fonts.b.a(mat, absStr, hpTextX + hpValW, topY, 9.5f, absTextColor);
+            Fonts.b.a(mat, absStr, hpStartX + hpValW + hpSuffixW + 2.0f, topY + 1.0f, 8.5f, absTextColor);
         }
 
         String name = target.getName().getString();
@@ -450,7 +448,7 @@ public class TargetHUD extends Module {
         float slotW = 14.0f;
         float slotH = 13.0f;
         float slotGap = 3.0f;
-        float slotSep = 5.5f;
+        float slotSep = 5.0f;
 
         for (int i = 0; i < 5; i++) {
             ItemStack stack = equipStacks[i];
@@ -523,9 +521,9 @@ public class TargetHUD extends Module {
 
         float barX = textX;
         float barY = y + 34.0f;
-        float barW = w - 43.0f - 8.0f;
-        float barH = 4.5f;
-        float barRadius = 2.25f;
+        float barW = contentW;
+        float barH = 4.0f;
+        float barRadius = 2.0f;
 
         int trackColor = ColorUtil.rgba(255, 255, 255, (int) (38 * alpha));
         Draw2DProcessor.INSTANCE.drawRect(mat, barX, barY, barW, barH, barRadius, trackColor);
