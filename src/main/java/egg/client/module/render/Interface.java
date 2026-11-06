@@ -436,9 +436,8 @@ public class Interface extends Module {
             float badgeR = badgeSize / 2.0f;
 
             Draw2DProcessor.INSTANCE.drawRect(mat, badgeX, badgeY, badgeSize, badgeSize, badgeR, ColorUtil.rgba(10, 11, 15, (int) (250 * alphaFactor)));
+            Draw2DProcessor.INSTANCE.a(mat, EGG_LOGO, badgeX, badgeY, badgeSize, badgeSize, badgeR, tintWithAlpha);
             Draw2DProcessor.INSTANCE.drawOutline(mat, badgeX, badgeY, badgeSize, badgeSize, badgeR, 0.8f, ColorUtil.rgba(255, 255, 255, (int) (28 * alphaFactor)));
-
-            IconRenderer.drawTextureScaled(context, EGG_LOGO, badgeX, badgeY, badgeSize, badgeSize, 128, 128, tintWithAlpha);
             if (halloween.isEnabled()) {
                 HalloweenGuiRenderer.renderWitchHatDirect(context, badgeX + badgeSize * 0.5f - 0.5f, badgeY + 1.2f, 13.0f, alphaFactor);
             }
@@ -481,7 +480,7 @@ public class Interface extends Module {
             } else if (item.texture != null) {
                 float iconSize = 12.0f;
                 float iconY = centerY - iconSize / 2.0f;
-                IconRenderer.drawTextureScaled(context, item.texture, cursor, iconY, iconSize, iconSize, 32, 32, tintWithAlpha);
+                Draw2DProcessor.INSTANCE.a(mat, item.texture, cursor, iconY, iconSize, iconSize, 0.0f, tintWithAlpha);
                 cursor += iconSize + 5.5f;
             }
 
