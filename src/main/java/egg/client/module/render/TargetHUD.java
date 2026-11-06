@@ -444,9 +444,9 @@ public class TargetHUD extends Module {
             target.getMainHandStack()
         };
 
-        float equipY = y + 17.5f;
+        float equipY = y + 15.5f;
         float slotW = 14.0f;
-        float slotH = 13.0f;
+        float slotH = 14.5f;
         float slotGap = 3.0f;
         float slotSep = 5.0f;
 
@@ -467,8 +467,8 @@ public class TargetHUD extends Module {
             if (stack == null || stack.isEmpty()) continue;
             float slotX = textX + i * (slotW + slotGap) + (i == 4 ? (slotSep - slotGap) : 0.0f);
             float itemCx = slotX + slotW * 0.5f;
-            float itemCy = equipY + 5.5f;
-            float itemScale = 0.60f;
+            float itemCy = equipY + 4.4f;
+            float itemScale = 0.48f;
 
             context.getMatrices().pushMatrix();
             context.getMatrices().translate(itemCx, itemCy);
@@ -490,7 +490,7 @@ public class TargetHUD extends Module {
                 float durRatio = Math.clamp((float) curDurability / (float) maxDmg, 0.0f, 1.0f);
 
                 float barX = slotX + 1.2f;
-                float barY = equipY + slotH - 1.8f;
+                float barY = equipY + slotH - 1.6f;
                 float barWidth = slotW - 2.4f;
                 float barHeight = 1.0f;
 
@@ -507,20 +507,20 @@ public class TargetHUD extends Module {
                 if (durRatio < 1.0f) {
                     int pct = (int) Math.round(durRatio * 100.0f);
                     String pctStr = pct + "%";
-                    float pw = Fonts.b.a(pctStr, 4.5f);
+                    float pw = Fonts.b.a(pctStr, 4.2f);
                     int pctColor = ColorUtil.withAlpha(durColor, (int) (240 * alpha));
-                    Fonts.b.a(mat, pctStr, slotX + (slotW - pw) * 0.5f, equipY + 6.0f, 4.5f, pctColor);
+                    Fonts.b.a(mat, pctStr, slotX + (slotW - pw) * 0.5f, equipY + 8.4f, 4.2f, pctColor);
                 }
             } else if (stack.getCount() > 1) {
                 String countStr = String.valueOf(stack.getCount());
-                float cw = Fonts.b.a(countStr, 5.0f);
+                float cw = Fonts.b.a(countStr, 4.5f);
                 int countColor = ColorUtil.rgba(255, 255, 255, (int) (235 * alpha));
-                Fonts.b.a(mat, countStr, slotX + slotW - cw - 1.0f, equipY + slotH - 5.5f, 5.0f, countColor);
+                Fonts.b.a(mat, countStr, slotX + slotW - cw - 1.2f, equipY + 8.4f, 4.5f, countColor);
             }
         }
 
         float barX = textX;
-        float barY = y + 34.0f;
+        float barY = y + 33.0f;
         float barW = contentW;
         float barH = 4.0f;
         float barRadius = 2.0f;
