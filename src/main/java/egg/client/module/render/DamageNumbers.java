@@ -3,6 +3,7 @@ package egg.client.module.render;
 import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
+import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.pipeline.DrawBatcher;
@@ -15,6 +16,7 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
@@ -28,8 +30,10 @@ public class DamageNumbers extends Module {
 
     private static final Identifier FORTNITE_ATLAS = Identifier.of("egg", "textures/fortnite_atlas.png");
 
+    private final ModeSetting unit = new ModeSetting("Единицы", "HP", "Отображение урона", "HP", "Сердца");
     private final BooleanSetting stacking = new BooleanSetting("Стакать урон", true, "Суммировать урон при серии ударов в одну цель");
     private final BooleanSetting critExclamation = new BooleanSetting("Восклицание крита", true, "Добавлять восклицательный знак '!' при критах");
+    private final BooleanSetting showDecimals = new BooleanSetting("Десятичные", true, "Показывать дробный урон при нецелых значениях");
     private final SliderSetting size = new SliderSetting("Размер", 30.0, 16.0, 54.0, 2.0, "Базовый размер цифр урона");
     private final SliderSetting breakDuration = new SliderSetting("Время разлета", 0.42, 0.2, 0.8, 0.05, "Длительность разваливания цифр");
 
@@ -42,6 +46,19 @@ public class DamageNumbers extends Module {
             this.w = w;
             this.h = h;
             this.advance = advance;
+        }
+    }
+
+    public static class AttackRecord {
+        public final long time;
+        public final boolean isCrit;
+        public final Vec3d pos;
+        public boolean spawnedFallback = false;
+
+        public AttackRecord(long time, boolean isCrit, Vec3d pos) {
+            this.time = time;
+            this.isCrit = isCrit;
+            this.pos = pos;
         }
     }
 
@@ -99,13 +116,15 @@ public class DamageNumbers extends Module {
 
     private final List<ActiveNumber> activeNumbers = new ArrayList<>();
     private final List<DigitShard> shards = new ArrayList<>();
+    private final Map<Integer, Float> lastKnownHp = new HashMap<>();
+    private final Map<Integer, AttackRecord> pendingAttacks = new HashMap<>();
     private final Random random = new Random();
     private long lastFrameNanos = 0L;
 
     public DamageNumbers() {
         super("DamageNumbers", "Кинетические цифры урона в стиле Fortnite", Category.ESP);
         instance = this;
-        addSettings(stacking, critExclamation, size, breakDuration);
+        addSettings(unit, stacking, critExclamation, showDecimals, size, breakDuration);
     }
 
     public static DamageNumbers getInstance() {
@@ -140,37 +159,14 @@ public class DamageNumbers extends Module {
     public void onAttack(PlayerEntity player, Entity target) {
         if (!isEnabled() || target == null || !(target instanceof LivingEntity living)) return;
 
-        float baseDmg = (float) player.getAttributeValue(EntityAttributes.ATTACK_DAMAGE);
-        float cooldown = player.getAttackCooldownProgress(0.5f);
         boolean isCrit = HitParticles.isCriticalHit(player, target);
-
-        float rawDmg = baseDmg * (0.2f + cooldown * cooldown * 0.8f);
-        if (isCrit) {
-            rawDmg *= 1.5f;
-        }
-
-        float armor = (float) living.getArmor();
-        float toughness = 0.0f;
-        try {
-            toughness = (float) living.getAttributeValue(EntityAttributes.ARMOR_TOUGHNESS);
-        } catch (Throwable ignored) {}
-
-        float f = 2.0f + toughness / 4.0f;
-        float g = MathHelper.clamp(armor - rawDmg / f, armor * 0.2f, 20.0f);
-        float finalDmg = rawDmg * (1.0f - g / 25.0f);
-
-        if (living.hasStatusEffect(StatusEffects.RESISTANCE)) {
-            int amp = living.getStatusEffect(StatusEffects.RESISTANCE).getAmplifier() + 1;
-            finalDmg *= Math.max(0.0f, 1.0f - amp * 0.2f);
-        }
-
-        finalDmg = Math.max(1.0f, (float) Math.round(finalDmg * 10.0f) / 10.0f);
-
-        boolean isShield = armor > 0.0f;
-        boolean isKill = living.getHealth() <= finalDmg;
-
         Vec3d hitPos = HitParticles.getHitPosition(player, target);
-        recordDamage(target.getId(), hitPos, finalDmg, isCrit, isShield, isKill);
+
+        pendingAttacks.put(target.getId(), new AttackRecord(System.currentTimeMillis(), isCrit, hitPos));
+
+        if (!lastKnownHp.containsKey(target.getId())) {
+            lastKnownHp.put(target.getId(), living.getHealth() + living.getAbsorptionAmount());
+        }
     }
 
     public void onEntityDamage(Entity entity) {
@@ -179,14 +175,134 @@ public class DamageNumbers extends Module {
         if (mc.player == null) return;
         if (mc.player.squaredDistanceTo(entity) > 36.0) return;
 
-        float hp = living.getHealth();
-        if (hp <= 0.0f) {
+        int id = entity.getId();
+        float currentHp = living.getHealth() + living.getAbsorptionAmount();
+        Float prevHp = lastKnownHp.get(id);
+
+        if (prevHp != null && prevHp > currentHp + 0.05f) {
+            float diff = prevHp - currentHp;
+            processConfirmedDamage(living, diff);
+        } else if (currentHp <= 0.0f) {
             for (ActiveNumber an : activeNumbers) {
-                if (an.entityId == entity.getId()) {
+                if (an.entityId == id) {
                     an.isKill = true;
                 }
             }
         }
+
+        lastKnownHp.put(id, currentHp);
+    }
+
+    private void processConfirmedDamage(LivingEntity living, float damageDealt) {
+        int id = living.getId();
+        AttackRecord rec = pendingAttacks.get(id);
+        boolean isCrit = rec != null && rec.isCrit;
+        Vec3d pos = rec != null ? rec.pos : living.getEntityPos().add(0.0, living.getHeight() * 0.6, 0.0);
+
+        boolean isShield = living.getArmor() > 0.0f;
+        boolean isKill = (living.getHealth() + living.getAbsorptionAmount()) <= 0.0f;
+
+        recordDamage(id, pos, damageDealt, isCrit, isShield, isKill);
+
+        if (rec != null) {
+            pendingAttacks.remove(id);
+        }
+    }
+
+    private void updateHealthTracker() {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc.world == null) return;
+
+        long now = System.currentTimeMillis();
+
+        for (Entity ent : mc.world.getEntities()) {
+            if (ent instanceof LivingEntity living) {
+                int id = living.getId();
+                float currentHp = living.getHealth() + living.getAbsorptionAmount();
+                Float prevHp = lastKnownHp.get(id);
+
+                if (prevHp != null && prevHp > currentHp + 0.05f) {
+                    float diff = prevHp - currentHp;
+                    AttackRecord rec = pendingAttacks.get(id);
+                    if (rec != null && (now - rec.time) < 1000L) {
+                        processConfirmedDamage(living, diff);
+                    }
+                }
+
+                lastKnownHp.put(id, currentHp);
+            }
+        }
+
+        Iterator<Map.Entry<Integer, AttackRecord>> it = pendingAttacks.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<Integer, AttackRecord> entry = it.next();
+            AttackRecord rec = entry.getValue();
+            if (now - rec.time > 180L && !rec.spawnedFallback) {
+                rec.spawnedFallback = true;
+                Entity ent = mc.world.getEntityById(entry.getKey());
+                if (ent instanceof LivingEntity living && mc.player != null) {
+                    float fallbackDmg = calculateEstimatedDamage(mc.player, living, rec.isCrit);
+                    boolean isShield = living.getArmor() > 0.0f;
+                    boolean isKill = living.getHealth() <= fallbackDmg;
+                    recordDamage(living.getId(), rec.pos, fallbackDmg, rec.isCrit, isShield, isKill);
+                }
+            }
+            if (now - rec.time > 1200L) {
+                it.remove();
+            }
+        }
+
+        lastKnownHp.entrySet().removeIf(e -> mc.world.getEntityById(e.getKey()) == null);
+    }
+
+    private static float calculateEstimatedDamage(PlayerEntity player, LivingEntity target, boolean isCrit) {
+        ItemStack main = player.getMainHandStack();
+        float weaponDmg = 1.0f;
+
+        if (main != null && !main.isEmpty()) {
+            String name = main.getItem().toString().toLowerCase(Locale.US);
+            if (name.contains("netherite_sword")) weaponDmg = 8.0f;
+            else if (name.contains("diamond_sword")) weaponDmg = 7.0f;
+            else if (name.contains("iron_sword")) weaponDmg = 6.0f;
+            else if (name.contains("golden_sword") || name.contains("wood_sword")) weaponDmg = 4.0f;
+            else if (name.contains("stone_sword")) weaponDmg = 5.0f;
+            else if (name.contains("netherite_axe")) weaponDmg = 10.0f;
+            else if (name.contains("diamond_axe")) weaponDmg = 9.0f;
+            else if (name.contains("iron_axe") || name.contains("stone_axe")) weaponDmg = 9.0f;
+            else weaponDmg = 2.0f;
+        }
+
+        float cooldown = player.getAttackCooldownProgress(0.5f);
+        float raw = (weaponDmg + 1.0f) * (0.2f + cooldown * cooldown * 0.8f);
+
+        if (player.hasStatusEffect(StatusEffects.STRENGTH)) {
+            int amp = player.getStatusEffect(StatusEffects.STRENGTH).getAmplifier() + 1;
+            raw += amp * 3.0f;
+        }
+        if (player.hasStatusEffect(StatusEffects.WEAKNESS)) {
+            int amp = player.getStatusEffect(StatusEffects.WEAKNESS).getAmplifier() + 1;
+            raw = Math.max(0.0f, raw - amp * 4.0f);
+        }
+        if (isCrit) {
+            raw *= 1.5f;
+        }
+
+        float armor = (float) target.getArmor();
+        float toughness = 0.0f;
+        try {
+            toughness = (float) target.getAttributeValue(EntityAttributes.ARMOR_TOUGHNESS);
+        } catch (Throwable ignored) {}
+
+        float f = 2.0f + toughness / 4.0f;
+        float g = MathHelper.clamp(armor - raw / f, armor * 0.2f, 20.0f);
+        float afterArmor = raw * (1.0f - g / 25.0f);
+
+        if (target.hasStatusEffect(StatusEffects.RESISTANCE)) {
+            int amp = target.getStatusEffect(StatusEffects.RESISTANCE).getAmplifier() + 1;
+            afterArmor *= Math.max(0.0f, 1.0f - amp * 0.2f);
+        }
+
+        return Math.max(1.0f, (float) Math.round(afterArmor * 10.0f) / 10.0f);
     }
 
     private void recordDamage(int entityId, Vec3d hitPos, float damage, boolean isCrit, boolean isShield, boolean isKill) {
@@ -199,18 +315,18 @@ public class DamageNumbers extends Module {
                     an.age = 0.0f;
                     an.punchTimer = 0.12f;
                     an.worldPos = new Vec3d(
-                            an.worldPos.x * 0.4 + hitPos.x * 0.6,
-                            an.worldPos.y * 0.4 + hitPos.y * 0.6,
-                            an.worldPos.z * 0.4 + hitPos.z * 0.6
+                            an.worldPos.x * 0.35 + hitPos.x * 0.65,
+                            an.worldPos.y * 0.35 + hitPos.y * 0.65,
+                            an.worldPos.z * 0.35 + hitPos.z * 0.65
                     );
                     return;
                 }
             }
         }
 
-        double rx = (random.nextDouble() - 0.5) * 0.25;
-        double ry = (random.nextDouble() - 0.5) * 0.20;
-        double rz = (random.nextDouble() - 0.5) * 0.25;
+        double rx = (random.nextDouble() - 0.5) * 0.22;
+        double ry = (random.nextDouble() - 0.5) * 0.18;
+        double rz = (random.nextDouble() - 0.5) * 0.22;
         Vec3d spawnPos = hitPos.add(rx, ry, rz);
 
         activeNumbers.add(new ActiveNumber(entityId, spawnPos, damage, isCrit, isShield, isKill));
@@ -220,6 +336,8 @@ public class DamageNumbers extends Module {
         if (!isEnabled()) return;
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null || mc.world == null) return;
+
+        updateHealthTracker();
 
         long now = System.nanoTime();
         if (lastFrameNanos == 0L) lastFrameNanos = now;
@@ -243,8 +361,18 @@ public class DamageNumbers extends Module {
                     && screen.x >= -100.0f && screen.x <= mc.getWindow().getScaledWidth() + 100.0f
                     && screen.y >= -100.0f && screen.y <= mc.getWindow().getScaledHeight() + 100.0f;
 
-            int dmgInt = Math.max(1, Math.round(an.totalDamage));
-            String text = String.valueOf(dmgInt);
+            float val = an.totalDamage;
+            if (unit.is("Сердца")) {
+                val = val / 2.0f;
+            }
+
+            String text;
+            if (showDecimals.isEnabled() && Math.abs(val - Math.round(val)) >= 0.12f) {
+                text = String.format(Locale.US, "%.1f", val);
+            } else {
+                text = String.valueOf(Math.max(1, Math.round(val)));
+            }
+
             if (an.isCrit && critExclamation.isEnabled()) {
                 text = text + "!";
             }
