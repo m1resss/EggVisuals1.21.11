@@ -407,8 +407,7 @@ public class Keybinds extends Module {
         boolean inside = mx >= lastX - 2.0f && mx <= lastX + lastW + 2.0f && my >= lastY - 2.0f && my <= lastY + lastH + 2.0f;
         if (inside) {
             if (button == 1) {
-                contextMenu.setScale(scale.getValueFloat());
-                contextMenu.open((float) mx, (float) my);
+                contextMenu.openSmart("keybinds", lastX, lastY, lastW, lastH, (float) mx, (float) my, scale.getValueFloat());
                 return true;
             } else if (button == 0) {
                 this.dragging = true;

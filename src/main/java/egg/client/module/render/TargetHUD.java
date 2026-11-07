@@ -919,8 +919,7 @@ public class TargetHUD extends Module {
                 && my >= lastRenderY - 3.0f && my <= lastRenderY + lastRenderH + 3.0f;
         if (inside) {
             if (button == 1) {
-                contextMenu.setScale(hudScale.getValueFloat());
-                contextMenu.open((float) mx, (float) my);
+                contextMenu.openSmart("target", lastRenderX, lastRenderY, lastRenderW, lastRenderH, (float) mx, (float) my, hudScale.getValueFloat());
                 return true;
             } else if (button == 0 && mode.is("Экран")) {
                 this.dragging = true;

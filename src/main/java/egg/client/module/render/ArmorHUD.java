@@ -478,8 +478,7 @@ public class ArmorHUD extends Module {
         boolean inside = mouseX >= lastX - 3.0f && mouseX <= lastX + lastW + 3.0f && mouseY >= lastY - 3.0f && mouseY <= lastY + lastH + 3.0f;
         if (inside) {
             if (button == 1) {
-                contextMenu.setScale(scale.getValueFloat());
-                contextMenu.open((float) mouseX, (float) mouseY);
+                contextMenu.openSmart("armor", lastX, lastY, lastW, lastH, (float) mouseX, (float) mouseY, scale.getValueFloat());
                 return true;
             } else if (button == 0) {
                 dragging = true;

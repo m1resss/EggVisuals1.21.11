@@ -61,6 +61,8 @@ public class HudContextMenu {
         @Override public void onClick() { onToggle.run(); }
     }
 
+    private static HudContextMenu activeMenu = null;
+
     private final String title;
     private final List<MenuItem> items = new ArrayList<>();
 
@@ -71,6 +73,12 @@ public class HudContextMenu {
 
     public HudContextMenu(String title) {
         this.title = title;
+    }
+
+    public static void closeAll() {
+        if (activeMenu != null) {
+            activeMenu.close();
+        }
     }
 
     public void addMode(String label, Supplier<String> valueSupplier, Runnable onCycle) {
@@ -94,20 +102,189 @@ public class HudContextMenu {
     }
 
     public void open(float clickX, float clickY) {
-        this.open = true;
-        this.x = clickX;
-        this.y = clickY;
+        openSmart(null, clickX, clickY, 0.0f, 0.0f, clickX, clickY, this.scale);
     }
 
     public void open(float clickX, float clickY, float scale) {
+        openSmart(null, clickX, clickY, 0.0f, 0.0f, clickX, clickY, scale);
+    }
+
+    public void openSmart(String elementId, float elemX, float elemY, float elemW, float elemH, float clickX, float clickY, float scale) {
+        if (activeMenu != null && activeMenu != this) {
+            activeMenu.close();
+        }
+        activeMenu = this;
         this.open = true;
-        this.x = clickX;
-        this.y = clickY;
         setScale(scale);
+
+        MinecraftClient mc = MinecraftClient.getInstance();
+        int screenW = mc != null && mc.getWindow() != null ? mc.getWindow().getScaledWidth() : 960;
+        int screenH = mc != null && mc.getWindow() != null ? mc.getWindow().getScaledHeight() : 540;
+
+        float mw = computeWidth();
+        float mh = computeHeight();
+        float visualW = mw * this.scale;
+        float visualH = mh * this.scale;
+
+        float pad = 6.0f;
+        float gap = 6.0f;
+
+        if (elemW <= 1.0f || elemH <= 1.0f) {
+            this.x = Math.clamp(clickX, pad, Math.max(pad, screenW - visualW - pad));
+            this.y = Math.clamp(clickY, pad, Math.max(pad, screenH - visualH - pad));
+            return;
+        }
+
+        List<HudSnapHelper.HudElementBounds> others = HudSnapHelper.getOtherElements(elementId);
+
+        boolean isWide = elemW >= visualW * 1.25f || elemW >= elemH * 2.2f;
+        float elemCenterX = elemX + elemW * 0.5f;
+        float elemCenterY = elemY + elemH * 0.5f;
+
+        float bestScore = Float.MAX_VALUE;
+        float bestX = Math.clamp(elemX + elemW + gap, pad, Math.max(pad, screenW - visualW - pad));
+        float bestY = Math.clamp(elemY, pad, Math.max(pad, screenH - visualH - pad));
+
+        for (int side = 0; side < 4; side++) {
+            float baseSidePenalty;
+            if (isWide) {
+                if (elemCenterY >= screenH * 0.5f) {
+                    if (side == 3) baseSidePenalty = 0.0f;
+                    else if (side == 2) baseSidePenalty = 20.0f;
+                    else if (side == 0) baseSidePenalty = 50.0f;
+                    else baseSidePenalty = 70.0f;
+                } else {
+                    if (side == 2) baseSidePenalty = 0.0f;
+                    else if (side == 3) baseSidePenalty = 20.0f;
+                    else if (side == 0) baseSidePenalty = 50.0f;
+                    else baseSidePenalty = 70.0f;
+                }
+            } else {
+                boolean rightHalf = elemCenterX >= screenW * 0.5f;
+                boolean bottomHalf = elemCenterY >= screenH * 0.5f;
+                int primarySide = rightHalf ? 1 : 0;
+                int secondarySide = bottomHalf ? 3 : 2;
+                int tertiarySide = bottomHalf ? 2 : 3;
+
+                if (side == primarySide) baseSidePenalty = 0.0f;
+                else if (side == secondarySide) baseSidePenalty = 15.0f;
+                else if (side == tertiarySide) baseSidePenalty = 30.0f;
+                else baseSidePenalty = 60.0f;
+            }
+
+            if (side == 0) {
+                float rawX = elemX + elemW + gap;
+                float[] yVariants = new float[]{elemY, elemY + (elemH - visualH) * 0.5f, clickY - 14.0f};
+                for (float rawY : yVariants) {
+                    float clampedX = Math.clamp(rawX, pad, Math.max(pad, screenW - visualW - pad));
+                    float clampedY = Math.clamp(rawY, pad, Math.max(pad, screenH - visualH - pad));
+
+                    float score = evaluateCandidate(clampedX, clampedY, rawX, rawY, visualW, visualH, elemX, elemY, elemW, elemH, others, screenW, screenH, pad, baseSidePenalty, clickX, clickY);
+                    if (score < bestScore) {
+                        bestScore = score;
+                        bestX = clampedX;
+                        bestY = clampedY;
+                    }
+                }
+            } else if (side == 1) {
+                float rawX = elemX - gap - visualW;
+                float[] yVariants = new float[]{elemY, elemY + (elemH - visualH) * 0.5f, clickY - 14.0f};
+                for (float rawY : yVariants) {
+                    float clampedX = Math.clamp(rawX, pad, Math.max(pad, screenW - visualW - pad));
+                    float clampedY = Math.clamp(rawY, pad, Math.max(pad, screenH - visualH - pad));
+
+                    float score = evaluateCandidate(clampedX, clampedY, rawX, rawY, visualW, visualH, elemX, elemY, elemW, elemH, others, screenW, screenH, pad, baseSidePenalty, clickX, clickY);
+                    if (score < bestScore) {
+                        bestScore = score;
+                        bestX = clampedX;
+                        bestY = clampedY;
+                    }
+                }
+            } else if (side == 2) {
+                float rawY = elemY + elemH + gap;
+                float[] xVariants = new float[]{elemX, elemX + (elemW - visualW) * 0.5f, elemX + elemW - visualW};
+                for (float rawX : xVariants) {
+                    float clampedX = Math.clamp(rawX, pad, Math.max(pad, screenW - visualW - pad));
+                    float clampedY = Math.clamp(rawY, pad, Math.max(pad, screenH - visualH - pad));
+
+                    float score = evaluateCandidate(clampedX, clampedY, rawX, rawY, visualW, visualH, elemX, elemY, elemW, elemH, others, screenW, screenH, pad, baseSidePenalty, clickX, clickY);
+                    if (score < bestScore) {
+                        bestScore = score;
+                        bestX = clampedX;
+                        bestY = clampedY;
+                    }
+                }
+            } else {
+                float rawY = elemY - gap - visualH;
+                float[] xVariants = new float[]{elemX, elemX + (elemW - visualW) * 0.5f, elemX + elemW - visualW};
+                for (float rawX : xVariants) {
+                    float clampedX = Math.clamp(rawX, pad, Math.max(pad, screenW - visualW - pad));
+                    float clampedY = Math.clamp(rawY, pad, Math.max(pad, screenH - visualH - pad));
+
+                    float score = evaluateCandidate(clampedX, clampedY, rawX, rawY, visualW, visualH, elemX, elemY, elemW, elemH, others, screenW, screenH, pad, baseSidePenalty, clickX, clickY);
+                    if (score < bestScore) {
+                        bestScore = score;
+                        bestX = clampedX;
+                        bestY = clampedY;
+                    }
+                }
+            }
+        }
+
+        this.x = bestX;
+        this.y = bestY;
+    }
+
+    private static float evaluateCandidate(float clampedX, float clampedY, float rawX, float rawY,
+                                          float visualW, float visualH,
+                                          float elemX, float elemY, float elemW, float elemH,
+                                          List<HudSnapHelper.HudElementBounds> others,
+                                          int screenW, int screenH, float pad,
+                                          float baseSidePenalty, float clickX, float clickY) {
+        float outLeft = Math.max(0.0f, pad - rawX);
+        float outTop = Math.max(0.0f, pad - rawY);
+        float outRight = Math.max(0.0f, (rawX + visualW) - (screenW - pad));
+        float outBottom = Math.max(0.0f, (rawY + visualH) - (screenH - pad));
+        float screenViolation = outLeft + outTop + outRight + outBottom;
+
+        float parentOverlap = getOverlapArea(clampedX, clampedY, visualW, visualH, elemX, elemY, elemW, elemH);
+
+        float otherOverlap = 0.0f;
+        for (HudSnapHelper.HudElementBounds other : others) {
+            float ov = getOverlapArea(clampedX, clampedY, visualW, visualH, other.x(), other.y(), other.w(), other.h());
+            if (ov > 0.001f) {
+                otherOverlap += ov;
+            }
+        }
+
+        float score = baseSidePenalty;
+        if (parentOverlap > 0.001f) {
+            score += 2_000_000.0f + parentOverlap * 200.0f;
+        }
+        if (otherOverlap > 0.001f) {
+            score += 200_000.0f + otherOverlap * 50.0f;
+        }
+        if (screenViolation > 0.001f) {
+            score += 50_000.0f + screenViolation * 100.0f;
+        }
+
+        float dist = (float) Math.hypot((clampedX + visualW * 0.5f) - clickX, (clampedY + visualH * 0.5f) - clickY);
+        score += dist * 0.05f;
+
+        return score;
+    }
+
+    private static float getOverlapArea(float x1, float y1, float w1, float h1, float x2, float y2, float w2, float h2) {
+        float overlapX = Math.max(0.0f, Math.min(x1 + w1, x2 + w2) - Math.max(x1, x2));
+        float overlapY = Math.max(0.0f, Math.min(y1 + h1, y2 + h2) - Math.max(y1, y2));
+        return overlapX * overlapY;
     }
 
     public void close() {
         this.open = false;
+        if (activeMenu == this) {
+            activeMenu = null;
+        }
     }
 
     public float computeWidth() {
@@ -150,8 +327,8 @@ public class HudContextMenu {
         float visualW = mw * scale;
         float visualH = mh * scale;
 
-        this.x = Math.clamp(this.x, 8.0f, Math.max(8.0f, screenW - visualW - 8.0f));
-        this.y = Math.clamp(this.y, 8.0f, Math.max(8.0f, screenH - visualH - 8.0f));
+        this.x = Math.clamp(this.x, 6.0f, Math.max(6.0f, screenW - visualW - 6.0f));
+        this.y = Math.clamp(this.y, 6.0f, Math.max(6.0f, screenH - visualH - 6.0f));
 
         float mx = this.x;
         float my = this.y;

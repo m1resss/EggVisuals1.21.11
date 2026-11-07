@@ -1550,8 +1550,7 @@ public class Interface extends Module {
         boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
         if (inside) {
             if (button == 1) {
-                contextMenu.setScale(hudScale.getValueFloat());
-                contextMenu.open((float) mouseX, (float) mouseY);
+                contextMenu.openSmart("interface", lastX, lastY, lastW, lastH, (float) mouseX, (float) mouseY, hudScale.getValueFloat());
                 return true;
             } else if (button == 0) {
                 dragging = true;
