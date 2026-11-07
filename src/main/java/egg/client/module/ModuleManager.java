@@ -91,6 +91,7 @@ public class ModuleManager {
 
         register(new ItemRadius());
         register(new LethalZone());
+        register(new DamageNumbers());
 
         register(new TargetHUD());
 

@@ -3,6 +3,7 @@ package egg.client.mixin;
 import egg.client.module.ModuleManager;
 import egg.client.module.combat.NoFriendDamage;
 import egg.client.module.combat.ShiftTAP;
+import egg.client.module.render.DamageNumbers;
 import egg.client.module.render.Hitmarker;
 import net.minecraft.client.network.ClientPlayerInteractionManager;
 import net.minecraft.entity.Entity;
@@ -45,6 +46,11 @@ public class ClientPlayerInteractionManagerMixin {
         egg.client.module.render.KillEffect killEffect = ModuleManager.getInstance().getModule(egg.client.module.render.KillEffect.class);
         if (killEffect != null && killEffect.isEnabled()) {
             killEffect.onAttack(target);
+        }
+
+        DamageNumbers damageNumbers = ModuleManager.getInstance().getModule(DamageNumbers.class);
+        if (damageNumbers != null && damageNumbers.isEnabled()) {
+            damageNumbers.onAttack(player, target);
         }
     }
 }

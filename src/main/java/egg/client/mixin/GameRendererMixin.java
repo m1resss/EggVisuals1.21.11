@@ -228,6 +228,11 @@ public abstract class GameRendererMixin {
             lethalZone.render2D(context);
         }
 
+        DamageNumbers damageNumbers = ModuleManager.getInstance().getModule(DamageNumbers.class);
+        if (damageNumbers != null && damageNumbers.isEnabled()) {
+            damageNumbers.render2D(context);
+        }
+
         DrawBatcher.flushPending();
 
     }

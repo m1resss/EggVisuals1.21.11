@@ -2,6 +2,7 @@ package egg.client.mixin;
 
 import egg.client.command.CommandManager;
 import egg.client.module.ModuleManager;
+import egg.client.module.render.DamageNumbers;
 import egg.client.module.render.Hitmarker;
 import egg.client.module.render.KillEffect;
 import egg.client.module.render.TotemPopConfetti;
@@ -61,6 +62,10 @@ public class ClientPlayNetworkHandlerMixin {
                     Hitmarker hitmarker = ModuleManager.getInstance().getModule(Hitmarker.class);
                     if (hitmarker != null) {
                         hitmarker.onPacket(packet);
+                    }
+                    DamageNumbers damageNumbers = ModuleManager.getInstance().getModule(DamageNumbers.class);
+                    if (damageNumbers != null && damageNumbers.isEnabled()) {
+                        damageNumbers.onEntityDamage(entity);
                     }
                 } else if (packet.getStatus() == 3) {
                     KillEffect killEffect = ModuleManager.getInstance().getModule(KillEffect.class);
