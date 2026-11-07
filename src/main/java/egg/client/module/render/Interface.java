@@ -21,6 +21,7 @@ import egg.client.render.hud.HudContextMenu;
 import egg.client.render.hud.HudSnapHelper;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Fonts;
+import egg.client.render.msdf.ScissorUtil;
 import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.ui.halloween.HalloweenGuiRenderer;
 import egg.client.ui.theme.Theme;
@@ -150,6 +151,7 @@ public class Interface extends Module {
 
     private boolean islandExpanded = false;
     private float islandExpandAnim = 0.0f;
+    private final Animation islandExpandAnimation = new Animation(0.0f, 380L, Easing.EASE_OUT_BACK);
     private boolean isSeeking = false;
     private long currentDurationMs = 0L;
     private long currentPositionMs = 0L;
@@ -273,10 +275,14 @@ public class Interface extends Module {
                 islandExpanded = false;
             }
             float targetExpand = (islandExpanded && hasActiveMedia && isMediaPlaying) ? 1.0f : 0.0f;
-            this.islandExpandAnim += (targetExpand - this.islandExpandAnim) * 0.22f;
-            if (Math.abs(this.islandExpandAnim - targetExpand) < 0.001f) {
-                this.islandExpandAnim = targetExpand;
+            if (this.islandExpandAnimation.getTarget() != targetExpand) {
+                if (targetExpand > 0.5f) {
+                    this.islandExpandAnimation.setTarget(1.0f, 380L, Easing.EASE_OUT_BACK);
+                } else {
+                    this.islandExpandAnimation.setTarget(0.0f, 260L, Easing.EASE_OUT_CUBIC);
+                }
             }
+            this.islandExpandAnim = this.islandExpandAnimation.get();
 
             if (hasActiveMedia && isMediaPlaying && currentDurationMs > 0L) {
                 long nowTime = System.currentTimeMillis();
@@ -691,19 +697,8 @@ public class Interface extends Module {
             float titleY = y + 3.2f;
             float artistY = y + 15.6f;
 
-            float tw = Fonts.d.a(displayTitle, 11.5f);
-            if (tw <= maxTextW) {
-                Fonts.d.a(mat, displayTitle, textStartX, titleY, 11.5f, ColorUtil.withAlphaFloat(0xFFFFFFFF, collapsedAlpha));
-            } else {
-                Fonts.d.c(mat, displayTitle, textStartX, titleY, 11.5f, ColorUtil.withAlphaFloat(0xFFFFFFFF, collapsedAlpha), maxTextW);
-            }
-
-            float aw = Fonts.d.a(displayArtist, 8.5f);
-            if (aw <= maxTextW) {
-                Fonts.d.a(mat, displayArtist, textStartX, artistY, 8.5f, ColorUtil.withAlphaFloat(0xFFE2E4EE, collapsedAlpha));
-            } else {
-                Fonts.d.c(mat, displayArtist, textStartX, artistY, 8.5f, ColorUtil.withAlphaFloat(0xFFE2E4EE, collapsedAlpha), maxTextW);
-            }
+            drawMarqueeText(mat, displayTitle, textStartX, titleY, 11.5f, ColorUtil.withAlphaFloat(0xFFFFFFFF, collapsedAlpha), maxTextW, true);
+            drawMarqueeText(mat, displayArtist, textStartX, artistY, 8.5f, ColorUtil.withAlphaFloat(0xFFE2E4EE, collapsedAlpha), maxTextW, true);
         }
 
         float expandedAlpha = this.islandExpandAnim * alphaFactor;
@@ -721,8 +716,8 @@ public class Interface extends Module {
             float titleY = y + 10.5f;
             float artistY = y + 25.5f;
 
-            Fonts.d.c(mat, displayTitle, textStartX, titleY, 11.5f, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha), textMaxW);
-            Fonts.d.c(mat, displayArtist, textStartX, artistY, 9.0f, ColorUtil.withAlphaFloat(0xFF8E8E93, expandedAlpha), textMaxW);
+            drawMarqueeText(mat, displayTitle, textStartX, titleY, 11.5f, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha), textMaxW, true);
+            drawMarqueeText(mat, displayArtist, textStartX, artistY, 9.0f, ColorUtil.withAlphaFloat(0xFF8E8E93, expandedAlpha), textMaxW, true);
 
             float rowY = y + 47.0f;
             this.lastRowY = rowY;
@@ -758,46 +753,43 @@ public class Interface extends Module {
 
             float waveX = textStartX + curTimeW + 6.0f;
             float waveW = (remX - 6.0f) - waveX;
-            float waveH = 9.0f;
             float waveCenterY = rowY + 5.0f;
             this.lastWaveX = waveX;
             this.lastWaveW = waveW;
 
-            int playedStart = ColorUtil.withAlphaFloat(0xFF30D158, expandedAlpha);
-            int playedEnd = ColorUtil.withAlphaFloat(ColorUtil.lerp(0xFF30D158, Theme.getAccent(), 0.35f), expandedAlpha);
-            int unplayedColor = ColorUtil.withAlphaFloat(0xFF44444A, expandedAlpha * 0.75f);
-
-            float waveTime = (float) (System.currentTimeMillis() % 1000000L) * 0.0028f;
-            float motionFactor = isMediaPlaying ? 1.0f : 0.25f;
-
-            int totalSlices = 32;
-            float sliceW = waveW / (float) totalSlices;
-
-            for (int i = 0; i < totalSlices; i++) {
-                float u = (float) i / (float) (totalSlices - 1);
-                float bass = (float) Math.abs(Math.sin(waveTime * 2.2f + u * 8.5f) * 0.65f + Math.sin(waveTime * 1.1f - u * 4.0f) * 0.35f);
-                float voice = (float) Math.abs(Math.sin(waveTime * 4.8f + u * 18.0f) * 0.55f + Math.cos(waveTime * 7.2f - u * 26.0f) * 0.30f);
-                float combined = (float) Math.abs((bass * 0.50f + voice * 0.50f) * 1.15f + Math.sin(waveTime * 9.5f + u * 32.0f) * 0.25f);
-
-                float wBass = MathHelper.clamp(1.0f - (u / 0.38f), 0.0f, 1.0f);
-                float wComb = MathHelper.clamp((u - 0.62f) / 0.38f, 0.0f, 1.0f);
-                float wVoice = Math.max(0.0f, 1.0f - wBass - wComb);
-
-                float dynamicAmp = (wBass * bass + wVoice * voice + wComb * combined) * motionFactor;
-                float organicEnvelope = 0.45f + 0.35f * (float) Math.sin(u * Math.PI) + 0.12f * (float) Math.sin(u * 2.0f * Math.PI + 0.5f);
-                float hFactor = MathHelper.clamp(organicEnvelope + dynamicAmp * 0.42f, 0.30f, 1.0f);
-                float sliceH = Math.max(2.5f, waveH * hFactor);
-
-                float sx = waveX + i * sliceW;
-                float sy = waveCenterY - sliceH * 0.5f;
-
-                int col = (u <= progress) ? ColorUtil.lerp(playedStart, playedEnd, u) : unplayedColor;
-                Draw2DProcessor.INSTANCE.drawRect(mat, sx, sy, Math.max(1.2f, sliceW - 0.8f), sliceH, 0.8f, col);
-            }
+            float thickness = 3.4f;
+            int playedColor = ColorUtil.withAlphaFloat(0xFF30D158, expandedAlpha);
+            int unplayedColor = ColorUtil.withAlphaFloat(0xFF55555C, expandedAlpha * 0.85f);
 
             float headX = waveX + waveW * progress;
-            Draw2DProcessor.INSTANCE.drawRect(mat, headX - 4.0f, waveCenterY - 4.0f, 8.0f, 8.0f, 4.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), expandedAlpha * 0.5f));
-            Draw2DProcessor.INSTANCE.drawRect(mat, headX - 2.0f, waveCenterY - 2.0f, 4.0f, 4.0f, 2.0f, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha));
+            float playedW = Math.max(0.0f, headX - waveX);
+            if (playedW > 0.0f) {
+                Draw2DProcessor.INSTANCE.drawRect(mat, waveX, waveCenterY - thickness * 0.5f, playedW, thickness, thickness * 0.5f, playedColor);
+            }
+
+            float waveTime = (float) (System.currentTimeMillis() % 1000000L) * 0.0055f;
+            float amplitude = isMediaPlaying ? 2.4f : 0.0f;
+            float unplayedW = (waveX + waveW) - headX;
+
+            if (unplayedW > 0.0f) {
+                float step = 0.8f;
+                float segW = 1.3f;
+                for (float sx = headX; sx <= waveX + waveW; sx += step) {
+                    float distFromHead = sx - headX;
+                    float distFromEnd = (waveX + waveW) - sx;
+                    float rampHead = MathHelper.clamp(distFromHead / 8.0f, 0.0f, 1.0f);
+                    float rampEnd = MathHelper.clamp(distFromEnd / 8.0f, 0.0f, 1.0f);
+                    float localAmp = amplitude * rampHead * rampEnd;
+
+                    float phase = distFromHead * 0.16f - waveTime;
+                    float sy = waveCenterY + localAmp * (float) Math.sin(phase);
+
+                    Draw2DProcessor.INSTANCE.drawRect(mat, sx, sy - thickness * 0.5f, segW, thickness, thickness * 0.5f, unplayedColor);
+                }
+            }
+
+            Draw2DProcessor.INSTANCE.drawGlow(mat, headX - 4.5f, waveCenterY - 4.5f, 9.0f, 9.0f, 4.5f, playedColor, 5.0f);
+            Draw2DProcessor.INSTANCE.drawRect(mat, headX - 2.5f, waveCenterY - 2.5f, 5.0f, 5.0f, 2.5f, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha));
 
             int btnColor = ColorUtil.withAlphaFloat(0xFFB0B0B8, expandedAlpha);
             drawSkipPrevVector(mat, btnPrevX, waveCenterY, btnColor);
@@ -808,6 +800,51 @@ public class Interface extends Module {
         if (customIslandScale) {
             context.getMatrices().popMatrix();
         }
+    }
+
+    private void drawMarqueeText(Matrix3x2f mat, String text, float x, float y, float size, int color, float maxW, boolean isBold) {
+        if (text == null || text.isEmpty() || maxW <= 0.0f) return;
+        float textW = isBold ? Fonts.d.a(text, size) : Fonts.b.a(text, size);
+        if (textW <= maxW) {
+            if (isBold) {
+                Fonts.d.a(mat, text, x, y, size, color);
+            } else {
+                Fonts.b.a(mat, text, x, y, size, color);
+            }
+            return;
+        }
+
+        float overflow = textW - maxW;
+        float speed = 22.0f;
+        float scrollDuration = overflow / speed;
+        float pauseStart = 1.8f;
+        float pauseEnd = 1.4f;
+        float totalCycle = pauseStart + scrollDuration + pauseEnd + scrollDuration;
+
+        long cycleMs = Math.max(100L, (long) (totalCycle * 1000L));
+        float timeInCycle = (float) (System.currentTimeMillis() % cycleMs) / 1000.0f;
+        float offset;
+        if (timeInCycle < pauseStart) {
+            offset = 0.0f;
+        } else if (timeInCycle < pauseStart + scrollDuration) {
+            float progress = (timeInCycle - pauseStart) / scrollDuration;
+            float eased = 0.5f - 0.5f * (float) Math.cos(progress * Math.PI);
+            offset = overflow * eased;
+        } else if (timeInCycle < pauseStart + scrollDuration + pauseEnd) {
+            offset = overflow;
+        } else {
+            float progress = (timeInCycle - (pauseStart + scrollDuration + pauseEnd)) / scrollDuration;
+            float eased = 0.5f - 0.5f * (float) Math.cos(progress * Math.PI);
+            offset = overflow * (1.0f - eased);
+        }
+
+        ScissorUtil.a(mat, x, y - 2.0f, maxW, size + 8.0f);
+        if (isBold) {
+            Fonts.d.a(mat, text, x - offset, y, size, color);
+        } else {
+            Fonts.b.a(mat, text, x - offset, y, size, color);
+        }
+        ScissorUtil.a(mat);
     }
 
     private void drawPlayIconVector(Matrix3x2f mat, float cx, float cy, float size, int color) {
