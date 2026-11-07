@@ -223,6 +223,11 @@ public abstract class GameRendererMixin {
 
         WaypointManager.getInstance().render(context);
 
+        LethalZone lethalZone = ModuleManager.getInstance().getModule(LethalZone.class);
+        if (lethalZone != null && lethalZone.isEnabled()) {
+            lethalZone.render2D(context);
+        }
+
         DrawBatcher.flushPending();
 
     }

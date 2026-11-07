@@ -90,6 +90,7 @@ public class ModuleManager {
         register(new ItemESP());
 
         register(new ItemRadius());
+        register(new LethalZone());
 
         register(new TargetHUD());
 

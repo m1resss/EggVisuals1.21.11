@@ -4,6 +4,7 @@ import egg.client.module.ModuleManager;
 import egg.client.module.render.HitParticles;
 import egg.client.module.render.KillEffect;
 import egg.client.module.render.ItemRadius;
+import egg.client.module.render.LethalZone;
 import egg.client.module.render.TargetESP;
 import egg.client.module.render.Trail;
 import egg.client.module.render.JumpCircles;
@@ -86,6 +87,11 @@ public class EggClient implements ClientModInitializer {
             ItemRadius itemRadius = ModuleManager.getInstance().getModule(ItemRadius.class);
             if (itemRadius != null && itemRadius.isEnabled()) {
                 itemRadius.render(immediate, camPos);
+            }
+
+            LethalZone lethalZone = ModuleManager.getInstance().getModule(LethalZone.class);
+            if (lethalZone != null && lethalZone.isEnabled()) {
+                lethalZone.renderWorld3D(matrices, camera, tickDelta, immediate, camPos);
             }
 
             HitParticles hitParticles = ModuleManager.getInstance().getModule(HitParticles.class);
