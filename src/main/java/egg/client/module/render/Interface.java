@@ -760,8 +760,8 @@ public class Interface extends Module {
 
             float waveX = textStartX + curTimeW + 6.0f;
             float waveW = (remX - 6.0f) - waveX;
-            float bottomY = rowY + 9.5f;
-            float waveCenterY = bottomY - 4.5f;
+            float waveCenterY = rowY + 5.0f;
+            float bottomY = rowY + 10.5f;
             this.lastWaveX = waveX;
             this.lastWaveW = waveW;
 
@@ -773,11 +773,11 @@ public class Interface extends Module {
 
             float waveTime = (float) (System.currentTimeMillis() % 1000000L) * 0.0055f;
             float beatPulse = (float) (Math.sin(waveTime * 3.4f) * 0.35f + Math.sin(waveTime * 6.8f + 0.8f) * 0.20f + 0.45f);
-            float volEff = isMediaPlaying ? Math.max(0.20f, this.animatedVolume) : 0.0f;
-            float dynamicAmp = volEff * MathHelper.clamp(beatPulse, 0.25f, 1.0f);
+            float volEff = isMediaPlaying ? Math.max(0.50f, this.animatedVolume) : 0.0f;
+            float dynamicAmp = volEff * MathHelper.clamp(beatPulse, 0.40f, 1.0f);
 
-            float minWaveH = 2.4f;
-            float maxWaveH = 9.5f;
+            float minWaveH = 4.5f;
+            float maxWaveH = 14.5f;
             float step = 0.8f;
             float segW = 1.3f;
 
@@ -789,7 +789,7 @@ public class Interface extends Module {
                 float envelope = (float) Math.sin(u * Math.PI);
                 envelope = 0.45f + 0.55f * (float) Math.sqrt(Math.max(0.0f, envelope));
                 float rawVal = (bass * 0.46f + voice * 0.36f + jitter * 0.18f) * envelope;
-                float waveFactor = MathHelper.clamp(rawVal * 1.35f, 0.08f, 1.0f);
+                float waveFactor = MathHelper.clamp(rawVal * 1.35f, 0.12f, 1.0f);
                 float waveH = minWaveH + (maxWaveH - minWaveH) * waveFactor * dynamicAmp;
                 float sy = bottomY - waveH;
 
@@ -798,8 +798,7 @@ public class Interface extends Module {
                 Draw2DProcessor.INSTANCE.drawRect(mat, sx, sy, segW, waveH, segR, sliceCol);
             }
 
-            float knobR = 3.5f;
-            Draw2DProcessor.INSTANCE.drawGlow(mat, headX - knobR - 2.0f, waveCenterY - knobR - 2.0f, (knobR + 2.0f) * 2.0f, (knobR + 2.0f) * 2.0f, knobR + 2.0f, playedColor, 5.0f);
+            float knobR = 3.6f;
             Draw2DProcessor.INSTANCE.drawRect(mat, headX - knobR, waveCenterY - knobR, knobR * 2.0f, knobR * 2.0f, knobR, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha));
 
             int btnColor = ColorUtil.withAlphaFloat(0xFFB0B0B8, expandedAlpha);
