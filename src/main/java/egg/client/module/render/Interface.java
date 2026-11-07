@@ -148,6 +148,8 @@ public class Interface extends Module {
     private NativeImageBackedTexture coverTexture = null;
     private boolean hasCoverArt = false;
     private int dominantAccentColor = 0xFF4A7CC4;
+    private volatile float currentMediaVolume = 0.85f;
+    private float animatedVolume = 0.85f;
 
     private boolean islandExpanded = false;
     private float islandExpandAnim = 0.0f;
@@ -571,7 +573,7 @@ public class Interface extends Module {
 
         float curW = MathHelper.lerp(this.islandExpandAnim, collapsedW, expandedW);
         float curH = MathHelper.lerp(this.islandExpandAnim, collapsedH, expandedH);
-        float radius = MathHelper.lerp(this.islandExpandAnim, 15.0f, 16.0f);
+        float radius = MathHelper.lerp(this.islandExpandAnim, curH * 0.5f, 16.0f);
 
         float baseIslandS = islandScale.getValueFloat();
         float combatS = getCombatScaleFactor("island");
@@ -601,21 +603,26 @@ public class Interface extends Module {
             context.getMatrices().translate(-centerX, -y);
         }
 
-        int baseIslandBg = ColorUtil.withAlphaFloat(0xFF141418, alphaFactor);
-        Draw2DProcessor.INSTANCE.drawGlow(mat, x, y, curW, curH, radius, ColorUtil.withAlphaFloat(ColorUtil.rgba(0, 0, 0, 160), alphaFactor), 12.0f);
+        this.animatedVolume += (this.currentMediaVolume - this.animatedVolume) * 0.15f;
+
+        int baseIslandBg = ColorUtil.withAlphaFloat(0xFF101014, alphaFactor);
+        Draw2DProcessor.INSTANCE.drawGlow(mat, x, y, curW, curH, radius, ColorUtil.withAlphaFloat(ColorUtil.rgba(0, 0, 0, 150), alphaFactor), 10.0f);
         if (halloween.isEnabled()) {
             Draw2DProcessor.INSTANCE.drawGlow(mat, x, y, curW, curH, radius, ColorUtil.rgba(255, 117, 24, (int) (alphaFactor * 35.0f)), 8.0f);
         }
         Draw2DProcessor.INSTANCE.drawRect(mat, x, y, curW, curH, radius, baseIslandBg);
 
-        int accent = (dominantAccentColor & 0xFFFFFF) != 0 ? dominantAccentColor : 0xFF30D158;
-        float glowA = (0.25f + 0.10f * (float) Math.sin(System.currentTimeMillis() * 0.002)) * alphaFactor;
+        int accent = (dominantAccentColor & 0xFFFFFF) != 0 ? dominantAccentColor : Theme.getAccent();
+        float glowA = (0.20f + 0.08f * (float) Math.sin(System.currentTimeMillis() * 0.002)) * alphaFactor;
         int accentGrad = ColorUtil.withAlphaFloat(ColorUtil.rgba(ColorUtil.red(accent), ColorUtil.green(accent), ColorUtil.blue(accent), (int) (110 * (0.3f + 0.7f * this.islandExpandAnim))), glowA);
         Draw2DProcessor.INSTANCE.drawGradient(mat, x, y, curW, curH, radius, 0x00000000, 0x00000000, 0x00000000, accentGrad);
 
-        Draw2DProcessor.INSTANCE.drawOutline(mat, x, y, curW, curH, radius, 0.9f, ColorUtil.withAlphaFloat(ColorUtil.rgba(255, 255, 255, 28), alphaFactor));
+        float cardOutlineAlpha = this.islandExpandAnim * alphaFactor;
+        if (cardOutlineAlpha > 0.02f) {
+            Draw2DProcessor.INSTANCE.drawOutline(mat, x, y, curW, curH, radius, 0.9f, ColorUtil.withAlphaFloat(ColorUtil.rgba(255, 255, 255, 28), cardOutlineAlpha));
+        }
         DrawBatcher.flushPending();
-        if (alphaFactor > 0.15f) {
+        if (this.islandExpandAnim > 0.05f && alphaFactor > 0.15f) {
             Render2D.drawDiagonalSheen(context, x, y, curW, curH, radius, 2500L);
         }
 
@@ -687,7 +694,7 @@ public class Interface extends Module {
                 float bh = 4.0f + 8.5f * (0.5f + 0.5f * wave);
                 float bx = barsStartX + b * (barW + barGap);
                 float by = barsCenterY - bh / 2.0f;
-                int barBaseColor = (hasCoverArt && (dominantAccentColor & 0xFFFFFF) != 0) ? dominantAccentColor : 0xFF4A7CC4;
+                int barBaseColor = (hasCoverArt && (dominantAccentColor & 0xFFFFFF) != 0) ? dominantAccentColor : Theme.getAccent();
                 int barColor = ColorUtil.lerp(barBaseColor, 0xFFFFFFFF, (float) b / 7.0f);
                 Draw2DProcessor.INSTANCE.drawRect(mat, bx, by, barW, bh, 1.0f, ColorUtil.withAlphaFloat(barColor, collapsedAlpha));
             }
@@ -753,43 +760,47 @@ public class Interface extends Module {
 
             float waveX = textStartX + curTimeW + 6.0f;
             float waveW = (remX - 6.0f) - waveX;
-            float waveCenterY = rowY + 5.0f;
+            float bottomY = rowY + 9.5f;
+            float waveCenterY = bottomY - 4.5f;
             this.lastWaveX = waveX;
             this.lastWaveW = waveW;
 
-            float thickness = 3.4f;
-            int playedColor = ColorUtil.withAlphaFloat(0xFF30D158, expandedAlpha);
-            int unplayedColor = ColorUtil.withAlphaFloat(0xFF55555C, expandedAlpha * 0.85f);
+            int themeAccent = Theme.getAccent();
+            int playedColor = ColorUtil.withAlphaFloat(themeAccent, expandedAlpha);
+            int unplayedColor = ColorUtil.withAlphaFloat(0xFF72727C, expandedAlpha * 0.75f);
 
-            float headX = waveX + waveW * progress;
-            float playedW = Math.max(0.0f, headX - waveX);
-            if (playedW > 0.0f) {
-                Draw2DProcessor.INSTANCE.drawRect(mat, waveX, waveCenterY - thickness * 0.5f, playedW, thickness, thickness * 0.5f, playedColor);
-            }
+            float headX = MathHelper.clamp(waveX + waveW * progress, waveX, waveX + waveW);
 
             float waveTime = (float) (System.currentTimeMillis() % 1000000L) * 0.0055f;
-            float amplitude = isMediaPlaying ? 2.4f : 0.0f;
-            float unplayedW = (waveX + waveW) - headX;
+            float beatPulse = (float) (Math.sin(waveTime * 3.4f) * 0.35f + Math.sin(waveTime * 6.8f + 0.8f) * 0.20f + 0.45f);
+            float volEff = isMediaPlaying ? Math.max(0.20f, this.animatedVolume) : 0.0f;
+            float dynamicAmp = volEff * MathHelper.clamp(beatPulse, 0.25f, 1.0f);
 
-            if (unplayedW > 0.0f) {
-                float step = 0.8f;
-                float segW = 1.3f;
-                for (float sx = headX; sx <= waveX + waveW; sx += step) {
-                    float distFromHead = sx - headX;
-                    float distFromEnd = (waveX + waveW) - sx;
-                    float rampHead = MathHelper.clamp(distFromHead / 8.0f, 0.0f, 1.0f);
-                    float rampEnd = MathHelper.clamp(distFromEnd / 8.0f, 0.0f, 1.0f);
-                    float localAmp = amplitude * rampHead * rampEnd;
+            float minWaveH = 2.4f;
+            float maxWaveH = 9.5f;
+            float step = 0.8f;
+            float segW = 1.3f;
 
-                    float phase = distFromHead * 0.16f - waveTime;
-                    float sy = waveCenterY + localAmp * (float) Math.sin(phase);
+            for (float sx = waveX; sx < waveX + waveW; sx += step) {
+                float u = (sx - waveX) / Math.max(1.0f, waveW);
+                float bass = (float) Math.abs(Math.sin(waveTime * 2.4f + u * 8.5f) * 0.60f + Math.sin(waveTime * 1.3f - u * 4.2f) * 0.40f);
+                float voice = (float) Math.abs(Math.sin(waveTime * 5.4f + u * 17.5f) * 0.55f + Math.cos(waveTime * 8.1f - u * 27.0f) * 0.35f);
+                float jitter = (float) Math.abs(Math.sin(waveTime * 12.0f + u * 36.0f) * 0.25f + Math.sin(waveTime * 17.5f - u * 52.0f) * 0.15f);
+                float envelope = (float) Math.sin(u * Math.PI);
+                envelope = 0.45f + 0.55f * (float) Math.sqrt(Math.max(0.0f, envelope));
+                float rawVal = (bass * 0.46f + voice * 0.36f + jitter * 0.18f) * envelope;
+                float waveFactor = MathHelper.clamp(rawVal * 1.35f, 0.08f, 1.0f);
+                float waveH = minWaveH + (maxWaveH - minWaveH) * waveFactor * dynamicAmp;
+                float sy = bottomY - waveH;
 
-                    Draw2DProcessor.INSTANCE.drawRect(mat, sx, sy - thickness * 0.5f, segW, thickness, thickness * 0.5f, unplayedColor);
-                }
+                int sliceCol = (sx <= headX) ? playedColor : unplayedColor;
+                float segR = (sx <= waveX + step || sx + segW >= waveX + waveW) ? 1.2f : 0.6f;
+                Draw2DProcessor.INSTANCE.drawRect(mat, sx, sy, segW, waveH, segR, sliceCol);
             }
 
-            Draw2DProcessor.INSTANCE.drawGlow(mat, headX - 4.5f, waveCenterY - 4.5f, 9.0f, 9.0f, 4.5f, playedColor, 5.0f);
-            Draw2DProcessor.INSTANCE.drawRect(mat, headX - 2.5f, waveCenterY - 2.5f, 5.0f, 5.0f, 2.5f, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha));
+            float knobR = 3.5f;
+            Draw2DProcessor.INSTANCE.drawGlow(mat, headX - knobR - 2.0f, waveCenterY - knobR - 2.0f, (knobR + 2.0f) * 2.0f, (knobR + 2.0f) * 2.0f, knobR + 2.0f, playedColor, 5.0f);
+            Draw2DProcessor.INSTANCE.drawRect(mat, headX - knobR, waveCenterY - knobR, knobR * 2.0f, knobR * 2.0f, knobR, ColorUtil.withAlphaFloat(0xFFFFFFFF, expandedAlpha));
 
             int btnColor = ColorUtil.withAlphaFloat(0xFFB0B0B8, expandedAlpha);
             drawSkipPrevVector(mat, btnPrevX, waveCenterY, btnColor);
@@ -951,6 +962,12 @@ public class Interface extends Module {
         MEDIA_EXECUTOR.submit(() -> {
             try {
                 if (OptMedia.init() && OptMedia.INSTANCE != null) {
+                    try {
+                        float v = OptMedia.INSTANCE.GetVolume();
+                        if (v >= 0.0f && v <= 1.0f) {
+                            currentMediaVolume = v;
+                        }
+                    } catch (Throwable ignored) {}
                     boolean ok = OptMedia.INSTANCE.GetCurrentMediaInfo(artistStruct);
                     if (ok && artistStruct.getTitle() != null && !artistStruct.getTitle().trim().isEmpty() && artistStruct.isPlaying()) {
                         hasActiveMedia = true;
