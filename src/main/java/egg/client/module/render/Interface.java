@@ -25,6 +25,7 @@ import egg.client.render.msdf.ScissorUtil;
 import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.ui.halloween.HalloweenGuiRenderer;
 import egg.client.ui.theme.Theme;
+import egg.client.util.AudioMeter;
 import egg.client.util.ColorUtil;
 import egg.client.util.MediaTracker;
 import net.minecraft.client.MinecraftClient;
@@ -150,6 +151,9 @@ public class Interface extends Module {
     private int dominantAccentColor = 0xFF4A7CC4;
     private volatile float currentMediaVolume = 0.85f;
     private float animatedVolume = 0.85f;
+    private float animatedLoudness = 0.5f;
+    private float accumulatedWavePhase = 0.0f;
+    private long lastWaveUpdateTime = 0L;
 
     private boolean islandExpanded = false;
     private float islandExpandAnim = 0.0f;
@@ -688,10 +692,11 @@ public class Interface extends Module {
             long now = System.currentTimeMillis();
             float timeSec = (float) (now % 1000000L) / 1000.0f;
 
+            float barLoud = MathHelper.clamp(0.35f + 0.65f * this.animatedLoudness, 0.25f, 1.0f);
             for (int b = 0; b < barCount; b++) {
                 float phase = b * 1.25f;
                 float wave = (float) Math.sin(timeSec * 7.5f + phase);
-                float bh = 4.0f + 8.5f * (0.5f + 0.5f * wave);
+                float bh = 3.0f + 9.5f * (0.5f + 0.5f * wave) * barLoud;
                 float bx = barsStartX + b * (barW + barGap);
                 float by = barsCenterY - bh / 2.0f;
                 int barBaseColor = (hasCoverArt && (dominantAccentColor & 0xFFFFFF) != 0) ? dominantAccentColor : Theme.getAccent();
@@ -771,25 +776,58 @@ public class Interface extends Module {
 
             float headX = MathHelper.clamp(waveX + waveW * progress, waveX, waveX + waveW);
 
-            float waveTime = (float) (System.currentTimeMillis() % 1000000L) * 0.0055f;
-            float beatPulse = (float) (Math.sin(waveTime * 3.4f) * 0.35f + Math.sin(waveTime * 6.8f + 0.8f) * 0.20f + 0.45f);
-            float volEff = isMediaPlaying ? Math.max(0.50f, this.animatedVolume) : 0.0f;
-            float dynamicAmp = volEff * MathHelper.clamp(beatPulse, 0.40f, 1.0f);
+            long nowMs = System.currentTimeMillis();
+            if (this.lastWaveUpdateTime == 0L) {
+                this.lastWaveUpdateTime = nowMs;
+            }
+            float dt = MathHelper.clamp((nowMs - this.lastWaveUpdateTime) / 1000.0f, 0.0f, 0.1f);
+            this.lastWaveUpdateTime = nowMs;
 
-            float minWaveH = 4.5f;
-            float maxWaveH = 14.5f;
+            float rawPeak = AudioMeter.isActive() ? AudioMeter.getPeak() : -1.0f;
+            float currentLoudness;
+            if (isMediaPlaying) {
+                float vol = MathHelper.clamp(this.animatedVolume, 0.05f, 1.0f);
+                if (rawPeak >= 0.0f) {
+                    float peakScale = MathHelper.clamp(rawPeak * 2.2f, 0.04f, 1.0f);
+                    currentLoudness = peakScale * vol;
+                } else {
+                    currentLoudness = vol;
+                }
+            } else {
+                currentLoudness = 0.0f;
+            }
+
+            if (currentLoudness > this.animatedLoudness) {
+                this.animatedLoudness += (currentLoudness - this.animatedLoudness) * Math.min(1.0f, dt * 14.0f);
+            } else {
+                this.animatedLoudness += (currentLoudness - this.animatedLoudness) * Math.min(1.0f, dt * 4.5f);
+            }
+            this.animatedLoudness = MathHelper.clamp(this.animatedLoudness, 0.0f, 1.0f);
+
+            float speed = 1.4f + 4.2f * this.animatedLoudness;
+            this.accumulatedWavePhase += dt * speed;
+            float waveTime = this.accumulatedWavePhase;
+
+            float beatPulse = (float) (Math.sin(waveTime * 3.2f) * 0.35f + Math.sin(waveTime * 6.4f + 0.8f) * 0.20f + 0.45f);
+            float dynamicAmp = MathHelper.clamp(0.18f + 0.82f * this.animatedLoudness * beatPulse, 0.10f, 1.0f);
+
+            float minWaveH = 3.2f + 1.3f * this.animatedLoudness;
+            float maxWaveH = 5.5f + 9.0f * this.animatedLoudness;
             float step = 0.8f;
             float segW = 1.3f;
 
+            float voiceAmp = 0.15f + 0.85f * this.animatedLoudness;
+            float jitterStrength = 0.22f * (this.animatedLoudness * this.animatedLoudness);
+
             for (float sx = waveX; sx < waveX + waveW; sx += step) {
                 float u = (sx - waveX) / Math.max(1.0f, waveW);
-                float bass = (float) Math.abs(Math.sin(waveTime * 2.4f + u * 8.5f) * 0.60f + Math.sin(waveTime * 1.3f - u * 4.2f) * 0.40f);
-                float voice = (float) Math.abs(Math.sin(waveTime * 5.4f + u * 17.5f) * 0.55f + Math.cos(waveTime * 8.1f - u * 27.0f) * 0.35f);
-                float jitter = (float) Math.abs(Math.sin(waveTime * 12.0f + u * 36.0f) * 0.25f + Math.sin(waveTime * 17.5f - u * 52.0f) * 0.15f);
+                float bass = (float) Math.abs(Math.sin(waveTime * 2.2f + u * 8.5f) * 0.60f + Math.sin(waveTime * 1.2f - u * 4.2f) * 0.40f);
+                float voice = (float) Math.abs(Math.sin(waveTime * 5.2f + u * 17.5f) * 0.55f + Math.cos(waveTime * 8.0f - u * 27.0f) * 0.35f) * voiceAmp;
+                float jitter = (float) Math.abs(Math.sin(waveTime * 12.0f + u * 36.0f) * 0.65f + Math.sin(waveTime * 17.5f - u * 52.0f) * 0.35f) * jitterStrength;
                 float envelope = (float) Math.sin(u * Math.PI);
                 envelope = 0.45f + 0.55f * (float) Math.sqrt(Math.max(0.0f, envelope));
-                float rawVal = (bass * 0.46f + voice * 0.36f + jitter * 0.18f) * envelope;
-                float waveFactor = MathHelper.clamp(rawVal * 1.35f, 0.12f, 1.0f);
+                float rawVal = (bass * 0.50f + voice * 0.35f + jitter) * envelope;
+                float waveFactor = MathHelper.clamp(rawVal * 1.35f, 0.10f, 1.0f);
                 float waveH = minWaveH + (maxWaveH - minWaveH) * waveFactor * dynamicAmp;
                 float sy = bottomY - waveH;
 
