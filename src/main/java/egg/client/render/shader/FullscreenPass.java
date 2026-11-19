@@ -360,6 +360,140 @@ public final class FullscreenPass {
         }
     }
 
+    public static void blitWithUniforms(RenderPipeline renderPipeline, Framebuffer framebuffer, GpuTextureView gpuTextureView, GpuSampler gpuSampler, GpuBufferSlice gpuBufferSlice) {
+        blitWithUniformsQuad(renderPipeline, framebuffer, gpuTextureView, gpuSampler, gpuBufferSlice, getTopV());
+    }
+
+    private static void blitWithUniformsQuad(RenderPipeline renderPipeline, Framebuffer framebuffer, GpuTextureView gpuTextureView, GpuSampler gpuSampler, GpuBufferSlice gpuBufferSlice, float f) {
+        if (renderPipeline != null && framebuffer != null && gpuTextureView != null && gpuSampler != null && gpuBufferSlice != null) {
+            try (BufferAllocator bufferAllocator = QUAD_ALLOCATOR) {
+                float f2 = 1.0F - f;
+                BufferBuilder bufferBuilder = new BufferBuilder(bufferAllocator, DrawMode.QUADS, CustomVertexFormats.POSITION_TEX_LINE_WIDTH);
+                bufferBuilder.vertex(-1.0F, 1.0F, 0.0F).texture(0.0F, f).lineWidth(0.0F);
+                bufferBuilder.vertex(-1.0F, -1.0F, 0.0F).texture(0.0F, f2).lineWidth(0.0F);
+                bufferBuilder.vertex(1.0F, -1.0F, 0.0F).texture(1.0F, f2).lineWidth(0.0F);
+                bufferBuilder.vertex(1.0F, 1.0F, 0.0F).texture(1.0F, f).lineWidth(0.0F);
+                BuiltBuffer builtBuffer = bufferBuilder.endNullable();
+                if (builtBuffer == null) {
+                    return;
+                }
+
+                drawFullscreenPipeline(renderPipeline, framebuffer, gpuTextureView, gpuSampler, builtBuffer, gpuBufferSlice);
+            }
+        }
+    }
+
+    public static void drawMotionBlur(
+        RenderPipeline renderPipeline,
+        Framebuffer framebuffer,
+        GpuTextureView colorView,
+        GpuTextureView depthView,
+        GpuSampler gpuSampler,
+        GpuSampler gpuSampler2,
+        GpuBufferSlice gpuBufferSlice
+    ) {
+        if (renderPipeline != null && framebuffer != null && colorView != null && depthView != null && gpuBufferSlice != null) {
+            try (BufferAllocator bufferAllocator = QUAD_ALLOCATOR) {
+                float f = getTopV();
+                float f2 = 1.0F - f;
+                BufferBuilder bufferBuilder = new BufferBuilder(bufferAllocator, DrawMode.QUADS, CustomVertexFormats.POSITION_TEX_LINE_WIDTH);
+                bufferBuilder.vertex(-1.0F, 1.0F, 0.0F).texture(0.0F, f).lineWidth(0.0F);
+                bufferBuilder.vertex(-1.0F, -1.0F, 0.0F).texture(0.0F, f2).lineWidth(0.0F);
+                bufferBuilder.vertex(1.0F, -1.0F, 0.0F).texture(1.0F, f2).lineWidth(0.0F);
+                bufferBuilder.vertex(1.0F, 1.0F, 0.0F).texture(1.0F, f).lineWidth(0.0F);
+                BuiltBuffer builtBuffer = bufferBuilder.endNullable();
+                if (builtBuffer == null) {
+                    return;
+                }
+
+                GpuBuffer gpuBuffer = FrameBufferPool.createBuffer(() -> "egg motion blur vbo", builtBuffer.getBuffer());
+                ShapeIndexBuffer shapeIndexBuffer = RenderSystem.getSequentialBuffer(builtBuffer.getDrawParameters().mode());
+                GpuBuffer gpuBuffer2 = shapeIndexBuffer.getIndexBuffer(builtBuffer.getDrawParameters().indexCount());
+                BuiltBuffer builtBuffer2 = builtBuffer;
+
+                try (RenderPass renderPass = RenderSystem.getDevice()
+                        .createCommandEncoder()
+                        .createRenderPass(() -> "egg motion blur", framebuffer.getColorAttachmentView(), OptionalInt.empty())) {
+                    renderPass.setPipeline(renderPipeline);
+                    renderPass.bindTexture("Sampler0", colorView, gpuSampler);
+                    renderPass.bindTexture("Sampler1", depthView, gpuSampler2);
+                    renderPass.setUniform("EggMotionBlur", gpuBufferSlice);
+                    renderPass.setVertexBuffer(0, gpuBuffer);
+                    renderPass.setIndexBuffer(gpuBuffer2, shapeIndexBuffer.getIndexType());
+                    renderPass.drawIndexed(0, 0, builtBuffer.getDrawParameters().indexCount(), 1);
+                } catch (Throwable throwable) {
+                    if (builtBuffer2 != null) {
+                        try {
+                            builtBuffer2.close();
+                        } catch (Throwable throwable2) {
+                            throwable.addSuppressed(throwable2);
+                        }
+                    }
+                    throw throwable;
+                }
+
+                if (builtBuffer != null) {
+                    builtBuffer.close();
+                }
+            }
+        }
+    }
+
+    public static void drawMotionBlurAccum(
+        RenderPipeline renderPipeline,
+        Framebuffer framebuffer,
+        GpuTextureView currentTex,
+        GpuTextureView prevTex,
+        GpuSampler gpuSampler,
+        GpuBufferSlice gpuBufferSlice
+    ) {
+        if (renderPipeline != null && framebuffer != null && currentTex != null && prevTex != null && gpuBufferSlice != null) {
+            try (BufferAllocator bufferAllocator = QUAD_ALLOCATOR) {
+                float f = getTopV();
+                float f2 = 1.0F - f;
+                BufferBuilder bufferBuilder = new BufferBuilder(bufferAllocator, DrawMode.QUADS, CustomVertexFormats.POSITION_TEX_LINE_WIDTH);
+                bufferBuilder.vertex(-1.0F, 1.0F, 0.0F).texture(0.0F, f).lineWidth(0.0F);
+                bufferBuilder.vertex(-1.0F, -1.0F, 0.0F).texture(0.0F, f2).lineWidth(0.0F);
+                bufferBuilder.vertex(1.0F, -1.0F, 0.0F).texture(1.0F, f2).lineWidth(0.0F);
+                bufferBuilder.vertex(1.0F, 1.0F, 0.0F).texture(1.0F, f).lineWidth(0.0F);
+                BuiltBuffer builtBuffer = bufferBuilder.endNullable();
+                if (builtBuffer == null) {
+                    return;
+                }
+
+                GpuBuffer gpuBuffer = FrameBufferPool.createBuffer(() -> "egg motion blur accum vbo", builtBuffer.getBuffer());
+                ShapeIndexBuffer shapeIndexBuffer = RenderSystem.getSequentialBuffer(builtBuffer.getDrawParameters().mode());
+                GpuBuffer gpuBuffer2 = shapeIndexBuffer.getIndexBuffer(builtBuffer.getDrawParameters().indexCount());
+                BuiltBuffer builtBuffer2 = builtBuffer;
+
+                try (RenderPass renderPass = RenderSystem.getDevice()
+                        .createCommandEncoder()
+                        .createRenderPass(() -> "egg motion blur accum", framebuffer.getColorAttachmentView(), OptionalInt.empty())) {
+                    renderPass.setPipeline(renderPipeline);
+                    renderPass.bindTexture("Sampler0", currentTex, gpuSampler);
+                    renderPass.bindTexture("Sampler1", prevTex, gpuSampler);
+                    renderPass.setUniform("EggAccumBlur", gpuBufferSlice);
+                    renderPass.setVertexBuffer(0, gpuBuffer);
+                    renderPass.setIndexBuffer(gpuBuffer2, shapeIndexBuffer.getIndexType());
+                    renderPass.drawIndexed(0, 0, builtBuffer.getDrawParameters().indexCount(), 1);
+                } catch (Throwable throwable) {
+                    if (builtBuffer2 != null) {
+                        try {
+                            builtBuffer2.close();
+                        } catch (Throwable throwable2) {
+                            throwable.addSuppressed(throwable2);
+                        }
+                    }
+                    throw throwable;
+                }
+
+                if (builtBuffer != null) {
+                    builtBuffer.close();
+                }
+            }
+        }
+    }
+
     public static final class RenderStateGuard implements AutoCloseable {
         private final GlStateSnapshot glState = GlStateSnapshot.capture();
         private final boolean openGl = GlStateSnapshot.isOpenGl();

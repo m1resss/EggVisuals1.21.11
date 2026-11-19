@@ -11,7 +11,7 @@ public class ThirdPerson extends Module {
     private Perspective previousPerspective = Perspective.FIRST_PERSON;
 
     public ThirdPerson() {
-        super("ThirdPerson", "Позволяет свободно осматриваться вокруг персонажа от третьего лица", Category.PLAYER);
+        super("ThirdPerson", "Позволяет свободно осматриваться вокруг персонажа от третьего лица", Category.ESP);
         addSettings(mode);
     }
 

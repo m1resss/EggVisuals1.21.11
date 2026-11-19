@@ -30,6 +30,7 @@ public final class CosmeticsConfigManager {
         public String pets = "";
         public String sword = "";
         public String swordModel = "";
+        public String watches = "";
 
         public CosmeticPreset(String name) {
             this.name = name;
@@ -43,6 +44,7 @@ public final class CosmeticsConfigManager {
             if (masks != null && !masks.isEmpty()) count++;
             if (pets != null && !pets.isEmpty()) count++;
             if (sword != null && !sword.isEmpty()) count++;
+            if (watches != null && !watches.isEmpty() && !"None".equalsIgnoreCase(watches)) count++;
             return count;
         }
     }
@@ -55,17 +57,27 @@ public final class CosmeticsConfigManager {
     }
 
     public File getConfigFile() {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        File runDir = (mc != null && mc.runDirectory != null) ? mc.runDirectory : new File(".");
-        File configsDir = new File(runDir, "configs");
-        if (!configsDir.exists()) {
-            configsDir.mkdirs();
+        try {
+            File dir = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("eggvisuals").toFile();
+            if (!dir.exists()) {
+                dir.mkdirs();
+            }
+            return new File(dir, "cosmetics_presets.json");
+        } catch (Throwable ignored) {
+            MinecraftClient mc = MinecraftClient.getInstance();
+            File runDir = (mc != null && mc.runDirectory != null) ? mc.runDirectory : new File(".");
+            File configsDir = new File(runDir, "configs");
+            if (!configsDir.exists()) {
+                configsDir.mkdirs();
+            }
+            return new File(configsDir, "cosmetics_presets.json");
         }
-        return new File(configsDir, "cosmetics_presets.json");
     }
 
-    public File getGlobalFallbackFile() {
-        return new File(System.getProperty("user.home"), ".egg_cosmetics_presets.json");
+    private File getLegacyConfigFile() {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        File runDir = (mc != null && mc.runDirectory != null) ? mc.runDirectory : new File(".");
+        return new File(new File(runDir, "configs"), "cosmetics_presets.json");
     }
 
     public List<CosmeticPreset> getPresets() {
@@ -109,6 +121,7 @@ public final class CosmeticsConfigManager {
         target.pets = mod.selected("pets");
         target.sword = mod.selectedSword();
         target.swordModel = mod.selectedSwordModel();
+        target.watches = mod.getSelectedWatch();
 
         this.currentPresetName = name;
         saveConfig();
@@ -126,6 +139,7 @@ public final class CosmeticsConfigManager {
         mod.select("masks", preset.masks);
         mod.select("pets", preset.pets);
         mod.selectSword(preset.sword, preset.swordModel);
+        mod.setSelectedWatch(preset.watches);
 
         saveConfig();
     }
@@ -151,9 +165,9 @@ public final class CosmeticsConfigManager {
     public void loadConfig() {
         File fileToRead = getConfigFile();
         if (!fileToRead.exists()) {
-            File fallback = getGlobalFallbackFile();
-            if (fallback.exists()) {
-                fileToRead = fallback;
+            File legacy = getLegacyConfigFile();
+            if (legacy.exists()) {
+                fileToRead = legacy;
             } else {
                 return;
             }
@@ -179,6 +193,7 @@ public final class CosmeticsConfigManager {
                 String sw = eq.has("sword") ? eq.get("sword").getAsString() : "";
                 String swM = eq.has("sword_model") ? eq.get("sword_model").getAsString() : "";
                 mod.selectSword(sw, swM);
+                if (eq.has("watches")) mod.setSelectedWatch(eq.get("watches").getAsString());
             }
 
             this.presets.clear();
@@ -196,6 +211,7 @@ public final class CosmeticsConfigManager {
                     if (obj.has("pets")) preset.pets = obj.get("pets").getAsString();
                     if (obj.has("sword")) preset.sword = obj.get("sword").getAsString();
                     if (obj.has("sword_model")) preset.swordModel = obj.get("sword_model").getAsString();
+                    if (obj.has("watches")) preset.watches = obj.get("watches").getAsString();
                     this.presets.add(preset);
                 }
             }
@@ -218,6 +234,7 @@ public final class CosmeticsConfigManager {
         eq.addProperty("pets", mod.selected("pets"));
         eq.addProperty("sword", mod.selectedSword());
         eq.addProperty("sword_model", mod.selectedSwordModel());
+        eq.addProperty("watches", mod.getSelectedWatch());
         json.add("equipped", eq);
 
         JsonArray arr = new JsonArray();
@@ -231,6 +248,7 @@ public final class CosmeticsConfigManager {
             obj.addProperty("pets", p.pets);
             obj.addProperty("sword", p.sword);
             obj.addProperty("sword_model", p.swordModel);
+            obj.addProperty("watches", p.watches);
             arr.add(obj);
         }
         json.add("presets", arr);
@@ -238,11 +256,6 @@ public final class CosmeticsConfigManager {
         String jsonString = json.toString();
 
         try (FileWriter writer = new FileWriter(getConfigFile(), StandardCharsets.UTF_8)) {
-            writer.write(jsonString);
-        } catch (Throwable ignored) {
-        }
-
-        try (FileWriter writer = new FileWriter(getGlobalFallbackFile(), StandardCharsets.UTF_8)) {
             writer.write(jsonString);
         } catch (Throwable ignored) {
         }

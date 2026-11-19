@@ -27,6 +27,7 @@ import net.minecraft.client.render.VertexConsumerProvider;
 import egg.client.render.Render2D;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
+import egg.client.util.EntityUtil;
 import egg.client.util.ProjectUtil;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
@@ -112,6 +113,7 @@ public class TargetESP extends Module {
 
     private final List<SnowflakeParticle> snowflakeParticles = new ArrayList<>();
     private final Random random = new Random();
+    private final Vector2f scratchParticlePos = new Vector2f();
     private long lastFrameTime = 0L;
     private float ghostsTime = 0.0f;
     private long ghostsLastNanos = 0L;
@@ -124,6 +126,24 @@ public class TargetESP extends Module {
     private int lastTargetHurtTime = 0;
     private int trackedTargetId = -1;
     private final DischargeEffect dischargeEffect = new DischargeEffect();
+
+    private final BufferAllocator allocBloom = createReusableAllocator(32768);
+    private final BufferAllocator allocSharp = createReusableAllocator(32768);
+    private final BufferAllocator allocGlow = createReusableAllocator(1024);
+    private final BufferAllocator allocRhombus = createReusableAllocator(1024);
+    private final BufferAllocator allocEdge = createReusableAllocator(1024);
+    private final BufferAllocator allocBolts = createReusableAllocator(8192);
+    private final BufferAllocator allocHalo = createReusableAllocator(8192);
+    private final BufferAllocator allocCore = createReusableAllocator(8192);
+
+    private static BufferAllocator createReusableAllocator(int size) {
+        return new BufferAllocator(size) {
+            @Override
+            public void close() {
+                this.reset();
+            }
+        };
+    }
 
     public TargetESP() {
         super("Target ESP", "Отображает визуальный указатель вокруг выбранной цели", Category.ESP);
@@ -206,6 +226,7 @@ public class TargetESP extends Module {
 
         if (this.target != null) {
             boolean targetValid = this.target.isAlive() && !this.target.isRemoved()
+                    && !EntityUtil.isNakedInvisible(this.target)
                     && mc.player.distanceTo(this.target) <= (float) this.maxDistance.get();
 
             if (!targetValid) {
@@ -300,7 +321,7 @@ public class TargetESP extends Module {
 
     private boolean isValidTarget(LivingEntity entity) {
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (entity == null || entity == mc.player || !entity.isAlive()) {
+        if (entity == null || entity == mc.player || !entity.isAlive() || EntityUtil.isNakedInvisible(entity)) {
             return false;
         }
         if (this.onlyPlayers.get() && !(entity instanceof PlayerEntity)) {
@@ -600,8 +621,8 @@ public class TargetESP extends Module {
         float scaledBloomSize = ProjectionUtil.getScaledSize(0.065F, Math.max(1.0f, dist));
 
         try (
-                BufferAllocator allocBloom = new BufferAllocator(32768);
-                BufferAllocator allocSharp = new BufferAllocator(32768)
+                BufferAllocator allocBloom = this.allocBloom;
+                BufferAllocator allocSharp = this.allocSharp
         ) {
             BufferBuilder bufBloom = new BufferBuilder(allocBloom, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
             BufferBuilder bufSharp = new BufferBuilder(allocSharp, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
@@ -728,8 +749,8 @@ public class TargetESP extends Module {
     private void drawParticle(DrawContext context, Identifier texture, double worldX, double worldY, double worldZ,
                               float worldSize, int color) {
         if ((color & 0xFF000000) == 0) return;
-        Vector2f screen = ProjectUtil.toScreen(worldX, worldY, worldZ);
-        if (!ProjectUtil.isOnScreen(screen)) return;
+        boolean onScreen = ProjectUtil.toScreen(worldX, worldY, worldZ, scratchParticlePos);
+        if (!onScreen || !ProjectUtil.isOnScreen(scratchParticlePos)) return;
 
         float scale = ProjectUtil.getLastScale();
         float pSize = Math.max(2.0f, worldSize * scale);
@@ -739,8 +760,8 @@ public class TargetESP extends Module {
         context.drawTexture(
                 RenderPipelines.GUI_TEXTURED,
                 texture,
-                Math.round(screen.x - half),
-                Math.round(screen.y - half),
+                Math.round(scratchParticlePos.x - half),
+                Math.round(scratchParticlePos.y - half),
                 0.0f, 0.0f,
                 isize, isize,
                 isize, isize,
@@ -915,7 +936,7 @@ public class TargetESP extends Module {
 
         Quaternionf quadRot = new Quaternionf(camRot).rotateZ((float) Math.toRadians(-rotAngle));
 
-        try (BufferAllocator allocGlow = new BufferAllocator(1024)) {
+        try (BufferAllocator allocGlow = this.allocGlow) {
 
             BufferBuilder bufGlow = new BufferBuilder(allocGlow, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
 
@@ -933,7 +954,7 @@ public class TargetESP extends Module {
 
         }
 
-        try (BufferAllocator allocRhombus = new BufferAllocator(1024)) {
+        try (BufferAllocator allocRhombus = this.allocRhombus) {
 
             BufferBuilder bufRhombus = new BufferBuilder(allocRhombus, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
 
@@ -951,7 +972,7 @@ public class TargetESP extends Module {
 
         }
 
-        try (BufferAllocator allocEdge = new BufferAllocator(1024)) {
+        try (BufferAllocator allocEdge = this.allocEdge) {
 
             BufferBuilder bufEdge = new BufferBuilder(allocEdge, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
 
@@ -989,7 +1010,7 @@ public class TargetESP extends Module {
         float midY = targetY + height * 0.5F;
         float scaledBloomSize = ProjectionUtil.getScaledSize(0.085F, Math.sqrt(targetX * targetX + midY * midY + targetZ * targetZ));
 
-        try (BufferAllocator allocator = new BufferAllocator(8192)) {
+        try (BufferAllocator allocator = this.allocBolts) {
             BufferBuilder builder = new BufferBuilder(allocator, DrawMode.LINES, VertexFormats.POSITION_COLOR_NORMAL_LINE_WIDTH);
             buildLightningBolts(builder, matrices.peek(), targetX, targetY, height, targetZ, radius, color, alpha, 10.0F, 1.0F);
             BuiltBuffer built = builder.endNullable();
@@ -999,8 +1020,8 @@ public class TargetESP extends Module {
         }
 
         try (
-            BufferAllocator allocHalo = new BufferAllocator(8192);
-            BufferAllocator allocCore = new BufferAllocator(8192);
+            BufferAllocator allocHalo = this.allocHalo;
+            BufferAllocator allocCore = this.allocCore;
         ) {
             BufferBuilder bufHalo = new BufferBuilder(allocHalo, DrawMode.LINES, VertexFormats.POSITION_COLOR_NORMAL_LINE_WIDTH);
             buildLightningBolts(bufHalo, matrices.peek(), targetX, targetY, height, targetZ, radius, color, alpha, 22.0F, 0.4F);

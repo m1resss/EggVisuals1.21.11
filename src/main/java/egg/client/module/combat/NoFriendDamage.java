@@ -7,7 +7,7 @@ import net.minecraft.entity.Entity;
 
 public class NoFriendDamage extends Module {
     public NoFriendDamage() {
-        super("No Friend Damage", "Отключает нанесение урона добавленным друзьям", Category.COMBAT);
+        super("No Friend Damage", "Отключает нанесение урона добавленным друзьям", Category.MISC);
     }
 
     public boolean shouldCancelAttack(Entity target) {

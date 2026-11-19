@@ -57,6 +57,20 @@ public class BlockOverlay extends Module {
     private boolean hasBox = false;
     private long lastTimeNanos = 0L;
 
+    private final BufferAllocator allocQuads = createReusableAllocator(32768);
+    private final BufferAllocator allocBloom = createReusableAllocator(32768);
+    private final BufferAllocator allocHalo = createReusableAllocator(32768);
+    private final BufferAllocator allocCore = createReusableAllocator(32768);
+
+    private static BufferAllocator createReusableAllocator(int size) {
+        return new BufferAllocator(size) {
+            @Override
+            public void close() {
+                this.reset();
+            }
+        };
+    }
+
     public BlockOverlay() {
         super("Block Overlay", "Плавная шейдерная подсветка выбранного блока", Category.ESP);
         instance = this;
@@ -159,7 +173,7 @@ public class BlockOverlay extends Module {
 
         if (doFill) {
             RenderPipeline facePipeline = throughWalls.get() ? Pipelines.AURA_TEXTURE : Pipelines.AURA_TEXTURE_DEPTH;
-            try (BufferAllocator allocQuads = new BufferAllocator(32768)) {
+            try (BufferAllocator allocQuads = this.allocQuads) {
                 BufferBuilder bufQuads = new BufferBuilder(allocQuads, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
                 BlockPos targetPos = bhr != null ? bhr.getBlockPos() : null;
                 renderFaceGlow(bufQuads, targetPos, x1, y1, z1, x2, y2, z2, r, g, b, totalAlpha, curMode.equals("Неон"));
@@ -333,7 +347,7 @@ public class BlockOverlay extends Module {
         int coreG = MathHelper.clamp((int) MathHelper.lerp(0.80f, g, 255.0f), 0, 255);
         int coreB = MathHelper.clamp((int) MathHelper.lerp(0.80f, b, 255.0f), 0, 255);
 
-        try (BufferAllocator allocBloom = new BufferAllocator(32768)) {
+        try (BufferAllocator allocBloom = this.allocBloom) {
             BufferBuilder bufBloom = new BufferBuilder(allocBloom, DrawMode.LINES, VertexFormats.POSITION_COLOR_NORMAL_LINE_WIDTH);
             buildBoxLines(bufBloom, entry, x1, y1, z1, x2, y2, z2, r, g, b, (int) (140 * alphaMult), bloomWidth);
             BuiltBuffer builtBloom = bufBloom.endNullable();
@@ -345,8 +359,8 @@ public class BlockOverlay extends Module {
         }
 
         try (
-                BufferAllocator allocHalo = new BufferAllocator(32768);
-                BufferAllocator allocCore = new BufferAllocator(32768)
+                BufferAllocator allocHalo = this.allocHalo;
+                BufferAllocator allocCore = this.allocCore
         ) {
             BufferBuilder bufHalo = new BufferBuilder(allocHalo, DrawMode.LINES, VertexFormats.POSITION_COLOR_NORMAL_LINE_WIDTH);
             BufferBuilder bufCore = new BufferBuilder(allocCore, DrawMode.LINES, VertexFormats.POSITION_COLOR_NORMAL_LINE_WIDTH);

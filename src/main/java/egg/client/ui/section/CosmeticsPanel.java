@@ -2,6 +2,9 @@ package egg.client.ui.section;
 
 import egg.client.cosmetic.CosmeticsManager;
 import egg.client.cosmetic.CosmeticsRenderer;
+import egg.client.cosmetic.sword.SwordStyle;
+import egg.client.cosmetic.watch.WatchClockDriver;
+import egg.client.cosmetic.watch.WatchStyle;
 import egg.client.module.ModuleManager;
 import egg.client.module.cosmetic.CosmeticsModule;
 import egg.client.render.IconRenderer;
@@ -11,6 +14,7 @@ import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
 import egg.client.util.GuiSoundManager;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 
@@ -19,8 +23,8 @@ import java.util.*;
 public class CosmeticsPanel {
     private static String searchQuery = "";
 
-    private static final String[] CAT_NAMES = new String[] { "Все", "Шляпы", "Крылья", "Рюкзаки", "Маски", "Питомцы" };
-    private static final String[] CAT_KEYS  = new String[] { "all", "hats", "wings", "backpacks", "masks", "pets" };
+    private static final String[] CAT_NAMES = new String[] { "Все", "Шляпы", "Крылья", "Рюкзаки", "Маски", "Питомцы", "Часы", "Мечи" };
+    private static final String[] CAT_KEYS  = new String[] { "all", "hats", "wings", "backpacks", "masks", "pets", "watches", "swords" };
 
     private static int activeFilter = 0;
     private static float scrollOffset = 0.0f;
@@ -61,12 +65,15 @@ public class CosmeticsPanel {
         float navH = 17.0f;
         float pillGap = 3.5f;
         float navRowGap = 3.5f;
-        int pillsPerRow = 4;
-        float pillW = (mainW - (pillsPerRow - 1) * pillGap) / (float) pillsPerRow;
+        int totalPills = CAT_NAMES.length + 1;
+        int row0Count = 5;
+        int row1Count = totalPills - row0Count;
 
-        for (int i = 0; i < CAT_NAMES.length + 1; i++) {
-            int row = i / pillsPerRow;
-            int col = i % pillsPerRow;
+        for (int i = 0; i < totalPills; i++) {
+            int row = (i < row0Count) ? 0 : 1;
+            int col = (row == 0) ? i : (i - row0Count);
+            int rowCols = (row == 0) ? row0Count : row1Count;
+            float pillW = (mainW - (rowCols - 1) * pillGap) / (float) rowCols;
             float pX = x + col * (pillW + pillGap);
             float pY = navY + row * (navH + navRowGap);
 
@@ -93,7 +100,7 @@ public class CosmeticsPanel {
             ClientFont.drawCentered(context, label, pX + pillW * 0.5f, pY + navH * 0.5f, ClientFont.SF_MEDIUM, txtCol);
         }
 
-                float gridTop = navY + navH * 2.0f + navRowGap + 5.0f;
+        float gridTop = navY + navH * 2.0f + navRowGap + 5.0f;
         Render2D.drawRect(context, x, gridTop - 2.0f, mainW, 1.0f, 0x12FFFFFF);
 
         context.enableScissor((int) x, (int) gridTop, (int) (x + mainW), (int) (y + h));
@@ -106,6 +113,8 @@ public class CosmeticsPanel {
             activeCats.add("backpacks");
             activeCats.add("masks");
             activeCats.add("pets");
+            activeCats.add("watches");
+            activeCats.add("swords");
         } else {
             activeCats.add(CAT_KEYS[activeFilter]);
         }
@@ -118,6 +127,7 @@ public class CosmeticsPanel {
 
         for (String catKey : activeCats) {
             boolean isSwords = "swords".equals(catKey);
+            boolean isWatches = "watches".equals(catKey);
             String catTitle = switch (catKey) {
                 case "hats" -> "Шляпы (Hats)";
                 case "wings" -> "Крылья (Wings)";
@@ -125,12 +135,14 @@ public class CosmeticsPanel {
                 case "masks" -> "Маски (Masks)";
                 case "pets" -> "Питомцы (Pets)";
                 case "swords" -> "Мечи (Swords)";
+                case "watches" -> "Часы (Watches)";
                 default -> catKey;
             };
 
-            List<CosmeticsManager.Asset> assetsList = isSwords ? Collections.emptyList() : mgr.getCategoryAssets(catKey, searchQuery);
-            List<CosmeticsManager.SwordEntry> swordsList = isSwords ? mgr.getSwords(searchQuery) : Collections.emptyList();
-            int itemCount = isSwords ? swordsList.size() : assetsList.size();
+            List<CosmeticsManager.Asset> assetsList = (isSwords || isWatches) ? Collections.emptyList() : mgr.getCategoryAssets(catKey, searchQuery);
+            List<SwordStyle> swordsList = isSwords ? getFilteredSwords() : Collections.emptyList();
+            List<WatchStyle> watchesList = isWatches ? getFilteredWatches() : Collections.emptyList();
+            int itemCount = isSwords ? swordsList.size() : (isWatches ? watchesList.size() : assetsList.size());
 
             float catHeaderH = 20.0f;
             ClientFont.draw(context, catTitle, x + 2.0f, currentCatY + 4.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
@@ -162,13 +174,14 @@ public class CosmeticsPanel {
                     continue;
                 }
 
-                CosmeticsManager.Asset asset = isSwords ? null : assetsList.get(i);
-                CosmeticsManager.SwordEntry sword = isSwords ? swordsList.get(i) : null;
-                String displayName = isSwords ? sword.name() : asset.displayName();
+                CosmeticsManager.Asset asset = (isSwords || isWatches) ? null : assetsList.get(i);
+                SwordStyle sword = isSwords ? swordsList.get(i) : null;
+                WatchStyle watch = isWatches ? watchesList.get(i) : null;
+                String displayName = isSwords ? sword.getName() : (isWatches ? watch.getName() : asset.displayName());
 
                 boolean isSelected = isSwords
-                        ? (sword.name().equalsIgnoreCase(mod.selectedSword()))
-                        : (asset.id().equalsIgnoreCase(mod.selected(catKey)));
+                        ? (sword == mod.getSelectedSwordStyle())
+                        : (isWatches ? (watch == mod.getSelectedWatchStyle()) : (asset.id().equalsIgnoreCase(mod.selected(catKey))));
 
                 boolean isHovered = mouseX >= cardX && mouseX <= cardX + cardW && mouseY >= cardY && mouseY <= cardY + cardH;
 
@@ -179,11 +192,10 @@ public class CosmeticsPanel {
                 Render2D.drawRoundedOutline(context, cardX, cardY, cardW, cardH, 6.0f, 0.6f, cBrd);
 
                 if (isSwords && sword != null) {
-                    float iconSize = 46.0f;
-                    float iconX = cardX + (cardW - iconSize) * 0.5f;
-                    float iconY = cardY + 12.0f;
-                    IconRenderer.drawTextureScaled(context, sword.texture(), iconX, iconY, iconSize, iconSize, 64, 64, 0xFFFFFFFF);
-                } else if (!isSwords && asset != null) {
+                    renderSwordCardPreview(context, sword, cardX, cardY, cardW);
+                } else if (isWatches && watch != null) {
+                    renderWatchCardPreview(context, watch, cardX, cardY, cardW, isSelected);
+                } else if (!isSwords && !isWatches && asset != null) {
                     float pSize = cardW - 20.0f;
                     float pX = cardX + 10.0f;
                     float pY = cardY + 6.0f;
@@ -197,7 +209,7 @@ public class CosmeticsPanel {
                 float swX = cardX + cardW - swW - 8.0f;
                 float swY = bottomY + (bottomH - swH) * 0.5f;
 
-                String animKey = isSwords ? "sw_" + sword.name() : "cs_" + asset.id();
+                String animKey = isSwords ? "sw_" + sword.getName() : (isWatches ? "wt_" + watch.getName() : "cs_" + asset.id());
                 float swAnim = getAnim(animKey, isSelected);
                 int swBg = ColorUtil.lerp(0xFF232838, 0xFF4CD137, swAnim);
                 Render2D.drawRoundedRect(context, swX, swY, swW, swH, 5.5f, swBg);
@@ -311,12 +323,15 @@ public class CosmeticsPanel {
         float navH = 17.0f;
         float pillGap = 3.5f;
         float navRowGap = 3.5f;
-        int pillsPerRow = 4;
-        float pillW = (mainW - (pillsPerRow - 1) * pillGap) / (float) pillsPerRow;
+        int totalPills = CAT_NAMES.length + 1;
+        int row0Count = 5;
+        int row1Count = totalPills - row0Count;
 
-        for (int i = 0; i < CAT_NAMES.length + 1; i++) {
-            int row = i / pillsPerRow;
-            int col = i % pillsPerRow;
+        for (int i = 0; i < totalPills; i++) {
+            int row = (i < row0Count) ? 0 : 1;
+            int col = (row == 0) ? i : (i - row0Count);
+            int rowCols = (row == 0) ? row0Count : row1Count;
+            float pillW = (mainW - (rowCols - 1) * pillGap) / (float) rowCols;
             float pX = x + col * (pillW + pillGap);
             float pY = navY + row * (navH + navRowGap);
 
@@ -336,7 +351,7 @@ public class CosmeticsPanel {
             }
         }
 
-                float gridTop = navY + navH * 2.0f + navRowGap + 5.0f;
+        float gridTop = navY + navH * 2.0f + navRowGap + 5.0f;
         if (mouseY < gridTop) return false;
 
         float currentCatY = gridTop + 4.0f - scrollOffset;
@@ -347,6 +362,8 @@ public class CosmeticsPanel {
             activeCats.add("backpacks");
             activeCats.add("masks");
             activeCats.add("pets");
+            activeCats.add("watches");
+            activeCats.add("swords");
         } else {
             activeCats.add(CAT_KEYS[activeFilter]);
         }
@@ -359,9 +376,11 @@ public class CosmeticsPanel {
 
         for (String catKey : activeCats) {
             boolean isSwords = "swords".equals(catKey);
-            List<CosmeticsManager.Asset> assetsList = isSwords ? Collections.emptyList() : mgr.getCategoryAssets(catKey, searchQuery);
-            List<CosmeticsManager.SwordEntry> swordsList = isSwords ? mgr.getSwords(searchQuery) : Collections.emptyList();
-            int itemCount = isSwords ? swordsList.size() : assetsList.size();
+            boolean isWatches = "watches".equals(catKey);
+            List<CosmeticsManager.Asset> assetsList = (isSwords || isWatches) ? Collections.emptyList() : mgr.getCategoryAssets(catKey, searchQuery);
+            List<SwordStyle> swordsList = isSwords ? getFilteredSwords() : Collections.emptyList();
+            List<WatchStyle> watchesList = isWatches ? getFilteredWatches() : Collections.emptyList();
+            int itemCount = isSwords ? swordsList.size() : (isWatches ? watchesList.size() : assetsList.size());
 
             float catHeaderH = 20.0f;
 
@@ -389,11 +408,18 @@ public class CosmeticsPanel {
 
                 if (mouseX >= cardX && mouseX <= cardX + cardW && mouseY >= cardY && mouseY <= cardY + cardH) {
                     if (isSwords) {
-                        CosmeticsManager.SwordEntry sword = swordsList.get(i);
-                        if (sword.name().equalsIgnoreCase(mod.selectedSword())) {
+                        SwordStyle sword = swordsList.get(i);
+                        if (sword == mod.getSelectedSwordStyle()) {
                             mod.clearSlot("swords");
                         } else {
-                            mod.selectSword(sword.name(), sword.model());
+                            mod.selectSword(sword.getName(), sword.getName());
+                        }
+                    } else if (isWatches) {
+                        WatchStyle watch = watchesList.get(i);
+                        if (watch == mod.getSelectedWatchStyle()) {
+                            mod.clearSlot("watches");
+                        } else {
+                            mod.select("watches", watch.getName());
                         }
                     } else {
                         CosmeticsManager.Asset asset = assetsList.get(i);
@@ -456,5 +482,81 @@ public class CosmeticsPanel {
         current += (target - current) * 0.22f;
         toggleAnims.put(key, current);
         return current;
+    }
+
+    private static List<WatchStyle> getFilteredWatches() {
+        List<WatchStyle> list = new ArrayList<>();
+        for (WatchStyle style : WatchStyle.values()) {
+            if (style == WatchStyle.NONE) continue;
+            if (searchQuery.isEmpty() || style.getName().toLowerCase(Locale.ROOT).contains(searchQuery.toLowerCase(Locale.ROOT))) {
+                list.add(style);
+            }
+        }
+        return list;
+    }
+
+    private static void renderWatchCardPreview(DrawContext context, WatchStyle watch, float cardX, float cardY, float cardW, boolean isSelected) {
+        float cx = cardX + cardW * 0.5f;
+        float cy = cardY + 44.0f;
+        float strapW = 16.0f;
+        float strapH = 58.0f;
+        float strapX = cx - strapW * 0.5f;
+        float strapY = cy - strapH * 0.5f;
+
+        Render2D.drawRoundedRect(context, strapX, strapY, strapW, strapH, 3.5f, 0xFF353945);
+        if (watch.getTexture() != null) {
+            context.getMatrices().pushMatrix();
+            context.getMatrices().translate(cx, cy);
+            context.getMatrices().rotate((float) (Math.PI * 0.5));
+            context.drawTexture(RenderPipelines.GUI_TEXTURED, watch.getTexture(), (int) (-strapH * 0.5f), (int) (-strapW * 0.5f), 0.0f, 64.0f, (int) strapH, (int) strapW, 64, 32, 128, 128, 0xEEFFFFFF);
+            context.getMatrices().popMatrix();
+        }
+        Render2D.drawRoundedOutline(context, strapX, strapY, strapW, strapH, 3.5f, 0.6f, isSelected ? Theme.ACCENT : 0x33FFFFFF);
+
+        float dialSize = 42.0f;
+        float dialX = cx - dialSize * 0.5f;
+        float dialY = cy - dialSize * 0.5f;
+
+        Render2D.drawCircleShadow(context, cx, cy, dialSize * 0.44f, 6.0f, 0x55000000);
+        if (watch.getTexture() != null) {
+            context.drawTexture(RenderPipelines.GUI_TEXTURED, watch.getTexture(), (int) dialX, (int) dialY, 0.0f, 0.0f, (int) dialSize, (int) dialSize, 64, 64, 128, 128, 0xFFFFFFFF);
+        }
+
+        float hrAngle = (float) Math.toRadians(WatchClockDriver.getHourAngle() - 90.0f);
+        float minAngle = (float) Math.toRadians(WatchClockDriver.getMinuteAngle() - 90.0f);
+        float secAngle = (float) Math.toRadians(WatchClockDriver.getSecondAngle() - 90.0f);
+
+        Render2D.drawCircle(context, cx, cy, 1.8f, 0xFFE0E0E0);
+        float hrLen = 8.5f;
+        float minLen = 12.0f;
+        float secLen = 14.0f;
+        Render2D.drawLine(context, cx, cy, cx + (float) Math.cos(hrAngle) * hrLen, cy + (float) Math.sin(hrAngle) * hrLen, 0xFFFFFFFF, 1.4f);
+        Render2D.drawLine(context, cx, cy, cx + (float) Math.cos(minAngle) * minLen, cy + (float) Math.sin(minAngle) * minLen, 0xFFFFFFFF, 1.0f);
+        Render2D.drawLine(context, cx, cy, cx + (float) Math.cos(secAngle) * secLen, cy + (float) Math.sin(secAngle) * secLen, 0xFFFF4444, 0.8f);
+    }
+
+    private static List<SwordStyle> getFilteredSwords() {
+        List<SwordStyle> list = new ArrayList<>();
+        for (SwordStyle style : SwordStyle.values()) {
+            if (style == SwordStyle.NONE) continue;
+            if (searchQuery.isEmpty() || style.getName().toLowerCase(Locale.ROOT).contains(searchQuery.toLowerCase(Locale.ROOT))) {
+                list.add(style);
+            }
+        }
+        return list;
+    }
+
+    private static void renderSwordCardPreview(DrawContext context, SwordStyle sword, float cardX, float cardY, float cardW) {
+        float cx = cardX + cardW * 0.5f;
+        float cy = cardY + 44.0f;
+        int glowRgb = sword.getGlowColor() != 0 ? sword.getGlowColor() : sword.getBladeColor();
+        int glowArgb = 0x38000000 | (glowRgb & 0x00FFFFFF);
+        Render2D.drawCircleShadow(context, cx, cy, 14.0f, 16.0f, glowArgb);
+        if (sword.getIcon() != null) {
+            float iconSize = 54.0f;
+            float iconX = cx - iconSize * 0.5f;
+            float iconY = cy - iconSize * 0.5f;
+            IconRenderer.drawTextureScaled(context, sword.getIcon(), iconX, iconY, iconSize, iconSize, 64, 64, 0xFFFFFFFF);
+        }
     }
 }

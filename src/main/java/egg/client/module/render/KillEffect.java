@@ -10,6 +10,7 @@ import egg.client.module.setting.SliderSetting;
 import egg.client.render.shader.MeshDrawUtil;
 import egg.client.render.shader.Pipelines;
 import egg.client.ui.theme.Theme;
+import egg.client.util.EntityUtil;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
@@ -62,7 +63,7 @@ public class KillEffect extends Module {
             0xFFE040FB
     };
 
-    private final ModeSetting mode = new ModeSetting("Эффект", "Бабочки", "Тип эффекта при смерти противника", "Бабочки", "Обелиск", "Стекло");
+    private final ModeSetting mode = new ModeSetting("Эффект", "Бабочки", "Тип эффекта при смерти противника", "Бабочки", "Обелиск", "Стекло", "Распад");
     private final BooleanSetting onlyTarget = new BooleanSetting("Только цель", true, "Создавать эффект только для атакованных вами врагов");
     private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", false, "Создавать эффект только при смерти игроков");
     private final BooleanSetting sound = new BooleanSetting("Звуки", true, "Звуковые эффекты при убийстве");
@@ -87,11 +88,24 @@ public class KillEffect extends Module {
     private final BooleanSetting bounce = new BooleanSetting("Отскок стекла", true, "Отскок осколков стекла от блоков и пола");
     private final BooleanSetting sparkle = new BooleanSetting("Блики стекла", true, "Яркие вспышки и отблески на гранях стекла");
 
+    private final SliderSetting dissolveDuration = new SliderSetting("Время распада", 1.8, 0.8, 3.5, 0.1, "Длительность полного растворения сущности (сек)");
+    private final SliderSetting dissolveDensity = new SliderSetting("Плотность частиц", 130, 40, 260, 10, "Количество восходящих вокселей пепла");
+    private final BooleanSetting dissolveRing = new BooleanSetting("Рунический круг", true, "Светящийся рунический круг на земле под сущностью");
+
     private final List<ButterflySwarmInstance> butterflySwarms = new ArrayList<>();
     private final List<MonolithInstance> monolithInstances = new ArrayList<>();
     private final List<DeathGlassShard> particles = new ArrayList<>();
+    private final List<DissolveInstance> dissolveInstances = new ArrayList<>();
     private final Map<Integer, Long> recentAttacks = new ConcurrentHashMap<>();
     private final Map<Integer, TrackedVictim> victimsById = new ConcurrentHashMap<>();
+
+    private final Matrix4f bodyMat = new Matrix4f();
+    private final Matrix4f torsoMat = new Matrix4f();
+    private final Matrix4f headMat = new Matrix4f();
+    private final Matrix4f rArmMat = new Matrix4f();
+    private final Matrix4f lArmMat = new Matrix4f();
+    private final Matrix4f rLegMat = new Matrix4f();
+    private final Matrix4f lLegMat = new Matrix4f();
     private final Map<String, TrackedVictim> victimsByName = new ConcurrentHashMap<>();
     private final Set<Integer> deadEntities = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Random random = new Random();
@@ -119,12 +133,17 @@ public class KillEffect extends Module {
         bounce.setVisible(() -> "Стекло".equals(mode.get()));
         sparkle.setVisible(() -> "Стекло".equals(mode.get()));
 
+        dissolveDuration.setVisible(() -> "Распад".equals(mode.get()));
+        dissolveDensity.setVisible(() -> "Распад".equals(mode.get()));
+        dissolveRing.setVisible(() -> "Распад".equals(mode.get()));
+
         color.setVisible(() -> !syncColor.isEnabled());
 
         addSettings(mode, onlyTarget, onlyPlayers, sound, syncColor, color,
                 butterflyAmount, butterflySize, butterflySpeed, butterflyLifetime, butterflyTrails, butterflyRainbow,
                 monolithHeight, monolithScale, monolithRunes,
-                amount, size, speed, lifetime, bounce, sparkle);
+                amount, size, speed, lifetime, bounce, sparkle,
+                dissolveDuration, dissolveDensity, dissolveRing);
     }
 
     public static KillEffect getInstance() {
@@ -172,7 +191,7 @@ public class KillEffect extends Module {
     }
 
     public void onAttack(Entity target) {
-        if (!isEnabled() || target == null) return;
+        if (!isEnabled() || target == null || EntityUtil.isNakedInvisible(target)) return;
         long now = System.currentTimeMillis();
         recentAttacks.put(target.getId(), now);
 
@@ -209,6 +228,8 @@ public class KillEffect extends Module {
                 spawnButterflySwarm(entity);
             } else if ("Обелиск".equals(curMode)) {
                 spawnMonolithEffect(entity);
+            } else if ("Распад".equals(curMode)) {
+                spawnDissolveEffect(entity);
             } else {
                 spawnGlassBurst(entity);
             }
@@ -317,6 +338,8 @@ public class KillEffect extends Module {
             spawnButterflySwarmAt(bx, by, bz, height);
         } else if ("Обелиск".equals(curMode)) {
             spawnMonolithEffectAt(bx, by, bz, yaw, pitch, headYaw, isSneaking, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+        } else if ("Распад".equals(curMode)) {
+            spawnDissolveEffectAt(bx, by, bz, yaw, pitch, headYaw, isSneaking, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
         } else {
             spawnGlassBurstAt(bx, by, bz, height);
         }
@@ -411,6 +434,62 @@ public class KillEffect extends Module {
         }
     }
 
+    public void spawnDissolveEffect(Entity entity) {
+        float limbProgress = 0.0f;
+        float limbSpeed = 0.0f;
+        float swingProgress = 0.0f;
+        if (entity instanceof LivingEntity living) {
+            limbProgress = living.limbAnimator.getAnimationProgress();
+            limbSpeed = living.limbAnimator.getSpeed();
+            swingProgress = living.getHandSwingProgress(1.0f);
+        }
+
+        float rLegPitch = (float) Math.cos(limbProgress * 0.6662f) * 1.4f * limbSpeed;
+        float lLegPitch = (float) Math.cos(limbProgress * 0.6662f + (float) Math.PI) * 1.4f * limbSpeed;
+        float rArmPitch = (float) Math.cos(limbProgress * 0.6662f + (float) Math.PI) * 1.8f * limbSpeed;
+        float lArmPitch = (float) Math.cos(limbProgress * 0.6662f) * 1.8f * limbSpeed;
+        float rArmRoll = 0.0f;
+        if (swingProgress > 0.01f) {
+            rArmPitch -= swingProgress * 1.4f;
+            rArmRoll += swingProgress * 0.35f;
+        }
+
+        spawnDissolveEffectAt(entity.getX(), entity.getY(), entity.getZ(),
+                entity.getYaw(), entity.getPitch(), entity.getHeadYaw(), entity.isSneaking(),
+                rLegPitch, lLegPitch, rArmPitch, lArmPitch, rArmRoll);
+    }
+
+    public void spawnDissolveEffectAt(double bx, double by, double bz, float yaw, float pitch, float headYaw, boolean isSneaking,
+                                      float rLegPitch, float lLegPitch, float rArmPitch, float lArmPitch, float rArmRoll) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (sound.isEnabled() && mc.world != null) {
+            mc.world.playSoundClient(bx, by + 1.0, bz,
+                    SoundEvents.PARTICLE_SOUL_ESCAPE.value(), SoundCategory.PLAYERS,
+                    1.4f, 1.25f, false);
+            mc.world.playSoundClient(bx, by + 1.0, bz,
+                    SoundEvents.BLOCK_RESPAWN_ANCHOR_DEPLETE.value(), SoundCategory.PLAYERS,
+                    1.1f, 1.6f, false);
+            mc.world.playSoundClient(bx, by + 1.0, bz,
+                    SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME, SoundCategory.PLAYERS,
+                    1.2f, 1.45f, false);
+        }
+
+        int effectColor = syncColor.isEnabled() ? Theme.getAccent() : color.get();
+        float duration = (float) dissolveDuration.get();
+        int density = (int) dissolveDensity.get();
+        boolean ring = dissolveRing.isEnabled();
+
+        dissolveInstances.add(new DissolveInstance(
+                bx, by, bz, yaw, pitch, headYaw, isSneaking,
+                rLegPitch, lLegPitch, rArmPitch, lArmPitch, rArmRoll,
+                duration, density, effectColor, ring
+        ));
+
+        while (dissolveInstances.size() > 6) {
+            dissolveInstances.remove(0);
+        }
+    }
+
     public void spawnGlassBurst(Entity entity) {
         spawnGlassBurstAt(entity.getX(), entity.getY(), entity.getZ(), entity.getHeight());
     }
@@ -490,6 +569,7 @@ public class KillEffect extends Module {
             if (!monolithInstances.isEmpty()) monolithInstances.clear();
             if (!particles.isEmpty()) particles.clear();
             if (!butterflySwarms.isEmpty()) butterflySwarms.clear();
+            if (!dissolveInstances.isEmpty()) dissolveInstances.clear();
             recentAttacks.clear();
             victimsById.clear();
             victimsByName.clear();
@@ -566,6 +646,10 @@ public class KillEffect extends Module {
 
         if (!monolithInstances.isEmpty()) {
             renderMonolithInstances(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
+        }
+
+        if (!dissolveInstances.isEmpty()) {
+            renderDissolveInstances(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
         }
 
         if (!particles.isEmpty()) {
@@ -663,10 +747,9 @@ public class KillEffect extends Module {
     }
 
     private void renderPetrifiedModel(VertexConsumer quadBuf, MonolithInstance inst, Vec3d camPos, Vector3f lightDir) {
-        Matrix4f bodyMat = new Matrix4f()
-                .rotateY((float) Math.toRadians(-inst.yaw));
+        bodyMat.identity().rotateY((float) Math.toRadians(-inst.yaw));
 
-        Matrix4f torsoMat = new Matrix4f(bodyMat);
+        torsoMat.set(bodyMat);
         if (inst.isSneaking) {
             torsoMat.rotateX((float) Math.toRadians(25.0f));
         }
@@ -677,7 +760,7 @@ public class KillEffect extends Module {
                 -0.25f, torsoBaseY, -0.125f,
                 0.25f, torsoTopY, 0.125f, lightDir, 255);
 
-        Matrix4f headMat = new Matrix4f(bodyMat);
+        headMat.set(bodyMat);
         headMat.translate(0, torsoTopY, 0);
         headMat.rotateY((float) Math.toRadians(-(inst.headYaw - inst.yaw)));
         headMat.rotateX((float) Math.toRadians(-inst.pitch));
@@ -686,7 +769,7 @@ public class KillEffect extends Module {
                 -0.25f, 0, -0.25f,
                 0.25f, 0.50f, 0.25f, lightDir, 255);
 
-        Matrix4f rArmMat = new Matrix4f(bodyMat);
+        rArmMat.set(bodyMat);
         rArmMat.translate(-0.375f, torsoTopY - 0.08f, 0);
         rArmMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.rArmPitch)));
         rArmMat.rotateZ((float) Math.toRadians(-Math.toDegrees(inst.rArmRoll)));
@@ -694,21 +777,21 @@ public class KillEffect extends Module {
                 -0.125f, -0.72f, -0.125f,
                 0.125f, 0.03f, 0.125f, lightDir, 255);
 
-        Matrix4f lArmMat = new Matrix4f(bodyMat);
+        lArmMat.set(bodyMat);
         lArmMat.translate(0.375f, torsoTopY - 0.08f, 0);
         lArmMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.lArmPitch)));
         emitStoneBox(quadBuf, camPos, inst.x, inst.y, inst.z, lArmMat,
                 -0.125f, -0.72f, -0.125f,
                 0.125f, 0.03f, 0.125f, lightDir, 255);
 
-        Matrix4f rLegMat = new Matrix4f(bodyMat);
+        rLegMat.set(bodyMat);
         rLegMat.translate(-0.125f, torsoBaseY, 0);
         rLegMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.rLegPitch)));
         emitStoneBox(quadBuf, camPos, inst.x, inst.y, inst.z, rLegMat,
                 -0.125f, -0.70f, -0.125f,
                 0.125f, 0, 0.125f, lightDir, 255);
 
-        Matrix4f lLegMat = new Matrix4f(bodyMat);
+        lLegMat.set(bodyMat);
         lLegMat.translate(0.125f, torsoBaseY, 0);
         lLegMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.lLegPitch)));
         emitStoneBox(quadBuf, camPos, inst.x, inst.y, inst.z, lLegMat,
@@ -1540,6 +1623,7 @@ public class KillEffect extends Module {
         particles.clear();
         butterflySwarms.clear();
         monolithInstances.clear();
+        dissolveInstances.clear();
         recentAttacks.clear();
         victimsById.clear();
         victimsByName.clear();
@@ -2117,6 +2201,567 @@ public class KillEffect extends Module {
             lightBuf.vertex(px, py + s, pz).color(255, 255, 255, alpha);
             lightBuf.vertex(px + s, py, pz).color(r, g, b, 0);
             lightBuf.vertex(px, py - s, pz).color(255, 255, 255, alpha);
+        }
+    }
+
+    private void renderDissolveInstances(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                         Vec3d camPos, Vector3f lightDir, float dt, MinecraftClient mc) {
+        Iterator<DissolveInstance> it = dissolveInstances.iterator();
+        while (it.hasNext()) {
+            DissolveInstance inst = it.next();
+            inst.age += dt;
+            if (inst.age >= inst.duration + 1.2f) {
+                it.remove();
+                continue;
+            }
+            renderSingleDissolve(quadBuf, lightBuf, inst, camPos, lightDir, dt);
+        }
+    }
+
+    private void renderSingleDissolve(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                      DissolveInstance inst, Vec3d camPos, Vector3f lightDir, float dt) {
+        float prog = MathHelper.clamp(inst.age / inst.duration, 0.0f, 1.0f);
+        float cutHeight = prog * 2.05f;
+
+        if (inst.ring) {
+            renderDissolveGroundRune(lightBuf, inst, camPos, prog);
+        }
+
+        if (prog < 1.0f) {
+            renderDissolveSilhouette(quadBuf, lightBuf, inst, camPos, lightDir, cutHeight);
+        }
+
+        inst.updateAndRenderVoxels(quadBuf, lightBuf, camPos, lightDir, dt);
+    }
+
+    private void renderDissolveGroundRune(VertexConsumer lightBuf, DissolveInstance inst,
+                                         Vec3d camPos, float prog) {
+        float ringAlphaProg = prog < 0.15f ? (prog / 0.15f) : (1.0f - (prog - 0.15f) / 0.85f);
+        ringAlphaProg = MathHelper.clamp(ringAlphaProg, 0.0f, 1.0f);
+        int alpha = (int) (180 * ringAlphaProg);
+        if (alpha <= 2) return;
+
+        int r = (inst.color >> 16) & 0xFF;
+        int g = (inst.color >> 8) & 0xFF;
+        int b = inst.color & 0xFF;
+
+        float cx = (float) (inst.x - camPos.x);
+        float cy = (float) (inst.y + 0.02 - camPos.y);
+        float cz = (float) (inst.z - camPos.z);
+
+        float outerR = 0.95f + 0.35f * (float) Math.sin(prog * Math.PI * 0.5f);
+        float innerR = outerR * 0.72f;
+        int segments = 28;
+        float rot = inst.age * 0.65f;
+
+        for (int i = 0; i < segments; i++) {
+            float a0 = (float) (i * 2.0 * Math.PI / segments) + rot;
+            float a1 = (float) ((i + 1) * 2.0 * Math.PI / segments) + rot;
+
+            float cos0 = (float) Math.cos(a0);
+            float sin0 = (float) Math.sin(a0);
+            float cos1 = (float) Math.cos(a1);
+            float sin1 = (float) Math.sin(a1);
+
+            float x0Out = cx + cos0 * outerR;
+            float z0Out = cz + sin0 * outerR;
+            float x1Out = cx + cos1 * outerR;
+            float z1Out = cz + sin1 * outerR;
+
+            float x0In = cx + cos0 * innerR;
+            float z0In = cz + sin0 * innerR;
+            float x1In = cx + cos1 * innerR;
+            float z1In = cz + sin1 * innerR;
+
+            lightBuf.vertex(x0In, cy, z0In).color(r, g, b, alpha);
+            lightBuf.vertex(x1In, cy, z1In).color(r, g, b, alpha);
+            lightBuf.vertex(x1Out, cy, z1Out).color(r, g, b, 0);
+            lightBuf.vertex(x0Out, cy, z0Out).color(r, g, b, 0);
+
+            if (i % 3 == 0) {
+                float spokeR0 = innerR * 0.55f;
+                float spokeR1 = outerR * 1.08f;
+                float sx0 = cx + cos0 * spokeR0;
+                float sz0 = cz + sin0 * spokeR0;
+                float sx1 = cx + cos0 * spokeR1;
+                float sz1 = cz + sin0 * spokeR1;
+
+                float perpX = -sin0 * 0.02f;
+                float perpZ = cos0 * 0.02f;
+
+                lightBuf.vertex(sx0 - perpX, cy, sz0 - perpZ).color(255, 255, 255, alpha);
+                lightBuf.vertex(sx1 - perpX, cy, sz1 - perpZ).color(r, g, b, 0);
+                lightBuf.vertex(sx1 + perpX, cy, sz1 + perpZ).color(r, g, b, 0);
+                lightBuf.vertex(sx0 + perpX, cy, sz0 + perpZ).color(255, 255, 255, alpha);
+            }
+        }
+    }
+
+    private void renderDissolveSilhouette(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                          DissolveInstance inst, Vec3d camPos, Vector3f lightDir, float cutHeight) {
+        float prog = MathHelper.clamp(inst.age / inst.duration, 0.0f, 1.0f);
+        float phantomAlpha = MathHelper.clamp(1.0f - prog * 0.35f, 0.35f, 1.0f);
+        boolean canSpawn = inst.spawnedVoxels < inst.targetVoxelCount;
+
+        bodyMat.identity().rotateY((float) Math.toRadians(-inst.yaw));
+
+        torsoMat.set(bodyMat);
+        if (inst.isSneaking) {
+            torsoMat.rotateX((float) Math.toRadians(25.0f));
+        }
+
+        float torsoBaseY = 0.70f;
+        float torsoTopY = torsoBaseY + 0.75f;
+        renderDissolveBox(quadBuf, lightBuf, camPos, inst.x, inst.y, inst.z, torsoMat,
+                -0.25f, torsoBaseY, -0.125f,
+                0.25f, torsoTopY, 0.125f,
+                torsoBaseY, torsoTopY, cutHeight, lightDir, inst.color, phantomAlpha, inst, canSpawn);
+
+        headMat.set(bodyMat);
+        headMat.translate(0, torsoTopY, 0);
+        headMat.rotateY((float) Math.toRadians(-(inst.headYaw - inst.yaw)));
+        headMat.rotateX((float) Math.toRadians(-inst.pitch));
+
+        renderDissolveBox(quadBuf, lightBuf, camPos, inst.x, inst.y, inst.z, headMat,
+                -0.25f, 0, -0.25f,
+                0.25f, 0.50f, 0.25f,
+                torsoTopY, torsoTopY + 0.50f, cutHeight, lightDir, inst.color, phantomAlpha, inst, canSpawn);
+
+        rArmMat.set(bodyMat);
+        rArmMat.translate(-0.375f, torsoTopY - 0.08f, 0);
+        rArmMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.rArmPitch)));
+        rArmMat.rotateZ((float) Math.toRadians(-Math.toDegrees(inst.rArmRoll)));
+        renderDissolveBox(quadBuf, lightBuf, camPos, inst.x, inst.y, inst.z, rArmMat,
+                -0.125f, -0.72f, -0.125f,
+                0.125f, 0.03f, 0.125f,
+                0.65f, 1.40f, cutHeight, lightDir, inst.color, phantomAlpha, inst, canSpawn);
+
+        lArmMat.set(bodyMat);
+        lArmMat.translate(0.375f, torsoTopY - 0.08f, 0);
+        lArmMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.lArmPitch)));
+        renderDissolveBox(quadBuf, lightBuf, camPos, inst.x, inst.y, inst.z, lArmMat,
+                -0.125f, -0.72f, -0.125f,
+                0.125f, 0.03f, 0.125f,
+                0.65f, 1.40f, cutHeight, lightDir, inst.color, phantomAlpha, inst, canSpawn);
+
+        rLegMat.set(bodyMat);
+        rLegMat.translate(-0.125f, torsoBaseY, 0);
+        rLegMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.rLegPitch)));
+        renderDissolveBox(quadBuf, lightBuf, camPos, inst.x, inst.y, inst.z, rLegMat,
+                -0.125f, -0.70f, -0.125f,
+                0.125f, 0, 0.125f,
+                0.0f, torsoBaseY, cutHeight, lightDir, inst.color, phantomAlpha, inst, canSpawn);
+
+        lLegMat.set(bodyMat);
+        lLegMat.translate(0.125f, torsoBaseY, 0);
+        lLegMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.lLegPitch)));
+        renderDissolveBox(quadBuf, lightBuf, camPos, inst.x, inst.y, inst.z, lLegMat,
+                -0.125f, -0.70f, -0.125f,
+                0.125f, 0, 0.125f,
+                0.0f, torsoBaseY, cutHeight, lightDir, inst.color, phantomAlpha, inst, canSpawn);
+    }
+
+    private void renderDissolveBox(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                   Vec3d camPos, double wx, double wy, double wz, Matrix4f mat,
+                                   float x0, float y0, float z0, float x1, float y1, float z1,
+                                   float cutPartMinY, float cutPartMaxY, float cutHeight,
+                                   Vector3f lightDir, int color, float phantomAlpha,
+                                   DissolveInstance inst, boolean canSpawnVoxels) {
+        if (cutHeight >= cutPartMaxY) {
+            return;
+        }
+
+        float curY0 = y0;
+        boolean hasCutSeam = false;
+
+        if (cutHeight > cutPartMinY) {
+            float frac = (cutHeight - cutPartMinY) / Math.max(1.0e-4f, cutPartMaxY - cutPartMinY);
+            curY0 = y0 + frac * (y1 - y0);
+            hasCutSeam = true;
+
+            if (canSpawnVoxels) {
+                int spawnCount = 1 + inst.random.nextInt(3);
+                for (int s = 0; s < spawnCount && inst.spawnedVoxels < inst.targetVoxelCount; s++) {
+                    float px, pz;
+                    int side = inst.random.nextInt(4);
+                    float r = inst.random.nextFloat();
+                    if (side == 0) {
+                        px = x0 + (x1 - x0) * r;
+                        pz = z0;
+                    } else if (side == 1) {
+                        px = x0 + (x1 - x0) * r;
+                        pz = z1;
+                    } else if (side == 2) {
+                        px = x0;
+                        pz = z0 + (z1 - z0) * r;
+                    } else {
+                        px = x1;
+                        pz = z0 + (z1 - z0) * r;
+                    }
+
+                    Vector3f wp = new Vector3f(px, curY0, pz).mulPosition(mat);
+                    float vx = wp.x * 0.45f + (inst.random.nextFloat() - 0.5f) * 0.35f;
+                    float vy = 0.45f + inst.random.nextFloat() * 0.65f;
+                    float vz = wp.z * 0.45f + (inst.random.nextFloat() - 0.5f) * 0.35f;
+                    float life = 0.75f + inst.random.nextFloat() * 0.75f;
+                    float sz = 0.024f + inst.random.nextFloat() * 0.034f;
+
+                    inst.voxels.add(new DissolveVoxel(
+                            wx + wp.x, wy + wp.y, wz + wp.z,
+                            vx, vy, vz,
+                            inst.random.nextFloat() * 6.28f, inst.random.nextFloat() * 6.28f, inst.random.nextFloat() * 6.28f,
+                            (inst.random.nextFloat() - 0.5f) * 8.0f, (inst.random.nextFloat() - 0.5f) * 8.0f, (inst.random.nextFloat() - 0.5f) * 8.0f,
+                            sz, life, color
+                    ));
+                    inst.spawnedVoxels++;
+                }
+            }
+        }
+
+        int alpha = (int) (185 * phantomAlpha);
+        if (alpha > 2) {
+            emitDissolveFace(quadBuf, camPos, wx, wy, wz, mat, lightDir, color, alpha,
+                    x0, curY0, z1, x1, curY0, z1, x1, y1, z1, x0, y1, z1, 0, 0, 1);
+            emitDissolveFace(quadBuf, camPos, wx, wy, wz, mat, lightDir, color, alpha,
+                    x1, curY0, z0, x0, curY0, z0, x0, y1, z0, x1, y1, z0, 0, 0, -1);
+            emitDissolveFace(quadBuf, camPos, wx, wy, wz, mat, lightDir, color, alpha,
+                    x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0, 0, 1, 0);
+            if (!hasCutSeam) {
+                emitDissolveFace(quadBuf, camPos, wx, wy, wz, mat, lightDir, color, alpha,
+                        x0, y0, z1, x0, y0, z0, x1, y0, z0, x1, y0, z1, 0, -1, 0);
+            }
+            emitDissolveFace(quadBuf, camPos, wx, wy, wz, mat, lightDir, color, alpha,
+                    x0, curY0, z0, x0, curY0, z1, x0, y1, z1, x0, y1, z0, -1, 0, 0);
+            emitDissolveFace(quadBuf, camPos, wx, wy, wz, mat, lightDir, color, alpha,
+                    x1, curY0, z1, x1, curY0, z0, x1, y1, z0, x1, y1, z1, 1, 0, 0);
+        }
+
+        if (hasCutSeam) {
+            emitDissolveCap(lightBuf, camPos, wx, wy, wz, mat, x0, z0, x1, z1, curY0, color, inst.age);
+        }
+    }
+
+    private static void emitDissolveFace(VertexConsumer buf, Vec3d camPos,
+                                        double wx, double wy, double wz, Matrix4f mat,
+                                        Vector3f lightDir, int baseColor, int alpha,
+                                        float lx0, float ly0, float lz0,
+                                        float lx1, float ly1, float lz1,
+                                        float lx2, float ly2, float lz2,
+                                        float lx3, float ly3, float lz3,
+                                        float nx, float ny, float nz) {
+        Vector3f p0 = new Vector3f(lx0, ly0, lz0).mulPosition(mat);
+        Vector3f p1 = new Vector3f(lx1, ly1, lz1).mulPosition(mat);
+        Vector3f p2 = new Vector3f(lx2, ly2, lz2).mulPosition(mat);
+        Vector3f p3 = new Vector3f(lx3, ly3, lz3).mulPosition(mat);
+
+        Vector3f normal = new Vector3f(nx, ny, nz).mulDirection(mat).normalize();
+        float diffuse = MathHelper.clamp(normal.dot(lightDir) * 0.45f + 0.65f, 0.25f, 1.0f);
+
+        int r = (baseColor >> 16) & 0xFF;
+        int g = (baseColor >> 8) & 0xFF;
+        int b = baseColor & 0xFF;
+
+        int cr = MathHelper.clamp((int) (r * diffuse), 0, 255);
+        int cg = MathHelper.clamp((int) (g * diffuse), 0, 255);
+        int cb = MathHelper.clamp((int) (b * diffuse), 0, 255);
+
+        float vx0 = (float) (wx + p0.x - camPos.x);
+        float vy0 = (float) (wy + p0.y - camPos.y);
+        float vz0 = (float) (wz + p0.z - camPos.z);
+
+        float vx1 = (float) (wx + p1.x - camPos.x);
+        float vy1 = (float) (wy + p1.y - camPos.y);
+        float vz1 = (float) (wz + p1.z - camPos.z);
+
+        float vx2 = (float) (wx + p2.x - camPos.x);
+        float vy2 = (float) (wy + p2.y - camPos.y);
+        float vz2 = (float) (wz + p2.z - camPos.z);
+
+        float vx3 = (float) (wx + p3.x - camPos.x);
+        float vy3 = (float) (wy + p3.y - camPos.y);
+        float vz3 = (float) (wz + p3.z - camPos.z);
+
+        buf.vertex(vx0, vy0, vz0).color(cr, cg, cb, alpha);
+        buf.vertex(vx1, vy1, vz1).color(cr, cg, cb, alpha);
+        buf.vertex(vx2, vy2, vz2).color(cr, cg, cb, alpha);
+        buf.vertex(vx3, vy3, vz3).color(cr, cg, cb, alpha);
+    }
+
+    private static void emitDissolveCap(VertexConsumer buf, Vec3d camPos,
+                                       double wx, double wy, double wz, Matrix4f mat,
+                                       float x0, float z0, float x1, float z1, float capY,
+                                       int color, float age) {
+        float flare = 0.022f;
+        Vector3f p0 = new Vector3f(x0 - flare, capY, z0 - flare).mulPosition(mat);
+        Vector3f p1 = new Vector3f(x1 + flare, capY, z0 - flare).mulPosition(mat);
+        Vector3f p2 = new Vector3f(x1 + flare, capY, z1 + flare).mulPosition(mat);
+        Vector3f p3 = new Vector3f(x0 - flare, capY, z1 + flare).mulPosition(mat);
+
+        float vx0 = (float) (wx + p0.x - camPos.x);
+        float vy0 = (float) (wy + p0.y - camPos.y);
+        float vz0 = (float) (wz + p0.z - camPos.z);
+
+        float vx1 = (float) (wx + p1.x - camPos.x);
+        float vy1 = (float) (wy + p1.y - camPos.y);
+        float vz1 = (float) (wz + p1.z - camPos.z);
+
+        float vx2 = (float) (wx + p2.x - camPos.x);
+        float vy2 = (float) (wy + p2.y - camPos.y);
+        float vz2 = (float) (wz + p2.z - camPos.z);
+
+        float vx3 = (float) (wx + p3.x - camPos.x);
+        float vy3 = (float) (wy + p3.y - camPos.y);
+        float vz3 = (float) (wz + p3.z - camPos.z);
+
+        int pulse = (int) (200 + 45 * Math.sin(age * 26.0f));
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+
+        buf.vertex(vx0, vy0, vz0).color(255, 255, 255, pulse);
+        buf.vertex(vx1, vy1, vz1).color(r, g, b, pulse);
+        buf.vertex(vx2, vy2, vz2).color(255, 255, 255, pulse);
+        buf.vertex(vx3, vy3, vz3).color(r, g, b, pulse);
+
+        buf.vertex(vx3, vy3, vz3).color(r, g, b, pulse);
+        buf.vertex(vx2, vy2, vz2).color(255, 255, 255, pulse);
+        buf.vertex(vx1, vy1, vz1).color(r, g, b, pulse);
+        buf.vertex(vx0, vy0, vz0).color(255, 255, 255, pulse);
+    }
+
+    private static void emitMiniVoxel(VertexConsumer buf, Vec3d camPos,
+                                      double vx, double vy, double vz,
+                                      float pitch, float yaw, float roll,
+                                      float size, int r, int g, int b, int a) {
+        float cx = (float) (vx - camPos.x);
+        float cy = (float) (vy - camPos.y);
+        float cz = (float) (vz - camPos.z);
+
+        float cp = (float) Math.cos(pitch), sp = (float) Math.sin(pitch);
+        float cyaw = (float) Math.cos(yaw), syaw = (float) Math.sin(yaw);
+        float cr = (float) Math.cos(roll), sr = (float) Math.sin(roll);
+
+        float m00 = cyaw * cr + syaw * sp * sr;
+        float m01 = -cyaw * sr + syaw * sp * cr;
+        float m02 = syaw * cp;
+        float m10 = cp * sr;
+        float m11 = cp * cr;
+        float m12 = -sp;
+        float m20 = -syaw * cr + cyaw * sp * sr;
+        float m21 = syaw * sr + cyaw * sp * cr;
+        float m22 = cyaw * cp;
+
+        float s = size;
+
+        float c0x = cx + (-s) * m00 + (-s) * m01 + (-s) * m02;
+        float c0y = cy + (-s) * m10 + (-s) * m11 + (-s) * m12;
+        float c0z = cz + (-s) * m20 + (-s) * m21 + (-s) * m22;
+
+        float c1x = cx + (s) * m00 + (-s) * m01 + (-s) * m02;
+        float c1y = cy + (s) * m10 + (-s) * m11 + (-s) * m12;
+        float c1z = cz + (s) * m20 + (-s) * m21 + (-s) * m22;
+
+        float c2x = cx + (s) * m00 + (s) * m01 + (-s) * m02;
+        float c2y = cy + (s) * m10 + (s) * m11 + (-s) * m12;
+        float c2z = cz + (s) * m20 + (s) * m21 + (-s) * m22;
+
+        float c3x = cx + (-s) * m00 + (s) * m01 + (-s) * m02;
+        float c3y = cy + (-s) * m10 + (s) * m11 + (-s) * m12;
+        float c3z = cz + (-s) * m20 + (s) * m21 + (-s) * m22;
+
+        float c4x = cx + (-s) * m00 + (-s) * m01 + (s) * m02;
+        float c4y = cy + (-s) * m10 + (-s) * m11 + (s) * m12;
+        float c4z = cz + (-s) * m20 + (-s) * m21 + (s) * m22;
+
+        float c5x = cx + (s) * m00 + (-s) * m01 + (s) * m02;
+        float c5y = cy + (s) * m10 + (-s) * m11 + (s) * m12;
+        float c5z = cz + (s) * m20 + (-s) * m21 + (s) * m22;
+
+        float c6x = cx + (s) * m00 + (s) * m01 + (s) * m02;
+        float c6y = cy + (s) * m10 + (s) * m11 + (s) * m12;
+        float c6z = cz + (s) * m20 + (s) * m21 + (s) * m22;
+
+        float c7x = cx + (-s) * m00 + (s) * m01 + (s) * m02;
+        float c7y = cy + (-s) * m10 + (s) * m11 + (s) * m12;
+        float c7z = cz + (-s) * m20 + (s) * m21 + (s) * m22;
+
+        buf.vertex(c4x, c4y, c4z).color(r, g, b, a);
+        buf.vertex(c5x, c5y, c5z).color(r, g, b, a);
+        buf.vertex(c6x, c6y, c6z).color(r, g, b, a);
+        buf.vertex(c7x, c7y, c7z).color(r, g, b, a);
+
+        buf.vertex(c1x, c1y, c1z).color(r, g, b, a);
+        buf.vertex(c0x, c0y, c0z).color(r, g, b, a);
+        buf.vertex(c3x, c3y, c3z).color(r, g, b, a);
+        buf.vertex(c2x, c2y, c2z).color(r, g, b, a);
+
+        int tr = MathHelper.clamp((int) (r * 1.15f), 0, 255);
+        int tg = MathHelper.clamp((int) (g * 1.15f), 0, 255);
+        int tb = MathHelper.clamp((int) (b * 1.15f), 0, 255);
+
+        buf.vertex(c3x, c3y, c3z).color(tr, tg, tb, a);
+        buf.vertex(c7x, c7y, c7z).color(tr, tg, tb, a);
+        buf.vertex(c6x, c6y, c6z).color(tr, tg, tb, a);
+        buf.vertex(c2x, c2y, c2z).color(tr, tg, tb, a);
+
+        int br = (int) (r * 0.70f);
+        int bg = (int) (g * 0.70f);
+        int bb = (int) (b * 0.70f);
+
+        buf.vertex(c0x, c0y, c0z).color(br, bg, bb, a);
+        buf.vertex(c1x, c1y, c1z).color(br, bg, bb, a);
+        buf.vertex(c5x, c5y, c5z).color(br, bg, bb, a);
+        buf.vertex(c4x, c4y, c4z).color(br, bg, bb, a);
+
+        buf.vertex(c0x, c0y, c0z).color(r, g, b, a);
+        buf.vertex(c4x, c4y, c4z).color(r, g, b, a);
+        buf.vertex(c7x, c7y, c7z).color(r, g, b, a);
+        buf.vertex(c3x, c3y, c3z).color(r, g, b, a);
+
+        buf.vertex(c5x, c5y, c5z).color(r, g, b, a);
+        buf.vertex(c1x, c1y, c1z).color(r, g, b, a);
+        buf.vertex(c2x, c2y, c2z).color(r, g, b, a);
+        buf.vertex(c6x, c6y, c6z).color(r, g, b, a);
+    }
+
+    private static class DissolveVoxel {
+        double x, y, z;
+        float vx, vy, vz;
+        float pitch, yaw, roll;
+        float vPitch, vYaw, vRoll;
+        float size;
+        float life;
+        float age = 0.0f;
+        int color;
+
+        DissolveVoxel(double x, double y, double z,
+                      float vx, float vy, float vz,
+                      float pitch, float yaw, float roll,
+                      float vPitch, float vYaw, float vRoll,
+                      float size, float life, int color) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.vx = vx;
+            this.vy = vy;
+            this.vz = vz;
+            this.pitch = pitch;
+            this.yaw = yaw;
+            this.roll = roll;
+            this.vPitch = vPitch;
+            this.vYaw = vYaw;
+            this.vRoll = vRoll;
+            this.size = size;
+            this.life = life;
+            this.color = color;
+        }
+    }
+
+    private static class DissolveInstance {
+        final double x, y, z;
+        final float yaw, pitch, headYaw;
+        final boolean isSneaking;
+        final float rLegPitch, lLegPitch, rArmPitch, lArmPitch, rArmRoll;
+        final float duration;
+        final int targetVoxelCount;
+        final int color;
+        final boolean ring;
+        float age = 0.0f;
+        int spawnedVoxels = 0;
+        final List<DissolveVoxel> voxels = new ArrayList<>();
+        final Random random = new Random();
+
+        DissolveInstance(double x, double y, double z, float yaw, float pitch, float headYaw, boolean isSneaking,
+                         float rLegPitch, float lLegPitch, float rArmPitch, float lArmPitch, float rArmRoll,
+                         float duration, int targetVoxelCount, int color, boolean ring) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.yaw = yaw;
+            this.pitch = pitch;
+            this.headYaw = headYaw;
+            this.isSneaking = isSneaking;
+            this.rLegPitch = rLegPitch;
+            this.lLegPitch = lLegPitch;
+            this.rArmPitch = rArmPitch;
+            this.lArmPitch = lArmPitch;
+            this.rArmRoll = rArmRoll;
+            this.duration = duration;
+            this.targetVoxelCount = targetVoxelCount;
+            this.color = color;
+            this.ring = ring;
+        }
+
+        void updateAndRenderVoxels(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                   Vec3d camPos, Vector3f lightDir, float dt) {
+            Iterator<DissolveVoxel> it = voxels.iterator();
+            while (it.hasNext()) {
+                DissolveVoxel v = it.next();
+                v.age += dt;
+                if (v.age >= v.life) {
+                    it.remove();
+                    continue;
+                }
+
+                v.vy += 0.28f * dt;
+
+                float dx = (float) (v.x - x);
+                float dz = (float) (v.z - z);
+                float dist = (float) Math.sqrt(dx * dx + dz * dz);
+                if (dist > 0.01f) {
+                    float nx = -dz / dist;
+                    float nz = dx / dist;
+                    v.vx += nx * 0.38f * dt;
+                    v.vz += nz * 0.38f * dt;
+                }
+
+                v.vx *= (1.0f - 0.35f * dt);
+                v.vz *= (1.0f - 0.35f * dt);
+
+                v.x += v.vx * dt;
+                v.y += v.vy * dt;
+                v.z += v.vz * dt;
+
+                v.pitch += v.vPitch * dt;
+                v.yaw += v.vYaw * dt;
+                v.roll += v.vRoll * dt;
+
+                float prog = v.age / v.life;
+                float alphaFactor = prog < 0.15f ? (prog / 0.15f) : (1.0f - (prog - 0.15f) / 0.85f);
+                int a = (int) (245 * MathHelper.clamp(alphaFactor, 0.0f, 1.0f));
+                if (a <= 2) continue;
+
+                int vr, vg, vb;
+                if (prog < 0.22f) {
+                    vr = MathHelper.clamp((int) (((v.color >> 16) & 0xFF) * 0.45f + 255 * 0.55f), 0, 255);
+                    vg = MathHelper.clamp((int) (((v.color >> 8) & 0xFF) * 0.45f + 255 * 0.55f), 0, 255);
+                    vb = MathHelper.clamp((int) ((v.color & 0xFF) * 0.45f + 255 * 0.55f), 0, 255);
+                } else if (prog < 0.68f) {
+                    vr = (v.color >> 16) & 0xFF;
+                    vg = (v.color >> 8) & 0xFF;
+                    vb = v.color & 0xFF;
+                } else {
+                    float cinderProg = (prog - 0.68f) / 0.32f;
+                    vr = (int) (((v.color >> 16) & 0xFF) * (1.0f - cinderProg * 0.72f) * 0.5f + 35 * cinderProg);
+                    vg = (int) (((v.color >> 8) & 0xFF) * (1.0f - cinderProg * 0.82f) * 0.3f + 18 * cinderProg);
+                    vb = (int) ((v.color & 0xFF) * (1.0f - cinderProg * 0.88f) * 0.2f + 14 * cinderProg);
+                }
+
+                float curSize = v.size * (1.0f - prog * 0.42f);
+                emitMiniVoxel(quadBuf, camPos, v.x, v.y, v.z, v.pitch, v.yaw, v.roll, curSize, vr, vg, vb, a);
+
+                if (prog < 0.55f) {
+                    float sparkSize = curSize * 2.2f;
+                    float px = (float) (v.x - camPos.x);
+                    float py = (float) (v.y - camPos.y);
+                    float pz = (float) (v.z - camPos.z);
+                    int haloAlpha = (int) (a * 0.55f * (1.0f - prog / 0.55f));
+                    lightBuf.vertex(px - sparkSize, py, pz).color(vr, vg, vb, 0);
+                    lightBuf.vertex(px, py + sparkSize, pz).color(255, 255, 255, haloAlpha);
+                    lightBuf.vertex(px + sparkSize, py, pz).color(vr, vg, vb, 0);
+                    lightBuf.vertex(px, py - sparkSize, pz).color(255, 255, 255, haloAlpha);
+                }
+            }
         }
     }
 }

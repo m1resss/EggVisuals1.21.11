@@ -10,6 +10,7 @@ import egg.client.module.combat.HitColor;
 
 import egg.client.module.render.*;
 
+import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.pipeline.DrawBatcher;
 
 import net.minecraft.client.MinecraftClient;
@@ -140,8 +141,11 @@ public abstract class GameRendererMixin {
     }
 
     @Unique
-
     private void renderCustomHud(DrawContext context, RenderTickCounter tickCounter) {
+        if (Interface.isHudBlurEnabled()) {
+            Draw2DProcessor.INSTANCE.captureBlur(Interface.getHudBlurStrength());
+        }
+
         Interface iface = ModuleManager.getInstance().getModule(Interface.class);
 
         if (iface != null && iface.isEnabled()) {
@@ -174,6 +178,11 @@ public abstract class GameRendererMixin {
         Keybinds keybinds = ModuleManager.getInstance().getModule(Keybinds.class);
         if (keybinds != null && keybinds.isEnabled()) {
             keybinds.render(context, tickCounter);
+        }
+
+        EventTracker tracker = ModuleManager.getInstance().getModule(EventTracker.class);
+        if (tracker != null && tracker.isEnabled()) {
+            tracker.render(context, tickCounter);
         }
 
         Hitmarker hitmarker = ModuleManager.getInstance().getModule(Hitmarker.class);
@@ -246,6 +255,7 @@ public abstract class GameRendererMixin {
     )
     private Matrix4f egg$ambienceCaptureProjection(Matrix4f matrix4f) {
         egg.client.render.shader.AmbienceRenderer.setSkyParams(matrix4f.m00(), matrix4f.m11());
+        egg.client.render.MotionBlurRenderer.INSTANCE.setProjection(matrix4f);
         return matrix4f;
     }
 
@@ -259,6 +269,12 @@ public abstract class GameRendererMixin {
     )
     private void egg$ambiencePostFx(RenderTickCounter renderTickCounter, CallbackInfo callbackInfo) {
         egg.client.render.shader.AmbienceRenderer.INSTANCE.renderPostEffects((GameRenderer)(Object)this);
+        egg.client.render.MotionBlurRenderer.INSTANCE.render((GameRenderer)(Object)this);
+    }
+
+    @Inject(method = "renderWorld", at = @At("TAIL"))
+    private void egg$naturalMotionBlurAfterRenderWorld(RenderTickCounter renderTickCounter, CallbackInfo ci) {
+        egg.client.render.NaturalMotionBlurRenderer.INSTANCE.clearFrameAllocator();
     }
 
     @Inject(method = "render", at = @At("TAIL"))

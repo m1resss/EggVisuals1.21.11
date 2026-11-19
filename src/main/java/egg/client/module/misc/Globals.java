@@ -142,14 +142,15 @@ public class Globals extends Module {
     private void syncLocalShare(MinecraftClient mc, long now) {
         try {
             List<File> shareFiles = new ArrayList<>();
-            File homeFile = new File(System.getProperty("user.home"), ".egg_globals_share.json");
-            shareFiles.add(homeFile);
-            if (mc.runDirectory != null) {
-                shareFiles.add(new File(mc.runDirectory, "egg_globals_share.json"));
+            try {
+                File cfgDir = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("eggvisuals").toFile();
+                if (cfgDir.exists() || cfgDir.mkdirs()) {
+                    shareFiles.add(new File(cfgDir, "egg_globals_share.json"));
+                }
+            } catch (Throwable ignored) {
             }
-            File geminiDir = new File(System.getProperty("user.home"), ".gemini/antigravity");
-            if (geminiDir.exists() || geminiDir.mkdirs()) {
-                shareFiles.add(new File(geminiDir, "egg_globals_share.json"));
+            if (shareFiles.isEmpty() && mc.runDirectory != null) {
+                shareFiles.add(new File(mc.runDirectory, "egg_globals_share.json"));
             }
 
             JsonObject mergedRoot = new JsonObject();

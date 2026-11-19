@@ -39,6 +39,14 @@ public abstract class PlayerEntityRendererMixin extends LivingEntityRenderer<Abs
     }
 
     @Inject(
+            method = "renderArm(Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/command/OrderedRenderCommandQueue;ILnet/minecraft/util/Identifier;Lnet/minecraft/client/model/ModelPart;Z)V",
+            at = @At("TAIL")
+    )
+    private void onRenderArmTail(MatrixStack matrices, OrderedRenderCommandQueue queue, int light, net.minecraft.util.Identifier skin, net.minecraft.client.model.ModelPart arm, boolean sleeve, CallbackInfo ci) {
+        egg.client.cosmetic.watch.WatchRenderer.renderArmWatch((PlayerEntityRenderer) (Object) this, matrices, queue, light, arm, sleeve);
+    }
+
+    @Inject(
             method = "renderLabelIfPresent(Lnet/minecraft/client/render/entity/state/PlayerEntityRenderState;Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/command/OrderedRenderCommandQueue;Lnet/minecraft/client/render/state/CameraRenderState;)V",
             at = @At("HEAD"),
             cancellable = true

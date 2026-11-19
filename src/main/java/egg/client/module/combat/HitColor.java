@@ -19,7 +19,7 @@ public class HitColor extends Module {
     private int lastUploadedColor = VANILLA_HURT_COLOR;
 
     public HitColor() {
-        super("HitColor", "Изменяет цвет вспышки при получении урона", Category.COMBAT);
+        super("HitColor", "Изменяет цвет вспышки при получении урона", Category.ESP);
         addSettings(color, colorArmor);
     }
 

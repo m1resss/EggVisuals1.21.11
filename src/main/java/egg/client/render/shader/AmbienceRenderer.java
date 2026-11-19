@@ -53,6 +53,13 @@ public enum AmbienceRenderer {
     private boolean opaqueCaptured;
     private boolean reflectionReady;
 
+    private final Quaternionf scratchRot = new Quaternionf();
+    private final Matrix4f scratchMatrix = new Matrix4f();
+    private final Vector3f scratchUp = new Vector3f();
+    private final Vector3f scratchRight = new Vector3f();
+    private final Vector3f scratchForward = new Vector3f();
+    private final Vector3f scratchSunDir = new Vector3f();
+
     public static boolean isReflectionsEnabled() {
         WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
         return wt != null && wt.isEnabled() && wt.isReflectionsEnabled();
@@ -129,9 +136,9 @@ public enum AmbienceRenderer {
                 int baseCol = (wt != null && wt.getCloudColor() != -1) ? wt.getCloudColor() : i;
                 this.cloudColor = applyWeatherToColor(baseCol, minecraftClient.world);
                 this.cloudsRendered = true;
-                Quaternionf rot = gameRenderer.getCamera().getRotation().conjugate(new Quaternionf());
-                GpuBufferSlice ubo = this.createUniforms(gameRenderer, wt, rot);
-                Matrix4f matrix4f = new Matrix4f().rotation(rot);
+                gameRenderer.getCamera().getRotation().conjugate(this.scratchRot);
+                GpuBufferSlice ubo = this.createUniforms(gameRenderer, wt, this.scratchRot);
+                Matrix4f matrix4f = this.scratchMatrix.identity().rotation(this.scratchRot);
                 this.cloudsTarget = ensureTarget(
                     this.cloudsTarget, "egg_ambience_clouds", Math.max(1, framebuffer.textureWidth / 2), Math.max(1, framebuffer.textureHeight / 2)
                 );
@@ -174,14 +181,15 @@ public enum AmbienceRenderer {
     }
 
     public void renderPostEffects(GameRenderer gameRenderer) {
-        if (!this.cloudsRendered && this.cloudsTarget != null) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
+        boolean cloudsActive = wt != null && wt.isEnabled() && wt.isVolumetricClouds();
+        if (!cloudsActive && this.cloudsTarget != null) {
             deleteTarget(this.cloudsTarget);
             this.cloudsTarget = null;
         }
         this.cloudsRendered = false;
 
-        MinecraftClient mc = MinecraftClient.getInstance();
-        WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
         if (mc.player != null && mc.world != null && wt != null && wt.isEnabled()) {
             boolean openGl = isOpenGl();
             boolean doReflections = wt.isReflectionsEnabled() && this.reflectionReady && openGl;
@@ -195,8 +203,8 @@ public enum AmbienceRenderer {
                 if (isFramebufferUsable(framebuffer)) {
                     int w = framebuffer.textureWidth;
                     int h = framebuffer.textureHeight;
-                    Quaternionf rot = gameRenderer.getCamera().getRotation().conjugate(new Quaternionf());
-                    GpuBufferSlice ubo = this.createUniforms(gameRenderer, wt, rot);
+                    gameRenderer.getCamera().getRotation().conjugate(this.scratchRot);
+                    GpuBufferSlice ubo = this.createUniforms(gameRenderer, wt, this.scratchRot);
                     GpuSampler linearSampler = RenderSystem.getSamplerCache().get(FilterMode.LINEAR);
                     GpuSampler nearestSampler = RenderSystem.getSamplerCache().get(FilterMode.NEAREST);
 
@@ -238,10 +246,10 @@ public enum AmbienceRenderer {
                     }
                 }
             } else {
-                this.releaseIfUnused();
+                this.releasePostTargets();
             }
         } else {
-            this.releaseIfUnused();
+            this.releaseTargets();
         }
         AmbiencePostUniformStorage.clear();
     }
@@ -299,10 +307,10 @@ public enum AmbienceRenderer {
     }
 
     private GpuBufferSlice createUniforms(GameRenderer gameRenderer, WorldTweaks wt, Quaternionf rot) {
-        Vector3f up = rot.transform(new Vector3f(0.0F, 1.0F, 0.0F));
-        Vector3f right = rot.transform(new Vector3f(1.0F, 0.0F, 0.0F));
-        Vector3f forward = rot.transform(new Vector3f(0.0F, 0.0F, 1.0F));
-        Vector3f sunDir = rot.transform(new Vector3f(-MathHelper.sin(sunAngle), MathHelper.cos(sunAngle), 0.0F));
+        rot.transform(0.0F, 1.0F, 0.0F, this.scratchUp);
+        rot.transform(1.0F, 0.0F, 0.0F, this.scratchRight);
+        rot.transform(0.0F, 0.0F, 1.0F, this.scratchForward);
+        rot.transform(-MathHelper.sin(sunAngle), MathHelper.cos(sunAngle), 0.0F, this.scratchSunDir);
         Vec3d camPos = gameRenderer.getCamera().getCameraPos();
 
         float blurDist = 99999.0F;
@@ -335,9 +343,9 @@ public enum AmbienceRenderer {
                 blurDist * 1.5F,
                 (float) wt.getBloomThreshold(),
                 (float) wt.getBloomIntensity(),
-                up.x,
-                up.y,
-                up.z,
+                this.scratchUp.x,
+                this.scratchUp.y,
+                this.scratchUp.z,
                 0.55F,
                 200.0F,
                 ((skyColor >> 16) & 0xFF) / 255.0F,
@@ -346,15 +354,15 @@ public enum AmbienceRenderer {
                 ((horizonColor >> 16) & 0xFF) / 255.0F,
                 ((horizonColor >> 8) & 0xFF) / 255.0F,
                 (horizonColor & 0xFF) / 255.0F,
-                sunDir.x,
-                sunDir.y,
-                sunDir.z,
-                right.x,
-                right.y,
-                right.z,
-                forward.x,
-                forward.y,
-                forward.z,
+                this.scratchSunDir.x,
+                this.scratchSunDir.y,
+                this.scratchSunDir.z,
+                this.scratchRight.x,
+                this.scratchRight.y,
+                this.scratchRight.z,
+                this.scratchForward.x,
+                this.scratchForward.y,
+                this.scratchForward.z,
                 (float) camPos.x,
                 (float) camPos.z,
                 waveTime,
@@ -413,28 +421,34 @@ public enum AmbienceRenderer {
         this.releaseTargets();
     }
 
-    private void releaseIfUnused() {
-        if (this.captureTarget != null || this.resultTarget != null || this.mipTargets.length > 0 || this.opaqueDepth.getView() != null || this.cloudsTarget != null) {
-            this.releaseTargets();
+    private void releasePostTargets() {
+        if (this.captureTarget != null) {
+            deleteTarget(this.captureTarget);
+            this.captureTarget = null;
         }
-    }
-
-    private void releaseTargets() {
-        deleteTarget(this.captureTarget);
-        this.captureTarget = null;
-        deleteTarget(this.resultTarget);
-        this.resultTarget = null;
-        deleteTarget(this.cloudsTarget);
-        this.cloudsTarget = null;
-        for (SimpleFramebuffer fb : this.mipTargets) {
-            deleteTarget(fb);
+        if (this.resultTarget != null) {
+            deleteTarget(this.resultTarget);
+            this.resultTarget = null;
         }
-        this.mipTargets = new SimpleFramebuffer[0];
+        if (this.mipTargets != null && this.mipTargets.length > 0) {
+            for (SimpleFramebuffer fb : this.mipTargets) {
+                deleteTarget(fb);
+            }
+            this.mipTargets = new SimpleFramebuffer[0];
+        }
         this.opaqueDepth.close();
         this.worldDepth.close();
         this.sceneColor.close();
         this.opaqueCaptured = false;
         this.reflectionReady = false;
+    }
+
+    private void releaseTargets() {
+        this.releasePostTargets();
+        if (this.cloudsTarget != null) {
+            deleteTarget(this.cloudsTarget);
+            this.cloudsTarget = null;
+        }
         CloudNoiseTexture.close();
         AtmosphereCubeRenderer.close();
     }

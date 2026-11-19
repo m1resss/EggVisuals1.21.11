@@ -38,38 +38,35 @@ public final class CommandManager {
         register(new GlobalsCommand());
         register(new LyricsCommand());
         register(new ChessCommand());
+        register(new HolyWorldCommand());
 
         buildDispatcher();
     }
 
     private void buildDispatcher() {
-
         dispatcher.register(literal("help"));
         dispatcher.register(literal("chess"));
         dispatcher.register(literal("lyrics"));
-        dispatcher.register(literal("lyr"));
+        dispatcher.register(literal("holyworld"));
 
-        dispatcher.register(literal("confetti"));
-        dispatcher.register(literal("totem"));
-
-        for (String t : new String[]{"toggle", "t"}) {
-            dispatcher.register(literal(t)
-                    .then(argument("module", StringArgumentType.word())
-                            .suggests((ctx, builder) -> {
-                                for (Module m : ModuleManager.getInstance().getModules()) {
-                                    if (m.getName().toLowerCase(Locale.ROOT).startsWith(builder.getRemainingLowerCase())) {
-                                        builder.suggest(m.getName());
-                                    }
+        dispatcher.register(literal("toggle")
+                .then(argument("module", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            for (Module m : ModuleManager.getInstance().getModules()) {
+                                if (m.isBlocked()) continue;
+                                if (m.getName().toLowerCase(Locale.ROOT).startsWith(builder.getRemainingLowerCase())) {
+                                    builder.suggest(m.getName());
                                 }
-                                return builder.buildFuture();
-                            }))
-            );
-        }
+                            }
+                            return builder.buildFuture();
+                        }))
+        );
 
         dispatcher.register(literal("bind")
                 .then(argument("module", StringArgumentType.word())
                         .suggests((ctx, builder) -> {
                             for (Module m : ModuleManager.getInstance().getModules()) {
+                                if (m.isBlocked()) continue;
                                 if (m.getName().toLowerCase(Locale.ROOT).startsWith(builder.getRemainingLowerCase())) {
                                     builder.suggest(m.getName());
                                 }
@@ -79,52 +76,41 @@ public final class CommandManager {
                         .then(argument("key", StringArgumentType.word())))
         );
 
-        dispatcher.register(literal("cases")
-                .then(literal("open"))
+        dispatcher.register(literal("friend")
+                .then(literal("add").then(argument("name", StringArgumentType.word())))
+                .then(literal("del").then(argument("name", StringArgumentType.word())))
                 .then(literal("list"))
         );
 
-        for (String f : new String[]{"friend", "f"}) {
-            dispatcher.register(literal(f)
-                    .then(literal("add").then(argument("name", StringArgumentType.word())))
-                    .then(literal("del").then(argument("name", StringArgumentType.word())))
-                    .then(literal("list"))
-            );
-        }
-
-        for (String c : new String[]{"config", "cfg"}) {
-            dispatcher.register(literal(c)
-                    .then(literal("dir"))
-                    .then(literal("save").then(argument("name", StringArgumentType.word())))
-                    .then(literal("load").then(argument("name", StringArgumentType.word())
-                            .suggests((ctx, builder) -> {
-                                for (String cfg : egg.client.config.ConfigManager.getConfigs()) {
-                                    if (cfg.toLowerCase(Locale.ROOT).startsWith(builder.getRemainingLowerCase())) {
-                                        builder.suggest(cfg);
-                                    }
+        dispatcher.register(literal("config")
+                .then(literal("dir"))
+                .then(literal("save").then(argument("name", StringArgumentType.word())))
+                .then(literal("load").then(argument("name", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            for (String cfg : egg.client.config.ConfigManager.getConfigs()) {
+                                if (cfg.toLowerCase(Locale.ROOT).startsWith(builder.getRemainingLowerCase())) {
+                                    builder.suggest(cfg);
                                 }
-                                return builder.buildFuture();
-                            })))
-                    .then(literal("delete").then(argument("name", StringArgumentType.word())
-                            .suggests((ctx, builder) -> {
-                                for (String cfg : egg.client.config.ConfigManager.getConfigs()) {
-                                    if (cfg.toLowerCase(Locale.ROOT).startsWith(builder.getRemainingLowerCase())) {
-                                        builder.suggest(cfg);
-                                    }
+                            }
+                            return builder.buildFuture();
+                        })))
+                .then(literal("delete").then(argument("name", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            for (String cfg : egg.client.config.ConfigManager.getConfigs()) {
+                                if (cfg.toLowerCase(Locale.ROOT).startsWith(builder.getRemainingLowerCase())) {
+                                    builder.suggest(cfg);
                                 }
-                                return builder.buildFuture();
-                            })))
-                    .then(literal("list"))
-            );
-        }
+                            }
+                            return builder.buildFuture();
+                        })))
+                .then(literal("list"))
+        );
 
-        for (String wp : new String[]{"waypoint", "wp"}) {
-            dispatcher.register(literal(wp)
-                    .then(literal("add").then(argument("name", StringArgumentType.word())))
-                    .then(literal("del").then(argument("name", StringArgumentType.word())))
-                    .then(literal("list"))
-            );
-        }
+        dispatcher.register(literal("waypoint")
+                .then(literal("add").then(argument("name", StringArgumentType.word())))
+                .then(literal("del").then(argument("name", StringArgumentType.word())))
+                .then(literal("list"))
+        );
     }
 
     private static LiteralArgumentBuilder<CommandSource> literal(String name) {

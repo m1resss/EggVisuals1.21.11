@@ -39,6 +39,7 @@ public class Cooldowns extends Module {
     private final SliderSetting posX = new SliderSetting("X", 0.5, 0.0, 1.0, 0.001, "Позиция X");
     private final SliderSetting posY = new SliderSetting("Y", 0.76, 0.0, 1.0, 0.001, "Позиция Y");
     private final ColorSetting bgColor = new ColorSetting("Цвет фона", (int) 0xC4151515L, "Цвет фона капсулы кулдаунов");
+    private final SliderSetting opacity = new SliderSetting("Непрозрачность", 175.0, 10.0, 255.0, 5.0, "Прозрачность фона кулдаунов");
     private final SliderSetting scale = new SliderSetting("Размер", 1.0, 0.5, 1.5, 0.05, "Масштаб худа");
     private final BooleanSetting hudThemeGradient = new BooleanSetting("Градиент HUD", true, "Мягкий градиент по бокам капсулы");
     private final SliderSetting hudGradientStrength = new SliderSetting("Сила градиента", 60.0, 5.0, 100.0, 5.0, "Интенсивность градиента");
@@ -52,6 +53,12 @@ public class Cooldowns extends Module {
     private float lastY = 300.0f;
     private float lastW = 100.0f;
     private float lastH = 34.0f;
+    private float animatedY = -1.0f;
+
+    @Override
+    public void onDisable() {
+        animatedY = -1.0f;
+    }
 
     public float getLastX() { return lastX; }
     public float getLastY() { return lastY; }
@@ -83,7 +90,7 @@ public class Cooldowns extends Module {
     public Cooldowns() {
         super("Cooldowns", "Показывает оставшееся время перезарядки предметов", Category.ESP);
         instance = this;
-        addSettings(bgColor, scale, hudThemeGradient, hudGradientStrength);
+        addSettings(bgColor, opacity, scale, hudThemeGradient, hudGradientStrength);
         setEnabled(true);
     }
 
@@ -158,6 +165,7 @@ public class Cooldowns extends Module {
         Interface iface = Interface.getInstance();
         float combatAlpha = iface != null ? iface.getCombatAlphaFactor("cooldowns") : 1.0f;
         float combatScale = iface != null ? iface.getCombatScaleFactor("cooldowns") : 1.0f;
+        if (combatAlpha <= 0.01f) return;
 
         float s = scale.getValueFloat() * combatScale;
 
@@ -176,17 +184,32 @@ public class Cooldowns extends Module {
 
         float userX = posX.getValueFloat() * (screenW - pillW);
         float userY = posY.getValueFloat() * (screenH - pillH);
-        float px = Math.clamp(userX, 4.0f, screenW - pillW - 4.0f);
-        float py = Math.clamp(userY, 15.0f, screenH - pillH - 15.0f);
+        float px = Math.clamp(userX, 4.0f, Math.max(4.0f, screenW - pillW - 4.0f));
+        float py = Math.clamp(userY, 15.0f, Math.max(15.0f, screenH - pillH - 15.0f));
+
+        float targetY = iface != null ? iface.getAdjustedY(px, py, pillW, pillH) : py;
+        if (dragging || animatedY < 0.0f) {
+            animatedY = dragging ? py : targetY;
+        } else if (Math.abs(animatedY - targetY) > 0.1f) {
+            animatedY += (targetY - animatedY) * 0.25f;
+        } else {
+            animatedY = targetY;
+        }
+        py = animatedY;
 
         this.lastX = px;
         this.lastY = py;
         this.lastW = pillW;
         this.lastH = pillH;
 
-        Draw2DProcessor.INSTANCE.drawGlow(null, px, py, pillW, pillH, pillRadius, ColorUtil.withAlphaFloat(ColorUtil.rgba(0, 0, 0, 110), combatAlpha), 8.0f * s);
+        float op = opacity.getValueFloat() / 255.0f;
+        int c = bgColor.get();
+        int finalBg = ColorUtil.rgba(ColorUtil.red(c), ColorUtil.green(c), ColorUtil.blue(c), (int) (op * 255.0f * combatAlpha));
 
-        Draw2DProcessor.INSTANCE.drawRect(null, px, py, pillW, pillH, pillRadius, ColorUtil.withAlphaFloat(bgColor.get(), combatAlpha));
+        Draw2DProcessor.INSTANCE.drawGlow(null, px, py, pillW, pillH, pillRadius, ColorUtil.withAlphaFloat(ColorUtil.rgba(0, 0, 0, 110), combatAlpha), 8.0f * s);
+        Draw2DProcessor.INSTANCE.drawPanelBlur(null, px, py, pillW, pillH, pillRadius, combatAlpha);
+        Draw2DProcessor.INSTANCE.drawRect(null, px, py, pillW, pillH, pillRadius, finalBg);
+        Draw2DProcessor.INSTANCE.drawOutline(null, px, py, pillW, pillH, pillRadius, 0.8f, ColorUtil.rgba(255, 255, 255, (int) (22 * combatAlpha)));
 
         if (hudThemeGradient.isEnabled()) {
             int gradC = iface != null ? iface.computeHudGradientColor(hudGradientStrength.getValueFloat(), combatAlpha)
@@ -195,7 +218,7 @@ public class Cooldowns extends Module {
         }
         DrawBatcher.flushPending();
         if (hudThemeGradient.isEnabled() && combatAlpha > 0.15f) {
-            Render2D.drawDiagonalSheen(context, px, py, pillW, pillH, pillRadius, 1200L);
+            Render2D.drawDiagonalSheen(context, px, py, pillW, pillH, pillRadius, 1200L, combatAlpha);
         }
 
         for (int i = 0; i < count; i++) {
@@ -240,7 +263,12 @@ public class Cooldowns extends Module {
             float discCy = py + pillH / 2.0f;
 
             if (!entry.stack.isEmpty()) {
-                context.drawItem(entry.stack, Math.round(discCx - 8.0f), Math.round(discCy - 8.0f));
+                context.getMatrices().pushMatrix();
+                context.getMatrices().translate(discCx, discCy);
+                context.getMatrices().scale(s, s);
+                context.getMatrices().translate(-8.0f, -8.0f);
+                context.drawItem(entry.stack, 0, 0);
+                context.getMatrices().popMatrix();
             }
         }
     }

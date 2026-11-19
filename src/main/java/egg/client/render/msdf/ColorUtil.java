@@ -14,8 +14,7 @@ public class ColorUtil {
     }
 
     public static float[] a(int color) {
-        int[] components = b(color);
-        return new float[]{components[0] / 255.0f, components[1] / 255.0f, components[2] / 255.0f, components[3] / 255.0f};
+        return new float[]{((color >> 16) & 255) / 255.0f, ((color >> 8) & 255) / 255.0f, (color & 255) / 255.0f, ((color >> 24) & 255) / 255.0f};
     }
 
     public static int[] b(int color) {
@@ -58,9 +57,21 @@ public class ColorUtil {
     }
 
     public static int a(int from, int to, float t) {
-        int[] f = b(from);
-        int[] tArr = b(to);
-        return a((int) (f[0] + ((tArr[0] - f[0]) * t)), (int) (f[1] + ((tArr[1] - f[1]) * t)), (int) (f[2] + ((tArr[2] - f[2]) * t)), (int) (f[3] + ((tArr[3] - f[3]) * t)));
+        if (t <= 0.0f) return from;
+        if (t >= 1.0f) return to;
+        int a1 = (from >>> 24);
+        int r1 = (from >> 16) & 255;
+        int g1 = (from >> 8) & 255;
+        int b1 = from & 255;
+        int a2 = (to >>> 24);
+        int r2 = (to >> 16) & 255;
+        int g2 = (to >> 8) & 255;
+        int b2 = to & 255;
+        int a = (int) (a1 + (a2 - a1) * t);
+        int r = (int) (r1 + (r2 - r1) * t);
+        int g = (int) (g1 + (g2 - g1) * t);
+        int b = (int) (b1 + (b2 - b1) * t);
+        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
     public static int b(int color, float factor) {
@@ -73,8 +84,6 @@ public class ColorUtil {
     }
 
     public static int b(int start, int end, float value) {
-        int[] pre = b(start);
-        int[] post = b(end);
-        return a((int) (pre[0] + ((post[0] - pre[0]) * value)), (int) (pre[1] + ((post[1] - pre[1]) * value)), (int) (pre[2] + ((post[2] - pre[2]) * value)), (int) (pre[3] + ((post[3] - pre[3]) * value)));
+        return a(start, end, value);
     }
 }

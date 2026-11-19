@@ -1,5 +1,7 @@
 package egg.client.mixin;
 
+import egg.client.module.ModuleManager;
+import egg.client.module.misc.TickSync;
 import egg.client.render.animation.HudAnimations;
 import egg.client.util.AudioPlayer;
 import net.minecraft.client.MinecraftClient;
@@ -13,16 +15,26 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(MinecraftClient.class)
 public abstract class MinecraftClientMixin {
 
+    @Shadow public ClientWorld world;
     @Shadow public ClientPlayerEntity player;
     @Shadow public ClientPlayerInteractionManager interactionManager;
     @Shadow protected int attackCooldown;
     @Shadow public HitResult crosshairTarget;
     @Shadow public net.minecraft.entity.Entity targetedEntity;
     @Shadow public Screen currentScreen;
+
+    @Inject(method = "getTargetMillisPerTick", at = @At("HEAD"), cancellable = true)
+    private void onGetTargetMillisPerTick(float millis, CallbackInfoReturnable<Float> cir) {
+        TickSync mod = ModuleManager.getInstance().getModule(TickSync.class);
+        if (mod != null && mod.isEnabled() && mod.getClientTPS() > 20.0f && this.world != null && this.world.getTickManager().shouldTick()) {
+            cir.setReturnValue(1000.0f / mod.getClientTPS());
+        }
+    }
 
     @Inject(method = "setScreen", at = @At("HEAD"))
     private void onSetScreen(Screen screen, CallbackInfo ci) {

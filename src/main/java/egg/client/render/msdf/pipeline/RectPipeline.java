@@ -47,6 +47,41 @@ public class RectPipeline extends UniformArrayPipeline {
         return 0;
     }
 
+    public void drawRect(float x, float y, float width, float height, int color, float radius) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.getFramebuffer() == null) return;
+
+        for (int i = 0; i < 9; i++) {
+            colors9[i] = color;
+        }
+
+        appendRect(x, y, width, height,
+                x, y, width, height,
+                0f, radius, radius, radius, radius, 0f, 0f, 1f, 0);
+        endItem();
+    }
+
+    public void drawGradient(float x, float y, float width, float height, float radius,
+                             int cTL, int cTR, int cBL, int cBR) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.getFramebuffer() == null) return;
+
+        colors9[0] = cTL;
+        colors9[1] = blend2(cTL, cTR);
+        colors9[2] = cTR;
+        colors9[3] = blend2(cTL, cBL);
+        colors9[4] = blend4(cTL, cTR, cBR, cBL);
+        colors9[5] = blend2(cTR, cBR);
+        colors9[6] = cBL;
+        colors9[7] = blend2(cBL, cBR);
+        colors9[8] = cBR;
+
+        appendRect(x, y, width, height,
+                x, y, width, height,
+                0f, radius, radius, radius, radius, 0f, 0f, 1f, 0);
+        endItem();
+    }
+
     public void drawRect(float x, float y, float width, float height,
                          int[] colors, float[] radii) {
         drawRect(x, y, width, height, colors, radii, 0f);
@@ -61,7 +96,30 @@ public class RectPipeline extends UniformArrayPipeline {
 
         appendRect(x, y, width, height,
                 x, y, width, height,
-                innerBlur, radii, 0f, 0f, 1f, 0);
+                innerBlur, radii[0], radii[1], radii[2], radii[3], 0f, 0f, 1f, 0);
+        endItem();
+    }
+
+    public void drawGlow(float x, float y, float width, float height,
+                         int color, float radius, float glowSize, float strength) {
+        drawGlow(x, y, width, height, color, radius, glowSize, strength, 1f);
+    }
+
+    public void drawGlow(float x, float y, float width, float height,
+                         int color, float radius, float glowSize, float strength, float softness) {
+        if (width <= 0 || height <= 0 || glowSize <= 0 || strength <= 0) return;
+
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.getFramebuffer() == null) return;
+
+        for (int i = 0; i < 9; i++) {
+            colors9[i] = color;
+        }
+        float padding = Math.max(0.5f, glowSize);
+
+        appendRect(x - padding, y - padding, width + padding * 2f, height + padding * 2f,
+                x, y, width, height,
+                0f, radius, radius, radius, radius, glowSize, strength, softness, color);
         endItem();
     }
 
@@ -84,8 +142,24 @@ public class RectPipeline extends UniformArrayPipeline {
 
         appendRect(x - padding, y - padding, width + padding * 2f, height + padding * 2f,
                 x, y, width, height,
-                0f, radii, glowSize, strength, softness, color);
+                0f, radii[0], radii[1], radii[2], radii[3], glowSize, strength, softness, color);
         endItem();
+    }
+
+    private static int blend2(int c1, int c2) {
+        int a = (((c1 >>> 24)) + ((c2 >>> 24))) >> 1;
+        int r = (((c1 >> 16) & 0xFF) + ((c2 >> 16) & 0xFF)) >> 1;
+        int g = (((c1 >> 8) & 0xFF) + ((c2 >> 8) & 0xFF)) >> 1;
+        int b = ((c1 & 0xFF) + (c2 & 0xFF)) >> 1;
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    private static int blend4(int c1, int c2, int c3, int c4) {
+        int a = (((c1 >>> 24)) + ((c2 >>> 24)) + ((c3 >>> 24)) + ((c4 >>> 24))) >> 2;
+        int r = (((c1 >> 16) & 0xFF) + ((c2 >> 16) & 0xFF) + ((c3 >> 16) & 0xFF) + ((c4 >> 16) & 0xFF)) >> 2;
+        int g = (((c1 >> 8) & 0xFF) + ((c2 >> 8) & 0xFF) + ((c3 >> 8) & 0xFF) + ((c4 >> 8) & 0xFF)) >> 2;
+        int b = ((c1 & 0xFF) + (c2 & 0xFF) + (c3 & 0xFF) + (c4 & 0xFF)) >> 2;
+        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
     private void convertTo9Colors(int[] colors) {
@@ -95,13 +169,13 @@ public class RectPipeline extends UniformArrayPipeline {
             }
         } else if (colors.length == 4) {
             colors9[0] = colors[0];
-            colors9[1] = blendColors(colors[0], colors[1]);
+            colors9[1] = blend2(colors[0], colors[1]);
             colors9[2] = colors[1];
-            colors9[3] = blendColors(colors[0], colors[3]);
-            colors9[4] = blendColors(colors[0], colors[1], colors[2], colors[3]);
-            colors9[5] = blendColors(colors[1], colors[2]);
+            colors9[3] = blend2(colors[0], colors[3]);
+            colors9[4] = blend4(colors[0], colors[1], colors[2], colors[3]);
+            colors9[5] = blend2(colors[1], colors[2]);
             colors9[6] = colors[3];
-            colors9[7] = blendColors(colors[3], colors[2]);
+            colors9[7] = blend2(colors[3], colors[2]);
             colors9[8] = colors[2];
         } else if (colors.length >= 9) {
             System.arraycopy(colors, 0, colors9, 0, 9);
@@ -112,21 +186,9 @@ public class RectPipeline extends UniformArrayPipeline {
         }
     }
 
-    private int blendColors(int... colors) {
-        int r = 0, g = 0, b = 0, a = 0;
-        for (int color : colors) {
-            a += (color >> 24) & 0xFF;
-            r += (color >> 16) & 0xFF;
-            g += (color >> 8) & 0xFF;
-            b += color & 0xFF;
-        }
-        int count = colors.length;
-        return ((a / count) << 24) | ((r / count) << 16) | ((g / count) << 8) | (b / count);
-    }
-
     private void appendRect(float drawX, float drawY, float drawWidth, float drawHeight,
                             float x, float y, float width, float height,
-                            float innerBlur, float[] radii,
+                            float innerBlur, float r0, float r1, float r2, float r3,
                             float glowSize, float glowStrength, float glowSoftness, int glowColor) {
         ByteBuffer dataBuffer = beginItem();
 
@@ -135,14 +197,14 @@ public class RectPipeline extends UniformArrayPipeline {
         dataBuffer.putFloat(drawWidth);
         dataBuffer.putFloat(drawHeight);
 
-        dataBuffer.putFloat(radii[0]);
-        dataBuffer.putFloat(radii[1]);
-        dataBuffer.putFloat(radii[2]);
-        dataBuffer.putFloat(radii[3]);
+        dataBuffer.putFloat(r0);
+        dataBuffer.putFloat(r1);
+        dataBuffer.putFloat(r2);
+        dataBuffer.putFloat(r3);
 
         for (int i = 0; i < 9; i++) {
             int color = colors9[i];
-            float a = ((color >> 24) & 0xFF) / 255.0f;
+            float a = ((color >>> 24)) / 255.0f;
             float r = ((color >> 16) & 0xFF) / 255.0f;
             float g = ((color >> 8) & 0xFF) / 255.0f;
             float bl = (color & 0xFF) / 255.0f;
@@ -166,6 +228,6 @@ public class RectPipeline extends UniformArrayPipeline {
         dataBuffer.putFloat(((glowColor >> 16) & 0xFF) / 255.0f);
         dataBuffer.putFloat(((glowColor >> 8) & 0xFF) / 255.0f);
         dataBuffer.putFloat((glowColor & 0xFF) / 255.0f);
-        dataBuffer.putFloat(((glowColor >> 24) & 0xFF) / 255.0f);
+        dataBuffer.putFloat(((glowColor >>> 24)) / 255.0f);
     }
 }

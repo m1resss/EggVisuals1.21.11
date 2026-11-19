@@ -7,6 +7,7 @@ import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
+import egg.client.render.Render2D;
 import egg.client.render.hud.HudContextMenu;
 import egg.client.render.hud.HudSnapHelper;
 import egg.client.render.msdf.Draw2DProcessor;
@@ -45,7 +46,7 @@ public class PotionHUD extends Module {
     private final ModeSetting timerFormat = new ModeSetting("Формат таймера", "Время", "Тип отображения оставшегося времени", "Время", "Проценты");
     private final BooleanSetting showDigits = new BooleanSetting("Отображать цифры", true, "Отображать значение под иконкой (для стиля Капсулы)");
     private final SliderSetting rounding = new SliderSetting("Скругление", 6.0, 0.0, 16.0, 0.5, "Скругление углов карточки зелий");
-    private final SliderSetting opacity = new SliderSetting("Непрозрачность", 255.0, 20.0, 255.0, 5.0, "Прозрачность фона карточки");
+    private final SliderSetting opacity = new SliderSetting("Непрозрачность", 175.0, 10.0, 255.0, 5.0, "Прозрачность фона карточки");
     private final SliderSetting posX = new SliderSetting("X", 0.01, 0.0, 1.0, 0.001, "Позиция X");
     private final SliderSetting posY = new SliderSetting("Y", 0.35, 0.0, 1.0, 0.001, "Позиция Y");
     private final SliderSetting scale = new SliderSetting("Размер", 1.0, 0.5, 1.5, 0.05, "Масштаб зелий");
@@ -60,6 +61,7 @@ public class PotionHUD extends Module {
     private float lastY = 100.0f;
     private float lastW = 140.0f;
     private float lastH = 100.0f;
+    private float animatedY = -1.0f;
 
     public float getLastX() { return lastX; }
     public float getLastY() { return lastY; }
@@ -80,6 +82,7 @@ public class PotionHUD extends Module {
     }
 
     private final List<AnimatedPotion> animatedPotions = new ArrayList<>();
+    private final Animation cardVisibilityAnim = new Animation(0.0f, 220L, Easing.EASE_OUT_CUBIC);
 
     public PotionHUD() {
         super("Potions", "Показывает список действующих эффектов зелий и их таймеры", Category.ESP);
@@ -99,6 +102,8 @@ public class PotionHUD extends Module {
     @Override
     public void onDisable() {
         animatedPotions.clear();
+        animatedY = -1.0f;
+        cardVisibilityAnim.setValue(0.0f);
     }
 
     public void render(DrawContext context, RenderTickCounter tickCounter) {
@@ -114,10 +119,16 @@ public class PotionHUD extends Module {
 
         updateAnimatedPotions(currentEffects);
 
-        if (animatedPotions.isEmpty()) return;
+        boolean hasPotions = !currentEffects.isEmpty() || !animatedPotions.isEmpty();
+        cardVisibilityAnim.setTarget(hasPotions ? 1.0f : 0.0f);
+        float visFactor = cardVisibilityAnim.get();
+
+        if (visFactor <= 0.005f || animatedPotions.isEmpty()) return;
 
         Interface iface = Interface.getInstance();
-        float combatAlpha = iface != null ? iface.getCombatAlphaFactor("potions") : 1.0f;
+        float containerFactor = iface != null ? iface.getContainerAlphaFactor() : 1.0f;
+        float combatAlpha = (iface != null ? iface.getCombatAlphaFactor("potions") : 1.0f) * visFactor * containerFactor;
+        if (combatAlpha <= 0.005f) return;
         float combatScale = iface != null ? iface.getCombatScaleFactor("potions") : 1.0f;
         float s = scale.getValueFloat() * combatScale;
 
@@ -220,18 +231,33 @@ public class PotionHUD extends Module {
         float px = Math.clamp(userX, 4.0f, screenW - cardW - 4.0f);
         float py = Math.clamp(userY, 15.0f, screenH - cardH - 15.0f);
 
+        float targetY = iface != null ? iface.getAdjustedY(px, py, cardW, cardH) : py;
+        if (dragging || animatedY < 0.0f) {
+            animatedY = dragging ? py : targetY;
+        } else if (Math.abs(animatedY - targetY) > 0.1f) {
+            animatedY += (targetY - animatedY) * 0.25f;
+        } else {
+            animatedY = targetY;
+        }
+        py = animatedY;
+
         this.lastX = px;
         this.lastY = py;
         this.lastW = cardW;
         this.lastH = cardH;
 
         Draw2DProcessor.INSTANCE.drawGlow(null, px, py, cardW, cardH, radius, ColorUtil.rgba(0, 0, 0, (int) (55 * combatAlpha)), 6.0f * s);
+        Draw2DProcessor.INSTANCE.drawPanelBlur(null, px, py, cardW, cardH, radius, combatAlpha);
         Draw2DProcessor.INSTANCE.drawRect(null, px, py, cardW, cardH, radius, finalBg);
         Draw2DProcessor.INSTANCE.drawOutline(null, px, py, cardW, cardH, radius, 0.8f, borderColor);
 
         if (iface != null && iface.isHudThemeGradient()) {
             int gradC = iface.computeHudGradientColor(iface.getHudGradientStrength(), combatAlpha);
             Draw2DProcessor.INSTANCE.drawGradient(null, px, py, cardW, cardH, radius, gradC, 0x00000000, 0x00000000, gradC);
+        }
+        DrawBatcher.flushPending();
+        if (iface != null && iface.isHudThemeGradient() && combatAlpha > 0.15f) {
+            Render2D.drawDiagonalSheen(context, px, py, cardW, cardH, radius, 1800L, combatAlpha);
         }
 
         Fonts.d.a(null, "Эффекты", px + 8.0f * s, py + 5.5f * s, 11.0f * s, ColorUtil.rgba(255, 255, 255, (int) (245 * combatAlpha)));
@@ -327,6 +353,17 @@ public class PotionHUD extends Module {
         float px = Math.clamp(userX, 4.0f, screenW - pillW - 4.0f);
         float py = Math.clamp(userY, 15.0f, screenH - pillH - 15.0f);
 
+        Interface iface = Interface.getInstance();
+        float targetY = iface != null ? iface.getAdjustedY(px, py, pillW, pillH) : py;
+        if (dragging || animatedY < 0.0f) {
+            animatedY = dragging ? py : targetY;
+        } else if (Math.abs(animatedY - targetY) > 0.1f) {
+            animatedY += (targetY - animatedY) * 0.25f;
+        } else {
+            animatedY = targetY;
+        }
+        py = animatedY;
+
         this.lastX = px;
         this.lastY = py;
         this.lastW = pillW;
@@ -336,10 +373,18 @@ public class PotionHUD extends Module {
         int pillBgAlpha = (int) (op * 240.0f * combatAlpha);
 
         Draw2DProcessor.INSTANCE.drawGlow(null, px, py, pillW, pillH, radius, ColorUtil.withAlphaFloat(ColorUtil.rgba(0, 0, 0, 90), combatAlpha), 8.0f * s);
+        Draw2DProcessor.INSTANCE.drawPanelBlur(null, px, py, pillW, pillH, radius, combatAlpha);
         Draw2DProcessor.INSTANCE.drawRect(null, px, py, pillW, pillH, radius, ColorUtil.rgba(14, 15, 20, pillBgAlpha));
         Draw2DProcessor.INSTANCE.drawOutline(null, px, py, pillW, pillH, radius, 0.8f, ColorUtil.withAlphaFloat(ColorUtil.rgba(255, 255, 255, 24), combatAlpha));
 
+        if (iface != null && iface.isHudThemeGradient()) {
+            int gradC = iface.computeHudGradientColor(iface.getHudGradientStrength(), combatAlpha);
+            Draw2DProcessor.INSTANCE.drawGradient(null, px, py, pillW, pillH, radius, gradC, 0x00000000, 0x00000000, gradC);
+        }
         DrawBatcher.flushPending();
+        if (iface != null && iface.isHudThemeGradient() && combatAlpha > 0.15f) {
+            Render2D.drawDiagonalSheen(context, px, py, pillW, pillH, radius, 1800L, combatAlpha);
+        }
 
         float centerX = px + pillW / 2.0f;
         float curY = py + padY;

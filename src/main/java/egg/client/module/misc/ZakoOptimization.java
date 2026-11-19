@@ -132,18 +132,6 @@ public class ZakoOptimization extends Module {
             paths.add(net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("zakoopt.json"));
         } catch (Throwable ignored) {}
 
-        String appdata = System.getenv("APPDATA");
-        if (appdata != null) {
-            paths.add(Path.of(appdata, ".minecraft", "config", "zakoopt.json"));
-            paths.add(Path.of(appdata, "PrismLauncher", "instances", "Fabulously Optimized", "minecraft", "config", "zakoopt.json"));
-        }
-
-        String home = System.getProperty("user.home");
-        if (home != null) {
-            paths.add(Path.of(home, "AppData", "Roaming", ".minecraft", "config", "zakoopt.json"));
-        }
-
-        paths.add(Path.of("run", "config", "zakoopt.json"));
         paths.add(Path.of("config", "zakoopt.json"));
 
         for (Path p : paths) {

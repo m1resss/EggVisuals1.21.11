@@ -15,11 +15,15 @@ import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.ui.ClickGuiScreen;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
+import egg.client.util.EntityUtil;
 import egg.client.util.ProjectUtil;
+import egg.client.util.RollingNumber;
+import egg.client.util.animation.SpringAnimation;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
+import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EquipmentSlot;
@@ -29,6 +33,7 @@ import net.minecraft.util.Identifier;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
@@ -50,18 +55,17 @@ public class TargetHUD extends Module {
 
     private static final Identifier HEART_ICON = Identifier.of("egg", "textures/hud/heart.png");
 
-    private final ModeSetting mode = new ModeSetting("Режим", "Экран", "Расположение Target HUD", "Экран", "В мире");
+    private final ModeSetting mode = new ModeSetting("Режим", "В мире", "Расположение Target HUD", "В мире", "Экран");
     private final SliderSetting hudScale = new SliderSetting("Масштаб", 1.0, 0.5, 2.0, 0.05, "Масштаб Target HUD");
-    private final SliderSetting opacity = new SliderSetting("Непрозрачность", 100.0, 10.0, 100.0, 5.0, "Прозрачность Target HUD (%)");
+    private final SliderSetting opacity = new SliderSetting("Непрозрачность", 65.0, 10.0, 100.0, 5.0, "Прозрачность Target HUD (%)");
     private final SliderSetting targetTimeout = new SliderSetting("Таймаут цели", 3.0, 0.5, 8.0, 0.5, "Сколько секунд держать цель после отвода прицела");
     private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", true, "Отображать карточку только для игроков");
     private final BooleanSetting hitParticles = new BooleanSetting("Партиклы при ударе", true, "Отображать вылетающие частицы на полоске здоровья при получении урона");
     private final BooleanSetting hudThemeGradient = new BooleanSetting("Градиент HUD", true, "Мягкий градиент по бокам карточки");
     private final SliderSetting hudGradientStrength = new SliderSetting("Сила градиента", 60.0, 5.0, 100.0, 5.0, "Интенсивность градиента");
-    private final BooleanSetting showFps = new BooleanSetting("Показывать FPS", true, "Отображать метку FPS на карточке");
-    private final BooleanSetting showDistance = new BooleanSetting("Дистанция", true, "Отображать дистанцию до цели");
     private final BooleanSetting eatIndicator = new BooleanSetting("Индикатор еды", true, "Отображать процесс еды и зелий поверх головы");
     private final BooleanSetting showDurabilityPercent = new BooleanSetting("Прочность в %", false, "Показывать процент прочности текстом поверх брони");
+    private final BooleanSetting ghostBar = new BooleanSetting("Ghost Bar", true, "Призрачный след на полоске здоровья при получении урона");
     private final SliderSetting posX = new SliderSetting("X", 0.52, 0.0, 1.0, 0.001, "Позиция X");
     private final SliderSetting posY = new SliderSetting("Y", 0.68, 0.0, 1.0, 0.001, "Позиция Y");
 
@@ -69,12 +73,13 @@ public class TargetHUD extends Module {
     private float targetTimer = 0.0f;
     private float animAlpha = 0.0f;
     private float visualHp = 20.0f;
+    private float ghostHp = 20.0f;
+    private float ghostFreezeTimer = 0.0f;
     private float visualAbsorption = 0.0f;
     private long lastFrameNanos = 0L;
+    private final SpringAnimation popSpring = new SpringAnimation(0.0f, 240.0f, 18.0f);
 
-    private float smoothScreenX = 0.0f;
-    private float smoothScreenY = 0.0f;
-    private boolean smoothInit = false;
+    private float sideAnim = -1.0f;
 
     private boolean dragging = false;
     private float dragOffsetX = 0.0f;
@@ -86,6 +91,7 @@ public class TargetHUD extends Module {
     private float lastRenderY = 0.0f;
     private float lastRenderW = 134.0f;
     private float lastRenderH = 44.0f;
+    private float animatedScreenY = -1.0f;
 
     public ModeSetting getMode() { return mode; }
     public float getLastX() { return lastRenderX; }
@@ -100,6 +106,10 @@ public class TargetHUD extends Module {
 
     private final RollingNumber hpRolling = new RollingNumber();
     private LivingEntity lastHpTarget = null;
+    private final Matrix3x2f cardMat = new Matrix3x2f();
+    private final Vector2f scratchScreenCenter = new Vector2f();
+    private final Vector2f scratchScreenLeft = new Vector2f();
+    private final Vector2f scratchScreenRight = new Vector2f();
 
     private LivingEntity lastEatTarget = null;
     private float smoothEatProgress = 0.0f;
@@ -117,12 +127,11 @@ public class TargetHUD extends Module {
         contextMenu.addToggle("Только игроки", () -> onlyPlayers.isEnabled(), () -> onlyPlayers.toggle());
         contextMenu.addToggle("Частицы удара", () -> hitParticles.isEnabled(), () -> hitParticles.toggle());
         contextMenu.addToggle("Градиент HUD", () -> hudThemeGradient.isEnabled(), () -> hudThemeGradient.toggle());
-        contextMenu.addToggle("Дистанция", () -> showDistance.isEnabled(), () -> showDistance.toggle());
-        contextMenu.addToggle("Показывать FPS", () -> showFps.isEnabled(), () -> showFps.toggle());
         contextMenu.addToggle("Индикатор еды", () -> eatIndicator.isEnabled(), () -> eatIndicator.toggle());
         contextMenu.addToggle("Прочность в %", () -> showDurabilityPercent.isEnabled(), () -> showDurabilityPercent.toggle());
+        contextMenu.addToggle("Ghost Bar", () -> ghostBar.isEnabled(), () -> ghostBar.toggle());
 
-        addSettings(mode, hudScale, opacity, targetTimeout, onlyPlayers, hitParticles, hudThemeGradient, hudGradientStrength, showFps, showDistance, eatIndicator, showDurabilityPercent, posX, posY);
+        addSettings(mode, hudScale, opacity, targetTimeout, onlyPlayers, hitParticles, hudThemeGradient, hudGradientStrength, eatIndicator, showDurabilityPercent, ghostBar, posX, posY);
     }
 
     public static TargetHUD getInstance() {
@@ -132,15 +141,18 @@ public class TargetHUD extends Module {
     @Override
     public void onDisable() {
         super.onDisable();
+        this.animatedScreenY = -1.0f;
         this.particles.clear();
         this.lastDamageTarget = null;
         this.lastKnownHp = -1.0f;
         this.lastHpTarget = null;
         this.hpRolling.reset(-1);
+        this.popSpring.setValue(0.0f);
         this.lastEatTarget = null;
         this.smoothEatProgress = 0.0f;
         this.lastEatStack = ItemStack.EMPTY;
         this.eatTimerSeconds = 0.0f;
+        this.sideAnim = -1.0f;
     }
 
     public void render(DrawContext context, RenderTickCounter tickCounter) {
@@ -178,13 +190,16 @@ public class TargetHUD extends Module {
 
         if (hasTarget) {
             animAlpha = Math.min(1.0f, animAlpha + dt * 7.0f);
+            popSpring.setTarget(1.0f);
         } else {
             animAlpha = Math.max(0.0f, animAlpha - dt * 6.0f);
-            smoothInit = false;
+            popSpring.setTarget(0.0f);
         }
 
-        if (animAlpha <= 0.01f || renderTarget == null) {
-            smoothInit = false;
+        popSpring.update(dt);
+        float springProgress = popSpring.get();
+
+        if ((animAlpha <= 0.01f && springProgress <= 0.01f) || renderTarget == null) {
             return;
         }
 
@@ -192,42 +207,145 @@ public class TargetHUD extends Module {
         float actualHealth = Math.clamp(renderTarget.getHealth(), 0.0f, maxHealth);
         float actualAbsorption = Math.max(0.0f, renderTarget.getAbsorptionAmount());
 
-        visualHp += (actualHealth - visualHp) * Math.min(1.0f, dt * 10.0f);
+        if (lastHpTarget != renderTarget) {
+            lastHpTarget = renderTarget;
+            visualHp = actualHealth;
+            ghostHp = actualHealth;
+            ghostFreezeTimer = 0.0f;
+            hpRolling.reset((int) Math.ceil(actualHealth));
+            sideAnim = -1.0f;
+        } else {
+            if (actualHealth < visualHp - 0.05f) {
+                ghostFreezeTimer = 0.35f;
+            } else if (actualHealth > visualHp + 0.05f) {
+                ghostHp = actualHealth;
+                ghostFreezeTimer = 0.0f;
+            }
+
+            visualHp += (actualHealth - visualHp) * Math.min(1.0f, dt * 16.0f);
+
+            if (ghostFreezeTimer > 0.0f) {
+                ghostFreezeTimer -= dt;
+            } else {
+                ghostHp += (visualHp - ghostHp) * Math.min(1.0f, dt * 4.5f);
+            }
+            if (Math.abs(ghostHp - visualHp) < 0.05f) {
+                ghostHp = visualHp;
+            }
+        }
         visualAbsorption += (actualAbsorption - visualAbsorption) * Math.min(1.0f, dt * 10.0f);
 
         float cardW = 134.0f;
         float cardH = 44.0f;
         float cardRadius = 12.0f;
         float scale = hudScale.getValueFloat();
+        float springPopScale = 0.90f + 0.10f * springProgress;
+        scale *= springPopScale;
 
         float cardX;
         float cardY;
 
         if (isWorldMode && renderTarget != mc.player && !inGui) {
+            double tx = MathHelper.lerp(tickDelta, renderTarget.lastRenderX, renderTarget.getX());
+            double ty = MathHelper.lerp(tickDelta, renderTarget.lastRenderY, renderTarget.getY());
+            double tz = MathHelper.lerp(tickDelta, renderTarget.lastRenderZ, renderTarget.getZ());
+            float halfWidth = renderTarget.getWidth() * 0.5f;
+            float entityHeight = renderTarget.getHeight();
+            double centerY = ty + entityHeight * 0.52;
 
-            double wx = MathHelper.lerp(tickDelta, renderTarget.lastRenderX, renderTarget.getX());
-            double wy = MathHelper.lerp(tickDelta, renderTarget.lastRenderY, renderTarget.getY()) + renderTarget.getHeight() * 0.5;
-            double wz = MathHelper.lerp(tickDelta, renderTarget.lastRenderZ, renderTarget.getZ());
+            Camera camera = mc.gameRenderer != null ? mc.gameRenderer.getCamera() : null;
+            Vec3d camPos = (camera != null) ? camera.getCameraPos() : mc.player.getEyePos();
 
-            Vector2f screenPos = ProjectUtil.toScreen(wx, wy, wz, tickDelta);
-            if (!ProjectUtil.isOnScreen(screenPos)) return;
+            double toX = tx - camPos.x;
+            double toY = centerY - camPos.y;
+            double toZ = tz - camPos.z;
+            double toLenSq = toX * toX + toY * toY + toZ * toZ;
+            double invLen = toLenSq > 1e-6 ? 1.0 / Math.sqrt(toLenSq) : 0.0;
+            double dirX = toX * invLen;
+            double dirZ = toZ * invLen;
 
-            double dist = mc.player.distanceTo(renderTarget);
-            float distScale = (float) Math.clamp(1.0 - (dist - 4.0) * 0.015, 0.72, 1.25);
-            scale *= distScale;
-
-            if (!smoothInit || Math.abs(smoothScreenX - screenPos.x) > 120.0f || Math.abs(smoothScreenY - screenPos.y) > 120.0f) {
-                smoothScreenX = screenPos.x;
-                smoothScreenY = screenPos.y;
-                smoothInit = true;
+            double rx = -dirZ;
+            double rz = dirX;
+            double rLen = Math.sqrt(rx * rx + rz * rz);
+            if (rLen < 1e-5) {
+                rx = 1.0;
+                rz = 0.0;
             } else {
-                float smoothSpeed = Math.min(1.0f, dt * 45.0f);
-                smoothScreenX = MathHelper.lerp(smoothSpeed, smoothScreenX, screenPos.x);
-                smoothScreenY = MathHelper.lerp(smoothSpeed, smoothScreenY, screenPos.y);
+                rx /= rLen;
+                rz /= rLen;
             }
 
-            cardX = smoothScreenX - (cardW * scale) / 2.0f;
-            cardY = smoothScreenY - (cardH * scale) / 2.0f;
+            double sideDist = halfWidth + 0.15;
+            double leftX = tx - rx * sideDist;
+            double leftZ = tz - rz * sideDist;
+            double rightX = tx + rx * sideDist;
+            double rightZ = tz + rz * sideDist;
+
+            boolean hasCenter = ProjectUtil.toScreen(tx, centerY, tz, tickDelta, scratchScreenCenter);
+            if (!hasCenter || !ProjectUtil.isOnScreen(scratchScreenCenter)) return;
+
+            ProjectUtil.toScreen(leftX, centerY, leftZ, tickDelta, scratchScreenLeft);
+            ProjectUtil.toScreen(rightX, centerY, rightZ, tickDelta, scratchScreenRight);
+
+            double dist = Math.sqrt(toLenSq);
+            float distScale = 1.0f;
+            if (dist > 4.0) {
+                distScale = (float) Math.clamp(Math.pow(4.0 / dist, 0.60), 0.38, 1.0);
+            }
+            scale *= distScale;
+
+            float leftEdgeX = (scratchScreenLeft.x != Float.MAX_VALUE) ? scratchScreenLeft.x : (scratchScreenCenter.x - 25.0f);
+            float rightEdgeX = (scratchScreenRight.x != Float.MAX_VALUE) ? scratchScreenRight.x : (scratchScreenCenter.x + 25.0f);
+
+            float margin = Math.max(3.0f, 7.0f * distScale);
+            float targetLeftX = leftEdgeX - margin - (cardW * scale);
+            float targetRightX = rightEdgeX + margin;
+
+            double wallCheckDist = 0.90;
+            Vec3d leftCheckPos = new Vec3d(tx - rx * wallCheckDist, centerY, tz - rz * wallCheckDist);
+            Vec3d rightCheckPos = new Vec3d(tx + rx * wallCheckDist, centerY, tz + rz * wallCheckDist);
+            Vec3d targetCenter = new Vec3d(tx, centerY, tz);
+
+            BlockHitResult hitLeft = mc.world.raycast(new RaycastContext(
+                    targetCenter, leftCheckPos, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, renderTarget));
+            boolean leftWallHit = (hitLeft.getType() != HitResult.Type.MISS);
+            BlockPos bposLeft = BlockPos.ofFloored(leftCheckPos);
+            boolean leftSolid = !mc.world.getBlockState(bposLeft).getCollisionShape(mc.world, bposLeft).isEmpty();
+            BlockHitResult camToLeftHit = mc.world.raycast(new RaycastContext(
+                    camPos, leftCheckPos, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player));
+            boolean camLeftBlocked = (camToLeftHit.getType() != HitResult.Type.MISS);
+            boolean isLeftBlocked = leftWallHit || leftSolid || camLeftBlocked || (targetLeftX < 4.0f);
+
+            BlockHitResult hitRight = mc.world.raycast(new RaycastContext(
+                    targetCenter, rightCheckPos, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, renderTarget));
+            boolean rightWallHit = (hitRight.getType() != HitResult.Type.MISS);
+            BlockPos bposRight = BlockPos.ofFloored(rightCheckPos);
+            boolean rightSolid = !mc.world.getBlockState(bposRight).getCollisionShape(mc.world, bposRight).isEmpty();
+            BlockHitResult camToRightHit = mc.world.raycast(new RaycastContext(
+                    camPos, rightCheckPos, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player));
+            boolean camRightBlocked = (camToRightHit.getType() != HitResult.Type.MISS);
+            float screenW = mc.getWindow().getScaledWidth();
+            boolean isRightBlocked = rightWallHit || rightSolid || camRightBlocked || (targetRightX + cardW * scale > screenW - 4.0f);
+
+            float desiredSide = -1.0f;
+            if (isLeftBlocked && !isRightBlocked) {
+                desiredSide = 1.0f;
+            } else if (isLeftBlocked && isRightBlocked) {
+                desiredSide = (targetLeftX < 4.0f) ? 1.0f : -1.0f;
+            }
+
+            sideAnim = MathHelper.lerp(Math.min(1.0f, dt * 14.0f), sideAnim, desiredSide);
+            float t = Math.clamp((sideAnim + 1.0f) * 0.5f, 0.0f, 1.0f);
+
+            float rawTargetX = MathHelper.lerp(t, targetLeftX, targetRightX);
+            float rawTargetY = scratchScreenCenter.y - (cardH * scale) * 0.5f;
+
+            float screenH = mc.getWindow().getScaledHeight();
+            rawTargetX = Math.clamp(rawTargetX, 4.0f, screenW - cardW * scale - 4.0f);
+            rawTargetY = Math.clamp(rawTargetY, 4.0f, screenH - cardH * scale - 4.0f);
+
+            cardX = rawTargetX;
+            cardY = rawTargetY;
         } else {
 
             float screenW = mc.getWindow().getScaledWidth();
@@ -237,6 +355,17 @@ public class TargetHUD extends Module {
             float rawY = posY.getValueFloat() * (screenH - cardH * scale);
             cardX = Math.clamp(rawX, 4.0f, screenW - cardW * scale - 4.0f);
             cardY = Math.clamp(rawY, 4.0f, screenH - cardH * scale - 4.0f);
+
+            Interface iface = Interface.getInstance();
+            float targetY = iface != null ? iface.getAdjustedY(cardX, cardY, cardW * scale, cardH * scale) : cardY;
+            if (dragging || animatedScreenY < 0.0f) {
+                animatedScreenY = dragging ? cardY : targetY;
+            } else if (Math.abs(animatedScreenY - targetY) > 0.1f) {
+                animatedScreenY += (targetY - animatedScreenY) * 0.25f;
+            } else {
+                animatedScreenY = targetY;
+            }
+            cardY = animatedScreenY;
         }
 
         this.lastRenderX = cardX;
@@ -252,7 +381,7 @@ public class TargetHUD extends Module {
         Matrix3x2f mat = null;
         boolean customScale = Math.abs(scale - 1.0f) > 0.001f;
         if (customScale) {
-            mat = new Matrix3x2f();
+            mat = this.cardMat.identity();
             mat.translate(x, y);
             mat.scale(scale, scale);
             mat.translate(-x, -y);
@@ -264,8 +393,8 @@ public class TargetHUD extends Module {
         }
 
         float op = opacity.getValueFloat() / 100.0f;
-        int bgAlpha = (int) (225 * alpha * op);
-        int borderAlpha = (int) (30 * alpha * op);
+        int bgAlpha = (int) (200.0f * alpha * op);
+        int borderAlpha = (int) (Math.max(16.0f, 32.0f * op) * alpha);
         int shadowAlpha = (int) (65 * alpha * op);
 
         int bgColor = ColorUtil.rgba(18, 18, 22, bgAlpha);
@@ -273,7 +402,9 @@ public class TargetHUD extends Module {
         int shadowColor = ColorUtil.rgba(0, 0, 0, shadowAlpha);
 
         Draw2DProcessor.INSTANCE.drawGlow(mat, x, y, w, h, radius, shadowColor, 6.0f);
+        Draw2DProcessor.INSTANCE.drawPanelBlur(mat, x, y, w, h, radius, alpha);
         Draw2DProcessor.INSTANCE.drawRect(mat, x, y, w, h, radius, bgColor);
+        Draw2DProcessor.INSTANCE.drawOutline(mat, x, y, w, h, radius, 0.8f, borderColor);
 
         if (hudThemeGradient.isEnabled()) {
             Interface iface = Interface.getInstance();
@@ -283,7 +414,7 @@ public class TargetHUD extends Module {
         }
         DrawBatcher.flushPending();
         if (hudThemeGradient.isEnabled() && alpha > 0.15f) {
-            Render2D.drawDiagonalSheen(context, x, y, w, h, radius, 0L);
+            Render2D.drawDiagonalSheen(context, x, y, w, h, radius, 0L, alpha);
         }
 
         MinecraftClient mc = MinecraftClient.getInstance();
@@ -362,6 +493,7 @@ public class TargetHUD extends Module {
             int accentBorder = ColorUtil.withAlpha(Theme.getAccent(), (int) (160 * smoothEatProgress * alpha));
             Draw2DProcessor.INSTANCE.drawOutline(mat, headX, headY, headSize, headSize, headRadius, 1.0f, accentBorder);
         }
+
 
         if (smoothEatProgress > 0.01f && !lastEatStack.isEmpty()) {
             DrawBatcher.flushPending();
@@ -566,8 +698,8 @@ public class TargetHUD extends Module {
         int trackColor = ColorUtil.rgba(255, 255, 255, (int) (38 * alpha));
         Draw2DProcessor.INSTANCE.drawRect(mat, barX, barY, barW, barH, barRadius, trackColor);
 
-        int themeCol1 = Theme.getAccent();
-        int themeCol2 = Theme.getAccentHover();
+        int themeCol1 = Theme.getGradient1();
+        int themeCol2 = Theme.getGradient2();
         int themeFill1 = ColorUtil.withAlpha(themeCol1, (int) (255 * alpha));
         int themeFill2 = ColorUtil.withAlpha(themeCol2, (int) (255 * alpha));
 
@@ -575,7 +707,18 @@ public class TargetHUD extends Module {
         float baseRatio = Math.clamp(visualHp / totalMax, 0.0f, 1.0f);
         float baseW = barW * baseRatio;
 
-        if (baseW > 1.5f) {
+        float ghostRatio = Math.clamp(ghostHp / totalMax, 0.0f, 1.0f);
+        float ghostW = barW * ghostRatio;
+
+        if (ghostBar.isEnabled() && ghostW > 1.0f) {
+            int darkCol1 = ColorUtil.lerp(themeCol1, 0xFF000000, 0.65f);
+            int darkCol2 = ColorUtil.lerp(themeCol2, 0xFF000000, 0.65f);
+            int ghostFill1 = ColorUtil.withAlpha(darkCol1, (int) (230 * alpha));
+            int ghostFill2 = ColorUtil.withAlpha(darkCol2, (int) (230 * alpha));
+            Draw2DProcessor.INSTANCE.drawGradient(mat, barX, barY, ghostW, barH, barRadius, ghostFill1, ghostFill2, ghostFill1, ghostFill2);
+        }
+
+        if (baseW > 1.0f) {
             Draw2DProcessor.INSTANCE.drawGradient(mat, barX, barY, baseW, barH, barRadius, themeFill1, themeFill2, themeFill1, themeFill2);
         }
 
@@ -610,7 +753,8 @@ public class TargetHUD extends Module {
         }
 
         if (!particles.isEmpty()) {
-            particles.removeIf(p -> !p.update(dt));
+            final float deltaSec = dt;
+            particles.removeIf(p -> !p.update(deltaSec));
             if (hitParticles.get()) {
                 for (HitParticle p : particles) {
                     p.render(mat, alpha);
@@ -697,59 +841,7 @@ public class TargetHUD extends Module {
         }
     }
 
-    public static class RollingNumber {
-        private int currentVal = -1;
-        private int prevVal = -1;
-        private long changeTime = 0L;
-        private static final long DURATION_MS = 180L;
 
-        public void reset(int val) {
-            this.currentVal = val;
-            this.prevVal = val;
-            this.changeTime = 0L;
-        }
-
-        public void update(int newVal) {
-            if (currentVal == -1) {
-                currentVal = newVal;
-                prevVal = newVal;
-                return;
-            }
-            if (newVal != currentVal) {
-                prevVal = currentVal;
-                currentVal = newVal;
-                changeTime = System.currentTimeMillis();
-            }
-        }
-
-        public void render(Matrix3x2f mat, float x, float y, float size, int color, float alphaFactor) {
-            long elapsed = System.currentTimeMillis() - changeTime;
-            int baseA = (int) (((color >> 24) & 0xFF) * alphaFactor);
-            int rgb = color & 0x00FFFFFF;
-            if (elapsed >= DURATION_MS || prevVal == currentVal || prevVal < 0) {
-                Fonts.b.a(mat, String.valueOf(currentVal), x, y, size, (baseA << 24) | rgb);
-                return;
-            }
-
-            float t = (float) elapsed / DURATION_MS;
-            float ease = 1.0f - (float) Math.pow(1.0f - t, 3);
-
-            String oldText = String.valueOf(prevVal);
-            String newText = String.valueOf(currentVal);
-
-            float oldY = y - ease * 5.0f;
-            int oldA = Math.round(baseA * (1.0f - ease));
-            if (oldA > 5) {
-                Fonts.b.a(mat, oldText, x, oldY, size, (oldA << 24) | rgb);
-            }
-
-            float newY = y + (1.0f - ease) * 5.0f;
-            int newA = Math.round(baseA * ease);
-            if (newA > 5) {
-                Fonts.b.a(mat, newText, x, newY, size, (newA << 24) | rgb);
-            }
-        }
-    }
 
     private Identifier getTargetSkin(LivingEntity entity) {
         MinecraftClient mc = MinecraftClient.getInstance();
@@ -787,7 +879,7 @@ public class TargetHUD extends Module {
                 this.lastKnownHp = -1.0f;
             }
         }
-        if (this.currentTarget != null && onlyPlayers.get() && !(this.currentTarget instanceof PlayerEntity)) {
+        if (this.currentTarget != null && (EntityUtil.isNakedInvisible(this.currentTarget) || (onlyPlayers.get() && !(this.currentTarget instanceof PlayerEntity)))) {
             this.currentTarget = null;
             this.lastDamageTarget = null;
             this.lastKnownHp = -1.0f;
@@ -797,7 +889,7 @@ public class TargetHUD extends Module {
 
     private LivingEntity findHoveredTarget(MinecraftClient mc) {
         if (mc.crosshairTarget instanceof EntityHitResult hit && hit.getEntity() instanceof LivingEntity living) {
-            if (living != mc.player && living.isAlive() && (!onlyPlayers.get() || living instanceof PlayerEntity)) {
+            if (living != mc.player && living.isAlive() && !EntityUtil.isNakedInvisible(living) && (!onlyPlayers.get() || living instanceof PlayerEntity)) {
                 return living;
             }
         }
@@ -821,7 +913,7 @@ public class TargetHUD extends Module {
         double closestDistSq = maxDistSq;
 
         for (Entity e : mc.world.getOtherEntities(mc.player, box)) {
-            if (e instanceof LivingEntity living && e != mc.player && living.isAlive()) {
+            if (e instanceof LivingEntity living && e != mc.player && living.isAlive() && !EntityUtil.isNakedInvisible(living)) {
                 if (onlyPlayers.get() && !(living instanceof PlayerEntity)) {
                     continue;
                 }

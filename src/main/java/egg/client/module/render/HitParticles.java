@@ -6,6 +6,7 @@ import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ColorSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.ui.theme.Theme;
+import egg.client.util.EntityUtil;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.RenderLayers;
@@ -57,7 +58,7 @@ public class HitParticles extends Module {
     }
 
     public void onAttack(PlayerEntity player, Entity target) {
-        if (!isEnabled() || target == null || !(target instanceof LivingEntity)) return;
+        if (!isEnabled() || target == null || !(target instanceof LivingEntity) || EntityUtil.isNakedInvisible(target)) return;
 
         boolean isCrit = isCriticalHit(player, target);
         if (!isCrit && !normalHits.isEnabled()) {

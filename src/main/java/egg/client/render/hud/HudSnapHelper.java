@@ -7,6 +7,7 @@ import egg.client.module.render.Interface;
 import egg.client.module.render.PotionHUD;
 import egg.client.module.render.TargetHUD;
 import egg.client.module.render.Keybinds;
+import egg.client.module.render.EventTracker;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.render.msdf.Fonts;
@@ -52,6 +53,9 @@ public class HudSnapHelper {
         if (iface != null && iface.isEnabled() && !"interface".equals(currentId) && iface.getLastW() > 10.0f) {
             list.add(new HudElementBounds("interface", "Интерфейс", iface.getLastX(), iface.getLastY(), iface.getLastW(), iface.getLastH()));
         }
+        if (iface != null && iface.isIslandActive() && iface.getLastIslandW() > 10.0f) {
+            list.add(new HudElementBounds("island", "Dynamic Island", iface.getLastIslandX(), iface.getLastIslandY(), iface.getLastIslandW(), iface.getLastIslandH()));
+        }
 
         ArmorHUD armor = ModuleManager.getInstance().getModule(ArmorHUD.class);
         if (armor != null && armor.isEnabled() && !"armor".equals(currentId) && armor.getLastW() > 10.0f) {
@@ -76,6 +80,11 @@ public class HudSnapHelper {
         Keybinds kb = ModuleManager.getInstance().getModule(Keybinds.class);
         if (kb != null && kb.isEnabled() && !"keybinds".equals(currentId) && kb.getLastW() > 10.0f) {
             list.add(new HudElementBounds("keybinds", "Кейбинды", kb.getLastX(), kb.getLastY(), kb.getLastW(), kb.getLastH()));
+        }
+
+        EventTracker tracker = ModuleManager.getInstance().getModule(EventTracker.class);
+        if (tracker != null && tracker.isEnabled() && !"event_tracker".equals(currentId) && tracker.getLastW() > 10.0f) {
+            list.add(new HudElementBounds("event_tracker", "Ивенты", tracker.getLastX(), tracker.getLastY(), tracker.getLastW(), tracker.getLastH()));
         }
 
         return list;

@@ -59,6 +59,10 @@ public class Draw2DProcessor {
         this.blurPipeline.capture();
     }
 
+    public void captureBlur(float strength) {
+        this.blurPipeline.capture(strength);
+    }
+
     public static float[] transformRect(Matrix3x2f mat, float x, float y, float width, float height, float radius) {
         if (mat == null) {
             return new float[]{x, y, width, height, radius, 1.0f};
@@ -80,6 +84,10 @@ public class Draw2DProcessor {
     }
 
     public void drawRect(Matrix3x2f matrices, float x, float y, float width, float height, float radius, int color) {
+        if (matrices == null) {
+            this.rectPipeline.drawRect(x, y, width, height, color, radius);
+            return;
+        }
         float[] t = transformRect(matrices, x, y, width, height, radius);
         this.rectPipeline.drawRect(t[0], t[1], t[2], t[3], new int[]{color}, new float[]{t[4], t[4], t[4], t[4]});
     }
@@ -95,25 +103,36 @@ public class Draw2DProcessor {
     }
 
     public void drawOutline(Matrix3x2f matrices, float x, float y, float width, float height, float radius, float outlineWidth, int color) {
+        if (matrices == null) {
+            this.outlinePipeline.drawOutline(x, y, width, height, color, outlineWidth, radius, 0.5f);
+            return;
+        }
         float[] t = transformRect(matrices, x, y, width, height, radius);
         float s = t[5];
-        this.outlinePipeline.drawOutline(t[0], t[1], t[2], t[3], new int[]{color}, new float[]{outlineWidth * s, outlineWidth * s, outlineWidth * s, outlineWidth * s}, new float[]{t[4], t[4], t[4], t[4]}, 0.5f);
+        this.outlinePipeline.drawOutline(t[0], t[1], t[2], t[3], color, outlineWidth * s, t[4], 0.5f);
     }
 
     public void a(Matrix3x2f matrices, float x, float y, float width, float height, Vector4f radius, float outlineWidth, int color) {
+        if (matrices == null) {
+            this.outlinePipeline.drawOutline(x, y, width, height, color, outlineWidth, radius.x, radius.y, radius.z, radius.w, 0.5f);
+            return;
+        }
         float[] t = transformRect(matrices, x, y, width, height, radius.x);
         float s = t[5];
-        this.outlinePipeline.drawOutline(t[0], t[1], t[2], t[3], new int[]{color}, new float[]{outlineWidth * s, outlineWidth * s, outlineWidth * s, outlineWidth * s}, new float[]{radius.x * s, radius.y * s, radius.z * s, radius.w * s}, 0.5f);
+        this.outlinePipeline.drawOutline(t[0], t[1], t[2], t[3], color, outlineWidth * s, radius.x * s, radius.y * s, radius.z * s, radius.w * s, 0.5f);
     }
 
     public void a(Matrix3x2f matrices, Identifier texture, float x, float y, float width, float height, float radius, int color) {
+        if (matrices == null) {
+            this.texturePipeline.drawTexture(texture, x, y, width, height, 0.0f, 0.0f, 1.0f, 1.0f, color, radius, 0.5f);
+            return;
+        }
         float[] t = transformRect(matrices, x, y, width, height, radius);
-        this.texturePipeline.drawTexture(texture, t[0], t[1], t[2], t[3], 0.0f, 0.0f, 1.0f, 1.0f, new int[]{color}, new float[]{t[4], t[4], t[4], t[4]}, 0.5f);
+        this.texturePipeline.drawTexture(texture, t[0], t[1], t[2], t[3], 0.0f, 0.0f, 1.0f, 1.0f, color, t[4], 0.5f);
     }
 
     public void a(Matrix3x2f matrices, float x, float y, float width, float height, float radius, int color, float u, float v, float textureWidth, float textureHeight, int textureId) {
-        float[] t = transformRect(matrices, x, y, width, height, radius);
-        this.rectPipeline.drawRect(t[0], t[1], t[2], t[3], new int[]{color}, new float[]{t[4], t[4], t[4], t[4]});
+        drawRect(matrices, x, y, width, height, radius, color);
     }
 
     public void a(Matrix3x2f matrices, Identifier skin, LivingEntity target, float x, float y, float width, float height, float radius, float alpha) {
@@ -125,8 +144,12 @@ public class Draw2DProcessor {
             b = (int) (255 * (1.0f - factor * 0.75f));
         }
         int color = ColorUtil.a(r, g, b, (int) (alpha * 255.0f));
+        if (matrices == null) {
+            this.texturePipeline.drawTexture(skin, x, y, width, height, 0.125f, 0.125f, 0.25f, 0.25f, color, radius, 0.5f);
+            return;
+        }
         float[] t = transformRect(matrices, x, y, width, height, radius);
-        this.texturePipeline.drawTexture(skin, t[0], t[1], t[2], t[3], 0.125f, 0.125f, 0.25f, 0.25f, new int[]{color}, new float[]{t[4], t[4], t[4], t[4]}, 0.5f);
+        this.texturePipeline.drawTexture(skin, t[0], t[1], t[2], t[3], 0.125f, 0.125f, 0.25f, 0.25f, color, t[4], 0.5f);
     }
 
     public void a(Matrix3x2f matrices, float x, float y, float width, float height, float radius, int topLeftColor, int topRightColor, int bottomLeftColor, int bottomRightColor) {
@@ -134,6 +157,10 @@ public class Draw2DProcessor {
     }
 
     public void drawGradient(Matrix3x2f matrices, float x, float y, float width, float height, float radius, int topLeftColor, int topRightColor, int bottomLeftColor, int bottomRightColor) {
+        if (matrices == null) {
+            this.rectPipeline.drawGradient(x, y, width, height, radius, topLeftColor, topRightColor, bottomLeftColor, bottomRightColor);
+            return;
+        }
         float[] t = transformRect(matrices, x, y, width, height, radius);
         this.rectPipeline.drawRect(t[0], t[1], t[2], t[3], new int[]{topLeftColor, topRightColor, bottomRightColor, bottomLeftColor}, new float[]{t[4], t[4], t[4], t[4]});
     }
@@ -156,7 +183,7 @@ public class Draw2DProcessor {
         float[] t = transformRect(matrices, x, y, width, height, radius);
         float s = t[5];
         drawPanelBlur(t, alpha);
-        int finalColor = ColorUtil.a(color, (ColorUtil.b(color)[3] / 255.0f) * alpha);
+        int finalColor = ColorUtil.a(color, ((color >>> 24) / 255.0f) * alpha);
         this.rectPipeline.drawGlow(t[0], t[1], t[2], t[3], ColorUtil.a(0, 0, 0, (int) (30.0f * alpha)), new float[]{t[4], t[4], t[4], t[4]}, 2.5f * s, 0.6f);
         this.rectPipeline.drawRect(t[0], t[1], t[2], t[3], new int[]{finalColor}, new float[]{t[4], t[4], t[4], t[4]});
     }
@@ -168,16 +195,25 @@ public class Draw2DProcessor {
         if (glowRadius > 0.0f) {
             this.rectPipeline.drawGlow(t[0], t[1], t[2], t[3], glowColor, new float[]{t[4], t[4], t[4], t[4]}, glowRadius * s, 0.5f);
         }
-        int finalColor = ColorUtil.a(color, (ColorUtil.b(color)[3] / 255.0f) * alpha);
+        int finalColor = ColorUtil.a(color, ((color >>> 24) / 255.0f) * alpha);
         this.rectPipeline.drawRect(t[0], t[1], t[2], t[3], new int[]{finalColor}, new float[]{t[4], t[4], t[4], t[4]});
     }
 
     public void drawGlow(Matrix3x2f matrices, float x, float y, float width, float height, float radius, int glowColor, float glowRadius) {
+        if (glowRadius <= 0.0f) return;
+        if (matrices == null) {
+            this.rectPipeline.drawGlow(x, y, width, height, glowColor, radius, glowRadius, 0.5f);
+            return;
+        }
         float[] t = transformRect(matrices, x, y, width, height, radius);
         float s = t[5];
-        if (glowRadius > 0.0f) {
-            this.rectPipeline.drawGlow(t[0], t[1], t[2], t[3], glowColor, new float[]{t[4], t[4], t[4], t[4]}, glowRadius * s, 0.5f);
-        }
+        this.rectPipeline.drawGlow(t[0], t[1], t[2], t[3], glowColor, new float[]{t[4], t[4], t[4], t[4]}, glowRadius * s, 0.5f);
+    }
+
+    public void drawPanelBlur(Matrix3x2f matrices, float x, float y, float width, float height, float radius, float alpha) {
+        if (!egg.client.module.render.Interface.isHudBlurEnabled() || alpha <= 0.01f) return;
+        float[] t = transformRect(matrices, x, y, width, height, radius);
+        drawPanelBlur(t, alpha);
     }
 
     private void drawPanelBlur(float[] t, float alpha) {

@@ -128,6 +128,70 @@ public class TexturePipeline implements DrawBatcher.Batched {
 
     public void drawTexture(Identifier textureId, float x, float y, float width, float height,
                             float u0, float v0, float u1, float v1,
+                            int color, float radius, float smoothness) {
+        drawTexture(textureId, x, y, width, height, u0, v0, u1, v1, color, radius, smoothness, 0f);
+    }
+
+    public void drawTexture(Identifier textureId, float x, float y, float width, float height,
+                            float u0, float v0, float u1, float v1,
+                            int color, float radius, float smoothness, float rotation) {
+        queueDraw(textureId, x, y, width, height, u0, v0, u1, v1, color, radius, smoothness, rotation, PIPELINE);
+    }
+
+    private void queueDraw(Identifier textureId, float x, float y, float width, float height,
+                           float u0, float v0, float u1, float v1,
+                           int color, float radius, float smoothness, float rotation,
+                           RenderPipeline pipeline) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.getFramebuffer() == null) return;
+
+        AbstractTexture texture = client.getTextureManager().getTexture(textureId);
+        if (texture == null) return;
+
+        GpuTexture gpuTexture = texture.getGlTexture();
+        if (gpuTexture == null) return;
+
+        queueDraw(getCachedTextureView(gpuTexture), x, y, width, height, u0, v0, u1, v1,
+                color, radius, smoothness, rotation, pipeline);
+    }
+
+    private void queueDraw(GpuTextureView textureView, float x, float y, float width, float height,
+                           float u0, float v0, float u1, float v1,
+                           int color, float radius, float smoothness, float rotation,
+                           RenderPipeline pipeline) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.getFramebuffer() == null) return;
+
+        ensureInitialized();
+
+        float guiScale = (float) (client.getWindow() != null ? client.getWindow().getScaleFactor() : 2.0);
+        float screenWidth = client.getWindow() != null ? (float) client.getWindow().getScaledWidth() : 960f;
+        float screenHeight = client.getWindow() != null ? (float) client.getWindow().getScaledHeight() : 540f;
+
+        prepareUniformData(x, y, width, height, u0, v0, u1, v1,
+                screenWidth, screenHeight, guiScale,
+                color, radius, smoothness, rotation);
+
+        GpuBuffer uniformBuffer = nextUniformBuffer();
+        RenderSystem.getDevice().createCommandEncoder()
+                .writeToBuffer(uniformBuffer.slice(0, dataBuffer.remaining()), dataBuffer);
+
+        pendingDraws.add(new TexDraw(pipeline, textureView, uniformBuffer));
+
+        if (DrawBatcher.isEnabled()) {
+            DrawBatcher.register(this);
+
+            if (pendingDraws.size() >= UNIFORM_RING) {
+                DrawBatcher.drawImmediate(this);
+            }
+        } else {
+            DrawBatcher.flushPending();
+            DrawBatcher.drawImmediate(this);
+        }
+    }
+
+    public void drawTexture(Identifier textureId, float x, float y, float width, float height,
+                            float u0, float v0, float u1, float v1,
                             int[] colors, float[] radii, float smoothness) {
         drawTexture(textureId, x, y, width, height, u0, v0, u1, v1, colors, radii, smoothness, 0f);
     }
@@ -201,10 +265,10 @@ public class TexturePipeline implements DrawBatcher.Batched {
         if (fbWidth <= 0 || fbHeight <= 0) return;
 
         float guiScale = (float) (client.getWindow() != null ? client.getWindow().getScaleFactor() : 2.0);
-        float u0 = (x * guiScale) / fbWidth;
-        float u1 = ((x + width) * guiScale) / fbWidth;
-        float v0 = 1.0f - (y * guiScale) / fbHeight;
-        float v1 = 1.0f - ((y + height) * guiScale) / fbHeight;
+        float u0 = Math.clamp((x * guiScale) / fbWidth, 0.0f, 1.0f);
+        float u1 = Math.clamp(((x + width) * guiScale) / fbWidth, 0.0f, 1.0f);
+        float v0 = Math.clamp(1.0f - (y * guiScale) / fbHeight, 0.0f, 1.0f);
+        float v1 = Math.clamp(1.0f - ((y + height) * guiScale) / fbHeight, 0.0f, 1.0f);
 
         int alphaByte = (int) (Math.min(1.0f, Math.max(0.0f, alpha)) * 255.0f);
         queueDraw(blurView, x, y, width, height, u0, v0, u1, v1,
@@ -251,6 +315,53 @@ public class TexturePipeline implements DrawBatcher.Batched {
     public void flush() {
         if (pendingDraws.isEmpty()) return;
         DrawBatcher.drawImmediate(this);
+    }
+
+    private void prepareUniformData(float x, float y, float w, float h,
+                                    float u0, float v0, float u1, float v1,
+                                    float screenWidth, float screenHeight, float guiScale,
+                                    int color, float radius, float smoothness, float rotation) {
+        dataBuffer.clear();
+
+        dataBuffer.putFloat(screenWidth);
+        dataBuffer.putFloat(screenHeight);
+        dataBuffer.putFloat(smoothness);
+        dataBuffer.putFloat(guiScale);
+
+        dataBuffer.putFloat(x);
+        dataBuffer.putFloat(y);
+        dataBuffer.putFloat(w);
+        dataBuffer.putFloat(h);
+
+        dataBuffer.putFloat(u0);
+        dataBuffer.putFloat(v0);
+        dataBuffer.putFloat(u1);
+        dataBuffer.putFloat(v1);
+
+        dataBuffer.putFloat(radius);
+        dataBuffer.putFloat(radius);
+        dataBuffer.putFloat(radius);
+        dataBuffer.putFloat(radius);
+
+        float rotationRadians = (float) Math.toRadians(rotation);
+        dataBuffer.putFloat(rotationRadians);
+        dataBuffer.putFloat(0f);
+        dataBuffer.putFloat(0f);
+        dataBuffer.putFloat(0f);
+
+        float a = ((color >>> 24) & 0xFF) / 255.0f;
+        float r = ((color >>> 16) & 0xFF) / 255.0f;
+        float g = ((color >>> 8) & 0xFF) / 255.0f;
+        float b = (color & 0xFF) / 255.0f;
+
+        for (int i = 0; i < 4; i++) {
+            dataBuffer.putFloat(r);
+            dataBuffer.putFloat(g);
+            dataBuffer.putFloat(b);
+            dataBuffer.putFloat(a);
+        }
+
+        dataBuffer.flip();
     }
 
     private void prepareUniformData(float x, float y, float w, float h,

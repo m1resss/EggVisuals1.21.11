@@ -42,6 +42,22 @@ public final class Pipelines {
             .build()
     );
 
+    public static final RenderPipeline JUMP_CAUSTIC = register(
+        RenderPipeline.builder()
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/jump_caustic"))
+            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/world/jump_caustic"))
+            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/world/jump_caustic"))
+            .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
+            .withUniform("Projection", UniformType.UNIFORM_BUFFER)
+            .withUniform("CausticUniforms", UniformType.UNIFORM_BUFFER)
+            .withBlend(new BlendFunction(SourceFactor.SRC_ALPHA, DestFactor.ONE, SourceFactor.ONE, DestFactor.ZERO))
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .withVertexFormat(VertexFormats.POSITION_TEXTURE_COLOR, DrawMode.QUADS)
+            .build()
+    );
+
     public static final RenderPipeline AURA_BLOOM = register(
         RenderPipeline.builder()
             .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/aura_bloom"))
@@ -322,6 +338,36 @@ public final class Pipelines {
             .withDepthWrite(false)
             .withCull(false)
             .withVertexFormat(VertexFormats.POSITION, DrawMode.QUADS)
+            .build()
+    );
+
+    public static final RenderPipeline MOTION_BLUR = register(
+        RenderPipeline.builder()
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/motion_blur"))
+            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/fullscreen/pass"))
+            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/fullscreen/motion_blur"))
+            .withSampler("Sampler0")
+            .withSampler("Sampler1")
+            .withUniform("EggMotionBlur", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .withVertexFormat(CustomVertexFormats.POSITION_TEX_LINE_WIDTH, DrawMode.QUADS)
+            .build()
+    );
+
+    public static final RenderPipeline MOTION_BLUR_ACCUM = register(
+        RenderPipeline.builder()
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/motion_blur_accum"))
+            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/fullscreen/pass"))
+            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/fullscreen/motion_blur_accum"))
+            .withSampler("Sampler0")
+            .withSampler("Sampler1")
+            .withUniform("EggAccumBlur", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .withVertexFormat(CustomVertexFormats.POSITION_TEX_LINE_WIDTH, DrawMode.QUADS)
             .build()
     );
 }

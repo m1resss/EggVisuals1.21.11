@@ -41,6 +41,19 @@ public enum AmbienceLightningRenderer {
     private final Random random = new Random();
     private long nextStrikeTime;
 
+    private final BufferAllocator bufferAllocator = createReusableAllocator(32768);
+    private final BufferAllocator bufferAllocator2 = createReusableAllocator(32768);
+    private final BufferAllocator bufferAllocator3 = createReusableAllocator(32768);
+
+    private static BufferAllocator createReusableAllocator(int size) {
+        return new BufferAllocator(size) {
+            @Override
+            public void close() {
+                this.reset();
+            }
+        };
+    }
+
     public void tick(ClientWorld clientWorld, float frequency) {
         if (clientWorld == null) return;
         long nowNanos = System.nanoTime();
@@ -84,9 +97,9 @@ public enum AmbienceLightningRenderer {
         long nowNanos = System.nanoTime();
 
         try (
-            BufferAllocator bufferAllocator = new BufferAllocator(32768);
-            BufferAllocator bufferAllocator2 = new BufferAllocator(32768);
-            BufferAllocator bufferAllocator3 = new BufferAllocator(32768);
+            BufferAllocator bufferAllocator = this.bufferAllocator;
+            BufferAllocator bufferAllocator2 = this.bufferAllocator2;
+            BufferAllocator bufferAllocator3 = this.bufferAllocator3;
         ) {
             BufferBuilder bufferBuilder = createLineBuilder(bufferAllocator);
             BufferBuilder bufferBuilder2 = createLineBuilder(bufferAllocator2);

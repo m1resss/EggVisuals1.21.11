@@ -10,7 +10,6 @@ import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
@@ -29,6 +28,7 @@ public final class DrawBatcher {
     private static final Vector4f COLOR_MODULATOR = new Vector4f(1f, 1f, 1f, 1f);
     private static final Vector3f MODEL_OFFSET = new Vector3f(0, 0, 0);
     private static final Matrix4f TEXTURE_MATRIX = new Matrix4f();
+    private static final Comparator<Batched> LAYER_COMPARATOR = Comparator.comparingInt(Batched::batchLayer);
 
     private static final ArrayList<Batched> active = new ArrayList<>(8);
     private static boolean enabled = false;
@@ -55,21 +55,20 @@ public final class DrawBatcher {
 
     public static void flushPending() {
         if (active.isEmpty()) return;
-        Batched[] pending = active.toArray(new Batched[0]);
-        active.clear();
-        Arrays.sort(pending, Comparator.comparingInt(Batched::batchLayer));
+        active.sort(LAYER_COMPARATOR);
 
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null || client.getFramebuffer() == null) {
-            for (Batched batch : pending) {
-                batch.discardBatch();
+            for (int i = 0; i < active.size(); i++) {
+                active.get(i).discardBatch();
             }
+            active.clear();
             return;
         }
 
         CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
-        for (Batched batch : pending) {
-            batch.uploadBatch(encoder);
+        for (int i = 0; i < active.size(); i++) {
+            active.get(i).uploadBatch(encoder);
         }
 
         GpuBufferSlice dynamicTransforms = writeDynamicTransforms();
@@ -83,13 +82,14 @@ public final class DrawBatcher {
 
             RenderSystem.bindDefaultUniforms(pass);
             pass.setUniform("DynamicTransforms", dynamicTransforms);
-            for (Batched batch : pending) {
-                batch.drawBatch(pass);
+            for (int i = 0; i < active.size(); i++) {
+                active.get(i).drawBatch(pass);
             }
         } finally {
-            for (Batched batch : pending) {
-                batch.discardBatch();
+            for (int i = 0; i < active.size(); i++) {
+                active.get(i).discardBatch();
             }
+            active.clear();
         }
     }
 
@@ -127,7 +127,11 @@ public final class DrawBatcher {
     }
 
     private static GpuBufferSlice writeDynamicTransforms() {
-        return RenderSystem.getDynamicUniforms()
-                .write(RenderSystem.getModelViewMatrix(), COLOR_MODULATOR, MODEL_OFFSET, TEXTURE_MATRIX);
+        return RenderSystem.getDynamicUniforms().write(
+                RenderSystem.getModelViewMatrix(),
+                COLOR_MODULATOR,
+                MODEL_OFFSET,
+                TEXTURE_MATRIX
+        );
     }
 }

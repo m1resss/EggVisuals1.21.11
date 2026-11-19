@@ -3,9 +3,12 @@ package egg.client.module.render;
 import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
+import egg.client.module.setting.ColorSetting;
+import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
+import egg.client.util.EntityUtil;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.RenderLayers;
 import net.minecraft.client.render.VertexConsumer;
@@ -14,11 +17,14 @@ import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.ItemEnchantmentsComponent;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.projectile.ProjectileEntity;
+import net.minecraft.entity.projectile.AbstractWindChargeEntity;
 import net.minecraft.entity.projectile.ArrowEntity;
+import net.minecraft.entity.projectile.ProjectileEntity;
 import net.minecraft.entity.projectile.TridentEntity;
+import net.minecraft.entity.projectile.thrown.EggEntity;
 import net.minecraft.entity.projectile.thrown.EnderPearlEntity;
 import net.minecraft.entity.projectile.thrown.PotionEntity;
+import net.minecraft.entity.projectile.thrown.SnowballEntity;
 import net.minecraft.entity.projectile.thrown.ThrownEntity;
 import net.minecraft.item.BowItem;
 import net.minecraft.item.CrossbowItem;
@@ -42,23 +48,33 @@ import java.util.*;
 
 public class Trajectories extends Module {
 
-    private final SliderSetting circleRadius = new SliderSetting("Радиус круга", 0.45, 0.20, 1.00, 0.05, "Радиус светящегося круга приземления");
-    private final SliderSetting cubeSize = new SliderSetting("Размер куба", 0.26, 0.10, 0.60, 0.02, "Размер куба прицеливания (1-е лицо)");
-    private final SliderSetting cubeOutlineWidth = new SliderSetting("Толщина контура", 0.7, 0.2, 2.0, 0.1, "Толщина контурных линий куба прицеливания");
-    private final SliderSetting smoothSpeed = new SliderSetting("Плавность", 18.0, 5.0, 35.0, 1.0, "Скорость плавного следования круга за камерой");
+    private final ModeSetting colorMode = new ModeSetting("Режим цвета", "Кастом", "Выбор источника цвета", "Кастом", "Акцент", "Радуга");
+    private final ColorSetting customColor = new ColorSetting("Цвет", 0xFFFF6B81, "Цвет траектории и круга");
+    private final SliderSetting circleRadius = new SliderSetting("Радиус круга", 0.45, 0.20, 1.20, 0.05, "Радиус светящегося круга приземления");
+    private final SliderSetting lineWidth = new SliderSetting("Толщина линии", 0.022, 0.010, 0.060, 0.002, "Толщина луча траектории полета");
     private final BooleanSetting showLine = new BooleanSetting("Линия полета", true, "Отображать траекторию полета снаряда");
-    private final SliderSetting pullThreshold = new SliderSetting("При натяжении", 0.0, 0.0, 1.0, 0.05, "Порог силы натяжения для отображения (0 - всегда)");
-    private final BooleanSetting glowEffect = new BooleanSetting("Неоновое свечение", true, "Мягкий неоновый ореол и лучи света вокруг круга");
-    private final BooleanSetting inFlight = new BooleanSetting("Летящие снаряды", true, "Просчитывать уже выпущенные в мире стрелы и перлы");
+    private final BooleanSetting verticalRay = new BooleanSetting("Вертикальный луч", true, "Световой луч вверх от точки приземления");
+    private final SliderSetting rayHeight = new SliderSetting("Высота луча", 1.0, 0.3, 3.0, 0.1, "Высота вертикального светового луча");
+    private final BooleanSetting glowEffect = new BooleanSetting("Неоновое свечение", true, "Мягкое неоновое свечение линии и круга");
+    private final BooleanSetting handOffset = new BooleanSetting("От руки (1-е лицо)", true, "Начало траектории из руки игрока");
+    private final SliderSetting smoothSpeed = new SliderSetting("Плавность", 22.0, 5.0, 40.0, 1.0, "Скорость плавного следования круга");
+    private final SliderSetting pullThreshold = new SliderSetting("При натяжении", 0.0, 0.0, 1.0, 0.05, "Порог натяжения лука (0 - всегда)");
+    private final BooleanSetting projectileTrails = new BooleanSetting("Трейлы в полете", true, "Траектории и шлейфы для летящих снарядов");
 
-    private final Map<String, Vec3d> smoothedPositions = new HashMap<>();
-    private final Map<String, Direction> smoothedSides = new HashMap<>();
-    private long lastFrameNanos = 0L;
+    private final Map<Integer, ProjectileTrail> projectileTrailsMap = new HashMap<>();
 
     public Trajectories() {
         super("Trajectories", "Показывает линию полета стрел, зелий и жемчуга края", Category.ESP);
+        customColor.setVisible(() -> "Кастом".equals(colorMode.get()));
+        rayHeight.setVisible(() -> verticalRay.get());
         pullThreshold.setVisible(() -> showLine.get());
-        addSettings(circleRadius, cubeSize, cubeOutlineWidth, smoothSpeed, showLine, pullThreshold, glowEffect, inFlight);
+        addSettings(colorMode, customColor, circleRadius, lineWidth, showLine, verticalRay, rayHeight, glowEffect, handOffset, smoothSpeed, pullThreshold, projectileTrails);
+    }
+
+    @Override
+    public void onDisable() {
+        super.onDisable();
+        projectileTrailsMap.clear();
     }
 
     public void render(VertexConsumerProvider consumers, Vec3d camPos) {
@@ -72,41 +88,72 @@ public class Trajectories extends Module {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null || mc.world == null) return;
 
-        long now = System.nanoTime();
-        if (lastFrameNanos == 0L) lastFrameNanos = now;
-        float dt = (float) ((now - lastFrameNanos) * 1e-9);
-        lastFrameNanos = now;
-        if (dt <= 0.0f || dt > 0.1f) dt = 0.016f;
-
-        float smoothFactor = (float) Math.min(1.0, dt * smoothSpeed.get());
-        int themeColor = Theme.getAccent();
-        int r = (themeColor >> 16) & 0xFF;
-        int g = (themeColor >> 8) & 0xFF;
-        int b = themeColor & 0xFF;
+        int col = resolveColor();
+        int r = (col >> 16) & 0xFF;
+        int g = (col >> 8) & 0xFF;
+        int b = col & 0xFF;
 
         VertexConsumer quadBuffer = consumers.getBuffer(RenderLayers.debugQuads());
-        Set<String> activeKeys = new HashSet<>();
+        VertexConsumer glowBuffer = glowEffect.isEnabled() ? consumers.getBuffer(RenderLayers.lightning()) : null;
+        Set<Integer> activeEntityIds = new HashSet<>();
+        long nowMs = System.currentTimeMillis();
 
-        if (inFlight.isEnabled()) {
+        if (projectileTrails.isEnabled()) {
             Box viewRange = mc.player.getBoundingBox().expand(80.0);
             for (Entity entity : mc.world.getOtherEntities(mc.player, viewRange)) {
-                if (!entity.isAlive() || entity.getVelocity().lengthSquared() < 0.0001) continue;
-                if (entity instanceof ProjectileEntity || entity instanceof ArrowEntity || entity instanceof EnderPearlEntity || entity instanceof PotionEntity || entity instanceof TridentEntity) {
-                    renderInFlightPrediction(mc, entity, quadBuffer, camPos, r, g, b, smoothFactor, activeKeys);
+                if (!(entity instanceof ProjectileEntity proj)) continue;
+                if (!proj.isAlive() || proj.getVelocity().lengthSquared() < 0.0001) continue;
+
+                activeEntityIds.add(proj.getId());
+                ProjectileType type = getProjectileType(proj);
+
+                double ix = MathHelper.lerp(tickDelta, proj.lastRenderX, proj.getX());
+                double iy = MathHelper.lerp(tickDelta, proj.lastRenderY, proj.getY()) + proj.getHeight() * 0.5;
+                double iz = MathHelper.lerp(tickDelta, proj.lastRenderZ, proj.getZ());
+                Vec3d currentPos = new Vec3d(ix, iy, iz);
+
+                ProjectileTrail trail = projectileTrailsMap.computeIfAbsent(proj.getId(), id -> new ProjectileTrail(id, type, col));
+                trail.color = col;
+                trail.addPoint(currentPos, nowMs);
+
+                renderInFlightPrediction(mc, proj, quadBuffer, glowBuffer, camPos, col, tickDelta);
+            }
+
+            Iterator<Map.Entry<Integer, ProjectileTrail>> it = projectileTrailsMap.entrySet().iterator();
+            while (it.hasNext()) {
+                Map.Entry<Integer, ProjectileTrail> entry = it.next();
+                ProjectileTrail trail = entry.getValue();
+                trail.update(nowMs, 700L);
+                if (trail.isEmpty() && !activeEntityIds.contains(entry.getKey())) {
+                    it.remove();
+                } else {
+                    renderProjectileTrail(trail, quadBuffer, glowBuffer, camPos, nowMs);
                 }
+            }
+        } else {
+            if (!projectileTrailsMap.isEmpty()) {
+                projectileTrailsMap.clear();
             }
         }
 
         ItemStack main = mc.player.getMainHandStack();
         ItemStack off = mc.player.getOffHandStack();
         if (isThrowableOrWeapon(main.getItem())) {
-            renderItemPrediction(mc, main, Hand.MAIN_HAND, quadBuffer, camPos, r, g, b, smoothFactor, activeKeys, tickDelta);
+            renderItemPrediction(mc, main, Hand.MAIN_HAND, quadBuffer, glowBuffer, camPos, r, g, b, tickDelta);
+        } else if (isThrowableOrWeapon(off.getItem())) {
+            renderItemPrediction(mc, off, Hand.OFF_HAND, quadBuffer, glowBuffer, camPos, r, g, b, tickDelta);
         }
-        if (isThrowableOrWeapon(off.getItem())) {
-            renderItemPrediction(mc, off, Hand.OFF_HAND, quadBuffer, camPos, r, g, b, smoothFactor, activeKeys, tickDelta);
-        }
+    }
 
-        smoothedPositions.keySet().removeIf(k -> !activeKeys.contains(k));
+    private int resolveColor() {
+        String mode = colorMode.get();
+        if ("Акцент".equals(mode)) {
+            return Theme.getAccent();
+        } else if ("Радуга".equals(mode)) {
+            float hue = (System.currentTimeMillis() % 4500L) / 4500.0f;
+            return java.awt.Color.HSBtoRGB(hue, 0.80f, 1.0f);
+        }
+        return customColor.get();
     }
 
     private boolean isThrowableOrWeapon(Item item) {
@@ -117,9 +164,8 @@ public class Trajectories extends Module {
     }
 
     private void renderItemPrediction(MinecraftClient mc, ItemStack stack, Hand hand,
-                                      VertexConsumer quadBuffer, Vec3d camPos,
-                                      int r, int g, int b, float smoothFactor, Set<String> activeKeys,
-                                      float tickDelta) {
+                                      VertexConsumer quadBuffer, VertexConsumer glowBuffer, Vec3d camPos,
+                                      int r, int g, int b, float tickDelta) {
         if (stack == null || stack.isEmpty()) return;
         Item item = stack.getItem();
 
@@ -159,7 +205,7 @@ public class Trajectories extends Module {
         } else if (item == Items.WIND_CHARGE) {
             speed = 1.5f;
             isThrowable = true;
-            gravity = 0.01;
+            gravity = 0.005;
         }
 
         if (speed <= 0.0f) return;
@@ -177,55 +223,79 @@ public class Trajectories extends Module {
         boolean isMulti = (item instanceof CrossbowItem) && hasMultishot(stack);
         float[] yawSpreads = isMulti ? new float[]{-10.0f, 0.0f, 10.0f} : new float[]{0.0f};
 
+        Vec3d eyePos;
+        if (mc.options.getPerspective().isFirstPerson()) {
+            eyePos = camPos;
+        } else {
+            double px = MathHelper.lerp(tickDelta, mc.player.lastRenderX, mc.player.getX());
+            double py = MathHelper.lerp(tickDelta, mc.player.lastRenderY, mc.player.getY()) + mc.player.getEyeHeight(mc.player.getPose());
+            double pz = MathHelper.lerp(tickDelta, mc.player.lastRenderZ, mc.player.getZ());
+            eyePos = new Vec3d(px, py, pz);
+        }
+
+        Vec3d lookVec = mc.player.getRotationVec(tickDelta);
+        Vec3d forward = lookVec.normalize();
+        Vec3d right = forward.crossProduct(new Vec3d(0, 1, 0));
+        if (right.lengthSquared() < 1e-6) {
+            right = new Vec3d(1, 0, 0);
+        } else {
+            right = right.normalize();
+        }
+        Vec3d up = right.crossProduct(forward).normalize();
+
         for (int i = 0; i < yawSpreads.length; i++) {
             float yawSpread = yawSpreads[i];
-            String key = "held_" + hand.name() + "_" + i;
-            activeKeys.add(key);
 
-            TrajectoryResult res = simulateTrajectory(mc, speed, isThrowable, pitchOffset, gravity, yawSpread);
+            Vec3d startPos;
+            if (handOffset.isEnabled() && mc.options.getPerspective().isFirstPerson()) {
+                double sideOffset = (hand == Hand.MAIN_HAND) ? 0.20 : -0.20;
+                startPos = eyePos.add(right.multiply(sideOffset)).add(up.multiply(-0.14)).add(forward.multiply(0.26));
+            } else {
+                startPos = eyePos;
+            }
+
+            TrajectoryResult res = simulateTrajectory(mc, eyePos, speed, isThrowable, pitchOffset, gravity, yawSpread, tickDelta);
             if (res.path.size() >= 2) {
-                Vec3d targetImpact = res.impactPoint;
-                Vec3d smoothPos = smoothedPositions.compute(key, (k, old) -> {
-                    if (old == null || old.squaredDistanceTo(targetImpact) > 100.0) return targetImpact;
-                    return old.lerp(targetImpact, smoothFactor);
-                });
+                if (handOffset.isEnabled() && mc.options.getPerspective().isFirstPerson()) {
+                    res.path.set(0, startPos);
+                }
+
+                if (showLine.isEnabled()) {
+                    renderTrajectoryLine(quadBuffer, glowBuffer, res.path, camPos, r, g, b, forward, right);
+                }
 
                 if (res.hitEntity instanceof LivingEntity target && target.isAlive() && target != mc.player) {
                     Box targetBox = CustomHitbox.getInterpolatedBoundingBox(target, tickDelta);
                     CustomHitbox.renderHitbox(quadBuffer, targetBox, camPos,
-                            true, r, g, b, (int) Math.round(255 * 0.15),
+                            true, r, g, b, 45,
                             true, r, g, b, 240,
-                            1.0f);
+                            1.2f);
                 } else {
-                    if (mc.options.getPerspective().isFirstPerson()) {
-                        renderLandingCube(quadBuffer, smoothPos, camPos, res.impactSide, r, g, b);
-                    } else {
-                        renderGlowingLandingCircle(quadBuffer, smoothPos, camPos, res.impactSide, r, g, b);
-                    }
+                    renderLandingCircle(quadBuffer, glowBuffer, res.impactPoint, camPos, res.impactSide, r, g, b);
                 }
             }
         }
     }
 
     private void renderInFlightPrediction(MinecraftClient mc, Entity entity,
-                                          VertexConsumer quadBuffer, Vec3d camPos,
-                                          int r, int g, int b, float smoothFactor, Set<String> activeKeys) {
-        String key = "flight_" + entity.getId();
-        activeKeys.add(key);
-
-        TrajectoryResult res = simulateInFlight(mc, entity);
+                                          VertexConsumer quadBuffer, VertexConsumer glowBuffer, Vec3d camPos,
+                                          int color, float tickDelta) {
+        TrajectoryResult res = simulateInFlight(mc, entity, tickDelta);
         if (res.path.size() >= 2) {
-            Vec3d targetImpact = res.impactPoint;
-            Vec3d smoothPos = smoothedPositions.compute(key, (k, old) -> {
-                if (old == null || old.squaredDistanceTo(targetImpact) > 100.0) return targetImpact;
-                return old.lerp(targetImpact, smoothFactor);
-            });
+            int pr = (color >> 16) & 0xFF;
+            int pg = (color >> 8) & 0xFF;
+            int pb = color & 0xFF;
+
+            Vec3d forward = entity.getVelocity().normalize();
+            Vec3d right = forward.crossProduct(new Vec3d(0, 1, 0));
+            if (right.lengthSquared() < 1e-6) right = new Vec3d(1, 0, 0);
+            else right = right.normalize();
 
             if (showLine.isEnabled()) {
-                renderPathRibbon(quadBuffer, res.path, camPos, r, g, b);
+                renderTrajectoryLine(quadBuffer, glowBuffer, res.path, camPos, pr, pg, pb, forward, right);
             }
 
-            renderGlowingLandingCircle(quadBuffer, smoothPos, camPos, res.impactSide, r, g, b);
+            renderLandingCircle(quadBuffer, glowBuffer, res.impactPoint, camPos, res.impactSide, pr, pg, pb);
         }
     }
 
@@ -247,37 +317,29 @@ public class Trajectories extends Module {
         return Math.min(((f * f) + (f * 2.0f)) / 3.0f, 1.0f);
     }
 
-    private TrajectoryResult simulateTrajectory(MinecraftClient mc, float speed, boolean isThrowable,
-                                                float pitchOffset, double gravity, float yawSpreadDegrees) {
-        float playerPitch = mc.player.getPitch();
-        float playerYaw = mc.player.getYaw() + yawSpreadDegrees;
+    private TrajectoryResult simulateTrajectory(MinecraftClient mc, Vec3d startPos, float speed, boolean isThrowable,
+                                                float pitchOffset, double gravity, float yawSpreadDegrees, float tickDelta) {
+        float playerPitch = mc.player.getPitch(tickDelta) + pitchOffset;
+        float playerYaw = mc.player.getYaw(tickDelta) + yawSpreadDegrees;
 
-        double pitchRad = Math.toRadians(playerPitch + pitchOffset);
-        double yawRad = Math.toRadians(playerYaw);
-
-        Vec3d look = new Vec3d(-Math.sin(yawRad) * Math.cos(pitchRad),
-                               -Math.sin(pitchRad),
-                                Math.cos(yawRad) * Math.cos(pitchRad)).normalize();
+        float f = playerPitch * ((float) Math.PI / 180F);
+        float g = -playerYaw * ((float) Math.PI / 180F);
+        float h = MathHelper.cos(g);
+        float i = MathHelper.sin(g);
+        float j = MathHelper.cos(f);
+        float k = MathHelper.sin(f);
+        Vec3d look = new Vec3d((double) (i * j), (double) (-k), (double) (h * j)).normalize();
 
         Vec3d vel = look.multiply(speed);
-        Vec3d pos = mc.player.getEyePos();
+        Vec3d pVel = mc.player.getVelocity();
+        vel = vel.add(pVel.x, mc.player.isOnGround() ? 0.0 : pVel.y, pVel.z);
 
+        Vec3d pos = startPos;
         List<Vec3d> path = new ArrayList<>();
         path.add(pos);
-
         Vec3d impactPoint = pos;
 
-        for (int i = 0; i < 140 && vel.lengthSquared() >= 1e-6; i++) {
-            double drag = 0.99;
-            BlockPos bpos = BlockPos.ofFloored(pos);
-            if (mc.world.getFluidState(bpos).isIn(FluidTags.WATER)) {
-                drag = isThrowable ? 0.80 : 0.60;
-            }
-
-            if (isThrowable) {
-                vel = new Vec3d(vel.x * drag, (vel.y - gravity) * drag, vel.z * drag);
-            }
-
+        for (int step = 0; step < 160 && vel.lengthSquared() >= 1e-6; step++) {
             Vec3d next = pos.add(vel);
             BlockHitResult hitBlock = mc.world.raycast(new RaycastContext(
                     pos, next, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player));
@@ -298,7 +360,15 @@ public class Trajectories extends Module {
             }
 
             pos = next;
-            if (!isThrowable) {
+            double drag = 0.99;
+            BlockPos bpos = BlockPos.ofFloored(pos);
+            if (mc.world.getFluidState(bpos).isIn(FluidTags.WATER)) {
+                drag = isThrowable ? 0.80 : 0.60;
+            }
+
+            if (isThrowable) {
+                vel = new Vec3d(vel.x * drag, (vel.y - gravity) * drag, vel.z * drag);
+            } else {
                 vel = new Vec3d(vel.x * drag, (vel.y * drag) - gravity, vel.z * drag);
             }
             path.add(pos);
@@ -308,26 +378,20 @@ public class Trajectories extends Module {
         return new TrajectoryResult(path, impactPoint, Direction.UP, null);
     }
 
-    private TrajectoryResult simulateInFlight(MinecraftClient mc, Entity entity) {
+    private TrajectoryResult simulateInFlight(MinecraftClient mc, Entity entity, float tickDelta) {
         Vec3d vel = entity.getVelocity();
-        Vec3d pos = entity.getEntityPos();
+        double ix = MathHelper.lerp(tickDelta, entity.lastRenderX, entity.getX());
+        double iy = MathHelper.lerp(tickDelta, entity.lastRenderY, entity.getY());
+        double iz = MathHelper.lerp(tickDelta, entity.lastRenderZ, entity.getZ());
+        Vec3d pos = new Vec3d(ix, iy, iz);
+
         boolean isThrowable = entity instanceof ThrownEntity;
         double gravity = entity instanceof PotionEntity ? 0.05 : 0.03;
 
         List<Vec3d> path = new ArrayList<>();
         path.add(pos);
 
-        for (int i = 0; i < 120 && vel.lengthSquared() >= 1e-6; i++) {
-            double drag = 0.99;
-            BlockPos bpos = BlockPos.ofFloored(pos);
-            if (mc.world.getFluidState(bpos).isIn(FluidTags.WATER)) {
-                drag = isThrowable ? 0.80 : 0.60;
-            }
-
-            if (isThrowable) {
-                vel = new Vec3d(vel.x * drag, (vel.y - gravity) * drag, vel.z * drag);
-            }
-
+        for (int step = 0; step < 140 && vel.lengthSquared() >= 1e-6; step++) {
             Vec3d next = pos.add(vel);
             BlockHitResult hit = mc.world.raycast(new RaycastContext(
                     pos, next, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, entity));
@@ -346,7 +410,15 @@ public class Trajectories extends Module {
             }
 
             pos = next;
-            if (!isThrowable) {
+            double drag = 0.99;
+            BlockPos bpos = BlockPos.ofFloored(pos);
+            if (mc.world.getFluidState(bpos).isIn(FluidTags.WATER)) {
+                drag = isThrowable ? 0.80 : 0.60;
+            }
+
+            if (isThrowable) {
+                vel = new Vec3d(vel.x * drag, (vel.y - gravity) * drag, vel.z * drag);
+            } else {
                 vel = new Vec3d(vel.x * drag, (vel.y * drag) - 0.05, vel.z * drag);
             }
             path.add(pos);
@@ -360,7 +432,7 @@ public class Trajectories extends Module {
         Box range = new Box(start, end).expand(1.0);
 
         for (Entity candidate : mc.world.getOtherEntities(ignoreEntity, range)) {
-            if (candidate.isAlive() && !candidate.isSpectator() && (candidate instanceof LivingEntity)) {
+            if (candidate.isAlive() && !candidate.isSpectator() && (candidate instanceof LivingEntity) && !EntityUtil.isNakedInvisible(candidate)) {
                 Optional<Vec3d> hit = candidate.getBoundingBox().expand(0.3).raycast(start, end);
                 if (hit.isPresent()) {
                     double dist = start.squaredDistanceTo(hit.get());
@@ -374,108 +446,273 @@ public class Trajectories extends Module {
         return closest;
     }
 
-    private void renderLandingCube(VertexConsumer buf, Vec3d pos, Vec3d camPos, Direction side, int r, int g, int b) {
-        if (buf == null || pos == null || camPos == null) return;
-        Direction s = side != null ? side : Direction.UP;
-        double size = cubeSize.get();
-        double half = size / 2.0;
-        double cx = pos.x;
-        double cy = pos.y;
-        double cz = pos.z;
+    private void renderLandingCircle(VertexConsumer quadBuf, VertexConsumer glowBuf, Vec3d center, Vec3d camPos, Direction side, int cr, int cg, int cb) {
+        if (side == null) side = Direction.UP;
 
-        double minX, maxX, minY, maxY, minZ, maxZ;
-        int nx = s.getOffsetX();
-        int ny = s.getOffsetY();
-        int nz = s.getOffsetZ();
+        Vec3d normOffset = new Vec3d(side.getOffsetX() * 0.012, side.getOffsetY() * 0.012, side.getOffsetZ() * 0.012);
+        Vec3d drawPos = center.add(normOffset);
 
-        if (nx != 0) {
-            if (nx > 0) {
-                minX = cx + 0.002;
-                maxX = cx + size + 0.002;
-            } else {
-                minX = cx - size - 0.002;
-                maxX = cx - 0.002;
-            }
-            minY = cy - half;
-            maxY = cy + half;
-            minZ = cz - half;
-            maxZ = cz + half;
-        } else if (ny != 0) {
-            if (ny > 0) {
-                minY = cy + 0.002;
-                maxY = cy + size + 0.002;
-            } else {
-                minY = cy - size - 0.002;
-                maxY = cy - 0.002;
-            }
-            minX = cx - half;
-            maxX = cx + half;
-            minZ = cz - half;
-            maxZ = cz + half;
+        float cx = (float) (drawPos.x - camPos.x);
+        float cy = (float) (drawPos.y - camPos.y);
+        float cz = (float) (drawPos.z - camPos.z);
+
+        Vector3f normal = new Vector3f(side.getOffsetX(), side.getOffsetY(), side.getOffsetZ());
+        Vector3f u;
+        if (Math.abs(normal.y) > 0.9f) {
+            u = new Vector3f(1.0f, 0.0f, 0.0f);
         } else {
-            if (nz > 0) {
-                minZ = cz + 0.002;
-                maxZ = cz + size + 0.002;
-            } else {
-                minZ = cz - size - 0.002;
-                maxZ = cz - 0.002;
-            }
-            minX = cx - half;
-            maxX = cx + half;
-            minY = cy - half;
-            maxY = cy + half;
+            u = new Vector3f(0.0f, 1.0f, 0.0f).cross(normal).normalize();
+        }
+        Vector3f v = new Vector3f(normal).cross(u).normalize();
+
+        float baseR = (float) circleRadius.get();
+        long now = System.currentTimeMillis();
+        float pulse = (float) Math.sin(now * 0.005) * 0.02f;
+        float R = baseR * (1.0f + pulse);
+
+        int segments = 40;
+        float[] cos = new float[segments + 1];
+        float[] sin = new float[segments + 1];
+        for (int i = 0; i <= segments; i++) {
+            double angle = 2.0 * Math.PI * i / segments;
+            cos[i] = (float) Math.cos(angle);
+            sin[i] = (float) Math.sin(angle);
         }
 
-        Box box = new Box(minX, minY, minZ, maxX, maxY, maxZ);
-        int fillA = (int) Math.round(255 * 0.15);
-        int outlineA = 220;
+        int fillCenterA = 75;
+        int fillEdgeA = 40;
+        for (int i = 0; i < segments; i++) {
+            Vector3f p1 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos[i] * R)).add(new Vector3f(v).mul(sin[i] * R));
+            Vector3f p2 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos[i + 1] * R)).add(new Vector3f(v).mul(sin[i + 1] * R));
 
-        float x1 = (float) (box.minX - camPos.x);
-        float y1 = (float) (box.minY - camPos.y);
-        float z1 = (float) (box.minZ - camPos.z);
-        float x2 = (float) (box.maxX - camPos.x);
-        float y2 = (float) (box.maxY - camPos.y);
-        float z2 = (float) (box.maxZ - camPos.z);
+            quadBuf.vertex(cx, cy, cz).color(cr, cg, cb, fillCenterA);
+            quadBuf.vertex(p1.x, p1.y, p1.z).color(cr, cg, cb, fillEdgeA);
+            quadBuf.vertex(p2.x, p2.y, p2.z).color(cr, cg, cb, fillEdgeA);
+            quadBuf.vertex(cx, cy, cz).color(cr, cg, cb, fillCenterA);
 
-        if (x1 > x2) { float tmp = x1; x1 = x2; x2 = tmp; }
-        if (y1 > y2) { float tmp = y1; y1 = y2; y2 = tmp; }
-        if (z1 > z2) { float tmp = z1; z1 = z2; z2 = tmp; }
+            quadBuf.vertex(cx, cy, cz).color(cr, cg, cb, fillCenterA);
+            quadBuf.vertex(p2.x, p2.y, p2.z).color(cr, cg, cb, fillEdgeA);
+            quadBuf.vertex(p1.x, p1.y, p1.z).color(cr, cg, cb, fillEdgeA);
+            quadBuf.vertex(cx, cy, cz).color(cr, cg, cb, fillCenterA);
+        }
 
-        drawQuadDoubleSided(buf, x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, r, g, b, fillA);
-        drawQuadDoubleSided(buf, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, r, g, b, fillA);
-        drawQuadDoubleSided(buf, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, r, g, b, fillA);
-        drawQuadDoubleSided(buf, x1, y1, z2, x2, y1, z2, x2, y2, z2, x1, y2, z2, r, g, b, fillA);
-        drawQuadDoubleSided(buf, x1, y1, z1, x1, y1, z2, x1, y2, z2, x1, y2, z1, r, g, b, fillA);
-        drawQuadDoubleSided(buf, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, fillA);
+        float rIn = R * 0.94f;
+        float rOut = R * 1.04f;
+        int ringA = 255;
+        for (int i = 0; i < segments; i++) {
+            Vector3f p11 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos[i] * rIn)).add(new Vector3f(v).mul(sin[i] * rIn));
+            Vector3f p12 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos[i + 1] * rIn)).add(new Vector3f(v).mul(sin[i + 1] * rIn));
+            Vector3f p22 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos[i + 1] * rOut)).add(new Vector3f(v).mul(sin[i + 1] * rOut));
+            Vector3f p21 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos[i] * rOut)).add(new Vector3f(v).mul(sin[i] * rOut));
 
-        float t = Math.max(0.0006f, (float) (cubeOutlineWidth.get() * 0.0014f));
+            drawQuadDoubleSided(quadBuf, p11.x, p11.y, p11.z, p12.x, p12.y, p12.z, p22.x, p22.y, p22.z, p21.x, p21.y, p21.z, cr, cg, cb, ringA);
+        }
 
-        drawSolidBox(buf, x1 - t, y1 - t, z1 - t, x2 + t, y1 + t, z1 + t, r, g, b, outlineA);
-        drawSolidBox(buf, x1 - t, y1 - t, z2 - t, x2 + t, y1 + t, z2 + t, r, g, b, outlineA);
-        drawSolidBox(buf, x1 - t, y2 - t, z1 - t, x2 + t, y2 + t, z1 + t, r, g, b, outlineA);
-        drawSolidBox(buf, x1 - t, y2 - t, z2 - t, x2 + t, y2 + t, z2 + t, r, g, b, outlineA);
+        if (glowBuf != null) {
+            float gIn = R * 0.85f;
+            float gOut = R * 1.15f;
+            int gMidA = 150;
+            for (int i = 0; i < segments; i++) {
+                Vector3f piIn = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos[i] * gIn)).add(new Vector3f(v).mul(sin[i] * gIn));
+                Vector3f piMid = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos[i] * R)).add(new Vector3f(v).mul(sin[i] * R));
+                Vector3f piOut = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos[i] * gOut)).add(new Vector3f(v).mul(sin[i] * gOut));
 
-        drawSolidBox(buf, x1 - t, y1, z1 - t, x1 + t, y2, z1 + t, r, g, b, outlineA);
-        drawSolidBox(buf, x2 - t, y1, z1 - t, x2 + t, y2, z1 + t, r, g, b, outlineA);
-        drawSolidBox(buf, x1 - t, y1, z2 - t, x1 + t, y2, z2 + t, r, g, b, outlineA);
-        drawSolidBox(buf, x2 - t, y1, z2 - t, x2 + t, y2, z2 + t, r, g, b, outlineA);
+                Vector3f pjIn = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos[i + 1] * gIn)).add(new Vector3f(v).mul(sin[i + 1] * gIn));
+                Vector3f pjMid = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos[i + 1] * R)).add(new Vector3f(v).mul(sin[i + 1] * R));
+                Vector3f pjOut = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos[i + 1] * gOut)).add(new Vector3f(v).mul(sin[i + 1] * gOut));
 
-        drawSolidBox(buf, x1 - t, y1 - t, z1, x1 + t, y1 + t, z2, r, g, b, outlineA);
-        drawSolidBox(buf, x2 - t, y1 - t, z1, x2 + t, y1 + t, z2, r, g, b, outlineA);
-        drawSolidBox(buf, x1 - t, y2 - t, z1, x1 + t, y2 + t, z2, r, g, b, outlineA);
-        drawSolidBox(buf, x2 - t, y2 - t, z1, x2 + t, y2 + t, z2, r, g, b, outlineA);
+                glowBuf.vertex(piIn.x, piIn.y, piIn.z).color(cr, cg, cb, 0);
+                glowBuf.vertex(pjIn.x, pjIn.y, pjIn.z).color(cr, cg, cb, 0);
+                glowBuf.vertex(pjMid.x, pjMid.y, pjMid.z).color(cr, cg, cb, gMidA);
+                glowBuf.vertex(piMid.x, piMid.y, piMid.z).color(cr, cg, cb, gMidA);
+
+                glowBuf.vertex(piMid.x, piMid.y, piMid.z).color(cr, cg, cb, gMidA);
+                glowBuf.vertex(pjMid.x, pjMid.y, pjMid.z).color(cr, cg, cb, gMidA);
+                glowBuf.vertex(pjOut.x, pjOut.y, pjOut.z).color(cr, cg, cb, 0);
+                glowBuf.vertex(piOut.x, piOut.y, piOut.z).color(cr, cg, cb, 0);
+            }
+        }
+
+        float dotR = R * 0.11f;
+        int dotWr = Math.min(255, cr + 45);
+        int dotWg = Math.min(255, cg + 45);
+        int dotWb = Math.min(255, cb + 45);
+        for (int i = 0; i < segments; i++) {
+            Vector3f p1 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos[i] * dotR)).add(new Vector3f(v).mul(sin[i] * dotR));
+            Vector3f p2 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos[i + 1] * dotR)).add(new Vector3f(v).mul(sin[i + 1] * dotR));
+
+            quadBuf.vertex(cx, cy, cz).color(dotWr, dotWg, dotWb, 255);
+            quadBuf.vertex(p1.x, p1.y, p1.z).color(dotWr, dotWg, dotWb, 255);
+            quadBuf.vertex(p2.x, p2.y, p2.z).color(dotWr, dotWg, dotWb, 255);
+            quadBuf.vertex(cx, cy, cz).color(dotWr, dotWg, dotWb, 255);
+
+            quadBuf.vertex(cx, cy, cz).color(dotWr, dotWg, dotWb, 255);
+            quadBuf.vertex(p2.x, p2.y, p2.z).color(dotWr, dotWg, dotWb, 255);
+            quadBuf.vertex(p1.x, p1.y, p1.z).color(dotWr, dotWg, dotWb, 255);
+            quadBuf.vertex(cx, cy, cz).color(dotWr, dotWg, dotWb, 255);
+        }
+
+        if (glowBuf != null) {
+            float dotGlowR = R * 0.28f;
+            for (int i = 0; i < segments; i++) {
+                Vector3f p1 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos[i] * dotGlowR)).add(new Vector3f(v).mul(sin[i] * dotGlowR));
+                Vector3f p2 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos[i + 1] * dotGlowR)).add(new Vector3f(v).mul(sin[i + 1] * dotGlowR));
+
+                glowBuf.vertex(cx, cy, cz).color(dotWr, dotWg, dotWb, 210);
+                glowBuf.vertex(p1.x, p1.y, p1.z).color(cr, cg, cb, 0);
+                glowBuf.vertex(p2.x, p2.y, p2.z).color(cr, cg, cb, 0);
+                glowBuf.vertex(cx, cy, cz).color(dotWr, dotWg, dotWb, 210);
+            }
+        }
+
+        if (verticalRay.isEnabled()) {
+            float rayH = (float) rayHeight.get();
+            Vector3f rayTop = new Vector3f(cx, cy, cz).add(new Vector3f(normal).mul(rayH));
+
+            Vector3f toCam = new Vector3f(-cx, -cy, -cz);
+            if (toCam.lengthSquared() < 1e-6f) toCam = new Vector3f(0, 0, 1);
+            else toCam.normalize();
+
+            Vector3f raySide = new Vector3f(normal).cross(toCam);
+            if (raySide.lengthSquared() < 1e-6f) raySide = new Vector3f(1, 0, 0);
+            else raySide.normalize();
+
+            float coreW = 0.016f;
+            Vector3f sC = new Vector3f(raySide).mul(coreW);
+            quadBuf.vertex(cx - sC.x, cy - sC.y, cz - sC.z).color(dotWr, dotWg, dotWb, 240);
+            quadBuf.vertex(cx + sC.x, cy + sC.y, cz + sC.z).color(dotWr, dotWg, dotWb, 240);
+            quadBuf.vertex(rayTop.x + sC.x, rayTop.y + sC.y, rayTop.z + sC.z).color(cr, cg, cb, 20);
+            quadBuf.vertex(rayTop.x - sC.x, rayTop.y - sC.y, rayTop.z - sC.z).color(cr, cg, cb, 20);
+
+            quadBuf.vertex(rayTop.x - sC.x, rayTop.y - sC.y, rayTop.z - sC.z).color(cr, cg, cb, 20);
+            quadBuf.vertex(rayTop.x + sC.x, rayTop.y + sC.y, rayTop.z + sC.z).color(cr, cg, cb, 20);
+            quadBuf.vertex(cx + sC.x, cy + sC.y, cz + sC.z).color(dotWr, dotWg, dotWb, 240);
+            quadBuf.vertex(cx - sC.x, cy - sC.y, cz - sC.z).color(dotWr, dotWg, dotWb, 240);
+
+            if (glowBuf != null) {
+                float glowW = 0.052f;
+                Vector3f sG = new Vector3f(raySide).mul(glowW);
+                glowBuf.vertex(cx - sG.x, cy - sG.y, cz - sG.z).color(cr, cg, cb, 140);
+                glowBuf.vertex(cx + sG.x, cy + sG.y, cz + sG.z).color(cr, cg, cb, 140);
+                glowBuf.vertex(rayTop.x + sG.x, rayTop.y + sG.y, rayTop.z + sG.z).color(cr, cg, cb, 0);
+                glowBuf.vertex(rayTop.x - sG.x, rayTop.y - sG.y, rayTop.z - sG.z).color(cr, cg, cb, 0);
+
+                glowBuf.vertex(rayTop.x - sG.x, rayTop.y - sG.y, rayTop.z - sG.z).color(cr, cg, cb, 0);
+                glowBuf.vertex(rayTop.x + sG.x, rayTop.y + sG.y, rayTop.z + sG.z).color(cr, cg, cb, 0);
+                glowBuf.vertex(cx + sG.x, cy + sG.y, cz + sG.z).color(cr, cg, cb, 140);
+                glowBuf.vertex(cx - sG.x, cy - sG.y, cz - sG.z).color(cr, cg, cb, 140);
+            }
+        }
     }
 
-    private static void drawSolidBox(VertexConsumer buf,
-                                     float x1, float y1, float z1,
-                                     float x2, float y2, float z2,
-                                     int r, int g, int b, int a) {
-        drawQuadDoubleSided(buf, x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, r, g, b, a);
-        drawQuadDoubleSided(buf, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, r, g, b, a);
-        drawQuadDoubleSided(buf, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, r, g, b, a);
-        drawQuadDoubleSided(buf, x1, y1, z2, x2, y1, z2, x2, y2, z2, x1, y2, z2, r, g, b, a);
-        drawQuadDoubleSided(buf, x1, y1, z1, x1, y1, z2, x1, y2, z2, x1, y2, z1, r, g, b, a);
-        drawQuadDoubleSided(buf, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, a);
+    private void renderTrajectoryLine(VertexConsumer quadBuf, VertexConsumer glowBuf, List<Vec3d> path, Vec3d camPos,
+                                      int r, int g, int b, Vec3d camForward, Vec3d camRight) {
+        int count = path.size();
+        if (count < 2) return;
+
+        float coreW = (float) lineWidth.get();
+        float glowW = coreW * 2.85f;
+
+        long now = System.currentTimeMillis();
+        float wave = ((now % 1000L) / 1000.0f);
+
+        Vector3f[] leftCore = new Vector3f[count];
+        Vector3f[] rightCore = new Vector3f[count];
+        Vector3f[] leftGlow = glowBuf != null ? new Vector3f[count] : null;
+        Vector3f[] rightGlow = glowBuf != null ? new Vector3f[count] : null;
+
+        Vec3d prevSide = null;
+
+        for (int i = 0; i < count; i++) {
+            Vec3d p = path.get(i);
+
+            Vec3d tangent;
+            if (i == 0) {
+                tangent = path.get(1).subtract(p);
+            } else if (i == count - 1) {
+                tangent = p.subtract(path.get(count - 2));
+            } else {
+                tangent = path.get(i + 1).subtract(path.get(i - 1));
+            }
+
+            if (tangent.lengthSquared() < 1e-7) {
+                tangent = camForward;
+            } else {
+                tangent = tangent.normalize();
+            }
+
+            Vec3d toCam = camPos.subtract(p);
+            Vec3d camDir;
+            if (toCam.lengthSquared() < 0.25) {
+                camDir = camForward.multiply(-1.0);
+            } else {
+                camDir = toCam.normalize();
+            }
+
+            Vec3d side = tangent.crossProduct(camDir);
+            if (side.lengthSquared() < 1e-5) {
+                side = camRight;
+            } else {
+                side = side.normalize();
+            }
+
+            if (prevSide != null && side.dotProduct(prevSide) < 0.0) {
+                side = side.multiply(-1.0);
+            }
+            prevSide = side;
+
+            float px = (float) (p.x - camPos.x);
+            float py = (float) (p.y - camPos.y);
+            float pz = (float) (p.z - camPos.z);
+
+            float scx = (float) (side.x * coreW);
+            float scy = (float) (side.y * coreW);
+            float scz = (float) (side.z * coreW);
+
+            leftCore[i] = new Vector3f(px - scx, py - scy, pz - scz);
+            rightCore[i] = new Vector3f(px + scx, py + scy, pz + scz);
+
+            if (glowBuf != null) {
+                float sgx = (float) (side.x * glowW);
+                float sgy = (float) (side.y * glowW);
+                float sgz = (float) (side.z * glowW);
+                leftGlow[i] = new Vector3f(px - sgx, py - sgy, pz - sgz);
+                rightGlow[i] = new Vector3f(px + sgx, py + sgy, pz + sgz);
+            }
+        }
+
+        for (int i = 0; i < count - 1; i++) {
+            float prog0 = (float) i / (float) count;
+            float prog1 = (float) (i + 1) / (float) count;
+
+            int a0 = (int) MathHelper.lerp(prog0, 180.0f, 255.0f);
+            int a1 = (int) MathHelper.lerp(prog1, 180.0f, 255.0f);
+
+            float waveDist = Math.abs(prog0 - wave);
+            if (waveDist > 0.5f) waveDist = 1.0f - waveDist;
+            float pulse = Math.max(0.0f, 1.0f - waveDist / 0.16f);
+
+            int cr0 = Math.min(255, (int) (r + pulse * 45));
+            int cg0 = Math.min(255, (int) (g + pulse * 45));
+            int cb0 = Math.min(255, (int) (b + pulse * 45));
+
+            Vector3f l0 = leftCore[i];
+            Vector3f r0 = rightCore[i];
+            Vector3f l1 = leftCore[i + 1];
+            Vector3f r1 = rightCore[i + 1];
+
+            drawRibbonQuad(quadBuf, l0.x, l0.y, l0.z, l1.x, l1.y, l1.z, r1.x, r1.y, r1.z, r0.x, r0.y, r0.z, cr0, cg0, cb0, a0, a1);
+
+            if (glowBuf != null) {
+                Vector3f gl0 = leftGlow[i];
+                Vector3f gr0 = rightGlow[i];
+                Vector3f gl1 = leftGlow[i + 1];
+                Vector3f gr1 = rightGlow[i + 1];
+                int ga0 = (int) (110 * (0.8f + pulse * 0.4f));
+                int ga1 = (int) (110 * (0.8f + pulse * 0.4f));
+                drawRibbonQuad(glowBuf, gl0.x, gl0.y, gl0.z, gl1.x, gl1.y, gl1.z, gr1.x, gr1.y, gr1.z, gr0.x, gr0.y, gr0.z, cr0, cg0, cb0, ga0, ga1);
+            }
+        }
     }
 
     private static void drawQuadDoubleSided(VertexConsumer buf,
@@ -495,187 +732,21 @@ public class Trajectories extends Module {
         buf.vertex(x1, y1, z1).color(r, g, b, a);
     }
 
-    private void renderGlowingLandingCircle(VertexConsumer buf, Vec3d center, Vec3d camPos, Direction side, int cr, int cg, int cb) {
-        if (side == null) side = Direction.UP;
+    private static void drawRibbonQuad(VertexConsumer buf,
+                                       float x0l, float y0l, float z0l,
+                                       float x1l, float y1l, float z1l,
+                                       float x1r, float y1r, float z1r,
+                                       float x0r, float y0r, float z0r,
+                                       int r, int g, int b, int a0, int a1) {
+        buf.vertex(x0l, y0l, z0l).color(r, g, b, a0);
+        buf.vertex(x1l, y1l, z1l).color(r, g, b, a1);
+        buf.vertex(x1r, y1r, z1r).color(r, g, b, a1);
+        buf.vertex(x0r, y0r, z0r).color(r, g, b, a0);
 
-        Vec3d offset = new Vec3d(side.getOffsetX() * 0.02, side.getOffsetY() * 0.02, side.getOffsetZ() * 0.02);
-        Vec3d drawPos = center.add(offset);
-
-        float cx = (float) (drawPos.x - camPos.x);
-        float cy = (float) (drawPos.y - camPos.y);
-        float cz = (float) (drawPos.z - camPos.z);
-
-        Vector3f normal = new Vector3f(side.getOffsetX(), side.getOffsetY(), side.getOffsetZ());
-        Vector3f u;
-        if (Math.abs(normal.y) > 0.9f) {
-            u = new Vector3f(1.0f, 0.0f, 0.0f);
-        } else {
-            u = new Vector3f(0.0f, 1.0f, 0.0f).cross(normal).normalize();
-        }
-        Vector3f v = new Vector3f(normal).cross(u).normalize();
-
-        float baseR = (float) circleRadius.get();
-
-        long now = System.currentTimeMillis();
-        float pulse = (float) Math.sin(now * 0.005) * 0.04f;
-        float R = baseR * (1.0f + pulse);
-
-        int segments = 24;
-
-        if (glowEffect.isEnabled()) {
-            float glowR = R * 1.55f;
-            int haloCenterA = 120;
-            for (int i = 0; i < segments; i++) {
-                float theta1 = (float) (2.0 * Math.PI * i / segments);
-                float theta2 = (float) (2.0 * Math.PI * (i + 1) / segments);
-
-                float cos1 = (float) Math.cos(theta1);
-                float sin1 = (float) Math.sin(theta1);
-                float cos2 = (float) Math.cos(theta2);
-                float sin2 = (float) Math.sin(theta2);
-
-                Vector3f pOuter1 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos1 * glowR)).add(new Vector3f(v).mul(sin1 * glowR));
-                Vector3f pOuter2 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos2 * glowR)).add(new Vector3f(v).mul(sin2 * glowR));
-
-                buf.vertex(cx, cy, cz).color(cr, cg, cb, haloCenterA);
-                buf.vertex(pOuter1.x, pOuter1.y, pOuter1.z).color(cr, cg, cb, 0);
-                buf.vertex(pOuter2.x, pOuter2.y, pOuter2.z).color(cr, cg, cb, 0);
-                buf.vertex(cx, cy, cz).color(cr, cg, cb, haloCenterA);
-            }
-
-            float pillarH = 0.45f;
-            Vector3f pNorm = new Vector3f(normal).mul(pillarH);
-            for (int i = 0; i < segments; i++) {
-                float theta1 = (float) (2.0 * Math.PI * i / segments);
-                float theta2 = (float) (2.0 * Math.PI * (i + 1) / segments);
-
-                float cos1 = (float) Math.cos(theta1);
-                float sin1 = (float) Math.sin(theta1);
-                float cos2 = (float) Math.cos(theta2);
-                float sin2 = (float) Math.sin(theta2);
-
-                float botR = R * 0.85f;
-                Vector3f b1 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos1 * botR)).add(new Vector3f(v).mul(sin1 * botR));
-                Vector3f b2 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos2 * botR)).add(new Vector3f(v).mul(sin2 * botR));
-
-                Vector3f t1 = new Vector3f(b1).add(pNorm);
-                Vector3f t2 = new Vector3f(b2).add(pNorm);
-
-                buf.vertex(b1.x, b1.y, b1.z).color(cr, cg, cb, 80);
-                buf.vertex(b2.x, b2.y, b2.z).color(cr, cg, cb, 80);
-                buf.vertex(t2.x, t2.y, t2.z).color(cr, cg, cb, 0);
-                buf.vertex(t1.x, t1.y, t1.z).color(cr, cg, cb, 0);
-            }
-        }
-
-        float rOut1 = R * 0.94f;
-        float rOut2 = R * 1.04f;
-        for (int i = 0; i < segments; i++) {
-            float theta1 = (float) (2.0 * Math.PI * i / segments);
-            float theta2 = (float) (2.0 * Math.PI * (i + 1) / segments);
-
-            float cos1 = (float) Math.cos(theta1);
-            float sin1 = (float) Math.sin(theta1);
-            float cos2 = (float) Math.cos(theta2);
-            float sin2 = (float) Math.sin(theta2);
-
-            Vector3f p11 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos1 * rOut1)).add(new Vector3f(v).mul(sin1 * rOut1));
-            Vector3f p12 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos2 * rOut1)).add(new Vector3f(v).mul(sin2 * rOut1));
-            Vector3f p22 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos2 * rOut2)).add(new Vector3f(v).mul(sin2 * rOut2));
-            Vector3f p21 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos1 * rOut2)).add(new Vector3f(v).mul(sin1 * rOut2));
-
-            buf.vertex(p11.x, p11.y, p11.z).color(cr, cg, cb, 230);
-            buf.vertex(p12.x, p12.y, p12.z).color(cr, cg, cb, 230);
-            buf.vertex(p22.x, p22.y, p22.z).color(cr, cg, cb, 230);
-            buf.vertex(p21.x, p21.y, p21.z).color(cr, cg, cb, 230);
-        }
-
-        float rIn1 = R * 0.40f;
-        float rIn2 = R * 0.48f;
-        for (int i = 0; i < segments; i++) {
-            float theta1 = (float) (2.0 * Math.PI * i / segments);
-            float theta2 = (float) (2.0 * Math.PI * (i + 1) / segments);
-
-            float cos1 = (float) Math.cos(theta1);
-            float sin1 = (float) Math.sin(theta1);
-            float cos2 = (float) Math.cos(theta2);
-            float sin2 = (float) Math.sin(theta2);
-
-            Vector3f p11 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos1 * rIn1)).add(new Vector3f(v).mul(sin1 * rIn1));
-            Vector3f p12 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos2 * rIn1)).add(new Vector3f(v).mul(sin2 * rIn1));
-            Vector3f p22 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos2 * rIn2)).add(new Vector3f(v).mul(sin2 * rIn2));
-            Vector3f p21 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos1 * rIn2)).add(new Vector3f(v).mul(sin1 * rIn2));
-
-            buf.vertex(p11.x, p11.y, p11.z).color(cr, cg, cb, 190);
-            buf.vertex(p12.x, p12.y, p12.z).color(cr, cg, cb, 190);
-            buf.vertex(p22.x, p22.y, p22.z).color(cr, cg, cb, 190);
-            buf.vertex(p21.x, p21.y, p21.z).color(cr, cg, cb, 190);
-        }
-
-        float dotR = R * 0.12f;
-        int wr = Math.min(255, cr + 45);
-        int wg = Math.min(255, cg + 45);
-        int wb = Math.min(255, cb + 45);
-        for (int i = 0; i < segments; i++) {
-            float theta1 = (float) (2.0 * Math.PI * i / segments);
-            float theta2 = (float) (2.0 * Math.PI * (i + 1) / segments);
-
-            float cos1 = (float) Math.cos(theta1);
-            float sin1 = (float) Math.sin(theta1);
-            float cos2 = (float) Math.cos(theta2);
-            float sin2 = (float) Math.sin(theta2);
-
-            Vector3f p1 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos1 * dotR)).add(new Vector3f(v).mul(sin1 * dotR));
-            Vector3f p2 = new Vector3f(cx, cy, cz).add(new Vector3f(u).mul(cos2 * dotR)).add(new Vector3f(v).mul(sin2 * dotR));
-
-            buf.vertex(cx, cy, cz).color(wr, wg, wb, 255);
-            buf.vertex(p1.x, p1.y, p1.z).color(wr, wg, wb, 255);
-            buf.vertex(p2.x, p2.y, p2.z).color(wr, wg, wb, 255);
-            buf.vertex(cx, cy, cz).color(wr, wg, wb, 255);
-        }
-    }
-
-    private void renderPathRibbon(VertexConsumer buf, List<Vec3d> path, Vec3d camPos, int r, int g, int b) {
-        int count = path.size();
-        if (count < 2) return;
-
-        float halfWidth = 0.015f;
-
-        for (int i = 0; i < count - 1; i++) {
-            Vec3d p0 = path.get(i);
-            Vec3d p1 = path.get(i + 1);
-
-            float prog0 = (float) i / (float) count;
-            float prog1 = (float) (i + 1) / (float) count;
-
-            int a0 = Math.round(40 + prog0 * 180);
-            int a1 = Math.round(40 + prog1 * 180);
-
-            Vec3d dir = p1.subtract(p0).normalize();
-            Vec3d camDir = p0.subtract(camPos).normalize();
-            Vec3d side = dir.crossProduct(camDir).normalize().multiply(halfWidth);
-
-            float x0a = (float) (p0.x + side.x - camPos.x);
-            float y0a = (float) (p0.y + side.y - camPos.y);
-            float z0a = (float) (p0.z + side.z - camPos.z);
-
-            float x0b = (float) (p0.x - side.x - camPos.x);
-            float y0b = (float) (p0.y - side.y - camPos.y);
-            float z0b = (float) (p0.z - side.z - camPos.z);
-
-            float x1b = (float) (p1.x - side.x - camPos.x);
-            float y1b = (float) (p1.y - side.y - camPos.y);
-            float z1b = (float) (p1.z - side.z - camPos.z);
-
-            float x1a = (float) (p1.x + side.x - camPos.x);
-            float y1a = (float) (p1.y + side.y - camPos.y);
-            float z1a = (float) (p1.z + side.z - camPos.z);
-
-            buf.vertex(x0a, y0a, z0a).color(r, g, b, a0);
-            buf.vertex(x0b, y0b, z0b).color(r, g, b, a0);
-            buf.vertex(x1b, y1b, z1b).color(r, g, b, a1);
-            buf.vertex(x1a, y1a, z1a).color(r, g, b, a1);
-        }
+        buf.vertex(x0r, y0r, z0r).color(r, g, b, a0);
+        buf.vertex(x1r, y1r, z1r).color(r, g, b, a1);
+        buf.vertex(x1l, y1l, z1l).color(r, g, b, a1);
+        buf.vertex(x0l, y0l, z0l).color(r, g, b, a0);
     }
 
     private static class TrajectoryResult {
@@ -693,6 +764,220 @@ public class Trajectories extends Module {
 
         TrajectoryResult(List<Vec3d> path, Vec3d impactPoint, Direction impactSide) {
             this(path, impactPoint, impactSide, null);
+        }
+    }
+
+    private ProjectileType getProjectileType(ProjectileEntity proj) {
+        if (proj instanceof EnderPearlEntity) return ProjectileType.PEARL;
+        if (proj instanceof ArrowEntity) return ProjectileType.ARROW;
+        if (proj instanceof TridentEntity) return ProjectileType.TRIDENT;
+        if (proj instanceof PotionEntity) return ProjectileType.POTION;
+        if (proj instanceof SnowballEntity) return ProjectileType.SNOWBALL;
+        if (proj instanceof EggEntity) return ProjectileType.EGG;
+        if (proj instanceof AbstractWindChargeEntity) return ProjectileType.WIND_CHARGE;
+        return ProjectileType.OTHER;
+    }
+
+    private enum ProjectileType {
+        PEARL, ARROW, TRIDENT, POTION, SNOWBALL, EGG, WIND_CHARGE, OTHER
+    }
+
+    private void renderProjectileTrail(ProjectileTrail trail, VertexConsumer quadBuf, VertexConsumer glowBuf, Vec3d camPos, long nowMs) {
+        int count = trail.points.size();
+        if (count < 2) return;
+
+        float maxAgeMs = 700.0f;
+        int cr = (trail.color >> 16) & 0xFF;
+        int cg = (trail.color >> 8) & 0xFF;
+        int cb = trail.color & 0xFF;
+
+        float baseWidth = switch (trail.type) {
+            case PEARL, TRIDENT -> 0.055f;
+            case POTION -> 0.065f;
+            case SNOWBALL, WIND_CHARGE -> 0.045f;
+            default -> 0.038f;
+        };
+
+        Vec3d prevSide = null;
+
+        Vector3f[] leftQuad = new Vector3f[count];
+        Vector3f[] rightQuad = new Vector3f[count];
+        Vector3f[] leftGlow = glowBuf != null ? new Vector3f[count] : null;
+        Vector3f[] rightGlow = glowBuf != null ? new Vector3f[count] : null;
+        float[] lifes = new float[count];
+
+        for (int i = 0; i < count; i++) {
+            TrailPoint p = trail.points.get(i);
+            float age = (float) (nowMs - p.timeMs);
+            float life = MathHelper.clamp(1.0f - age / maxAgeMs, 0.0f, 1.0f);
+            lifes[i] = life;
+
+            Vec3d tangent;
+            if (i == 0) {
+                TrailPoint pNext = trail.points.get(1);
+                tangent = new Vec3d(pNext.x - p.x, pNext.y - p.y, pNext.z - p.z);
+            } else if (i == count - 1) {
+                TrailPoint pPrev = trail.points.get(count - 2);
+                tangent = new Vec3d(p.x - pPrev.x, p.y - pPrev.y, p.z - pPrev.z);
+            } else {
+                TrailPoint pPrev = trail.points.get(i - 1);
+                TrailPoint pNext = trail.points.get(i + 1);
+                tangent = new Vec3d(pNext.x - pPrev.x, pNext.y - pPrev.y, pNext.z - pPrev.z);
+            }
+
+            if (tangent.lengthSquared() < 1e-7) {
+                tangent = new Vec3d(0, 1, 0);
+            } else {
+                tangent = tangent.normalize();
+            }
+
+            Vec3d toCam = new Vec3d(camPos.x - p.x, camPos.y - p.y, camPos.z - p.z);
+            Vec3d camDir = toCam.lengthSquared() < 1e-6 ? new Vec3d(0, 0, 1) : toCam.normalize();
+
+            Vec3d side = tangent.crossProduct(camDir);
+            if (side.lengthSquared() < 1e-6) {
+                side = tangent.crossProduct(new Vec3d(0, 1, 0));
+            }
+            if (side.lengthSquared() < 1e-6) {
+                side = new Vec3d(1, 0, 0);
+            } else {
+                side = side.normalize();
+            }
+
+            if (prevSide != null && side.dotProduct(prevSide) < 0.0) {
+                side = side.multiply(-1.0);
+            }
+            prevSide = side;
+
+            float w = baseWidth * (0.15f + 0.85f * life);
+            float gw = w * 1.7f;
+
+            float px = (float) (p.x - camPos.x);
+            float py = (float) (p.y - camPos.y);
+            float pz = (float) (p.z - camPos.z);
+
+            float sx = (float) (side.x * w);
+            float sy = (float) (side.y * w);
+            float sz = (float) (side.z * w);
+
+            leftQuad[i] = new Vector3f(px - sx, py - sy, pz - sz);
+            rightQuad[i] = new Vector3f(px + sx, py + sy, pz + sz);
+
+            if (glowBuf != null) {
+                float gsx = (float) (side.x * gw);
+                float gsy = (float) (side.y * gw);
+                float gsz = (float) (side.z * gw);
+                leftGlow[i] = new Vector3f(px - gsx, py - gsy, pz - gsz);
+                rightGlow[i] = new Vector3f(px + gsx, py + gsy, pz + gsz);
+            }
+        }
+
+        for (int i = 0; i < count - 1; i++) {
+            float life0 = lifes[i];
+            float life1 = lifes[i + 1];
+            if (life0 <= 0.0f && life1 <= 0.0f) continue;
+
+            int a0 = MathHelper.clamp(Math.round(life0 * 180.0f), 0, 255);
+            int a1 = MathHelper.clamp(Math.round(life1 * 180.0f), 0, 255);
+
+            Vector3f l0 = leftQuad[i];
+            Vector3f r0 = rightQuad[i];
+            Vector3f l1 = leftQuad[i + 1];
+            Vector3f r1 = rightQuad[i + 1];
+
+            drawRibbonQuad(quadBuf, l0.x, l0.y, l0.z, l1.x, l1.y, l1.z, r1.x, r1.y, r1.z, r0.x, r0.y, r0.z, cr, cg, cb, a0, a1);
+
+            if (glowBuf != null) {
+                Vector3f gl0 = leftGlow[i];
+                Vector3f gr0 = rightGlow[i];
+                Vector3f gl1 = leftGlow[i + 1];
+                Vector3f gr1 = rightGlow[i + 1];
+                int ga0 = MathHelper.clamp(Math.round(life0 * 130.0f), 0, 255);
+                int ga1 = MathHelper.clamp(Math.round(life1 * 130.0f), 0, 255);
+                drawRibbonQuad(glowBuf, gl0.x, gl0.y, gl0.z, gl1.x, gl1.y, gl1.z, gr1.x, gr1.y, gr1.z, gr0.x, gr0.y, gr0.z, cr, cg, cb, ga0, ga1);
+            }
+
+            if (trail.type == ProjectileType.PEARL && glowBuf != null && (i % 2 == 0) && life0 > 0.12f) {
+                renderPearlSparkle(glowBuf, trail.points.get(i), camPos, life0, i, cr, cg, cb);
+            }
+        }
+    }
+
+    private void renderPearlSparkle(VertexConsumer glowBuf, TrailPoint p, Vec3d camPos, float life, int index, int cr, int cg, int cb) {
+        long h = (long) (p.x * 314159.0 + p.y * 653589.0 + p.z * 793238.0) + index * 1013L;
+        float ox = (((h & 0x7F) / 127.0f) - 0.5f) * 0.14f;
+        float oy = ((((h >> 7) & 0x7F) / 127.0f) - 0.5f) * 0.14f;
+        float oz = ((((h >> 14) & 0x7F) / 127.0f) - 0.5f) * 0.14f;
+
+        float sx = (float) (p.x + ox - camPos.x);
+        float sy = (float) (p.y + oy - camPos.y);
+        float sz = (float) (p.z + oz - camPos.z);
+
+        float sSize = 0.022f * (0.6f + life * 0.4f);
+        int sa = MathHelper.clamp(Math.round(life * 230.0f), 0, 255);
+        int sr = Math.min(255, cr + 45);
+        int sg = Math.min(255, cg + 45);
+        int sb = Math.min(255, cb + 45);
+
+        glowBuf.vertex(sx - sSize, sy, sz).color(sr, sg, sb, sa);
+        glowBuf.vertex(sx, sy + sSize, sz).color(sr, sg, sb, sa);
+        glowBuf.vertex(sx + sSize, sy, sz).color(sr, sg, sb, sa);
+        glowBuf.vertex(sx, sy - sSize, sz).color(sr, sg, sb, sa);
+
+        glowBuf.vertex(sx, sy - sSize, sz).color(sr, sg, sb, sa);
+        glowBuf.vertex(sx + sSize, sy, sz).color(sr, sg, sb, sa);
+        glowBuf.vertex(sx, sy + sSize, sz).color(sr, sg, sb, sa);
+        glowBuf.vertex(sx - sSize, sy, sz).color(sr, sg, sb, sa);
+    }
+
+    private static class TrailPoint {
+        final double x, y, z;
+        final long timeMs;
+
+        TrailPoint(double x, double y, double z, long timeMs) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.timeMs = timeMs;
+        }
+    }
+
+    private static class ProjectileTrail {
+        final int entityId;
+        final ProjectileType type;
+        int color;
+        final List<TrailPoint> points = new ArrayList<>();
+        long lastSeenTime;
+
+        ProjectileTrail(int entityId, ProjectileType type, int color) {
+            this.entityId = entityId;
+            this.type = type;
+            this.color = color;
+        }
+
+        void addPoint(Vec3d pos, long nowMs) {
+            this.lastSeenTime = nowMs;
+            if (!points.isEmpty()) {
+                TrailPoint last = points.get(points.size() - 1);
+                double dx = pos.x - last.x;
+                double dy = pos.y - last.y;
+                double dz = pos.z - last.z;
+                if (dx * dx + dy * dy + dz * dz < 0.005) {
+                    return;
+                }
+            }
+            points.add(new TrailPoint(pos.x, pos.y, pos.z, nowMs));
+            if (points.size() > 40) {
+                points.remove(0);
+            }
+        }
+
+        void update(long nowMs, long maxAgeMs) {
+            points.removeIf(p -> (nowMs - p.timeMs) > maxAgeMs);
+        }
+
+        boolean isEmpty() {
+            return points.size() < 2;
         }
     }
 }

@@ -6,6 +6,7 @@ import egg.client.module.Module;
 import egg.client.module.ModuleManager;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.SliderSetting;
+import egg.client.render.Render2D;
 import egg.client.render.hud.HudContextMenu;
 import egg.client.render.hud.HudSnapHelper;
 import egg.client.render.msdf.Draw2DProcessor;
@@ -33,7 +34,7 @@ public class Keybinds extends Module {
     private final BooleanSetting showHeader = new BooleanSetting("Шапка", true, "Отображать заголовок Кейбинды");
     private final BooleanSetting onlyEnabled = new BooleanSetting("Только активные", false, "Отображать только включенные модули");
     private final SliderSetting rounding = new SliderSetting("Скругление", 6.0, 0.0, 16.0, 0.5, "Скругление углов плашки");
-    private final SliderSetting opacity = new SliderSetting("Непрозрачность", 225.0, 20.0, 255.0, 5.0, "Прозрачность фона карточки");
+    private final SliderSetting opacity = new SliderSetting("Непрозрачность", 175.0, 10.0, 255.0, 5.0, "Прозрачность фона карточки");
     private final SliderSetting posX = new SliderSetting("X", 0.015, 0.0, 1.0, 0.001, "Позиция X");
     private final SliderSetting posY = new SliderSetting("Y", 0.38, 0.0, 1.0, 0.001, "Позиция Y");
     private final SliderSetting scale = new SliderSetting("Размер", 1.0, 0.5, 1.5, 0.05, "Масштаб элемента");
@@ -48,6 +49,12 @@ public class Keybinds extends Module {
     private float lastY = 160.0f;
     private float lastW = 95.0f;
     private float lastH = 45.0f;
+    private float animatedY = -1.0f;
+
+    @Override
+    public void onDisable() {
+        animatedY = -1.0f;
+    }
 
     public float getLastX() { return lastX; }
     public float getLastY() { return lastY; }
@@ -144,6 +151,7 @@ public class Keybinds extends Module {
         ModuleManager mm = ModuleManager.getInstance();
         if (mm != null) {
             for (Module m : mm.getModules()) {
+                if (m.isBlocked()) continue;
                 if (m.getKey() > 0) {
                     if (!onlyEnabled.get() || m.isEnabled()) {
                         boundModules.add(m);
@@ -201,18 +209,33 @@ public class Keybinds extends Module {
         float px = Math.clamp(userX, 4.0f, screenW - cardW - 4.0f);
         float py = Math.clamp(userY, 15.0f, screenH - cardH - 15.0f);
 
+        float targetY = iface != null ? iface.getAdjustedY(px, py, cardW, cardH) : py;
+        if (dragging || animatedY < 0.0f) {
+            animatedY = dragging ? py : targetY;
+        } else if (Math.abs(animatedY - targetY) > 0.1f) {
+            animatedY += (targetY - animatedY) * 0.25f;
+        } else {
+            animatedY = targetY;
+        }
+        py = animatedY;
+
         this.lastX = px;
         this.lastY = py;
         this.lastW = cardW;
         this.lastH = cardH;
 
         Draw2DProcessor.INSTANCE.drawGlow(null, px, py, cardW, cardH, radius, ColorUtil.rgba(0, 0, 0, (int) (55 * combatAlpha)), 6.0f * s);
+        Draw2DProcessor.INSTANCE.drawPanelBlur(null, px, py, cardW, cardH, radius, combatAlpha);
         Draw2DProcessor.INSTANCE.drawRect(null, px, py, cardW, cardH, radius, finalBg);
         Draw2DProcessor.INSTANCE.drawOutline(null, px, py, cardW, cardH, radius, 0.8f, borderColor);
 
         if (iface != null && iface.isHudThemeGradient()) {
             int gradC = iface.computeHudGradientColor(iface.getHudGradientStrength(), combatAlpha);
             Draw2DProcessor.INSTANCE.drawGradient(null, px, py, cardW, cardH, radius, gradC, 0x00000000, 0x00000000, gradC);
+        }
+        DrawBatcher.flushPending();
+        if (iface != null && iface.isHudThemeGradient() && combatAlpha > 0.15f) {
+            Render2D.drawDiagonalSheen(context, px, py, cardW, cardH, radius, 800L, combatAlpha);
         }
 
         if (showHeader.get()) {
@@ -281,7 +304,7 @@ public class Keybinds extends Module {
             String[][] previews = new String[][]{
                     {"AutoSwap", "M4"},
                     {"Sprint", "V"},
-                    {"PlayerESP", "B"}
+                    {"FullBright", "B"}
             };
             for (String[] p : previews) {
                 KeybindItem found = null;

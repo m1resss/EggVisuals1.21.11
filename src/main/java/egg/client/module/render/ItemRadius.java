@@ -7,6 +7,7 @@ import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
+import egg.client.util.EntityUtil;
 import egg.client.util.FriendManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.RenderLayers;
@@ -239,6 +240,7 @@ public class ItemRadius extends Module {
         double rSq = radius * radius;
         for (PlayerEntity p : mc.world.getPlayers()) {
             if (p == self || p.isSpectator() || !p.isAlive()) continue;
+            if (EntityUtil.isNakedInvisible(p)) continue;
             if (FriendManager.getInstance().isFriend(p.getName().getString())) continue;
             if (p.squaredDistanceTo(center) <= rSq) {
                 return true;
@@ -253,6 +255,7 @@ public class ItemRadius extends Module {
         double rSq = radius * radius;
         for (PlayerEntity p : mc.world.getPlayers()) {
             if (p == self || p.isSpectator() || !p.isAlive()) continue;
+            if (EntityUtil.isNakedInvisible(p)) continue;
             if (FriendManager.getInstance().isFriend(p.getName().getString())) {
                 if (p.squaredDistanceTo(center) <= rSq) {
                     return true;

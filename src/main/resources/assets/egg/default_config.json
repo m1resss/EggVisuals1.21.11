@@ -1,4 +1,4 @@
-{
+﻿{
   "modules": {
     "HitColor": {
       "enabled": false,
@@ -82,8 +82,8 @@
         "Скорость игрока": false,
         "Боковое отображение": false,
         "Цвет фона ватермарки": -1005251307,
-        "Цвет надписи 1": -1,
-        "Цвет надписи 2": -1,
+        "Цвет надписи 1": -1447949,
+        "Цвет надписи 2": -9478224,
         "Скругление": 16.0,
         "Непрозрачность": 255.0,
         "Градиент HUD": true,
@@ -226,7 +226,7 @@
         "Сила тряски": 0.0
       }
     },
-    "TotemPopConfetti": {
+    "TotemPop": {
       "enabled": false,
       "favorite": false,
       "key": 0,
@@ -250,7 +250,7 @@
         "Линия полета": false,
         "При натяжении": 0.0,
         "Неоновое свечение": true,
-        "Летящие снаряды": true
+        "Трейлы снарядов": true
       }
     },
     "ItemRadius": {
@@ -331,30 +331,11 @@
         "Instant": true
       }
     },
-    "NoChatBackground": {
-      "enabled": true,
-      "favorite": false,
-      "key": 0,
-      "settings": {}
-    },
     "FastEXP": {
       "enabled": false,
       "favorite": false,
       "key": 0,
       "settings": {}
-    },
-    "AutoEat": {
-      "enabled": true,
-      "favorite": false,
-      "key": 0,
-      "settings": {
-        "Режим": "Умный по ПКМ",
-        "Только с инструментом": true,
-        "Возвращать инструмент": true,
-        "Запасная еда": true,
-        "Включать оружие": false,
-        "Порог сытости (Авто)": 16.0
-      }
     },
     "AutoAccept": {
       "enabled": false,
@@ -394,15 +375,6 @@
       "key": 0,
       "settings": {
         "Mode": "По нажатию"
-      }
-    },
-    "Auto Auth": {
-      "enabled": false,
-      "favorite": false,
-      "key": 0,
-      "settings": {
-        "Пароль авторизации": "",
-        "Пароль регистрации": ""
       }
     },
     "Fun": {

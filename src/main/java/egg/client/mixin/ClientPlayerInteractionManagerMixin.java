@@ -38,6 +38,11 @@ public class ClientPlayerInteractionManagerMixin {
             hitmarker.onAttack(target);
         }
 
+        egg.client.module.combat.HitSounds hitSounds = ModuleManager.getInstance().getModule(egg.client.module.combat.HitSounds.class);
+        if (hitSounds != null && hitSounds.isEnabled()) {
+            hitSounds.onAttack(target);
+        }
+
         egg.client.module.render.HitParticles hitParticles = ModuleManager.getInstance().getModule(egg.client.module.render.HitParticles.class);
         if (hitParticles != null && hitParticles.isEnabled()) {
             hitParticles.onAttack(player, target);

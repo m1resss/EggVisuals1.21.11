@@ -6,6 +6,7 @@ import egg.client.module.render.PotionHUD;
 import egg.client.module.render.ArmorHUD;
 import egg.client.module.render.Keybinds;
 import egg.client.module.render.Cooldowns;
+import egg.client.module.render.EventTracker;
 import egg.client.module.render.TargetHUD;
 import egg.client.render.animation.HudAnimations;
 import net.minecraft.client.gui.Click;
@@ -73,10 +74,21 @@ public class ChatScreenMixin {
         if (keybinds != null && keybinds.isEnabled()) {
             keybinds.renderChatOverlay(context, mouseX, mouseY);
         }
+        EventTracker tracker = ModuleManager.getInstance().getModule(EventTracker.class);
+        if (tracker != null && tracker.isEnabled()) {
+            tracker.renderChatOverlay(context, mouseX, mouseY);
+        }
     }
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void onChatMouseClicked(Click click, boolean bl, CallbackInfoReturnable<Boolean> cir) {
+        EventTracker tracker = ModuleManager.getInstance().getModule(EventTracker.class);
+        if (tracker != null && tracker.isEnabled()) {
+            if (tracker.onChatMouseClicked(click.x(), click.y(), click.button())) {
+                cir.setReturnValue(true);
+                return;
+            }
+        }
         Keybinds keybinds = ModuleManager.getInstance().getModule(Keybinds.class);
         if (keybinds != null && keybinds.isEnabled()) {
             if (keybinds.onChatMouseClicked(click.x(), click.y(), click.button())) {
@@ -122,6 +134,13 @@ public class ChatScreenMixin {
 
     @Inject(method = "mouseScrolled", at = @At("HEAD"), cancellable = true)
     private void onChatMouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount, CallbackInfoReturnable<Boolean> cir) {
+        EventTracker tracker = ModuleManager.getInstance().getModule(EventTracker.class);
+        if (tracker != null && tracker.isEnabled()) {
+            if (tracker.onMouseScrolled(mouseX, mouseY, verticalAmount)) {
+                cir.setReturnValue(true);
+                return;
+            }
+        }
         Keybinds keybinds = ModuleManager.getInstance().getModule(Keybinds.class);
         if (keybinds != null && keybinds.isEnabled()) {
             if (keybinds.onMouseScrolled(mouseX, mouseY, verticalAmount)) {

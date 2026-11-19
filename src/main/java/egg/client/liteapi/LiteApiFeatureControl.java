@@ -22,6 +22,7 @@ public final class LiteApiFeatureControl {
 
     private final Gson gson = new Gson();
     private final Set<String> activeBlocklist = ConcurrentHashMap.newKeySet();
+    private volatile boolean connected = false;
     private long lastRequestTime = 0L;
     private static final long RATE_LIMIT_MS = 10_000L;
 
@@ -43,6 +44,7 @@ public final class LiteApiFeatureControl {
 
             ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
                 activeBlocklist.clear();
+                connected = false;
                 lastRequestTime = 0L;
                 EggClient.LOGGER.info("[LiteAPI] Connected to server, scheduling checkFeatures");
                 new Timer("LiteAPI-Join-Timer", true).schedule(new TimerTask() {
@@ -54,6 +56,7 @@ public final class LiteApiFeatureControl {
             });
 
             ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+                connected = false;
                 lastRequestTime = 0L;
                 client.execute(this::unblockAll);
             });
@@ -109,9 +112,12 @@ public final class LiteApiFeatureControl {
                         }
                     }
                     applyBlocklist();
+                    connected = true;
                     EggClient.LOGGER.info("[LiteAPI] Server blocklist updated: " + activeBlocklist);
+                    egg.client.command.CommandManager.sendClientMessage("§7[§6HolyWorld LiteAPI§7] §aУспешное подключение! §7Блок-лист: §f" + (activeBlocklist.isEmpty() ? "[] (все функции разрешены)" : activeBlocklist.toString()), false);
                 } else {
                     EggClient.LOGGER.warn("[LiteAPI] Server responded with error: " + response.getError() + (response.getMessage() != null ? " - " + response.getMessage() : ""));
+                    egg.client.command.CommandManager.sendClientMessage("§7[§6HolyWorld LiteAPI§7] §cОтвет сервера: " + response.getError() + (response.getMessage() != null ? " - " + response.getMessage() : ""), false);
                 }
             });
         } catch (Throwable t) {
@@ -138,6 +144,7 @@ public final class LiteApiFeatureControl {
     }
 
     public void unblockAll() {
+        connected = false;
         activeBlocklist.clear();
         for (Module m : ModuleManager.getInstance().getModules()) {
             m.setBlocked(false);
@@ -147,6 +154,14 @@ public final class LiteApiFeatureControl {
             ClickGuiScreen.getInstance().markModulesDirty();
         }
         EggClient.LOGGER.info("[LiteAPI] Disconnected: all features unblocked");
+    }
+
+    public boolean isConnected() {
+        return connected;
+    }
+
+    public int getFeaturesCount() {
+        return collectFeatureList().size();
     }
 
     public Set<String> getActiveBlocklist() {

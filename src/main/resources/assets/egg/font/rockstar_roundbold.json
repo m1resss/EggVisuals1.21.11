@@ -1,0 +1,14 @@
+{
+  "providers": [
+    {
+      "type": "ttf",
+      "file": "egg:rockstar_roundbold.ttf",
+      "size": 11.0,
+      "oversample": 2.0,
+      "shift": [
+        0.0,
+        0.0
+      ]
+    }
+  ]
+}

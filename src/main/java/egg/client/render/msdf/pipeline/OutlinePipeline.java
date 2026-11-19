@@ -46,6 +46,52 @@ public class OutlinePipeline extends UniformArrayPipeline {
     }
 
     public void drawOutline(float x, float y, float width, float height,
+                            int color, float thickness, float radius, float smoothness) {
+        drawOutline(x, y, width, height, color, thickness, radius, radius, radius, radius, smoothness);
+    }
+
+    public void drawOutline(float x, float y, float width, float height,
+                            int color, float thickness, float r0, float r1, float r2, float r3, float smoothness) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.getFramebuffer() == null) return;
+
+        ByteBuffer dataBuffer = beginItem();
+
+        dataBuffer.putFloat(x);
+        dataBuffer.putFloat(y);
+        dataBuffer.putFloat(width);
+        dataBuffer.putFloat(height);
+
+        dataBuffer.putFloat(r0);
+        dataBuffer.putFloat(r1);
+        dataBuffer.putFloat(r2);
+        dataBuffer.putFloat(r3);
+
+        float a = ((color >>> 24) & 0xFF) / 255.0f;
+        float r = ((color >>> 16) & 0xFF) / 255.0f;
+        float g = ((color >>> 8) & 0xFF) / 255.0f;
+        float b = (color & 0xFF) / 255.0f;
+
+        for (int i = 0; i < 8; i++) {
+            dataBuffer.putFloat(r);
+            dataBuffer.putFloat(g);
+            dataBuffer.putFloat(b);
+            dataBuffer.putFloat(a);
+        }
+
+        for (int i = 0; i < 8; i++) {
+            dataBuffer.putFloat(thickness);
+        }
+
+        dataBuffer.putFloat(smoothness);
+        dataBuffer.putFloat(0f);
+        dataBuffer.putFloat(0f);
+        dataBuffer.putFloat(0f);
+
+        endItem();
+    }
+
+    public void drawOutline(float x, float y, float width, float height,
                             int[] colors, float[] thicknesses, float[] radii, float smoothness) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.getFramebuffer() == null) return;

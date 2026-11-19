@@ -26,13 +26,23 @@ public final class WaypointManager {
         public final String name;
         public final double x, y, z;
         public final long createdAt;
+        public final long expireAtMs;
 
         public Waypoint(String name, double x, double y, double z) {
+            this(name, x, y, z, 0L);
+        }
+
+        public Waypoint(String name, double x, double y, double z, long durationMs) {
             this.name = name;
             this.x = x;
             this.y = y;
             this.z = z;
             this.createdAt = System.currentTimeMillis();
+            this.expireAtMs = durationMs > 0L ? this.createdAt + durationMs : 0L;
+        }
+
+        public boolean isExpired() {
+            return expireAtMs > 0L && System.currentTimeMillis() >= expireAtMs;
         }
 
         public Vec3d getPos() {
@@ -41,11 +51,16 @@ public final class WaypointManager {
     }
 
     private final Map<String, Waypoint> waypoints = new LinkedHashMap<>();
+    private final Vector2f scratchScreen = new Vector2f();
 
     private WaypointManager() {}
 
     public synchronized void add(String name, double x, double y, double z) {
-        waypoints.put(name.toLowerCase(), new Waypoint(name, x, y, z));
+        add(name, x, y, z, 0L);
+    }
+
+    public synchronized void add(String name, double x, double y, double z, long durationMs) {
+        waypoints.put(name.toLowerCase(), new Waypoint(name, x, y, z, durationMs));
     }
 
     public synchronized boolean remove(String name) {
@@ -57,16 +72,23 @@ public final class WaypointManager {
     }
 
     public synchronized Collection<Waypoint> getWaypoints() {
+        waypoints.values().removeIf(Waypoint::isExpired);
         return new ArrayList<>(waypoints.values());
     }
 
     public synchronized boolean contains(String name) {
+        waypoints.values().removeIf(Waypoint::isExpired);
         return waypoints.containsKey(name.toLowerCase());
     }
 
     public void render(DrawContext context) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null || mc.world == null || waypoints.isEmpty()) return;
+
+        synchronized (this) {
+            waypoints.values().removeIf(Waypoint::isExpired);
+        }
+        if (waypoints.isEmpty()) return;
 
         Vec3d playerPos = new Vec3d(mc.player.getX(), mc.player.getY(), mc.player.getZ());
         int screenW = mc.getWindow().getScaledWidth();
@@ -80,9 +102,9 @@ public final class WaypointManager {
             double targetY = wp.y;
             double targetZ = wp.z + (wp.z == Math.floor(wp.z) ? 0.5 : 0.0);
 
-            Vector2f screen = ProjectUtil.toScreen(targetX, targetY, targetZ);
-            if (screen.x == Float.MAX_VALUE || screen.y == Float.MAX_VALUE) continue;
-            if (screen.x < -100.0f || screen.x > screenW + 100.0f || screen.y < -100.0f || screen.y > screenH + 100.0f) {
+            boolean onScreen = ProjectUtil.toScreen(targetX, targetY, targetZ, scratchScreen);
+            if (!onScreen || scratchScreen.x == Float.MAX_VALUE || scratchScreen.y == Float.MAX_VALUE) continue;
+            if (scratchScreen.x < -100.0f || scratchScreen.x > screenW + 100.0f || scratchScreen.y < -100.0f || scratchScreen.y > screenH + 100.0f) {
                 continue;
             }
 
@@ -102,10 +124,10 @@ public final class WaypointManager {
             float distW = Fonts.b.a(distText, fontSizeDist);
             float badgeW = padX + nameW + spacing + distW + padX;
 
-            float pinX = screen.x - pinSize / 2.0f;
-            float pinY = screen.y - pinSize;
+            float pinX = scratchScreen.x - pinSize / 2.0f;
+            float pinY = scratchScreen.y - pinSize;
 
-            float badgeX = screen.x - badgeW / 2.0f;
+            float badgeX = scratchScreen.x - badgeW / 2.0f;
             float badgeY = pinY - badgeH - (3.0f * scaleFactor);
 
             Draw2DProcessor.INSTANCE.a(null, WAYPOINT_PIN_TEXTURE, pinX, pinY, pinSize, pinSize, 0.0f, 0xFFFFFFFF);

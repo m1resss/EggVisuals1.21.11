@@ -21,11 +21,36 @@ public final class ClientFont {
     public static final StyleSpriteSource.Font SF_SEMIBOLD = new StyleSpriteSource.Font(Identifier.of("egg", "sf_semibold"));
     public static final StyleSpriteSource.Font SF_BOLD = new StyleSpriteSource.Font(Identifier.of("egg", "sf_bold"));
 
+    public static final StyleSpriteSource.Font ROCKSTAR_ROUND_BOLD = new StyleSpriteSource.Font(Identifier.of("egg", "rockstar_roundbold"));
+
+    public static final StyleSpriteSource.Font CLICKGUI_ICONS = new StyleSpriteSource.Font(Identifier.of("egg", "clickgui_icons"));
+    public static final StyleSpriteSource.Font ICON_CLIENT = new StyleSpriteSource.Font(Identifier.of("egg", "iconclient"));
+    public static final StyleSpriteSource.Font ICONS = new StyleSpriteSource.Font(Identifier.of("egg", "icons"));
+
     public static final float FONT_HEIGHT = 9.0f;
+    public static boolean FORCE_ROUND_BOLD = false;
 
     private static final Map<StyleSpriteSource.Font, Map<String, Text>> FONT_TEXT_CACHE = new ConcurrentHashMap<>();
     private static final Map<StyleSpriteSource.Font, Map<String, Float>> FONT_WIDTH_CACHE = new ConcurrentHashMap<>();
     private static final Map<Long, Map<String, Text>> GRADIENT_CACHE = new ConcurrentHashMap<>();
+
+    private static boolean isClickGui() {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        return mc != null && mc.currentScreen instanceof egg.client.ui.ClickGuiScreen;
+    }
+
+    private static StyleSpriteSource.Font resolveFont(StyleSpriteSource.Font font) {
+        if (font == CLICKGUI_ICONS || font == ICON_CLIENT || font == ICONS) {
+            return font;
+        }
+        if (font == SF_REGULAR || font == SF_MEDIUM || font == SF_SEMIBOLD || font == SF_BOLD) {
+            return font;
+        }
+        if (FORCE_ROUND_BOLD || isClickGui()) {
+            return ROCKSTAR_ROUND_BOLD;
+        }
+        return font;
+    }
 
     private static Map<String, Text> getTextMap(StyleSpriteSource.Font font) {
         return FONT_TEXT_CACHE.computeIfAbsent(font, f -> new ConcurrentHashMap<>());
@@ -37,7 +62,8 @@ public final class ClientFont {
 
     public static Text getText(String text, StyleSpriteSource.Font font) {
         if (text == null || text.isEmpty()) return Text.empty();
-        return getTextMap(font).computeIfAbsent(text, k -> Text.literal(k).setStyle(Style.EMPTY.withFont(font)));
+        StyleSpriteSource.Font targetFont = resolveFont(font);
+        return getTextMap(targetFont).computeIfAbsent(text, k -> Text.literal(k).setStyle(Style.EMPTY.withFont(targetFont)));
     }
 
     public static void draw(DrawContext context, String text, float x, float y, StyleSpriteSource.Font font, int color) {
@@ -68,6 +94,21 @@ public final class ClientFont {
         context.drawText(tr, getText(text, font), ix, iy, color, false);
     }
 
+    public static void drawCenteredScaled(DrawContext context, String text, float cx, float cy, float scale, StyleSpriteSource.Font font, int color) {
+        if (text == null || text.isEmpty() || context == null) return;
+        TextRenderer tr = MinecraftClient.getInstance().textRenderer;
+        if (tr == null) return;
+        float w = getWidth(text, font);
+        float h = tr.fontHeight;
+        context.getMatrices().pushMatrix();
+        context.getMatrices().translate(cx - (w * scale) / 2.0f, cy - (h * scale) / 2.0f);
+        if (Math.abs(scale - 1.0f) > 0.001f) {
+            context.getMatrices().scale(scale, scale);
+        }
+        context.drawText(tr, getText(text, font), 0, 0, color, false);
+        context.getMatrices().popMatrix();
+    }
+
     public static void drawGradient(DrawContext context, String text, float x, float y, StyleSpriteSource.Font font, int color1, int color2) {
         if (text == null || text.isEmpty() || context == null) return;
         TextRenderer tr = MinecraftClient.getInstance().textRenderer;
@@ -78,9 +119,13 @@ public final class ClientFont {
         int avgAlpha = (alpha1 + alpha2) / 2;
         if (avgAlpha == 0) avgAlpha = 255;
 
-        long gradKey = (((long) (color1 & 0xFFFFFF)) << 32) | ((long) (color2 & 0xFFFFFF));
+        StyleSpriteSource.Font targetFont = resolveFont(font);
+        if (GRADIENT_CACHE.size() > 256) {
+            GRADIENT_CACHE.clear();
+        }
+        long gradKey = (((long) (color1 & 0xFFFFFF)) << 32) | ((long) (color2 & 0xFFFFFF)) ^ targetFont.hashCode();
         Map<String, Text> gradMap = GRADIENT_CACHE.computeIfAbsent(gradKey, k -> new ConcurrentHashMap<>());
-        Text cached = gradMap.computeIfAbsent(text, k -> buildGradientText(k, font, color1 & 0xFFFFFF, color2 & 0xFFFFFF));
+        Text cached = gradMap.computeIfAbsent(text, k -> buildGradientText(k, targetFont, color1 & 0xFFFFFF, color2 & 0xFFFFFF));
 
         int passColor = (avgAlpha << 24) | 0xFFFFFF;
         context.drawText(tr, cached, Math.round(x), Math.round(y), passColor, false);
@@ -107,11 +152,12 @@ public final class ClientFont {
         TextRenderer tr = MinecraftClient.getInstance().textRenderer;
         if (tr == null) return text.length() * 6.0f;
 
-        Map<String, Float> widthMap = getWidthMap(font);
+        StyleSpriteSource.Font targetFont = resolveFont(font);
+        Map<String, Float> widthMap = getWidthMap(targetFont);
         Float cached = widthMap.get(text);
         if (cached != null) return cached;
 
-        float w = tr.getWidth(getText(text, font));
+        float w = tr.getWidth(getText(text, targetFont));
         widthMap.put(text, w);
         return w;
     }

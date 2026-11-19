@@ -15,7 +15,7 @@ public class ItemScroller extends Module {
     private long lastMoveTime = 0L;
 
     public ItemScroller() {
-        super("ItemScroller", "Быстро перемещает предметы в сундуках проведением мыши с зажатой клавишей", Category.PLAYER);
+        super("ItemScroller", "Быстро перемещает предметы в сундуках проведением мыши с зажатой клавишей", Category.MISC);
         addSettings(activationMode, mouseWheel, delay);
     }
 

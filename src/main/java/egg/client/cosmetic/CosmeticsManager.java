@@ -432,13 +432,59 @@ public final class CosmeticsManager  {
 
         if (mc == null) return false;
 
-        SwordEntry sword = null;
-
         CosmeticsModule mod = CosmeticsModule.getInstance();
+
+        boolean isLocalTarget = previewOverrideSword != null || entity == null || mc.player == null || entity == mc.player || entity.getId() == mc.player.getId() || entity.getId() <= 0;
+
+        if (mod != null && mod.isEnabled() && isLocalTarget) {
+
+            egg.client.cosmetic.sword.SwordStyle sword3d = mod.getSelectedSwordStyle();
+
+            if (sword3d != null && sword3d != egg.client.cosmetic.sword.SwordStyle.NONE) {
+
+                ItemDisplayContext currentCtx3d = (renderState instanceof ItemRenderStateAccessor acc) ? acc.getDisplayContext() : null;
+
+                ItemDisplayContext activeCtx3d = (displayContext != null && displayContext != ItemDisplayContext.NONE)
+
+                        ? displayContext
+
+                        : (currentCtx3d != null && currentCtx3d != ItemDisplayContext.NONE ? currentCtx3d : ItemDisplayContext.THIRD_PERSON_RIGHT_HAND);
+
+                if (activeCtx3d != ItemDisplayContext.GUI) {
+
+                    renderState.clear();
+
+                    if (renderState instanceof ItemRenderStateAccessor acc) {
+
+                        acc.setDisplayContext(activeCtx3d);
+
+                    }
+
+                    ItemRenderState.LayerRenderState layer = renderState.newLayer();
+
+                    layer.setSpecialModel(egg.client.cosmetic.sword.Sword3DSpecialModelRenderer.INSTANCE, sword3d);
+
+                    if (stack != null && stack.hasGlint()) {
+
+                        layer.setGlint(ItemRenderState.Glint.STANDARD);
+
+                    }
+
+                    return true;
+
+                }
+
+                return false;
+
+            }
+
+        }
+
+        SwordEntry sword = null;
 
         if (mod != null && (mod.isEnabled() || previewOverrideSword != null)) {
 
-            if (previewOverrideSword != null || entity == null || mc.player == null || entity == mc.player || entity.getId() == mc.player.getId() || entity.getId() <= 0) {
+            if (isLocalTarget) {
 
                 sword = getSelectedSwordEntry();
 
@@ -709,6 +755,26 @@ public final class CosmeticsManager  {
             }
 
         }
+
+        MinecraftClient mcInst = MinecraftClient.getInstance();
+
+        if (mcInst.currentScreen != null && mod.getSelectedSwordStyle() != egg.client.cosmetic.sword.SwordStyle.NONE) {
+
+            boolean isHoldingSwordNow = mcInst.player != null && !mcInst.player.getMainHandStack().isEmpty() && isSword(mcInst.player.getMainHandStack());
+
+            if (!isHoldingSwordNow) {
+
+                egg.client.cosmetic.sword.SwordRenderer.renderPreviewInHand(matrices, queue, model, light);
+
+            }
+
+        }
+
+        boolean isSlim = (mcInst.player != null && mcInst.player.getSkin().model() == net.minecraft.entity.player.PlayerSkinType.SLIM);
+
+        boolean hasChest = (mcInst.player != null && !mcInst.player.getEquippedStack(net.minecraft.entity.EquipmentSlot.CHEST).isEmpty());
+
+        egg.client.cosmetic.watch.WatchRenderer.renderThirdPersonWatch(matrices, queue, model, light, isSlim, hasChest);
 
     }
 

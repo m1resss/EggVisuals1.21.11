@@ -2,10 +2,12 @@ package egg.client.mixin;
 
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import egg.client.EggClient;
+import egg.client.render.NaturalMotionBlurRenderer;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.WorldRenderer;
+import net.minecraft.client.render.command.OrderedRenderCommandQueue;
 import net.minecraft.client.render.state.WorldRenderState;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.client.util.memory.ObjectAllocator;
@@ -20,9 +22,54 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(WorldRenderer.class)
 public class WorldRendererMixin {
 
+    @Inject(method = "render", at = @At("HEAD"))
+    private void egg$naturalMotionBlurHead(
+            ObjectAllocator objectAllocator,
+            RenderTickCounter renderTickCounter,
+            boolean renderOutline,
+            Camera camera,
+            Matrix4f positionMatrix,
+            Matrix4f projectionMatrix,
+            Matrix4f frustumMatrix,
+            GpuBufferSlice fogBuffer,
+            Vector4f fogColor,
+            boolean renderSky,
+            CallbackInfo ci
+    ) {
+        NaturalMotionBlurRenderer.INSTANCE.onWorldRenderHead(objectAllocator, camera, positionMatrix, projectionMatrix);
+    }
+
+    @Inject(method = "pushEntityRenders", at = @At("HEAD"))
+    private void egg$naturalMotionBlurBeforeEntities(
+            MatrixStack matrices,
+            WorldRenderState state,
+            OrderedRenderCommandQueue queue,
+            CallbackInfo ci
+    ) {
+        NaturalMotionBlurRenderer.INSTANCE.onBeforeEntities();
+    }
+
+    @Inject(method = "render", at = @At("TAIL"))
+    private void egg$naturalMotionBlurTail(
+            ObjectAllocator objectAllocator,
+            RenderTickCounter renderTickCounter,
+            boolean renderOutline,
+            Camera camera,
+            Matrix4f positionMatrix,
+            Matrix4f projectionMatrix,
+            Matrix4f frustumMatrix,
+            GpuBufferSlice fogBuffer,
+            Vector4f fogColor,
+            boolean renderSky,
+            CallbackInfo ci
+    ) {
+        NaturalMotionBlurRenderer.INSTANCE.onWorldRenderTail();
+    }
+
     @Inject(
             method = "renderBlockDamage",
-            at = @At("RETURN")
+            at = @At("HEAD"),
+            cancellable = true
     )
     private void onRenderBlockDamage(
             MatrixStack matrices,
@@ -30,6 +77,10 @@ public class WorldRendererMixin {
             WorldRenderState state,
             CallbackInfo ci
     ) {
+        egg.client.module.render.BreakBlock bb = egg.client.module.ModuleManager.getInstance().getModule(egg.client.module.render.BreakBlock.class);
+        if (bb != null && bb.isEnabled() && bb.shouldHideVanilla()) {
+            ci.cancel();
+        }
     }
 
     @Inject(

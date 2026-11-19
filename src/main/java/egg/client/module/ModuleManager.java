@@ -36,6 +36,8 @@ public class ModuleManager {
 
         register(new HitColor());
 
+        register(new egg.client.module.combat.HitSounds());
+
         register(new TapeMouse());
 
         register(new ShiftTAP());
@@ -56,6 +58,8 @@ public class ModuleManager {
         register(new Cooldowns());
         register(new ArmorHUD());
         register(new Keybinds());
+        register(new EventTracker());
+        register(new MotionBlur());
         register(new Animations());
 
         register(new FullBright());
@@ -72,6 +76,7 @@ public class ModuleManager {
         register(new NameTags());
 
         register(new ViewModel());
+        register(new SwingAnimation());
         register(new HMI());
 
         register(new AspectRatio());
@@ -81,7 +86,7 @@ public class ModuleManager {
 
         register(new SmoothEat());
 
-        register(new TotemPopConfetti());
+        register(new TotemPop());
 
         register(new Trajectories());
 
@@ -103,13 +108,7 @@ public class ModuleManager {
 
         register(new egg.client.module.player.InventorySorter());
 
-        register(new AutoRespawn());
-
-        register(new NoChatBackground());
-
         register(new FastEXP());
-
-        register(new AutoEat());
 
         register(new AutoAccept());
 
@@ -118,8 +117,6 @@ public class ModuleManager {
         register(new SoundReducer());
 
         register(new ThirdPerson());
-
-        register(new AutoAuth());
 
         register(new ClientSettings());
 
@@ -131,6 +128,7 @@ public class ModuleManager {
         register(new egg.client.module.render.WorldTweaks());
 
         register(new egg.client.module.misc.ZakoOptimization());
+        register(new egg.client.module.misc.TickSync());
         register(new egg.client.module.misc.DiscordRPC());
         register(new egg.client.module.misc.ServerAssistant());
 

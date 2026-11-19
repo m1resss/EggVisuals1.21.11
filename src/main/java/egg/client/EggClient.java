@@ -9,10 +9,12 @@ import egg.client.module.render.TargetESP;
 import egg.client.module.render.Trail;
 import egg.client.module.render.JumpCircles;
 import egg.client.module.render.Lyrics;
-import egg.client.module.render.TotemPopConfetti;
+import egg.client.module.render.TotemPop;
 import egg.client.module.render.CustomHitbox;
 import egg.client.module.render.Trajectories;
 import egg.client.module.render.WorldTweaks;
+import egg.client.module.render.NameTags;
+import egg.client.module.render.BreakBlock;
 import egg.client.render.shader.FrameBufferPool;
 import egg.client.render.shader.GlStateSnapshot;
 import net.fabricmc.api.ClientModInitializer;
@@ -69,9 +71,9 @@ public class EggClient implements ClientModInitializer {
                 wt.renderWeatherPass(immediate, camPos);
             }
 
-            TotemPopConfetti confetti = ModuleManager.getInstance().getModule(TotemPopConfetti.class);
-            if (confetti != null && confetti.isEnabled()) {
-                confetti.render(immediate, camPos);
+            TotemPop totemPop = ModuleManager.getInstance().getModule(TotemPop.class);
+            if (totemPop != null && totemPop.isEnabled()) {
+                totemPop.render(immediate, camPos);
             }
 
             Trajectories traj = ModuleManager.getInstance().getModule(Trajectories.class);
@@ -129,6 +131,16 @@ public class EggClient implements ClientModInitializer {
             egg.client.module.render.BlockOverlay blockOverlay = ModuleManager.getInstance().getModule(egg.client.module.render.BlockOverlay.class);
             if (blockOverlay != null && blockOverlay.isEnabled()) {
                 blockOverlay.renderWorld3D(matrices, camera, tickDelta, immediate, camPos);
+            }
+
+            NameTags nameTags = ModuleManager.getInstance().getModule(NameTags.class);
+            if (nameTags != null && nameTags.isEnabled()) {
+                nameTags.renderWorld3D(matrices, camera, tickDelta, immediate, camPos);
+            }
+
+            BreakBlock breakBlock = ModuleManager.getInstance().getModule(BreakBlock.class);
+            if (breakBlock != null && breakBlock.isEnabled()) {
+                breakBlock.renderWorld3D(matrices, camera, tickDelta, immediate, camPos);
             }
 
             immediate.draw();

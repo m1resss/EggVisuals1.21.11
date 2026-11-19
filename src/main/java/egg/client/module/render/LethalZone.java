@@ -88,6 +88,7 @@ public class LethalZone extends Module {
     }
 
     private final List<HazardSource> activeHazards = new ArrayList<>();
+    private final Vector2f scratchScreen = new Vector2f();
     private final Map<BlockPos, DangerousBlock> dangerBlocks = new LinkedHashMap<>();
 
     public LethalZone() {
@@ -129,9 +130,9 @@ public class LethalZone extends Module {
         Font font = Fonts.ROCKSTAR_ROUND_BOLD;
 
         for (HazardSource h : activeHazards) {
-            Vector2f screen = ProjectUtil.toScreen(h.pos.x, h.pos.y + h.badgeOffsetY, h.pos.z);
-            if (screen.x == Float.MAX_VALUE || screen.y == Float.MAX_VALUE) continue;
-            if (screen.x < -120.0f || screen.x > screenW + 120.0f || screen.y < -120.0f || screen.y > screenH + 120.0f) {
+            boolean onScreen = ProjectUtil.toScreen(h.pos.x, h.pos.y + h.badgeOffsetY, h.pos.z, scratchScreen);
+            if (!onScreen || scratchScreen.x == Float.MAX_VALUE || scratchScreen.y == Float.MAX_VALUE) continue;
+            if (scratchScreen.x < -120.0f || scratchScreen.x > screenW + 120.0f || scratchScreen.y < -120.0f || scratchScreen.y > screenH + 120.0f) {
                 continue;
             }
 
@@ -168,8 +169,8 @@ public class LethalZone extends Module {
             float wDist = font.a(distStr, fontSize);
             float badgeW = padX + (dotR * 2.0f) + gap + wTitle + gap + wDmg + gap + wDist + padX;
 
-            float bx = screen.x - badgeW / 2.0f;
-            float by = screen.y - badgeH / 2.0f;
+            float bx = scratchScreen.x - badgeW / 2.0f;
+            float by = scratchScreen.y - badgeH / 2.0f;
 
             float cardRadius = 4.5f * scale;
 

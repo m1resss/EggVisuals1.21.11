@@ -6,6 +6,8 @@ import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ColorSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.util.ColorUtil;
+import egg.client.util.EntityUtil;
+import net.minecraft.entity.Entity;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.RenderTickCounter;
@@ -42,7 +44,14 @@ public class Crosshair extends Module {
 
         int actualGap = this.adaptive.get() ? gapVal + Math.round(8.0f * cooldown) : gapVal;
 
-        int color = (mc.crosshairTarget instanceof EntityHitResult) ? ColorUtil.rgb(255, 60, 60) : crosshairColor.get();
+        boolean isEntityAim = false;
+        if (mc.crosshairTarget instanceof EntityHitResult ehr) {
+            Entity ent = ehr.getEntity();
+            if (ent != null && !EntityUtil.isNakedInvisible(ent)) {
+                isEntityAim = true;
+            }
+        }
+        int color = isEntityAim ? ColorUtil.rgb(255, 60, 60) : crosshairColor.get();
         int outlineCol = 0xFF000000;
         boolean hasOutline = this.outline.get();
 

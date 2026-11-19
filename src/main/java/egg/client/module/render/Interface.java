@@ -23,7 +23,6 @@ import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Fonts;
 import egg.client.render.msdf.ScissorUtil;
 import egg.client.render.msdf.pipeline.DrawBatcher;
-import egg.client.ui.halloween.HalloweenGuiRenderer;
 import egg.client.ui.theme.Theme;
 import egg.client.util.AudioMeter;
 import egg.client.util.ColorUtil;
@@ -52,10 +51,6 @@ import java.util.concurrent.Executors;
 public class Interface extends Module {
     private static Interface instance;
 
-    public boolean isHalloween() {
-        return this.halloween.isEnabled();
-    }
-
     public static Interface getInstance() {
         return instance;
     }
@@ -83,9 +78,10 @@ public class Interface extends Module {
     private final BooleanSetting showDynamicIsland = new BooleanSetting("Динамик айленд", true, "Отображать Dynamic Island при воспроизведении музыки");
     private final SliderSetting islandScale = new SliderSetting("Размер острова", 1.0, 0.5, 1.5, 0.05, "Масштаб Dynamic Island");
     private final BooleanSetting islandAdaptBossBar = new BooleanSetting("Подстраивать под босс бар", true, "Плавно сдвигать Dynamic Island при появлении полосы босса");
+    private final BooleanSetting islandAutoExpand = new BooleanSetting("Раскрывать при смене трека", true, "Кратковременно раскрывать Dynamic Island при включении нового трека");
     private final ColorSetting dynamicIslandBgColor = new ColorSetting("Цвет фона айленда", 0xFF0D0E14);
 
-    private final ModeSetting brand = new ModeSetting("Бренд", "Egg", "Бренд в ватермарке", "Egg", "Egg Visuals", "none");
+    private final ModeSetting brand = new ModeSetting("Бренд", "Egg Visuals", "Бренд в ватермарке", "Egg Visuals", "Egg", "none");
     private final BooleanSetting showLogo = new BooleanSetting("Иконка", true, "Показывать логотип");
     private final BooleanSetting showNick = new BooleanSetting("Логин в клиенте", false, "Отображать ник игрока");
     private final BooleanSetting showServer = new BooleanSetting("Сервер", false, "Отображать сервер и иконку");
@@ -98,18 +94,21 @@ public class Interface extends Module {
     private final BooleanSetting sideMode = new BooleanSetting("Боковое отображение", false, "Прижимать ватермарку к левому краю");
 
     private final ColorSetting watermarkBgColor = new ColorSetting("Цвет фона ватермарки", 0xD614151E);
-    private final ColorSetting titleColor1 = new ColorSetting("Цвет надписи 1", 0xFF8B5CF6);
-    private final ColorSetting titleColor2 = new ColorSetting("Цвет надписи 2", 0xFF00CEC9);
+    private final BooleanSetting brandThemeGradient = new BooleanSetting("Цвет бренда из темы", true, "Использовать градиент темы для названия бренда");
+    private final ColorSetting titleColor1 = new ColorSetting("Цвет надписи 1", ColorUtil.interpolate(0xFFFFFFFF, Theme.ACCENT, 0.20f));
+    private final ColorSetting titleColor2 = new ColorSetting("Цвет надписи 2", ColorUtil.interpolate(0xFFFFFFFF, Theme.ACCENT, 0.55f));
     private final SliderSetting rounding = new SliderSetting("Скругление", 7.0, 0.0, 16.0, 0.5, "Скругление углов элементов");
-    private final SliderSetting opacity = new SliderSetting("Непрозрачность", 225.0, 20.0, 255.0, 5.0, "Прозрачность фона интерфейса");
+    private final SliderSetting opacity = new SliderSetting("Непрозрачность", 175.0, 10.0, 255.0, 5.0, "Прозрачность фона интерфейса");
+    private final BooleanSetting hudBlur = new BooleanSetting("Блюр HUD", true, "Размытие фона под элементами интерфейса (Neverlose)");
+    private final SliderSetting hudBlurStrength = new SliderSetting("Сила блюра", 14.0, 4.0, 30.0, 1.0, "Интенсивность размытия под элементами HUD");
     private final BooleanSetting hudThemeGradient = new BooleanSetting("Градиент HUD", false, "Мягкий градиент на фоне элементов");
     private final SliderSetting hudGradientStrength = new SliderSetting("Сила градиента", 60.0, 5.0, 100.0, 5.0, "Интенсивность градиента");
     private final ColorSetting hudGradientColor = new ColorSetting("Цвет градиента HUD", 0xFFA855F7, "Цвет градиента фона элементов HUD");
-    private final BooleanSetting halloween = new BooleanSetting("Хэллоуин", true, "Хеллоуинское оформление элементов интерфейса (мини-тыковка, шляпка и акценты)");
 
     private final SliderSetting posX = new SliderSetting("X", 0.015, 0.0, 1.0, 0.001, "Позиция X");
     private final SliderSetting posY = new SliderSetting("Y", 0.015, 0.0, 1.0, 0.001, "Позиция Y");
     private final SliderSetting hudScale = new SliderSetting("Размер HUD", 1.0, 0.5, 1.5, 0.05, "Масштаб элементов HUD");
+    private final BooleanSetting hideInContainers = new BooleanSetting("Скрывать в инвентаре", false, "Приглушать HUD при открытии сундуков и инвентаря");
 
     private final BooleanSetting combatMode = new BooleanSetting("ПВП режим", false, "Изменять элементы интерфейса во время боя");
     private final ModeSetting combatAction = new ModeSetting("Режим в бою", "Прозрачность", "Что делать с элементами в бою", "Прозрачность", "Размер", "Оба");
@@ -119,12 +118,16 @@ public class Interface extends Module {
     private final SliderSetting combatTimeout = new SliderSetting("Время боя", 5.0, 1.0, 15.0, 0.5, "Длительность режима боя после удара (сек)");
 
     private final Animation combatAnim = new Animation(0.0f, 320L, Easing.EASE_OUT_CUBIC);
+    private final Animation containerDimAnim = new Animation(1.0f, 220L, Easing.EASE_OUT_CUBIC);
     private long lastCombatTime = 0L;
 
     private float lastIslandX = 0.0f;
     private float lastIslandY = 0.0f;
     private float lastIslandW = 185.0f;
     private float lastIslandH = 30.0f;
+    private boolean islandActive = false;
+    private float islandBottom = 0.0f;
+    private long trackChangeExpandUntil = 0L;
     private final Animation islandYAnim = new Animation(8.0f, 360L, Easing.EASE_OUT_CUBIC);
 
     private float animatedFps = 60.0f;
@@ -136,6 +139,8 @@ public class Interface extends Module {
 
     private final RollingNumber fpsRolling = new RollingNumber();
     private final RollingNumber tpsRolling = new RollingNumber();
+    private final RollingNumber pingRolling = new RollingNumber();
+    private final RollingNumber speedRolling = new RollingNumber();
 
     private long lastMediaPollTime = 0L;
     private final Artist artistStruct = new Artist();
@@ -206,24 +211,42 @@ public class Interface extends Module {
         contextMenu.addToggle("Время", () -> showTime.isEnabled(), () -> showTime.toggle());
         contextMenu.addToggle("Координаты", () -> showCoords.isEnabled(), () -> showCoords.toggle());
         contextMenu.addToggle("Скорость", () -> showSpeed.isEnabled(), () -> showSpeed.toggle());
+        contextMenu.addToggle("В инвентаре", () -> hideInContainers.isEnabled(), () -> hideInContainers.toggle());
         contextMenu.addToggle("Боковой режим", () -> sideMode.isEnabled(), () -> sideMode.toggle());
         contextMenu.addToggle("Градиент HUD", () -> hudThemeGradient.isEnabled(), () -> hudThemeGradient.toggle());
 
         hudGradientStrength.setVisible(() -> hudThemeGradient.isEnabled());
         hudGradientColor.setVisible(() -> hudThemeGradient.isEnabled());
 
+        titleColor1.setVisible(() -> !brandThemeGradient.isEnabled() && !"none".equalsIgnoreCase(brand.get()));
+        titleColor2.setVisible(() -> !brandThemeGradient.isEnabled() && !"none".equalsIgnoreCase(brand.get()));
+        brandThemeGradient.setVisible(() -> !"none".equalsIgnoreCase(brand.get()));
+        hudBlurStrength.setVisible(hudBlur::isEnabled);
+
         islandScale.setVisible(() -> showDynamicIsland.isEnabled());
         islandAdaptBossBar.setVisible(() -> showDynamicIsland.isEnabled());
+        islandAutoExpand.setVisible(() -> showDynamicIsland.isEnabled());
 
         addSettings(
-                showDynamicIsland, islandScale, islandAdaptBossBar,
-                brand, showLogo, showNick, showServer, showFps, showTps, showPing, showTime, showCoords, showSpeed, sideMode,
-                watermarkBgColor, titleColor1, titleColor2, rounding, opacity, hudThemeGradient, hudGradientStrength, hudGradientColor,
-                halloween,
+                showDynamicIsland, islandScale, islandAdaptBossBar, islandAutoExpand,
+                brand, showLogo, showNick, showServer, showFps, showTps, showPing, showTime, showCoords, showSpeed, hideInContainers, sideMode,
+                watermarkBgColor, brandThemeGradient, titleColor1, titleColor2, rounding, opacity, hudBlur, hudBlurStrength, hudThemeGradient, hudGradientStrength, hudGradientColor,
                 hudScale,
                 combatMode, combatAction, combatElements, combatScale, combatOpacity, combatTimeout
         );
         setEnabled(true);
+    }
+
+    public float getContainerAlphaFactor() {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc == null) return 1.0f;
+        boolean inContainer = mc.currentScreen instanceof net.minecraft.client.gui.screen.ingame.HandledScreen;
+        if (hideInContainers.isEnabled() && inContainer) {
+            containerDimAnim.setTarget(0.0f);
+        } else {
+            containerDimAnim.setTarget(1.0f);
+        }
+        return containerDimAnim.get();
     }
 
     private float getTargetIslandY(int screenH) {
@@ -273,14 +296,15 @@ public class Interface extends Module {
         this.islandYAnim.setTarget(targetIslandY);
         float currentIslandY = this.islandYAnim.get();
 
-        boolean islandActive = false;
-        float islandBottom = currentIslandY;
+        boolean curIslandActive = false;
+        float curIslandBottom = currentIslandY;
         if (showDynamicIsland.isEnabled()) {
             boolean inChat = (mc.currentScreen instanceof net.minecraft.client.gui.screen.ChatScreen);
-            if (!inChat || !hasActiveMedia || !isMediaPlaying) {
+            boolean autoExpanded = islandAutoExpand.isEnabled() && (System.currentTimeMillis() < trackChangeExpandUntil);
+            if ((!inChat && !autoExpanded) || !hasActiveMedia || !isMediaPlaying) {
                 islandExpanded = false;
             }
-            float targetExpand = (islandExpanded && hasActiveMedia && isMediaPlaying) ? 1.0f : 0.0f;
+            float targetExpand = ((islandExpanded || autoExpanded) && hasActiveMedia && isMediaPlaying) ? 1.0f : 0.0f;
             if (this.islandExpandAnimation.getTarget() != targetExpand) {
                 if (targetExpand > 0.5f) {
                     this.islandExpandAnimation.setTarget(1.0f, 380L, Easing.EASE_OUT_BACK);
@@ -305,15 +329,17 @@ public class Interface extends Module {
 
             boolean playing = hasActiveMedia && isMediaPlaying;
             if (playing) {
-                islandActive = true;
+                curIslandActive = true;
                 renderDynamicIsland(context, screenW, currentIslandY);
                 float curH = MathHelper.lerp(this.islandExpandAnim, 30.0f, 70.0f);
                 float baseIslandS = islandScale.getValueFloat();
                 float combatS = getCombatScaleFactor("island");
                 float islandS = baseIslandS * combatS;
-                islandBottom = currentIslandY + curH * islandS + 6.0f;
+                curIslandBottom = currentIslandY + curH * islandS + 6.0f;
             }
         }
+        this.islandActive = curIslandActive;
+        this.islandBottom = curIslandActive ? curIslandBottom : 0.0f;
 
         this.animatedFps += (mc.getCurrentFps() - this.animatedFps) * 0.15f;
         fpsRolling.update(mc.getCurrentFps());
@@ -346,7 +372,7 @@ public class Interface extends Module {
         boolean hasBrand = !"none".equalsIgnoreCase(brand.get());
         String brandStr = brand.get();
         if (brandStr.equalsIgnoreCase("egg client") || brandStr.equalsIgnoreCase("Egg")) {
-            brandStr = "Egg";
+            brandStr = "Egg Visuals";
         }
 
         List<WatermarkItem> items = collectItems(mc);
@@ -357,7 +383,9 @@ public class Interface extends Module {
 
         float radius = rounding.getValueFloat();
         float baseOpacityVal = opacity.getValueFloat() / 255.0f;
-        float alphaFactor = getCombatAlphaFactor("watermark");
+        float containerFactor = getContainerAlphaFactor();
+        float alphaFactor = getCombatAlphaFactor("watermark") * containerFactor;
+        if (alphaFactor <= 0.01f) return;
         float opacityVal = baseOpacityVal * alphaFactor;
 
         float pillHeight = 28.0f;
@@ -380,14 +408,16 @@ public class Interface extends Module {
             baseX = (float) Math.round((screenW - totalW) / 2.0f);
         }
 
-        float curIslandW = MathHelper.lerp(this.islandExpandAnim, 185.0f, 242.0f);
-        float islandX = (screenW - curIslandW) / 2.0f;
-        boolean horizontalOverlap = (baseX < islandX + curIslandW + 4.0f) && (baseX + totalW > islandX - 4.0f);
+        float islandX = this.lastIslandX;
+        float islandW = this.lastIslandW;
+        boolean horizontalOverlap = (baseX < islandX + islandW + 6.0f) && (baseX + totalW * scale > islandX - 6.0f);
 
         float userTargetY = Math.clamp(posY.getValueFloat() * (screenH - pillHeight), 4.0f, screenH - pillHeight - 4.0f);
-        float targetBaseY = (islandActive && horizontalOverlap && userTargetY < islandBottom) ? islandBottom : userTargetY;
+        float targetBaseY = (this.islandActive && horizontalOverlap && userTargetY < this.islandBottom) ? this.islandBottom : userTargetY;
 
-        if (Math.abs(this.animatedWatermarkY - targetBaseY) > 0.1f) {
+        if (this.dragging) {
+            this.animatedWatermarkY = userTargetY;
+        } else if (Math.abs(this.animatedWatermarkY - targetBaseY) > 0.1f) {
             this.animatedWatermarkY += (targetBaseY - this.animatedWatermarkY) * 0.25f;
         } else {
             this.animatedWatermarkY = targetBaseY;
@@ -419,9 +449,7 @@ public class Interface extends Module {
         int borderColor = ColorUtil.rgba(255, 255, 255, (int) (22 * alphaFactor));
 
         Draw2DProcessor.INSTANCE.drawGlow(mat, baseX, baseY, totalW, pillHeight, radius, ColorUtil.rgba(0, 0, 0, (int) (opacityVal * 65.0f)), 6.0f);
-        if (halloween.isEnabled()) {
-            Draw2DProcessor.INSTANCE.drawGlow(mat, baseX, baseY, totalW, pillHeight, radius, ColorUtil.rgba(255, 117, 24, (int) (opacityVal * 42.0f)), 8.0f);
-        }
+        Draw2DProcessor.INSTANCE.drawPanelBlur(mat, baseX, baseY, totalW, pillHeight, radius, alphaFactor);
         Draw2DProcessor.INSTANCE.drawRect(mat, baseX, baseY, totalW, pillHeight, radius, finalBg);
         Draw2DProcessor.INSTANCE.drawOutline(mat, baseX, baseY, totalW, pillHeight, radius, 0.8f, borderColor);
 
@@ -432,7 +460,7 @@ public class Interface extends Module {
 
         DrawBatcher.flushPending();
         if (alphaFactor > 0.15f) {
-            Render2D.drawDiagonalSheen(context, baseX, baseY, totalW, pillHeight, radius, 0L);
+            Render2D.drawDiagonalSheen(context, baseX, baseY, totalW, pillHeight, radius, 0L, alphaFactor);
         }
 
         float cursor = baseX;
@@ -450,9 +478,6 @@ public class Interface extends Module {
             Draw2DProcessor.INSTANCE.drawRect(mat, badgeX, badgeY, badgeSize, badgeSize, badgeR, ColorUtil.rgba(10, 11, 15, (int) (250 * alphaFactor)));
             Draw2DProcessor.INSTANCE.a(mat, EGG_LOGO, badgeX, badgeY, badgeSize, badgeSize, badgeR, tintWithAlpha);
             Draw2DProcessor.INSTANCE.drawOutline(mat, badgeX, badgeY, badgeSize, badgeSize, badgeR, 0.8f, ColorUtil.rgba(255, 255, 255, (int) (28 * alphaFactor)));
-            if (halloween.isEnabled()) {
-                HalloweenGuiRenderer.renderWitchHatDirect(context, badgeX + badgeSize * 0.5f - 0.5f, badgeY + 1.2f, 13.0f, alphaFactor);
-            }
 
             if (hasBrand || !items.isEmpty()) {
                 cursor = badgeX + badgeSize + 12.0f;
@@ -609,11 +634,11 @@ public class Interface extends Module {
 
         this.animatedVolume += (this.currentMediaVolume - this.animatedVolume) * 0.15f;
 
-        int baseIslandBg = ColorUtil.withAlphaFloat(0xFF101014, alphaFactor);
+        float op = getOpacityVal();
+        int islandBg = dynamicIslandBgColor.get();
+        int baseIslandBg = ColorUtil.rgba(ColorUtil.red(islandBg), ColorUtil.green(islandBg), ColorUtil.blue(islandBg), (int) (op * 255.0f * alphaFactor));
         Draw2DProcessor.INSTANCE.drawGlow(mat, x, y, curW, curH, radius, ColorUtil.withAlphaFloat(ColorUtil.rgba(0, 0, 0, 150), alphaFactor), 10.0f);
-        if (halloween.isEnabled()) {
-            Draw2DProcessor.INSTANCE.drawGlow(mat, x, y, curW, curH, radius, ColorUtil.rgba(255, 117, 24, (int) (alphaFactor * 35.0f)), 8.0f);
-        }
+        Draw2DProcessor.INSTANCE.drawPanelBlur(mat, x, y, curW, curH, radius, alphaFactor);
         Draw2DProcessor.INSTANCE.drawRect(mat, x, y, curW, curH, radius, baseIslandBg);
 
         int accent = (dominantAccentColor & 0xFFFFFF) != 0 ? dominantAccentColor : Theme.getAccent();
@@ -627,7 +652,7 @@ public class Interface extends Module {
         }
         DrawBatcher.flushPending();
         if (this.islandExpandAnim > 0.05f && alphaFactor > 0.15f) {
-            Render2D.drawDiagonalSheen(context, x, y, curW, curH, radius, 2500L);
+            Render2D.drawDiagonalSheen(context, x, y, curW, curH, radius, 2500L, alphaFactor);
         }
 
         float collapsedArtSize = 22.0f;
@@ -1019,6 +1044,9 @@ public class Interface extends Module {
                         String trackKey = currentMediaTitle + "|" + currentMediaArtist;
                         boolean trackChanged = !trackKey.equals(lastTrackKey);
                         if (trackChanged) {
+                            if (!lastTrackKey.isEmpty() && isMediaPlaying) {
+                                trackChangeExpandUntil = System.currentTimeMillis() + 3800L;
+                            }
                             lastTrackKey = trackKey;
                         }
 
@@ -1246,15 +1274,19 @@ public class Interface extends Module {
     }
 
     private void drawBrandGradient(Matrix3x2f mat, String text, float x, float y, float size, float alphaFactor) {
-        int col1 = titleColor1.get();
-        int col2 = titleColor2.get();
+        int col1 = brandThemeGradient.isEnabled() ? ColorUtil.interpolate(0xFFFFFFFF, Theme.getGradient1(), 0.35f) : titleColor1.get();
+        int col2 = brandThemeGradient.isEnabled() ? ColorUtil.interpolate(0xFFFFFFFF, Theme.getGradient2(), 0.55f) : titleColor2.get();
         float time = (float) (System.currentTimeMillis() % 4000L) / 4000.0f;
         float curX = x;
         for (int i = 0; i < text.length(); i++) {
             String ch = String.valueOf(text.charAt(i));
-            float progress = (float) i / Math.max(1, text.length() - 1);
+            if (" ".equals(ch)) {
+                curX += Fonts.e.a(" ", size);
+                continue;
+            }
+            float progress = text.length() > 1 ? (float) i / (float) (text.length() - 1) : 0.0f;
             float wave = 0.5f + 0.5f * (float) Math.sin((progress * 2.2f) - (time * Math.PI * 2.0));
-            int color = ColorUtil.lerp(col1, col2, wave);
+            int color = ColorUtil.interpolate(col1, col2, wave);
             int a = (int) (255 * alphaFactor);
             int rgb = color & 0x00FFFFFF;
             Fonts.e.a(mat, ch, curX, y, size, (a << 24) | rgb);
@@ -1317,7 +1349,8 @@ public class Interface extends Module {
 
         if (showPing.isEnabled()) {
             int ping = Math.round(animatedPing);
-            list.add(new WatermarkItem(ping + "ms", "PING", null, "\uf1eb", null));
+            pingRolling.update(ping);
+            list.add(new WatermarkItem(String.valueOf(ping), "PING", null, "\uf1eb", pingRolling));
         }
 
         if (showTime.isEnabled()) {
@@ -1333,7 +1366,8 @@ public class Interface extends Module {
         }
 
         if (showSpeed.isEnabled()) {
-            list.add(new WatermarkItem(String.format(Locale.ROOT, "%.1f", animatedSpeedBps), "BPS", null, "\uf70c", null));
+            speedRolling.update(animatedSpeedBps, 1);
+            list.add(new WatermarkItem(String.format(Locale.ROOT, "%.1f", animatedSpeedBps), "BPS", null, "\uf70c", speedRolling));
         }
 
         return list;
@@ -1519,6 +1553,14 @@ public class Interface extends Module {
         return opacity.getValueFloat() / 255.0f;
     }
 
+    public static boolean isHudBlurEnabled() {
+        return instance != null && instance.isEnabled() && instance.hudBlur.isEnabled();
+    }
+
+    public static float getHudBlurStrength() {
+        return instance != null ? instance.hudBlurStrength.getValueFloat() : 14.0f;
+    }
+
     public boolean onMouseScrolled(double mouseX, double mouseY, double amount) {
         if (!isEnabled()) return false;
 
@@ -1595,6 +1637,7 @@ public class Interface extends Module {
                 if (localMX >= lastCloseX - 8.0f && localMX <= x + curW + 4.0f
                         && localMY >= y && localMY <= y + 24.0f) {
                     islandExpanded = false;
+                    trackChangeExpandUntil = 0L;
                     return true;
                 }
 
@@ -1693,56 +1736,65 @@ public class Interface extends Module {
         return false;
     }
 
-    public static class RollingNumber {
-        private int currentVal = -1;
-        private int prevVal = -1;
-        private long changeTime = 0L;
-        private static final long DURATION_MS = 180L;
-
-        public void update(int newVal) {
-            if (currentVal == -1) {
-                currentVal = newVal;
-                prevVal = newVal;
-                return;
-            }
-            if (newVal != currentVal) {
-                prevVal = currentVal;
-                currentVal = newVal;
-                changeTime = System.currentTimeMillis();
-            }
+    public static class RollingNumber extends egg.client.util.RollingNumber {
+        public RollingNumber() {
+            super();
         }
 
-        public void render(Matrix3x2f mat, float x, float y, float size, int color, float alphaFactor) {
-            long elapsed = System.currentTimeMillis() - changeTime;
-            int baseA = (int) (((color >> 24) & 0xFF) * alphaFactor);
-            int rgb = color & 0x00FFFFFF;
-            if (elapsed >= DURATION_MS || prevVal == currentVal) {
-                Fonts.d.a(mat, String.valueOf(currentVal), x, y, size, (baseA << 24) | rgb);
-                return;
-            }
-
-            float t = (float) elapsed / DURATION_MS;
-            float ease = 1.0f - (float) Math.pow(1.0f - t, 3);
-
-            String oldText = String.valueOf(prevVal);
-            String newText = String.valueOf(currentVal);
-
-            float oldY = y - ease * 5.0f;
-            int oldA = Math.round(baseA * (1.0f - ease));
-            if (oldA > 5) {
-                Fonts.d.a(mat, oldText, x, oldY, size, (oldA << 24) | rgb);
-            }
-
-            float newY = y + (1.0f - ease) * 5.0f;
-            int newA = Math.round(baseA * ease);
-            if (newA > 5) {
-                Fonts.d.a(mat, newText, x, newY, size, (newA << 24) | rgb);
-            }
+        public RollingNumber(long durationMs) {
+            super(durationMs);
         }
     }
 
     public boolean isTestMusic() {
         return false;
+    }
+
+    public boolean isIslandActive() {
+        return isEnabled() && showDynamicIsland.isEnabled() && islandActive;
+    }
+
+    public float getLastIslandX() {
+        return lastIslandX;
+    }
+
+    public float getLastIslandY() {
+        return lastIslandY;
+    }
+
+    public float getLastIslandW() {
+        return lastIslandW;
+    }
+
+    public float getLastIslandH() {
+        return lastIslandH;
+    }
+
+    public float getIslandBottom() {
+        return islandBottom;
+    }
+
+    public float getAdjustedY(float elemX, float elemY, float elemW, float elemH) {
+        float resY = elemY;
+        if (isIslandActive()) {
+            float ix = this.lastIslandX;
+            float iw = this.lastIslandW;
+            float ib = this.islandBottom;
+            boolean islandOverlap = (elemX < ix + iw + 6.0f) && (elemX + elemW > ix - 6.0f);
+            if (islandOverlap && resY < ib) {
+                resY = ib;
+            }
+        }
+        if (isEnabled() && this.lastW > 10.0f && this.lastH > 10.0f) {
+            float wx = this.lastX;
+            float ww = this.lastW;
+            float wb = this.lastY + this.lastH + 6.0f;
+            boolean wmOverlap = (elemX < wx + ww + 6.0f) && (elemX + elemW > wx - 6.0f);
+            if (wmOverlap && resY < wb && elemY < wb) {
+                resY = Math.max(resY, wb);
+            }
+        }
+        return resY;
     }
 
     private static class WatermarkItem {

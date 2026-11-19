@@ -225,11 +225,11 @@ public class ServerAssistant extends Module {
     }
 
     public static String formatCompactPrice(long price) {
-        if (price < 0) return "";
+        if (price <= 0) return "";
         if (price < 1000) return String.valueOf(price);
         if (price < 1_000_000) {
             double val = price / 1000.0;
-            if (price % 1000 == 0 || val >= 100) {
+            if (price % 1000 == 0 || val >= 10) {
                 return String.format(Locale.US, "%.0fк", val);
             }
             String s = String.format(Locale.US, "%.1fк", val);
@@ -237,7 +237,7 @@ public class ServerAssistant extends Module {
         }
         if (price < 1_000_000_000L) {
             double val = price / 1_000_000.0;
-            if (price % 1_000_000 == 0 || val >= 100) {
+            if (price % 1_000_000 == 0 || val >= 10) {
                 return String.format(Locale.US, "%.0fкк", val);
             }
             String s = String.format(Locale.US, "%.1fкк", val);
@@ -277,11 +277,17 @@ public class ServerAssistant extends Module {
 
         if (auctionAssist.get() && cheapest != null) {
             float pulse = (float) ((Math.sin((System.currentTimeMillis() % 100000) / 100.0) + 1.0) * 0.5);
-            int glowAlpha = (int) (70 + 175 * pulse);
-            int greenColor = ColorUtil.rgba(74, 222, 128, glowAlpha);
+            int glowAlpha = (int) (120 + 135 * pulse);
+            int borderCol = ColorUtil.rgba(74, 222, 128, glowAlpha);
+            int bgTint = ColorUtil.rgba(74, 222, 128, (int) (25 + 30 * pulse));
             float slotX = guiX + cheapest.x;
             float slotY = guiY + cheapest.y;
-            Render2D.drawRoundedOutline(context, slotX - 0.5f, slotY - 0.5f, 17.0f, 17.0f, 2.0f, 1.2f, greenColor);
+
+            Render2D.drawRect(context, slotX, slotY, 16.0f, 16.0f, bgTint);
+            Render2D.drawRect(context, slotX - 1.0f, slotY - 1.0f, 18.0f, 1.0f, borderCol);
+            Render2D.drawRect(context, slotX - 1.0f, slotY + 16.0f, 18.0f, 1.0f, borderCol);
+            Render2D.drawRect(context, slotX - 1.0f, slotY, 1.0f, 16.0f, borderCol);
+            Render2D.drawRect(context, slotX + 16.0f, slotY, 1.0f, 16.0f, borderCol);
         }
 
         if (slotPrices.get()) {
@@ -293,20 +299,37 @@ public class ServerAssistant extends Module {
                 String text = formatCompactPrice(p);
                 if (text.isEmpty()) continue;
 
+                boolean isCheapest = (slot == cheapest);
+                float fontW = ClientFont.getWidth(text, ClientFont.SF_BOLD);
+                float scale = Math.min(0.62f, 13.5f / Math.max(1.0f, fontW));
+                float scaledW = fontW * scale;
+                float bw = Math.max(10.0f, Math.min(16.5f, scaledW + 3.0f));
+                float bh = 8.0f;
                 float slotX = guiX + slot.x;
                 float slotY = guiY + slot.y;
-                float textW = ClientFont.getWidth(text, ClientFont.SF_REGULAR);
-                float bw = textW + 4.0f;
-                float bh = 9.0f;
                 float bx = slotX + 8.0f - bw / 2.0f;
-                float by = slotY - 1.0f;
+                float by = slotY + 0.5f;
 
-                context.getMatrices().pushMatrix();
-                context.getMatrices().translate(0.0f, 0.0f);
-                Render2D.drawRoundedRect(context, bx, by, bw, bh, 2.0f, 0xD012131A);
-                Render2D.drawRoundedOutline(context, bx, by, bw, bh, 2.0f, 0.6f, ColorUtil.rgba(255, 255, 255, 35));
-                ClientFont.draw(context, text, bx + 2.0f, by + 1.0f, ClientFont.SF_REGULAR, 0xFF4ADE80);
-                context.getMatrices().popMatrix();
+                int ix = Math.round(bx);
+                int iy = Math.round(by);
+                int iw = Math.round(bw);
+                int ih = Math.round(bh);
+
+                int bgCol = isCheapest ? 0xF00A2518 : 0xEE0B0C12;
+                int borderCol = isCheapest ? ColorUtil.rgba(74, 222, 128, 230) : ColorUtil.rgba(255, 255, 255, 45);
+                int textColor = isCheapest ? 0xFF4ADE80 : 0xFFFFFFFF;
+
+                Render2D.drawRect(context, ix + 1, iy, iw - 2, 1, borderCol);
+                Render2D.drawRect(context, ix + 1, iy + ih - 1, iw - 2, 1, borderCol);
+                Render2D.drawRect(context, ix, iy + 1, 1, ih - 2, borderCol);
+                Render2D.drawRect(context, ix + iw - 1, iy + 1, 1, ih - 2, borderCol);
+                Render2D.drawRect(context, ix + 1, iy + 1, iw - 2, ih - 2, bgCol);
+
+                float cx = ix + iw / 2.0f;
+                float cy = iy + ih / 2.0f;
+                float tx = cx - scaledW / 2.0f;
+                float ty = cy - (ClientFont.FONT_HEIGHT * scale) / 2.0f;
+                ClientFont.drawScaled(context, text, tx, ty, scale, ClientFont.SF_BOLD, textColor);
             }
         }
     }

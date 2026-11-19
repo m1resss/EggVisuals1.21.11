@@ -7,6 +7,7 @@ import egg.client.module.setting.ColorSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.ui.theme.Theme;
+import egg.client.util.EntityUtil;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.RenderLayers;
 import net.minecraft.client.render.VertexConsumer;
@@ -78,6 +79,7 @@ public class CustomHitbox extends Module {
 
         for (Entity entity : mc.world.getEntities()) {
             if (!entity.isAlive() || entity.isSpectator()) continue;
+            if (EntityUtil.isInvisible(entity)) continue;
             if (entity.squaredDistanceTo(mc.player) > 64.0 * 64.0) continue;
 
             if (entity instanceof PlayerEntity player) {
@@ -102,7 +104,7 @@ public class CustomHitbox extends Module {
     }
 
     private boolean isAimingAt(MinecraftClient mc, Entity entity, float tickDelta) {
-        if (mc.player == null || entity == null) return false;
+        if (mc.player == null || entity == null || EntityUtil.isInvisible(entity)) return false;
         if (mc.targetedEntity == entity) return true;
 
         Vec3d eyePos = mc.player.getEyePos();

@@ -118,6 +118,11 @@ public class MouseMixin {
                 if (keybinds != null && keybinds.isEnabled()) {
                     keybinds.onChatMouseReleased(mouseX, mouseY, button);
                 }
+
+                egg.client.module.render.EventTracker tracker = ModuleManager.getInstance().getModule(egg.client.module.render.EventTracker.class);
+                if (tracker != null && tracker.isEnabled()) {
+                    tracker.onChatMouseReleased(mouseX, mouseY, button);
+                }
             }
         }
 
@@ -125,6 +130,21 @@ public class MouseMixin {
         if (vm != null && vm.isEnabled()) {
             if (vm.onClick(button, action)) {
                 return;
+            }
+        }
+
+        if (action == GLFW.GLFW_PRESS && client != null) {
+            int openGuiKey = egg.client.module.misc.ClientSettings.getOpenKey();
+            if (openGuiKey >= 1000 && (1000 + button) == openGuiKey) {
+                if (client.currentScreen == null) {
+                    client.setScreen(egg.client.ui.ClickGuiScreen.getInstance());
+                    ci.cancel();
+                    return;
+                } else if (client.currentScreen instanceof egg.client.ui.ClickGuiScreen gui) {
+                    gui.closeWithAnimation();
+                    ci.cancel();
+                    return;
+                }
             }
         }
 

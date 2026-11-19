@@ -10,6 +10,7 @@
     "InGameHudMixin",
     "GameRendererMixin",
     "HeldItemRendererMixin",
+    "HeldItemRendererAccessor",
     "ChatHudMixin",
     "AbstractSoundInstanceMixin",
     "ItemEntityRendererMixin",
@@ -17,6 +18,7 @@
     "MinecraftClientAccessor",
     "MinecraftClientInvoker",
     "LivingEntityAccessor",
+    "LivingEntityMixin",
     "GameRendererInvoker",
     "ClientPlayerInteractionManagerAccessor",
     "ClientPlayNetworkHandlerMixin",
@@ -36,7 +38,6 @@
     "WeatherRenderingMixin",
     "WorldRendererMixin",
     "BlockColorsMixin",
-    "ChunkRendererRegionMixin",
     "PlayerEntityRendererMixin",
     "PlayerEntityModelMixin",
     "FogRendererMixin",
@@ -55,7 +56,10 @@
     "CloudRendererMixin",
     "SkyRenderingAmbienceMixin",
     "GlyphAtlasTextureMixin",
-    "BossBarHudAccessor"
+    "BossBarHudAccessor",
+    "CheckedRandomMixin",
+    "PostEffectProcessorAccessor",
+    "PostEffectPassAccessor"
   ],
   "client": [],
   "injectors": {

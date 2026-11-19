@@ -16,7 +16,7 @@ public class TapeMouse extends Module {
     private long lastClickTime = 0L;
 
     public TapeMouse() {
-        super("TapeMouse", "Автоматически нажимает кнопку мыши с заданным интервалом", Category.COMBAT);
+        super("TapeMouse", "Автоматически нажимает кнопку мыши с заданным интервалом", Category.MISC);
         addSettings(buttonMode, delay, pauseOnEat);
     }
 

@@ -15,6 +15,7 @@ import egg.client.render.shader.Pipelines;
 import egg.client.ui.theme.Theme;
 import egg.client.util.AudioMeter;
 import egg.client.util.ColorUtil;
+import egg.client.util.EntityUtil;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.util.BufferAllocator;
 import net.minecraft.client.render.BufferBuilder;
@@ -50,6 +51,19 @@ public class Trail extends Module {
     private float trackColorB = -1.0f;
     private long lastFrameNanos = 0L;
     private float simTimeSec = 0.0f;
+
+    private final BufferAllocator allocBloom = createReusableAllocator(131072);
+    private final BufferAllocator allocHalo = createReusableAllocator(131072);
+    private final BufferAllocator allocCore = createReusableAllocator(131072);
+
+    private static BufferAllocator createReusableAllocator(int size) {
+        return new BufferAllocator(size) {
+            @Override
+            public void close() {
+                this.reset();
+            }
+        };
+    }
 
     private static final AnchorDef[] ANCHORS = new AnchorDef[] {
             new AnchorDef(-0.16f, 0.13f, 0.94f, true, 0.0f),
@@ -93,6 +107,7 @@ public class Trail extends Module {
             if (client.player != null) currentUuids.add(client.player.getUuid());
         } else {
             for (PlayerEntity player : client.world.getPlayers()) {
+                if (player != client.player && EntityUtil.isInvisible(player)) continue;
                 currentUuids.add(player.getUuid());
             }
         }
@@ -172,6 +187,7 @@ public class Trail extends Module {
 
         for (PlayerEntity player : playersToRender) {
             if (!player.isAlive()) continue;
+            if (player != mc.player && EntityUtil.isInvisible(player)) continue;
             boolean isLocal = (player == mc.player);
             if (isLocal && isFirstPerson && !this.firstPerson.isEnabled()) {
                 continue;
@@ -207,7 +223,7 @@ public class Trail extends Module {
         float effectiveGlow = glowIntensity * audioGlowScale;
 
         if (effectiveGlow > 0.2f) {
-            try (BufferAllocator allocBloom = new BufferAllocator(131072)) {
+            try (BufferAllocator allocBloom = this.allocBloom) {
                 BufferBuilder bufBloom = new BufferBuilder(allocBloom, DrawMode.LINES, VertexFormats.POSITION_COLOR_NORMAL_LINE_WIDTH);
 
                 for (int i = 0; i < allStrands.size(); i++) {
@@ -231,8 +247,8 @@ public class Trail extends Module {
         }
 
         try (
-                BufferAllocator allocHalo = new BufferAllocator(131072);
-                BufferAllocator allocCore = new BufferAllocator(131072)
+                BufferAllocator allocHalo = this.allocHalo;
+                BufferAllocator allocCore = this.allocCore
         ) {
             BufferBuilder bufHalo = new BufferBuilder(allocHalo, DrawMode.LINES, VertexFormats.POSITION_COLOR_NORMAL_LINE_WIDTH);
             BufferBuilder bufCore = new BufferBuilder(allocCore, DrawMode.LINES, VertexFormats.POSITION_COLOR_NORMAL_LINE_WIDTH);

@@ -59,10 +59,15 @@ public final class BlurPipeline {
     private GpuTextureView[] views;
     private GpuBuffer[] uniformBuffers;
     private GpuBuffer dummyVertexBuffer;
+    private ByteBuffer uniformDataBuffer;
     private int width;
     private int height;
 
     public void capture() {
+        capture(14.0f);
+    }
+
+    public void capture(float strength) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null || client.getFramebuffer() == null) return;
         int fbWidth = client.getWindow().getFramebufferWidth();
@@ -73,13 +78,15 @@ public final class BlurPipeline {
         GpuTextureView screenView = client.getFramebuffer().getColorAttachmentView();
         CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
 
-        runPass(encoder, DOWN_PIPELINE, screenView, views[0], 0, 0);
+        float maxOffset = Math.max(1.0f, strength);
+        int slot = 0;
+        runPass(encoder, DOWN_PIPELINE, screenView, views[0], slot++, 0.0f);
         for (int i = 0; i < MIP_COUNT - 1; i++) {
-            runPass(encoder, DOWN_PIPELINE, views[i], views[i + 1], i + 1, MAX_PASS_OFFSET * (i + 1) / 3.0f);
+            runPass(encoder, DOWN_PIPELINE, views[i], views[i + 1], slot++, maxOffset * (i + 1) / 3.0f);
         }
 
         for (int i = MIP_COUNT - 1; i > 0; i--) {
-            runPass(encoder, UP_PIPELINE, views[i], views[i - 1], i, MAX_PASS_OFFSET * i / 3.0f);
+            runPass(encoder, UP_PIPELINE, views[i], views[i - 1], slot++, maxOffset * i / 3.0f);
         }
     }
 
@@ -89,11 +96,13 @@ public final class BlurPipeline {
 
     private void runPass(CommandEncoder encoder, RenderPipeline pipeline, GpuTextureView source,
                          GpuTextureView destination, int slot, float offset) {
-        ByteBuffer data = MemoryUtil.memAlloc(UNIFORM_SIZE);
-        data.putFloat(width).putFloat(height).putFloat(offset).putFloat(0.0f);
-        data.flip();
-        encoder.writeToBuffer(uniformBuffer(slot).slice(0, UNIFORM_SIZE), data);
-        MemoryUtil.memFree(data);
+        if (uniformDataBuffer == null) {
+            uniformDataBuffer = MemoryUtil.memAlloc(UNIFORM_SIZE);
+        }
+        uniformDataBuffer.clear();
+        uniformDataBuffer.putFloat(width).putFloat(height).putFloat(offset).putFloat(0.0f);
+        uniformDataBuffer.flip();
+        encoder.writeToBuffer(uniformBuffer(slot).slice(0, UNIFORM_SIZE), uniformDataBuffer);
 
         try (RenderPass pass = encoder.createRenderPass(
                 () -> "delta:kawase_pass",
@@ -169,6 +178,10 @@ public final class BlurPipeline {
 
     public void close() {
         closeTextures();
+        if (uniformDataBuffer != null) {
+            MemoryUtil.memFree(uniformDataBuffer);
+            uniformDataBuffer = null;
+        }
         if (uniformBuffers != null) {
             for (GpuBuffer buffer : uniformBuffers) {
                 if (buffer != null) buffer.close();

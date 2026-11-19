@@ -8,6 +8,7 @@ import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
+import egg.client.util.EntityUtil;
 import egg.client.util.ProjectUtil;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.RenderPipelines;
@@ -42,6 +43,7 @@ public class Hitmarker extends Module {
     private double hitX = 0.0;
     private double hitY = 0.0;
     private double hitZ = 0.0;
+    private final Vector2f scratchPos = new Vector2f();
 
     public Hitmarker() {
         super("Hitmarker", "Показывает отметку попадания в центре экрана при ударе", Category.ESP);
@@ -108,6 +110,7 @@ public class Hitmarker extends Module {
         if (!isEnabled()) return;
         MinecraftClient mc = MinecraftClient.getInstance();
         if (target instanceof LivingEntity living && (mc.player == null || living != mc.player)) {
+            if (EntityUtil.isNakedInvisible(living)) return;
             this.lastTargetId = living.getId();
             triggerHit(living);
         }
@@ -120,6 +123,7 @@ public class Hitmarker extends Module {
             if (mc.world != null && this.lastTargetId != -1) {
                 Entity ent = mc.world.getEntityById(this.lastTargetId);
                 if (ent instanceof LivingEntity living) {
+                    if (EntityUtil.isNakedInvisible(living)) return;
                     long elapsed = System.currentTimeMillis() - this.lastHitTime;
                     if (elapsed > 120L) {
                         triggerHit(living);
@@ -153,12 +157,12 @@ public class Hitmarker extends Module {
         float cy;
 
         if (this.renderMode.is("В мире")) {
-            Vector2f screenPos = ProjectUtil.toScreen(this.hitX, this.hitY, this.hitZ);
-            if (!ProjectUtil.isOnScreen(screenPos)) {
+            boolean onScreen = ProjectUtil.toScreen(this.hitX, this.hitY, this.hitZ, scratchPos);
+            if (!onScreen || !ProjectUtil.isOnScreen(scratchPos)) {
                 return;
             }
-            cx = screenPos.x();
-            cy = screenPos.y();
+            cx = scratchPos.x();
+            cy = scratchPos.y();
         } else {
             cx = mc.getWindow().getScaledWidth() / 2.0f;
             cy = mc.getWindow().getScaledHeight() / 2.0f;

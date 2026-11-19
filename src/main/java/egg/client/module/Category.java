@@ -2,19 +2,17 @@ package egg.client.module;
 
 public enum Category {
 
-    COMBAT("Combat", "Бой", "V", "Main"),
-    MOVEMENT("Movement", "Движение", "I", "Main"),
+    MOVEMENT("Movement", "Движение", "d", "Main"),
 
-    ESP("Visuals", "Визуалы", "&", "Visual"),
+    ESP("Visuals", "Визуалы", "f", "Visual"),
 
-    PLAYER("Player", "Игрок", "L", "Other"),
-    INVENTORY("Inventory", "Инвентарь", "H", "Other"),
-    MISC("Misc", "Разное", "D", "Other"),
-    COSMETICS("Cosmetics", "Косметика", "C", "Other"),
+    INVENTORY("Inventory", "Инвентарь", "c", "Other"),
+    MISC("Misc", "Разное", "g", "Other"),
+    COSMETICS("Cosmetics", "Косметика", "r", "Other"),
 
-    MINI_GAMES("Mini Games", "Мини-игры", "M", "Games"),
+    MINI_GAMES("Mini Games", "Мини-игры", "t", "Games"),
 
-    SETTINGS("Settings", "Настройки", "*", "Addons");
+    SETTINGS("Settings", "Настройки", "s", "Addons");
 
     private final String name;
     private final String displayNameRu;

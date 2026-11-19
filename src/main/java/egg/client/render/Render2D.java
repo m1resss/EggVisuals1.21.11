@@ -1,6 +1,7 @@
 package egg.client.render;
 
 import egg.client.render.font.ClientFont;
+import egg.client.render.msdf.Draw2DProcessor;
 import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.util.Identifier;
@@ -42,31 +43,32 @@ public final class Render2D {
         int midTex = ts - tc * 2;
 
         context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix, iy, 0.0f, 0.0f, ir, ir, tc, tc, ts, ts, color);
-
         context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + iw - ir, iy, (float) (ts - tc), 0.0f, ir, ir, tc, tc, ts, ts, color);
-
         context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix, iy + ih - ir, 0.0f, (float) (ts - tc), ir, ir, tc, tc, ts, ts, color);
-
         context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + iw - ir, iy + ih - ir, (float) (ts - tc), (float) (ts - tc), ir, ir, tc, tc, ts, ts, color);
 
         if (midW > 0) {
-            context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + ir, iy, (float) tc, 0.0f, midW, ir, midTex, tc, ts, ts, color);
-        }
-
-        if (midW > 0) {
-            context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + ir, iy + ih - ir, (float) tc, (float) (ts - tc), midW, ir, midTex, tc, ts, ts, color);
+            if (midTex > 0) {
+                context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + ir, iy, (float) tc, 0.0f, midW, ir, midTex, tc, ts, ts, color);
+                context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + ir, iy + ih - ir, (float) tc, (float) (ts - tc), midW, ir, midTex, tc, ts, ts, color);
+            } else {
+                drawRect(context, ix + ir, iy, midW, ir, color);
+                drawRect(context, ix + ir, iy + ih - ir, midW, ir, color);
+            }
         }
 
         if (midH > 0) {
-            context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix, iy + ir, 0.0f, (float) tc, ir, midH, tc, midTex, ts, ts, color);
-        }
-
-        if (midH > 0) {
-            context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + iw - ir, iy + ir, (float) (ts - tc), (float) tc, ir, midH, tc, midTex, ts, ts, color);
+            if (midTex > 0) {
+                context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix, iy + ir, 0.0f, (float) tc, ir, midH, tc, midTex, ts, ts, color);
+                context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + iw - ir, iy + ir, (float) (ts - tc), (float) tc, ir, midH, tc, midTex, ts, ts, color);
+            } else {
+                drawRect(context, ix, iy + ir, ir, midH, color);
+                drawRect(context, ix + iw - ir, iy + ir, ir, midH, color);
+            }
         }
 
         if (midW > 0 && midH > 0) {
-            context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix + ir, iy + ir, (float) tc, (float) tc, midW, midH, midTex, midTex, ts, ts, color);
+            drawRect(context, ix + ir, iy + ir, midW, midH, color);
         }
     }
 
@@ -134,10 +136,22 @@ public final class Render2D {
 
         int r = Math.max(1, Math.round(radius));
         int sp = Math.max(1, Math.round(spread));
+        int scale = DynamicGuiTextures.getScale();
         Identifier tex = DynamicGuiTextures.getRoundedShadow(r, sp);
-        int corner = (r + sp) * 2;
-        int texSize = corner * 2;
+        int corner = (r + sp) * scale;
+        int texSize = corner * 2 + scale;
         drawNineSliceOutline(context, tex, sx, sy, sw, sh, sr, corner, texSize, color);
+    }
+
+    public static void drawCheckmark(DrawContext context, float x, float y, float size, int color) {
+        if (size <= 0.0f) return;
+        int alpha = (color >> 24) & 0xFF;
+        if (alpha <= 0) return;
+        int isize = Math.max(1, Math.round(size));
+        Identifier tex = DynamicGuiTextures.getCheckmark(isize);
+        int scale = DynamicGuiTextures.getScale();
+        int texSize = isize * scale;
+        IconRenderer.drawTextureScaled(context, tex, x, y, size, size, texSize, texSize, color);
     }
 
     public static void drawCircle(DrawContext context, float cx, float cy, float radius, int color) {
@@ -146,10 +160,27 @@ public final class Render2D {
         if (alpha <= 0) return;
         int r = Math.max(1, Math.round(radius));
         Identifier tex = DynamicGuiTextures.getCircle(r);
+        int scale = DynamicGuiTextures.getScale();
         int isize = Math.max(1, Math.round(radius * 2.0f));
         int ix = Math.round(cx - radius);
         int iy = Math.round(cy - radius);
-        int texSize = r * 2 * 2;
+        int texSize = r * 2 * scale;
+        context.drawTexture(RenderPipelines.GUI_TEXTURED, tex, ix, iy, 0.0f, 0.0f, isize, isize, texSize, texSize, texSize, texSize, color);
+    }
+
+    public static void drawCircleShadow(DrawContext context, float cx, float cy, float radius, float spread, int color) {
+        if (spread <= 0.0f || radius <= 0.0f) return;
+        int alpha = (color >> 24) & 0xFF;
+        if (alpha <= 0) return;
+        int r = Math.max(1, Math.round(radius));
+        int sp = Math.max(1, Math.round(spread));
+        Identifier tex = DynamicGuiTextures.getCircleGlow(r, sp);
+        int scale = DynamicGuiTextures.getScale();
+        float totalR = radius + spread;
+        int isize = Math.max(1, Math.round(totalR * 2.0f));
+        int texSize = (r + sp) * 2 * scale;
+        int ix = Math.round(cx - totalR);
+        int iy = Math.round(cy - totalR);
         context.drawTexture(RenderPipelines.GUI_TEXTURED, tex, ix, iy, 0.0f, 0.0f, isize, isize, texSize, texSize, texSize, texSize, color);
     }
 
@@ -159,10 +190,11 @@ public final class Render2D {
         if (alpha <= 0) return;
         int r = Math.max(1, Math.round(radius));
         Identifier tex = DynamicGuiTextures.getWheelSector(r, sectorIndex);
+        int scale = DynamicGuiTextures.getScale();
         int isize = Math.max(1, Math.round(radius * 2.0f));
         int ix = Math.round(cx - radius);
         int iy = Math.round(cy - radius);
-        int texSize = r * 2 * 2;
+        int texSize = r * 2 * scale;
         context.drawTexture(RenderPipelines.GUI_TEXTURED, tex, ix, iy, 0.0f, 0.0f, isize, isize, texSize, texSize, texSize, texSize, color);
     }
 
@@ -170,10 +202,11 @@ public final class Render2D {
         if (radius <= 0.0f) return;
         int r = Math.max(1, Math.round(radius));
         Identifier tex = DynamicGuiTextures.getWheelBase(r, themeColor);
+        int scale = DynamicGuiTextures.getScale();
         int isize = Math.max(1, Math.round(radius * 2.0f));
         int ix = Math.round(cx - radius);
         int iy = Math.round(cy - radius);
-        int texSize = r * 2 * 2;
+        int texSize = r * 2 * scale;
         context.drawTexture(RenderPipelines.GUI_TEXTURED, tex, ix, iy, 0.0f, 0.0f, isize, isize, texSize, texSize, texSize, texSize, 0xFFFFFFFF);
     }
 
@@ -181,18 +214,63 @@ public final class Render2D {
         if (radius <= 0.0f) return;
         int r = Math.max(1, Math.round(radius));
         Identifier tex = DynamicGuiTextures.getWheelLines(r);
+        int scale = DynamicGuiTextures.getScale();
         int isize = Math.max(1, Math.round(radius * 2.0f));
         int ix = Math.round(cx - radius);
         int iy = Math.round(cy - radius);
-        int texSize = r * 2 * 2;
+        int texSize = r * 2 * scale;
         context.drawTexture(RenderPipelines.GUI_TEXTURED, tex, ix, iy, 0.0f, 0.0f, isize, isize, texSize, texSize, texSize, texSize, 0xFFFFFFFF);
     }
 
     public static void drawCircleOutline(DrawContext context, float cx, float cy, float radius, float thickness, int color) {
-        drawRoundedOutline(context, cx - radius, cy - radius, radius * 2.0f, radius * 2.0f, radius, thickness, color);
+        if (radius <= 0.0f) return;
+        int alpha = (color >> 24) & 0xFF;
+        if (alpha <= 0) return;
+        int r = Math.max(1, Math.round(radius));
+        Identifier tex = DynamicGuiTextures.getCircleOutline(r);
+        int scale = DynamicGuiTextures.getScale();
+        int isize = Math.max(1, Math.round(radius * 2.0f));
+        int ix = Math.round(cx - radius);
+        int iy = Math.round(cy - radius);
+        int texSize = r * 2 * scale;
+        context.drawTexture(RenderPipelines.GUI_TEXTURED, tex, ix, iy, 0.0f, 0.0f, isize, isize, texSize, texSize, texSize, texSize, color);
+    }
+
+    public static void drawCapsule(DrawContext context, float x, float y, float width, float height, int color) {
+        if (width <= 0 || height <= 0) return;
+        int alpha = (color >> 24) & 0xFF;
+        if (alpha <= 0) return;
+        int iw = Math.max(1, Math.round(width));
+        int ih = Math.max(1, Math.round(height));
+        int ix = Math.round(x);
+        int iy = Math.round(y);
+        Identifier tex = DynamicGuiTextures.getCapsule(iw, ih);
+        int scale = DynamicGuiTextures.getScale();
+        int tw = iw * scale;
+        int th = ih * scale;
+        context.drawTexture(RenderPipelines.GUI_TEXTURED, tex, ix, iy, 0.0f, 0.0f, iw, ih, tw, th, tw, th, color);
+    }
+
+    public static void drawCapsuleOutline(DrawContext context, float x, float y, float width, float height, int color) {
+        if (width <= 0 || height <= 0) return;
+        int alpha = (color >> 24) & 0xFF;
+        if (alpha <= 0) return;
+        int iw = Math.max(1, Math.round(width));
+        int ih = Math.max(1, Math.round(height));
+        int ix = Math.round(x);
+        int iy = Math.round(y);
+        Identifier tex = DynamicGuiTextures.getCapsuleOutline(iw, ih);
+        int scale = DynamicGuiTextures.getScale();
+        int tw = iw * scale;
+        int th = ih * scale;
+        context.drawTexture(RenderPipelines.GUI_TEXTURED, tex, ix, iy, 0.0f, 0.0f, iw, ih, tw, th, tw, th, color);
     }
 
     public static void drawGradientRect(DrawContext context, float x, float y, float width, float height, float radius, int colTL, int colTR, int colBL, int colBR) {
+        if (radius > 0.5f) {
+            Draw2DProcessor.INSTANCE.drawGradient(null, x, y, width, height, radius, colTL, colTR, colBL, colBR);
+            return;
+        }
         int x1 = Math.round(x);
         int y1 = Math.round(y);
         int x2 = Math.round(x + width);
@@ -203,7 +281,7 @@ public final class Render2D {
     }
 
     public static void drawRoundedGradientRect(DrawContext context, float x, float y, float width, float height, float radius, int colTop, int colBot) {
-        drawRoundedRect(context, x, y, width, height, radius, colTop);
+        Draw2DProcessor.INSTANCE.drawGradient(null, x, y, width, height, radius, colTop, colTop, colBot, colBot);
     }
 
     public static void drawTexture(DrawContext context, Identifier texture, float x, float y, float width, float height, int color) {
@@ -214,6 +292,20 @@ public final class Render2D {
         context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix, iy, 0.0f, 0.0f, iw, ih, iw, ih, iw, ih, color);
     }
 
+    public static void drawDynamicTexture(DrawContext context, Identifier texture, float x, float y, float width, float height, int color) {
+        if (width <= 0 || height <= 0 || texture == null) return;
+        int alpha = (color >> 24) & 0xFF;
+        if (alpha <= 0) return;
+        int iw = Math.max(1, Math.round(width));
+        int ih = Math.max(1, Math.round(height));
+        int ix = Math.round(x);
+        int iy = Math.round(y);
+        int scale = DynamicGuiTextures.getScale();
+        int tw = iw * scale;
+        int th = ih * scale;
+        context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, ix, iy, 0.0f, 0.0f, iw, ih, tw, th, tw, th, color);
+    }
+
     public static void drawLine(DrawContext context, float x1, float y1, float x2, float y2, int color, float thickness) {
         drawLineRotated(context, x1, y1, x2, y2, color, thickness);
     }
@@ -221,6 +313,20 @@ public final class Render2D {
     public static void drawLineRotated(DrawContext context, float x1, float y1, float x2, float y2, int color, float thickness) {
         float dx = x2 - x1;
         float dy = y2 - y1;
+        if (Math.abs(dy) < 0.01f) {
+            float minX = Math.min(x1, x2);
+            float maxX = Math.max(x1, x2);
+            float half = Math.max(0.5f, thickness * 0.5f);
+            drawRect(context, minX, y1 - half, maxX - minX, thickness, color);
+            return;
+        }
+        if (Math.abs(dx) < 0.01f) {
+            float minY = Math.min(y1, y2);
+            float maxY = Math.max(y1, y2);
+            float half = Math.max(0.5f, thickness * 0.5f);
+            drawRect(context, x1 - half, minY, thickness, maxY - minY, color);
+            return;
+        }
         float dist = (float) Math.hypot(dx, dy);
         if (dist <= 0.5f) return;
 
@@ -247,7 +353,11 @@ public final class Render2D {
     }
 
     public static void drawDiagonalSheen(DrawContext context, float x, float y, float width, float height, float radius, long cycleOffset) {
-        if (width <= 0 || height <= 0 || context == null) return;
+        drawDiagonalSheen(context, x, y, width, height, radius, cycleOffset, 1.0f);
+    }
+
+    public static void drawDiagonalSheen(DrawContext context, float x, float y, float width, float height, float radius, long cycleOffset, float alphaFactor) {
+        if (width <= 0 || height <= 0 || context == null || alphaFactor <= 0.01f) return;
         long cycle = 5500L;
         long duration = 1400L;
         long t = (System.currentTimeMillis() + cycleOffset) % cycle;
@@ -257,33 +367,38 @@ public final class Render2D {
         float p = (float) (0.5 - 0.5 * Math.cos(progress * Math.PI));
 
         float bandW = 34.0f;
-        float halfW = bandW / 2.0f;
+        float halfW = bandW * 0.5f;
 
         float slantX = height * 0.65f;
         float totalTravel = width + slantX + bandW * 2.0f;
         float startX = x - slantX - bandW;
         float curXTop = startX + p * totalTravel;
 
-        float r = Math.min(radius, Math.min(width, height) / 2.0f);
+        float r = Math.min(Math.max(0.0f, radius), Math.min(width, height) / 2.0f);
         float topCapCenter = y + r;
         float botCapCenter = y + height - r;
 
-        float stepY = height <= 45.0f ? 1.0f : 2.0f;
-        float stepX = 2.5f;
+        int startY = (int) Math.floor(y);
+        int endY = (int) Math.ceil(y + height);
 
-        for (float py = y; py < y + height; py += stepY) {
+        for (int py = startY; py < endY; py++) {
+            float lineMidY = py + 0.5f;
+            if (lineMidY < y || lineMidY > y + height) continue;
+
             float xMin, xMax;
             if (r <= 0.5f) {
                 xMin = x;
                 xMax = x + width;
-            } else if (py + 0.5f < topCapCenter) {
-                float dy = topCapCenter - (py + 0.5f);
-                float dx = (float) Math.sqrt(Math.max(0.0f, r * r - dy * dy));
+            } else if (lineMidY < topCapCenter) {
+                float dy = topCapCenter - lineMidY;
+                if (dy >= r) continue;
+                float dx = (float) Math.sqrt(r * r - dy * dy);
                 xMin = (x + r) - dx;
                 xMax = (x + width - r) + dx;
-            } else if (py + 0.5f > botCapCenter) {
-                float dy = (py + 0.5f) - botCapCenter;
-                float dx = (float) Math.sqrt(Math.max(0.0f, r * r - dy * dy));
+            } else if (lineMidY > botCapCenter) {
+                float dy = lineMidY - botCapCenter;
+                if (dy >= r) continue;
+                float dx = (float) Math.sqrt(r * r - dy * dy);
                 xMin = (x + r) - dx;
                 xMax = (x + width - r) + dx;
             } else {
@@ -291,7 +406,7 @@ public final class Render2D {
                 xMax = x + width;
             }
 
-            float v = (py - y) / height;
+            float v = (lineMidY - y) / height;
             float xCenter = curXTop + v * slantX;
 
             float s1 = xCenter - halfW;
@@ -301,23 +416,26 @@ public final class Render2D {
             float segEnd = Math.min(xMax, s2);
             if (segStart >= segEnd) continue;
 
-            for (float px = segStart; px < segEnd; px += stepX) {
-                float pxEnd = Math.min(px + stepX, segEnd);
-                float midX = (px + pxEnd) / 2.0f;
+            int minIx = (int) Math.ceil(segStart - 0.5f);
+            int maxIx = (int) Math.floor(segEnd - 0.5f);
+            if (minIx > maxIx) continue;
+
+            float stepX = 2.0f;
+            for (float px = minIx; px <= maxIx; px += stepX) {
+                float pxEnd = Math.min(px + stepX, (float) maxIx + 1.0f);
+                float midX = (px + pxEnd) * 0.5f;
                 float dist = Math.abs(midX - xCenter);
                 float u = dist / halfW;
                 if (u >= 1.0f) continue;
 
                 float intensity = (1.0f - u) * (1.0f - u);
-                int alpha = (int) (intensity * 48.0f);
+                int alpha = (int) (intensity * 48.0f * alphaFactor);
                 if (alpha <= 0) continue;
 
                 int color = (alpha << 24) | 0x00FFFFFF;
                 int ix1 = Math.round(px);
-                int iy1 = Math.round(py);
                 int ix2 = Math.max(ix1 + 1, Math.round(pxEnd));
-                int iy2 = Math.max(iy1 + 1, Math.round(py + stepY));
-                context.fill(ix1, iy1, ix2, iy2, color);
+                context.fill(ix1, py, ix2, py + 1, color);
             }
         }
     }

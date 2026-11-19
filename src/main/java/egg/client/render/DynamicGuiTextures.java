@@ -12,6 +12,7 @@ public final class DynamicGuiTextures {
     private DynamicGuiTextures() {}
 
     private static int lastGuiScale = -1;
+    private static final java.util.Set<Identifier> REGISTERED_IDS = ConcurrentHashMap.newKeySet();
     private static final Map<Integer, Identifier> RECT_CACHE = new ConcurrentHashMap<>();
     private static final Map<Integer, Identifier> OUTLINE_CACHE = new ConcurrentHashMap<>();
     private static final Map<Integer, Identifier> CIRCLE_CACHE = new ConcurrentHashMap<>();
@@ -20,6 +21,7 @@ public final class DynamicGuiTextures {
     private static final Map<Integer, Identifier> CLOCK_CACHE = new ConcurrentHashMap<>();
     private static final Map<Integer, Identifier> EGG_3D_CACHE = new ConcurrentHashMap<>();
     private static final Map<Integer, Identifier> FOLDER_CACHE = new ConcurrentHashMap<>();
+    private static final Map<Integer, Identifier> REFRESH_CACHE = new ConcurrentHashMap<>();
     private static final Map<Integer, Identifier> TPS_CACHE = new ConcurrentHashMap<>();
     private static final Map<Integer, Identifier> PING_CACHE = new ConcurrentHashMap<>();
     private static final Map<Integer, Identifier> MUSIC_NOTE_CACHE = new ConcurrentHashMap<>();
@@ -30,13 +32,24 @@ public final class DynamicGuiTextures {
     private static final Map<Integer, Identifier> SECTOR_CACHE = new ConcurrentHashMap<>();
     private static final Map<Integer, Identifier> WHEEL_BASE_CACHE = new ConcurrentHashMap<>();
     private static final Map<Integer, Identifier> WHEEL_LINES_CACHE = new ConcurrentHashMap<>();
+    private static final Map<Integer, Identifier> CAPSULE_CACHE = new ConcurrentHashMap<>();
+    private static final Map<Integer, Identifier> CAPSULE_OUTLINE_CACHE = new ConcurrentHashMap<>();
+    private static final Map<Integer, Identifier> CHECKMARK_CACHE = new ConcurrentHashMap<>();
+    private static final Map<Integer, Identifier> CIRCLE_OUTLINE_CACHE = new ConcurrentHashMap<>();
+    private static final Map<Integer, Identifier> CIRCLE_GLOW_CACHE = new ConcurrentHashMap<>();
 
-    private static int getScale() {
+    public static int getScale() {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc != null && mc.getWindow() != null) {
             int s = (int) Math.round(mc.getWindow().getScaleFactor());
             if (s != lastGuiScale) {
                 lastGuiScale = s;
+                if (mc.getTextureManager() != null) {
+                    for (Identifier oldId : REGISTERED_IDS) {
+                        mc.getTextureManager().destroyTexture(oldId);
+                    }
+                }
+                REGISTERED_IDS.clear();
                 RECT_CACHE.clear();
                 OUTLINE_CACHE.clear();
                 CIRCLE_CACHE.clear();
@@ -45,6 +58,7 @@ public final class DynamicGuiTextures {
                 CLOCK_CACHE.clear();
                 EGG_3D_CACHE.clear();
                 FOLDER_CACHE.clear();
+                REFRESH_CACHE.clear();
                 TPS_CACHE.clear();
                 PING_CACHE.clear();
                 MUSIC_NOTE_CACHE.clear();
@@ -54,6 +68,11 @@ public final class DynamicGuiTextures {
                 SECTOR_CACHE.clear();
                 WHEEL_BASE_CACHE.clear();
                 WHEEL_LINES_CACHE.clear();
+                CAPSULE_CACHE.clear();
+                CAPSULE_OUTLINE_CACHE.clear();
+                CHECKMARK_CACHE.clear();
+                CIRCLE_OUTLINE_CACHE.clear();
+                CIRCLE_GLOW_CACHE.clear();
             }
             return Math.max(1, s);
         }
@@ -76,6 +95,18 @@ public final class DynamicGuiTextures {
         int scale = getScale();
         int key = (scale << 16) | (radius & 0xFFFF);
         return CIRCLE_CACHE.computeIfAbsent(key, k -> createCircle(radius, scale));
+    }
+
+    public static Identifier getCapsule(int width, int height) {
+        int scale = getScale();
+        int key = (scale << 20) | ((width & 0x3FF) << 10) | (height & 0x3FF);
+        return CAPSULE_CACHE.computeIfAbsent(key, k -> createCapsule(width, height, scale));
+    }
+
+    public static Identifier getCapsuleOutline(int width, int height) {
+        int scale = getScale();
+        int key = (scale << 20) | ((width & 0x3FF) << 10) | (height & 0x3FF);
+        return CAPSULE_OUTLINE_CACHE.computeIfAbsent(key, k -> createCapsuleOutline(width, height, scale));
     }
 
     public static Identifier getRoundedShadow(int radius, int spread) {
@@ -104,6 +135,11 @@ public final class DynamicGuiTextures {
         return FOLDER_CACHE.computeIfAbsent(scale, DynamicGuiTextures::createFolder);
     }
 
+    public static Identifier getRefreshIcon() {
+        int scale = getScale();
+        return REFRESH_CACHE.computeIfAbsent(scale, DynamicGuiTextures::createRefresh);
+    }
+
     public static Identifier getTpsIcon() {
         int scale = getScale();
         return TPS_CACHE.computeIfAbsent(scale, DynamicGuiTextures::createTps);
@@ -117,6 +153,133 @@ public final class DynamicGuiTextures {
     public static Identifier getMusicNoteIcon() {
         int scale = getScale();
         return MUSIC_NOTE_CACHE.computeIfAbsent(scale, DynamicGuiTextures::createMusicNote);
+    }
+
+    public static Identifier getCheckmark(int size) {
+        int scale = getScale();
+        int key = (scale << 16) | (size & 0xFFFF);
+        return CHECKMARK_CACHE.computeIfAbsent(key, k -> createCheckmark(size, scale));
+    }
+
+    private static Identifier createCheckmark(int size, int scale) {
+        int s = Math.max(1, size);
+        int imgSize = s * scale;
+        NativeImage image = new NativeImage(imgSize, imgSize, false);
+
+        float norm = (float) s / 14.0f;
+        float bx = 5.7f * norm * scale;
+        float by = 9.7f * norm * scale;
+        float ax = 3.4f * norm * scale;
+        float ay = 7.4f * norm * scale;
+        float cx = 10.5f * norm * scale;
+        float cy = 4.9f * norm * scale;
+
+        float abx = bx - ax;
+        float aby = by - ay;
+        float abLenSq = abx * abx + aby * aby;
+
+        float bcx = cx - bx;
+        float bcy = cy - by;
+        float bcLenSq = bcx * bcx + bcy * bcy;
+
+        float halfThick = 0.82f * norm * scale;
+
+        for (int y = 0; y < imgSize; y++) {
+            float py = y + 0.5f;
+            for (int x = 0; x < imgSize; x++) {
+                float px = x + 0.5f;
+
+                float t1 = Math.clamp(((px - ax) * abx + (py - ay) * aby) / abLenSq, 0.0f, 1.0f);
+                float q1x = ax + t1 * abx;
+                float q1y = ay + t1 * aby;
+                float d1 = (float) Math.hypot(px - q1x, py - q1y);
+
+                float t2 = Math.clamp(((px - bx) * bcx + (py - by) * bcy) / bcLenSq, 0.0f, 1.0f);
+                float q2x = bx + t2 * bcx;
+                float q2y = by + t2 * bcy;
+                float d2 = (float) Math.hypot(px - q2x, py - q2y);
+
+                float dist = Math.min(d1, d2);
+                float alpha = clamp01(halfThick - dist + 0.5f);
+                int a = Math.round(alpha * 255.0f);
+                image.setColorArgb(x, y, (a << 24) | 0x00FFFFFF);
+            }
+        }
+
+        Identifier id = Identifier.of("egg", "dynamic/checkmark_" + size + "_s" + scale);
+        register(id, image);
+        return id;
+    }
+
+    public static Identifier getCircleOutline(int radius) {
+        int scale = getScale();
+        int key = (scale << 16) | (radius & 0xFFFF);
+        return CIRCLE_OUTLINE_CACHE.computeIfAbsent(key, k -> createCircleOutline(radius, scale));
+    }
+
+    private static Identifier createCircleOutline(int radius, int scale) {
+        int r = Math.max(1, radius) * scale;
+        int size = r * 2;
+        NativeImage image = new NativeImage(size, size, false);
+
+        float center = r - 0.5f;
+        float stroke = Math.max(1.0f, 1.0f * scale);
+        for (int y = 0; y < size; y++) {
+            float dy = y - center;
+            for (int x = 0; x < size; x++) {
+                float dx = x - center;
+                float dist = (float) Math.hypot(dx, dy);
+                float outerAlpha = clamp01(r - dist + 0.5f);
+                float innerAlpha = clamp01((r - stroke) - dist + 0.5f);
+                float alpha = Math.max(0.0f, outerAlpha - innerAlpha);
+                int a = Math.round(alpha * 255.0f);
+                image.setColorArgb(x, y, (a << 24) | 0x00FFFFFF);
+            }
+        }
+
+        Identifier id = Identifier.of("egg", "dynamic/circle_outline_" + radius + "_s" + scale);
+        register(id, image);
+        return id;
+    }
+
+    public static Identifier getCircleGlow(int radius, int spread) {
+        int scale = getScale();
+        int key = (scale << 20) | ((radius & 0x3FF) << 10) | (spread & 0x3FF);
+        return CIRCLE_GLOW_CACHE.computeIfAbsent(key, k -> createCircleGlow(radius, spread, scale));
+    }
+
+    private static Identifier createCircleGlow(int radius, int spread, int scale) {
+        int r = Math.max(1, radius) * scale;
+        int sp = Math.max(1, spread) * scale;
+        int totalR = r + sp;
+        int size = totalR * 2;
+        NativeImage image = new NativeImage(size, size, false);
+
+        float center = totalR - 0.5f;
+        float denom = Math.max(1.0f, sp - 0.5f);
+        for (int y = 0; y < size; y++) {
+            float dy = y - center;
+            for (int x = 0; x < size; x++) {
+                float dx = x - center;
+                float dist = (float) Math.hypot(dx, dy);
+                float factor;
+                if (dist <= r) {
+                    factor = 1.0f;
+                } else if (dist >= r + denom) {
+                    factor = 0.0f;
+                } else {
+                    float t = (dist - r) / denom;
+                    float inv = 1.0f - t;
+                    factor = (float) Math.exp(-3.0f * t * t) * inv * inv;
+                }
+                int a = Math.round(clamp01(factor) * 255.0f);
+                image.setColorArgb(x, y, (a << 24) | 0x00FFFFFF);
+            }
+        }
+
+        Identifier id = Identifier.of("egg", "dynamic/circle_glow_" + radius + "_" + spread + "_s" + scale);
+        register(id, image);
+        return id;
     }
 
     private static Identifier createRoundedRect(int radius, int scale) {
@@ -190,16 +353,26 @@ public final class DynamicGuiTextures {
         int r = Math.max(1, radius) * scale;
         int sp = Math.max(1, spread) * scale;
         int corner = r + sp;
-        int size = corner * 2;
+        int mid = scale;
+        int size = corner * 2 + mid;
         NativeImage image = new NativeImage(size, size, false);
 
-        float sigma = sp * 0.45f;
+        float denom = Math.max(1.0f, sp - 0.5f);
         for (int y = 0; y < size; y++) {
             for (int x = 0; x < size; x++) {
                 float dx = (x < corner) ? (corner - 0.5f - x) : (x >= size - corner ? (x - (size - corner - 0.5f)) : 0.0f);
                 float dy = (y < corner) ? (corner - 0.5f - y) : (y >= size - corner ? (y - (size - corner - 0.5f)) : 0.0f);
                 float dist = (float) Math.sqrt(dx * dx + dy * dy);
-                float factor = (dist <= r) ? 1.0f : (float) Math.exp(-((dist - r) * (dist - r)) / (2.0f * sigma * sigma));
+                float factor;
+                if (dist <= r) {
+                    factor = 1.0f;
+                } else if (dist >= r + denom) {
+                    factor = 0.0f;
+                } else {
+                    float t = (dist - r) / denom;
+                    float inv = 1.0f - t;
+                    factor = (float) Math.exp(-3.0f * t * t) * inv * inv;
+                }
                 int a = Math.round(clamp01(factor) * 255.0f);
                 image.setColorArgb(x, y, (a << 24) | 0x00FFFFFF);
             }
@@ -407,6 +580,51 @@ public final class DynamicGuiTextures {
         }
 
         Identifier id = Identifier.of("egg", "dynamic/icon_folder_s" + scale);
+        register(id, image);
+        return id;
+    }
+
+    private static Identifier createRefresh(int scale) {
+        int size = 20 * scale;
+        NativeImage image = new NativeImage(size, size, false);
+        float cx = size / 2.0f - 0.5f;
+        float cy = size / 2.0f - 0.5f;
+        float r = 5.8f * scale;
+        float stroke = 1.25f * scale;
+
+        for (int y = 0; y < size; y++) {
+            for (int x = 0; x < size; x++) {
+                float dx = x - cx;
+                float dy = y - cy;
+                float dist = (float) Math.sqrt(dx * dx + dy * dy);
+                float angle = (float) Math.atan2(dy, dx);
+
+                float alpha = 0.0f;
+                float ringDist = Math.abs(dist - r);
+                float ringAlpha = clamp01(stroke - ringDist + 0.5f);
+
+                if (angle > 0.35f && angle < 1.35f) {
+                    ringAlpha = 0.0f;
+                }
+                alpha = Math.max(alpha, ringAlpha);
+
+                float arrowTipX = cx + (float) Math.cos(0.35) * r;
+                float arrowTipY = cy + (float) Math.sin(0.35) * r;
+                float adx = (x - arrowTipX) / scale;
+                float ady = (y - arrowTipY) / scale;
+                if (adx >= -2.5f && adx <= 2.5f && ady >= -2.5f && ady <= 2.5f) {
+                    float tri = Math.abs(adx + ady);
+                    if (tri <= 2.2f && (adx * 0.7f - ady * 0.7f) >= -0.6f) {
+                        alpha = Math.max(alpha, 1.0f);
+                    }
+                }
+
+                int a = Math.round(clamp01(alpha) * 255.0f);
+                image.setColorArgb(x, y, (a << 24) | 0x00FFFFFF);
+            }
+        }
+
+        Identifier id = Identifier.of("egg", "dynamic/icon_refresh_s" + scale);
         register(id, image);
         return id;
     }
@@ -938,6 +1156,75 @@ public final class DynamicGuiTextures {
         return id;
     }
 
+    private static Identifier createCapsule(int w, int h, int scale) {
+        int sw = w * scale;
+        int sh = h * scale;
+        NativeImage image = new NativeImage(sw, sh, false);
+        image.fillRect(0, 0, sw, sh, 0);
+
+        float cy = (sh - 1.0f) / 2.0f;
+        float r = cy;
+        float cx1 = r;
+        float cx2 = Math.max(cx1, sw - 1.0f - r);
+
+        for (int y = 0; y < sh; y++) {
+            float dy = y - cy;
+            for (int x = 0; x < sw; x++) {
+                float dist;
+                if (x < cx1) {
+                    dist = (float) Math.hypot(x - cx1, dy);
+                } else if (x > cx2) {
+                    dist = (float) Math.hypot(x - cx2, dy);
+                } else {
+                    dist = Math.abs(dy);
+                }
+                float alpha = clamp01(r - dist + 0.5f);
+                int a = Math.round(alpha * 255.0f);
+                image.setColorArgb(x, y, (a << 24) | 0x00FFFFFF);
+            }
+        }
+
+        Identifier id = Identifier.of("egg", "dynamic/capsule_" + w + "_" + h + "_s" + scale);
+        register(id, image);
+        return id;
+    }
+
+    private static Identifier createCapsuleOutline(int w, int h, int scale) {
+        int sw = w * scale;
+        int sh = h * scale;
+        NativeImage image = new NativeImage(sw, sh, false);
+        image.fillRect(0, 0, sw, sh, 0);
+
+        float cy = (sh - 1.0f) / 2.0f;
+        float r = cy;
+        float cx1 = r;
+        float cx2 = Math.max(cx1, sw - 1.0f - r);
+        float stroke = Math.max(1.0f, 1.0f * scale);
+
+        for (int y = 0; y < sh; y++) {
+            float dy = y - cy;
+            for (int x = 0; x < sw; x++) {
+                float dist;
+                if (x < cx1) {
+                    dist = (float) Math.hypot(x - cx1, dy);
+                } else if (x > cx2) {
+                    dist = (float) Math.hypot(x - cx2, dy);
+                } else {
+                    dist = Math.abs(dy);
+                }
+                float outerAlpha = clamp01(r - dist + 0.5f);
+                float innerAlpha = clamp01((r - stroke) - dist + 0.5f);
+                float alpha = Math.max(0.0f, outerAlpha - innerAlpha);
+                int a = Math.round(alpha * 255.0f);
+                image.setColorArgb(x, y, (a << 24) | 0x00FFFFFF);
+            }
+        }
+
+        Identifier id = Identifier.of("egg", "dynamic/capsule_outline_" + w + "_" + h + "_s" + scale);
+        register(id, image);
+        return id;
+    }
+
     private static float clamp01(float v) {
         return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
     }
@@ -948,6 +1235,7 @@ public final class DynamicGuiTextures {
             NativeImageBackedTexture texture = new NativeImageBackedTexture(() -> id.toString(), image);
             texture.upload();
             mc.getTextureManager().registerTexture(id, texture);
+            REGISTERED_IDS.add(id);
         }
     }
 }

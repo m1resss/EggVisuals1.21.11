@@ -11,7 +11,7 @@ public class HelpCommand extends Command {
     @Override
     public void execute(String[] args) {
         CommandManager.sendClientMessage("Список доступных команд:");
-        for (Command cmd : CommandManager.getInstance().getCommands()) {
+        for (Command cmd : new java.util.LinkedHashSet<>(CommandManager.getInstance().getCommands())) {
             CommandManager.sendClientMessage("§d." + cmd.getName() + " §7- " + cmd.getDescription() + " §8(" + cmd.getSyntax() + ")");
         }
     }

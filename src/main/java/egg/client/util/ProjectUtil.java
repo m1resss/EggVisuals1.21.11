@@ -23,22 +23,25 @@ public final class ProjectUtil {
     private static final Quaternionf WORK_QUAT = new Quaternionf();
     private static final Quaternionf BOB_QUAT = new Quaternionf();
 
-    public static Vector2f toScreen(double x, double y, double z) {
+    public static boolean toScreen(double x, double y, double z, Vector2f out) {
         MinecraftClient mc = mc();
         if (mc == null || mc.world == null || mc.getEntityRenderDispatcher() == null) {
-            return new Vector2f(Float.MAX_VALUE, Float.MAX_VALUE);
+            out.set(Float.MAX_VALUE, Float.MAX_VALUE);
+            return false;
         }
-        return toScreen(x, y, z, mc.getRenderTickCounter().getTickProgress(true));
+        return toScreen(x, y, z, mc.getRenderTickCounter().getTickProgress(true), out);
     }
 
-    public static Vector2f toScreen(double x, double y, double z, float tickDelta) {
+    public static boolean toScreen(double x, double y, double z, float tickDelta, Vector2f out) {
         MinecraftClient mc = mc();
         if (mc == null || mc.getEntityRenderDispatcher() == null || mc.gameRenderer == null) {
-            return new Vector2f(Float.MAX_VALUE, Float.MAX_VALUE);
+            out.set(Float.MAX_VALUE, Float.MAX_VALUE);
+            return false;
         }
         Camera camera = mc.getEntityRenderDispatcher().camera;
         if (camera == null) {
-            return new Vector2f(Float.MAX_VALUE, Float.MAX_VALUE);
+            out.set(Float.MAX_VALUE, Float.MAX_VALUE);
+            return false;
         }
 
         Vec3d cameraPos = camera.getCameraPos();
@@ -52,7 +55,19 @@ public final class ProjectUtil {
         }
 
         double fov = ((GameRendererInvoker) (Object) mc.gameRenderer).invokeGetFov(camera, tickDelta, true);
-        return projectToScreen(WORK_VEC3, fov);
+        return projectToScreen(WORK_VEC3, fov, out);
+    }
+
+    public static Vector2f toScreen(double x, double y, double z) {
+        Vector2f res = new Vector2f();
+        toScreen(x, y, z, res);
+        return res;
+    }
+
+    public static Vector2f toScreen(double x, double y, double z, float tickDelta) {
+        Vector2f res = new Vector2f();
+        toScreen(x, y, z, tickDelta, res);
+        return res;
     }
 
     private static void applyBobbing(AbstractClientPlayerEntity player, Vector3f result, float tickDelta) {
@@ -71,17 +86,19 @@ public final class ProjectUtil {
 
     private static float lastScale = 1.0f;
 
-    private static Vector2f projectToScreen(Vector3f result, double fov) {
+    private static boolean projectToScreen(Vector3f result, double fov, Vector2f out) {
         MinecraftClient mc = mc();
         float halfWidth = mc.getWindow().getScaledWidth() / 2.0f;
         float halfHeight = mc.getWindow().getScaledHeight() / 2.0f;
         float scale = halfHeight / (result.z * (float) Math.tan(Math.toRadians(fov / 2.0d)));
         if (result.z < 0.0f) {
             lastScale = Math.abs(scale);
-            return new Vector2f((-result.x * scale) + halfWidth, (result.y * scale) + halfHeight);
+            out.set((-result.x * scale) + halfWidth, (result.y * scale) + halfHeight);
+            return true;
         }
         lastScale = 0.0f;
-        return new Vector2f(Float.MAX_VALUE, Float.MAX_VALUE);
+        out.set(Float.MAX_VALUE, Float.MAX_VALUE);
+        return false;
     }
 
     public static float getLastScale() {

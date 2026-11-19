@@ -9,7 +9,7 @@ import net.minecraft.item.Items;
 public class FastEXP extends Module {
 
     public FastEXP() {
-        super("FastEXP", "Убирает задержку при броске пузырьков опыта", Category.PLAYER);
+        super("FastEXP", "Убирает задержку при броске пузырьков опыта", Category.MISC);
     }
 
     @Override

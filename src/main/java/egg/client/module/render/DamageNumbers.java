@@ -8,6 +8,7 @@ import egg.client.module.setting.SliderSetting;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.util.ColorUtil;
+import egg.client.util.EntityUtil;
 import egg.client.util.ProjectUtil;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -118,6 +119,7 @@ public class DamageNumbers extends Module {
     private final List<DigitShard> shards = new ArrayList<>();
     private final Map<Integer, Float> lastKnownHp = new HashMap<>();
     private final Map<Integer, AttackRecord> pendingAttacks = new HashMap<>();
+    private final Vector2f scratchPos = new Vector2f();
     private final Random random = new Random();
     private long lastFrameNanos = 0L;
 
@@ -157,7 +159,7 @@ public class DamageNumbers extends Module {
     }
 
     public void onAttack(PlayerEntity player, Entity target) {
-        if (!isEnabled() || target == null || !(target instanceof LivingEntity living)) return;
+        if (!isEnabled() || target == null || !(target instanceof LivingEntity living) || EntityUtil.isNakedInvisible(target)) return;
 
         boolean isCrit = HitParticles.isCriticalHit(player, target);
         Vec3d hitPos = HitParticles.getHitPosition(player, target);
@@ -170,7 +172,7 @@ public class DamageNumbers extends Module {
     }
 
     public void onEntityDamage(Entity entity) {
-        if (!isEnabled() || entity == null || !(entity instanceof LivingEntity living)) return;
+        if (!isEnabled() || entity == null || !(entity instanceof LivingEntity living) || EntityUtil.isNakedInvisible(entity)) return;
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null) return;
         if (mc.player.squaredDistanceTo(entity) > 36.0) return;
@@ -217,6 +219,7 @@ public class DamageNumbers extends Module {
 
         for (Entity ent : mc.world.getEntities()) {
             if (ent instanceof LivingEntity living) {
+                if (EntityUtil.isNakedInvisible(living)) continue;
                 int id = living.getId();
                 float currentHp = living.getHealth() + living.getAbsorptionAmount();
                 Float prevHp = lastKnownHp.get(id);
@@ -356,10 +359,10 @@ public class DamageNumbers extends Module {
                 an.punchTimer = Math.max(0.0f, an.punchTimer - dt);
             }
 
-            Vector2f screen = ProjectUtil.toScreen(an.worldPos.x, an.worldPos.y, an.worldPos.z);
-            boolean onScreen = screen.x != Float.MAX_VALUE && screen.y != Float.MAX_VALUE
-                    && screen.x >= -100.0f && screen.x <= mc.getWindow().getScaledWidth() + 100.0f
-                    && screen.y >= -100.0f && screen.y <= mc.getWindow().getScaledHeight() + 100.0f;
+            ProjectUtil.toScreen(an.worldPos.x, an.worldPos.y, an.worldPos.z, scratchPos);
+            boolean onScreen = scratchPos.x != Float.MAX_VALUE && scratchPos.y != Float.MAX_VALUE
+                    && scratchPos.x >= -100.0f && scratchPos.x <= mc.getWindow().getScaledWidth() + 100.0f
+                    && scratchPos.y >= -100.0f && scratchPos.y <= mc.getWindow().getScaledHeight() + 100.0f;
 
             float val = an.totalDamage;
             if (unit.is("Сердца")) {
@@ -367,7 +370,7 @@ public class DamageNumbers extends Module {
             }
 
             String text;
-            if (showDecimals.isEnabled() && Math.abs(val - Math.round(val)) >= 0.12f) {
+            if (showDecimals.isEnabled() && Math.abs(val - Math.round(val)) >= 0.05f) {
                 text = String.format(Locale.US, "%.1f", val);
             } else {
                 text = String.valueOf(Math.max(1, Math.round(val)));
@@ -383,19 +386,19 @@ public class DamageNumbers extends Module {
             float punchScale = 1.0f + 0.35f * (float) Math.sin(punchFactor * Math.PI);
             float renderHeight = baseSize * (an.isCrit ? 1.25f : 1.0f) * punchScale;
 
-            float curY = screen.y - an.age * 18.0f;
+            float curY = scratchPos.y - an.age * 18.0f;
 
             if (an.age >= 0.5f) {
                 an.shattered = true;
                 if (onScreen) {
-                    spawnShards(text, screen.x, curY, renderHeight, color, shardMaxLife);
+                    spawnShards(text, scratchPos.x, curY, renderHeight, color, shardMaxLife);
                 }
                 itActive.remove();
                 continue;
             }
 
             if (onScreen) {
-                renderText(text, screen.x, curY, renderHeight, color, 0.0f, 1.0f);
+                renderText(text, scratchPos.x, curY, renderHeight, color, 0.0f, 1.0f);
             }
         }
 
@@ -440,7 +443,7 @@ public class DamageNumbers extends Module {
             GlyphMeta g = getGlyph(c);
             float charW = g.w * fontScale;
             float charX = cursorX + charW * 0.5f;
-            float charY = centerY;
+            float charY = (c == '.') ? (centerY + 32.0f * fontScale) : centerY;
 
             float spreadDir = (n == 1) ? ((float) random.nextDouble() - 0.5f) : ((float) i / (n - 1) - 0.5f);
             float vx = spreadDir * (2.8f + (float) random.nextDouble() * 1.6f) + ((float) random.nextDouble() - 0.5f) * 1.2f;
@@ -472,8 +475,9 @@ public class DamageNumbers extends Module {
             float drawW = g.w * fontScale;
             float drawH = g.h * fontScale;
             float drawX = cursorX + drawW * 0.5f;
+            float drawY = (c == '.') ? (centerY + 32.0f * fontScale) : centerY;
 
-            renderSingleGlyph(c, drawX, centerY, renderHeight, color, rotDeg, alpha);
+            renderSingleGlyph(c, drawX, drawY, renderHeight, color, rotDeg, alpha);
 
             cursorX += g.advance * fontScale;
         }

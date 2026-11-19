@@ -61,21 +61,6 @@ public class InventoryLayoutManager {
             }
         }
 
-        if (!fileToRead.exists() || fileToRead.length() == 0) {
-            String appdata = System.getenv("APPDATA");
-            if (appdata != null) {
-                File fallback = new File(appdata, ".minecraft/egg/inventory_layouts.json");
-                if (fallback.exists() && fallback.length() > 0 && !fallback.getAbsolutePath().equalsIgnoreCase(fileToRead.getAbsolutePath())) {
-                    try {
-                        Files.copy(fallback.toPath(), configFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                        EggClient.LOGGER.info("[InventoryLayoutManager] Restored presets from global fallback: " + fallback.getAbsolutePath());
-                    } catch (Throwable ignored) {
-                        fileToRead = fallback;
-                    }
-                }
-            }
-        }
-
         if (fileToRead.exists() && fileToRead.length() > 0) {
             try (Reader reader = Files.newBufferedReader(fileToRead.toPath(), StandardCharsets.UTF_8)) {
                 JsonObject root = getGson().fromJson(reader, JsonObject.class);
@@ -139,19 +124,6 @@ public class InventoryLayoutManager {
                 Files.move(tmpFile.toPath(), configFile.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             } catch (Throwable fallbackMove) {
                 Files.move(tmpFile.toPath(), configFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            }
-
-            String appdata = System.getenv("APPDATA");
-            if (appdata != null) {
-                File fallbackDir = new File(appdata, ".minecraft/egg");
-                if (fallbackDir.exists() || fallbackDir.mkdirs()) {
-                    File fallbackFile = new File(fallbackDir, "inventory_layouts.json");
-                    if (!fallbackFile.getAbsolutePath().equalsIgnoreCase(configFile.getAbsolutePath())) {
-                        try (Writer fallbackWriter = Files.newBufferedWriter(fallbackFile.toPath(), StandardCharsets.UTF_8)) {
-                            getGson().toJson(root, fallbackWriter);
-                        } catch (Throwable ignored) {}
-                    }
-                }
             }
         } catch (Exception e) {
             EggClient.LOGGER.error("[InventoryLayoutManager] Failed to save inventory presets", e);

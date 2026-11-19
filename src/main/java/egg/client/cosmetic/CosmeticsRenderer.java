@@ -2,6 +2,7 @@ package egg.client.cosmetic;
 
 import egg.client.module.ModuleManager;
 import egg.client.module.misc.Globals;
+import egg.client.util.EntityUtil;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
 import net.minecraft.client.render.entity.feature.FeatureRenderer;
@@ -52,6 +53,10 @@ public class CosmeticsRenderer extends FeatureRenderer<PlayerEntityRenderState, 
         }
         if (isLocal || state.id <= 0) {
             CosmeticsManager.getInstance().renderAttached(matrices, queue, getContextModel(), light);
+            return;
+        }
+
+        if (entity != null && EntityUtil.isNakedInvisible(entity)) {
             return;
         }
 

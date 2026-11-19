@@ -38,7 +38,8 @@ public class KeyboardMixin {
         if (action == GLFW.GLFW_PRESS) {
             int key = keyInput.key();
 
-            if (key == GLFW.GLFW_KEY_RIGHT_SHIFT) {
+            int openGuiKey = egg.client.module.misc.ClientSettings.getOpenKey();
+            if (openGuiKey > 0 && key == openGuiKey) {
                 if (client.currentScreen == null) {
                     client.setScreen(ClickGuiScreen.getInstance());
                     ci.cancel();

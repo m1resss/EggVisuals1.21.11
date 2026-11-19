@@ -71,7 +71,7 @@ public class InventorySorter extends Module {
     private String statusMessage = "";
 
     public InventorySorter() {
-        super("InvSorter", "Автоматически расставляет предметы в инвентаре по сохраненному шаблону", Category.PLAYER);
+        super("InvSorter", "Автоматически расставляет предметы в инвентаре по сохраненному шаблону", Category.MISC);
         instance = this;
 
         List<String> names = InventoryLayoutManager.getInstance().getPresetNames();

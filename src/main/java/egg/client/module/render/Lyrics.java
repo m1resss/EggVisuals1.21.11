@@ -41,7 +41,6 @@ public class Lyrics extends Module {
 
     private final ModeSetting fontMode = new ModeSetting("Шрифт", "SF Medium", "SF Medium", "SF Semibold", "SF Bold", "SF Regular", "Minecraft");
     private final ModeSetting colorStyle = new ModeSetting("Цвет текста", "Белый", "Белый", "Лавандовый", "Коралловый", "Тема");
-    private final BooleanSetting background = new BooleanSetting("Фон плашки", true, "Отображать темную полупрозрачную подложку");
     private final BooleanSetting glow = new BooleanSetting("Неоновое свечение", true, "Свечение контура капсулы");
     private final BooleanSetting gentleWave = new BooleanSetting("Живое покачивание", true, "Плавное 3D покачивание плашек в пространстве");
     private final BooleanSetting wordAnimation = new BooleanSetting("Анимация слов", true, "Караоке-анимация и подпрыгивание активного слова как в Dynamic Island");
@@ -125,7 +124,7 @@ public class Lyrics extends Module {
         super("Lyrics", "Отображает строки играющей песни над землей", Category.ESP);
         addSettings(
                 splitMode, wordsPerCapsule, distance, scatterH, scatterV, size,
-                lifetime, fontMode, colorStyle, background, glow, gentleWave, wordAnimation, noOverlap, demoMode
+                lifetime, fontMode, colorStyle, glow, gentleWave, wordAnimation, noOverlap, demoMode
         );
     }
 
@@ -548,31 +547,25 @@ public class Lyrics extends Module {
             GL11.glDisable(GL11.GL_DEPTH_TEST);
             GL11.glDepthMask(false);
 
-            if (background.isEnabled()) {
-                VertexConsumer quadConsumer = immediate.getBuffer(RenderLayers.debugQuads());
-                int bgR = (bgCol >> 16) & 0xFF;
-                int bgG = (bgCol >> 8) & 0xFF;
-                int bgB = bgCol & 0xFF;
-                int bgA = (bgCol >> 24) & 0xFF;
+            VertexConsumer quadConsumer = immediate.getBuffer(RenderLayers.debugQuads());
+            int bgR = (bgCol >> 16) & 0xFF;
+            int bgG = (bgCol >> 8) & 0xFF;
+            int bgB = bgCol & 0xFF;
+            int bgA = (bgCol >> 24) & 0xFF;
 
-                draw3DCapsule(quadConsumer, mat, boxW + 5.0f, boxH + 3.0f, 1.8f, 2.4f, -0.05f, 0, 0, 0, (int) (70 * alpha));
+            draw3DCapsule(quadConsumer, mat, boxW + 2.5f, boxH + 1.8f, 0.0f, 0.5f, -0.035f, 0, 0, 0, (int) (55 * alpha));
+            draw3DCapsule(quadConsumer, mat, boxW + 1.0f, boxH + 0.6f, 0.0f, 0.25f, -0.015f, 0, 0, 0, (int) (95 * alpha));
+            draw3DCapsule(quadConsumer, mat, boxW, boxH, 0.0f, 0.0f, 0.0f, bgR, bgG, bgB, bgA);
 
-                draw3DCapsule(quadConsumer, mat, boxW + 2.0f, boxH + 1.2f, 0.8f, 1.2f, -0.025f, 0, 0, 0, (int) (120 * alpha));
-
-                draw3DCapsule(quadConsumer, mat, boxW, boxH, 0f, 0f, 0.0f, bgR, bgG, bgB, bgA);
-
-                draw3DTopGloss(quadConsumer, mat, boxW, boxH, 0.008f, (int) (55 * alpha));
-
-                if (glow.isEnabled()) {
-                    int glR = (glowColor >> 16) & 0xFF;
-                    int glG = (glowColor >> 8) & 0xFF;
-                    int glB = glowColor & 0xFF;
-                    int glA = (glowColor >> 24) & 0xFF;
-                    draw3DCapsuleOutline(quadConsumer, mat, boxW, boxH, 0.015f, 1.1f, glR, glG, glB, glA);
-                }
-
-                immediate.draw(RenderLayers.debugQuads());
+            if (glow.isEnabled()) {
+                int glR = (glowColor >> 16) & 0xFF;
+                int glG = (glowColor >> 8) & 0xFF;
+                int glB = glowColor & 0xFF;
+                int glA = (glowColor >> 24) & 0xFF;
+                draw3DCapsuleOutline(quadConsumer, mat, boxW, boxH, 0.015f, 1.0f, glR, glG, glB, glA);
             }
+
+            immediate.draw(RenderLayers.debugQuads());
 
             int pureLight = 15728640;
 
@@ -694,7 +687,7 @@ public class Lyrics extends Module {
         buf.vertex(mat, x2, y2, oz).color(r, g, b, a);
         buf.vertex(mat, x1, y2, oz).color(r, g, b, a);
 
-        int segments = 12;
+        int segments = 24;
         float step = (float) Math.PI / segments;
 
         for (int i = 0; i < segments; i++) {
@@ -726,54 +719,6 @@ public class Lyrics extends Module {
         }
     }
 
-    private void draw3DTopGloss(VertexConsumer buf, Matrix4f mat, float w, float h, float oz, int a) {
-        if (a <= 1) return;
-        float rad = h * 0.5f;
-        float x1 = -w * 0.5f + rad;
-        float x2 = w * 0.5f - rad;
-        float y1 = -h * 0.5f;
-        float yMid = -0.5f;
-
-        int aTop = a;
-        int aMid = (int) (a * 0.15f);
-
-        buf.vertex(mat, x1, y1, oz).color(255, 255, 255, aTop);
-        buf.vertex(mat, x2, y1, oz).color(255, 255, 255, aTop);
-        buf.vertex(mat, x2, yMid, oz).color(255, 255, 255, aMid);
-        buf.vertex(mat, x1, yMid, oz).color(255, 255, 255, aMid);
-
-        int segments = 8;
-        float step = (float) (Math.PI * 0.5 / segments);
-
-        for (int i = 0; i < segments; i++) {
-            float a1 = (float) Math.PI + i * step;
-            float a2 = a1 + step;
-            float px1 = x1 + (float) Math.cos(a1) * rad;
-            float py1 = (float) Math.sin(a1) * rad;
-            float px2 = x1 + (float) Math.cos(a2) * rad;
-            float py2 = (float) Math.sin(a2) * rad;
-
-            buf.vertex(mat, x1, 0f, oz).color(255, 255, 255, aMid);
-            buf.vertex(mat, px1, py1, oz).color(255, 255, 255, aTop);
-            buf.vertex(mat, px2, py2, oz).color(255, 255, 255, aTop);
-            buf.vertex(mat, x1, 0f, oz).color(255, 255, 255, aMid);
-        }
-
-        for (int i = 0; i < segments; i++) {
-            float a1 = -(float) (Math.PI * 0.5) + i * step;
-            float a2 = a1 + step;
-            float px1 = x2 + (float) Math.cos(a1) * rad;
-            float py1 = (float) Math.sin(a1) * rad;
-            float px2 = x2 + (float) Math.cos(a2) * rad;
-            float py2 = (float) Math.sin(a2) * rad;
-
-            buf.vertex(mat, x2, 0f, oz).color(255, 255, 255, aMid);
-            buf.vertex(mat, px1, py1, oz).color(255, 255, 255, aTop);
-            buf.vertex(mat, px2, py2, oz).color(255, 255, 255, aTop);
-            buf.vertex(mat, x2, 0f, oz).color(255, 255, 255, aMid);
-        }
-    }
-
     private void draw3DCapsuleOutline(VertexConsumer buf, Matrix4f mat, float w, float h, float oz, float thickness, int r, int g, int b, int a) {
         float rad = h * 0.5f;
         float x1 = -w * 0.5f + rad;
@@ -791,7 +736,7 @@ public class Lyrics extends Module {
         buf.vertex(mat, x2, y2 + thickness, oz).color(r, g, b, a);
         buf.vertex(mat, x1, y2 + thickness, oz).color(r, g, b, a);
 
-        int segments = 12;
+        int segments = 24;
         float step = (float) Math.PI / segments;
 
         for (int i = 0; i < segments; i++) {

@@ -16,13 +16,14 @@ import egg.client.module.setting.ColorSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.Setting;
 import egg.client.module.setting.SliderSetting;
+import egg.client.render.DynamicGuiTextures;
 import egg.client.render.IconRenderer;
 import egg.client.render.Render2D;
 import egg.client.render.font.ClientFont;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Fonts;
 import egg.client.render.msdf.pipeline.DrawBatcher;
-import egg.client.ui.halloween.HalloweenGuiRenderer;
+import egg.client.ui.grid.GuiDotGrid;
 import egg.client.ui.lens.LensParams;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
@@ -38,6 +39,7 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.input.CharInput;
 import net.minecraft.client.input.KeyInput;
+import net.minecraft.text.StyleSpriteSource;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.MathHelper;
@@ -71,9 +73,14 @@ public class ClickGuiScreen extends Screen {
     private static String savedSearchQuery = "";
     private static float savedScrollOffset = 0.0f;
     private static float savedTargetScroll = 0.0f;
+    private static float savedSidebarScrollOffset = 0.0f;
+    private static float savedSidebarTargetScroll = 0.0f;
+    private static boolean savedSidebarCollapsed = false;
 
     private Category selectedCategory = savedCategory;
     private Module selectedSearchModule = savedSearchModule;
+    private boolean sidebarCollapsed = savedSidebarCollapsed;
+    private final Animation sidebarCollapseAnim = new Animation(savedSidebarCollapsed ? 1.0f : 0.0f, 260L, Easing.EASE_OUT_CUBIC);
     private final Animation categoryPillY = new Animation(0.0f, 260L, Easing.EASE_OUT_EXPO);
     private final Animation categoryPillHeight = new Animation(20.0f, 260L, Easing.EASE_OUT_EXPO);
     private final Map<Category, Animation> categoryHoverAnims = new HashMap<>();
@@ -84,13 +91,32 @@ public class ClickGuiScreen extends Screen {
     private boolean searchFocused = false;
     private String searchQuery = savedSearchQuery;
     private final Animation searchFocusAnim = new Animation(0.0f, 200L, Easing.EASE_OUT_CUBIC);
+    private final Animation searchPillY = new Animation(0.0f, 120L, Easing.EASE_OUT_CUBIC);
+    private int searchSelectedIndex = 0;
     private long lastBlinkTime = 0;
     private int searchCursor = 0;
     private int searchSelectionEnd = 0;
     private boolean searchSelecting = false;
 
+    private void selectSearchModule(Module clickedMod) {
+        if (clickedMod == null) return;
+        selectedCategory = clickedMod.getCategory();
+        ensureCategoryVisible(selectedCategory);
+        headerTitle = selectedCategory.getSection() + " - " + selectedCategory.getName();
+        selectedSearchModule = clickedMod;
+        searchQuery = clickedMod.getName();
+        searchCursor = searchQuery.length();
+        searchSelectionEnd = searchCursor;
+        searchFocused = false;
+        searchSelectedIndex = 0;
+        clickedMod.setExpanded(true);
+        markModulesDirty();
+        resetCascade();
+        GuiSoundManager.playClick();
+    }
+
     private int getSearchCursorIndex(float clickX, float searchX) {
-        float textX = searchX + 22.0f;
+        float textX = searchX + 19.0f;
         if (searchQuery.isEmpty() || clickX <= textX) return 0;
         float totalW = ClientFont.getWidth(searchQuery, ClientFont.SF_REGULAR);
         if (clickX >= textX + totalW) return searchQuery.length();
@@ -111,6 +137,13 @@ public class ClickGuiScreen extends Screen {
     private float scrollOffset = savedScrollOffset;
     private float targetScroll = savedTargetScroll;
     private float maxScroll = 0.0f;
+    private float scrollVelocity = 0.0f;
+    private float smoothedScrollVelocity = 0.0f;
+    private float sidebarScrollOffset = savedSidebarScrollOffset;
+    private float sidebarTargetScroll = savedSidebarTargetScroll;
+    private float sidebarMaxScroll = 0.0f;
+    private Category deferredRailTooltipCat = null;
+    private float deferredRailTooltipY = 0.0f;
     private final Animation scrollbarAlphaAnim = new Animation(0.0f, 240L, Easing.EASE_OUT_CUBIC);
     private long lastScrollTime = 0;
 
@@ -122,11 +155,20 @@ public class ClickGuiScreen extends Screen {
 
     private final List<Module> cachedFilteredModules = new ArrayList<>();
     private boolean modulesDirty = true;
-    private final Map<Module, String> cachedDescriptions = new HashMap<>();
     private final Map<SliderSetting, String> cachedSliderStrings = new HashMap<>();
     private final Map<SliderSetting, Double> lastSliderValues = new HashMap<>();
     private final Map<Module, String> cachedKeybindStrings = new HashMap<>();
     private final Map<Module, Integer> lastModuleKeys = new HashMap<>();
+    private final Map<String, String> truncatedLabelsCache = new HashMap<>();
+    private final Map<Module, Long> cardHoverTimes = new HashMap<>();
+    private Module activeCandidateModule = null;
+    private Setting activeCandidateSetting = null;
+    private Module hoveredTooltipModule = null;
+    private Setting hoveredTooltipSetting = null;
+    private long hoverStateStartTime = 0L;
+    private final Animation tooltipAlphaAnim = new Animation(0.0f, 160L, Easing.EASE_OUT_CUBIC);
+    private float tooltipMouseX = 0.0f;
+    private float tooltipMouseY = 0.0f;
 
     private SliderSetting draggingSlider = null;
     private float dragTrackX = 0.0f;
@@ -158,6 +200,13 @@ public class ClickGuiScreen extends Screen {
     private float openDropdownScrollY = 0.0f;
     private float openDropdownMaxScroll = 0.0f;
 
+    private boolean isWorldTweaksCustomSetting(Module module, Setting s) {
+        if (!(module instanceof WorldTweaks) || s == null) return false;
+        String name = s.getName();
+        return "Режим времени".equals(name) || "Время суток".equals(name) || "Время (ч)".equals(name)
+                || "Сезон мира".equals(name) || "Погода".equals(name);
+    }
+
     public ClickGuiScreen() {
         super(Text.of("Egg Visual"));
         for (Category cat : Category.values()) {
@@ -179,8 +228,8 @@ public class ClickGuiScreen extends Screen {
         animStartTime = System.nanoTime();
         cascadeStarted = false;
 
-        float guiWidth = Math.clamp(width * 0.58f, 520.0f, 580.0f);
-        float guiHeight = Math.clamp(height * 0.76f, 330.0f, 380.0f);
+        float guiWidth = Math.clamp(width * 0.58f, 540.0f, 600.0f);
+        float guiHeight = Math.clamp(height * 0.62f, 280.0f, 320.0f);
         float gx = (float) Math.round((width - guiWidth) / 2.0f);
         float gy = (float) Math.round((height - guiHeight) / 2.0f);
 
@@ -210,6 +259,14 @@ public class ClickGuiScreen extends Screen {
         searchQuery = savedSearchQuery;
         scrollOffset = savedScrollOffset;
         targetScroll = savedTargetScroll;
+        scrollVelocity = 0.0f;
+        smoothedScrollVelocity = 0.0f;
+        sidebarScrollOffset = savedSidebarScrollOffset;
+        sidebarTargetScroll = savedSidebarTargetScroll;
+        sidebarCollapsed = savedSidebarCollapsed;
+        sidebarCollapseAnim.setValue(sidebarCollapsed ? 1.0f : 0.0f);
+        sidebarCollapseAnim.setTarget(sidebarCollapsed ? 1.0f : 0.0f);
+        ensureCategoryVisible(selectedCategory);
         markModulesDirty();
         if ("Выкл".equals(ClientSettings.getOpenAnimationMode())) {
             resetCascade();
@@ -218,17 +275,52 @@ public class ClickGuiScreen extends Screen {
 
     }
 
+    private void ensureCategoryVisible(Category cat) {
+        float cp = sidebarCollapseAnim.getValue();
+        float startY = MathHelper.lerp(cp, 60.0f, 38.0f) + 4.0f;
+        float curY = startY;
+        String lastSec = "";
+        float catY = -1.0f;
+        for (Category c : Category.values()) {
+            if (!c.getSection().equals(lastSec)) {
+                lastSec = c.getSection();
+                if (curY > startY + 2.0f) {
+                    curY += MathHelper.lerp(cp, 8.0f, 2.0f);
+                }
+                curY += MathHelper.lerp(cp, 14.0f, 4.0f);
+            }
+            if (c == cat) {
+                catY = curY;
+                break;
+            }
+            curY += 25.0f;
+        }
+        if (catY >= 0.0f) {
+            float gh = Math.clamp(height * 0.62f, 280.0f, 320.0f);
+            float viewportH = gh - startY - 4.0f;
+            float topBound = startY;
+            if (catY - sidebarTargetScroll < topBound) {
+                sidebarTargetScroll = Math.max(0.0f, catY - topBound);
+            } else if (catY + 22.0f - sidebarTargetScroll > topBound + viewportH) {
+                sidebarTargetScroll = Math.max(0.0f, catY + 22.0f - (topBound + viewportH));
+            }
+        }
+    }
+
     public void markModulesDirty() {
         this.modulesDirty = true;
+        this.truncatedLabelsCache.clear();
     }
 
     private void resetCascade() {
         List<Module> list = getFilteredModules();
         cardCascadeAnims.clear();
+        boolean isWave = "Волна".equals(ClientSettings.getOpenAnimationMode());
         for (int i = 0; i < list.size(); i++) {
             Module m = list.get(i);
-            long delay = i * 20L;
-            Animation anim = new Animation(0.0f, 260L + delay, Easing.EASE_OUT_CUBIC);
+            long delay = isWave ? (long) (i * 30L) : (i * 20L);
+            long dur = isWave ? 420L + delay : 260L + delay;
+            Animation anim = new Animation(0.0f, dur, Easing.EASE_OUT_CUBIC);
             anim.setValue(0.0f);
             anim.setTarget(1.0f);
             cardCascadeAnims.put(m, anim);
@@ -252,6 +344,9 @@ public class ClickGuiScreen extends Screen {
         savedSearchQuery = this.searchQuery;
         savedScrollOffset = this.scrollOffset;
         savedTargetScroll = this.targetScroll;
+        savedSidebarScrollOffset = this.sidebarScrollOffset;
+        savedSidebarTargetScroll = this.sidebarTargetScroll;
+        savedSidebarCollapsed = this.sidebarCollapsed;
     }
 
     @Override
@@ -259,6 +354,13 @@ public class ClickGuiScreen extends Screen {
         saveState();
         super.removed();
         this.closing = false;
+        this.cardHoverTimes.clear();
+        this.activeCandidateModule = null;
+        this.activeCandidateSetting = null;
+        this.hoveredTooltipModule = null;
+        this.hoveredTooltipSetting = null;
+        this.tooltipAlphaAnim.setValue(0.0f);
+        this.tooltipAlphaAnim.setTarget(0.0f);
     }
 
     public void closeWithAnimation() {
@@ -279,6 +381,8 @@ public class ClickGuiScreen extends Screen {
             openColorPickerSetting = null;
             colorDragMode = ColorDragMode.NONE;
             openDropdownSetting = null;
+            tooltipAlphaAnim.setTarget(0.0f);
+            cardHoverTimes.clear();
             egg.client.config.ConfigManager.save();
 
         }
@@ -294,7 +398,9 @@ public class ClickGuiScreen extends Screen {
         long now = System.nanoTime();
         float speedMult = ClientSettings.getSpeedMultiplier();
         if (speedMult <= 0.05f) speedMult = 0.05f;
-        long durationMs = (long) ((closing ? LensParams.CLOSE_DURATION_MS : LensParams.OPEN_DURATION_MS) / speedMult);
+        long openDuration = "Волна".equals(animMode) ? 1200L : 950L;
+        long closeDuration = "Волна".equals(animMode) ? 450L : LensParams.CLOSE_DURATION_MS;
+        long durationMs = (long) ((closing ? closeDuration : openDuration) / speedMult);
         float elapsedMs = (now - animStartTime) / 1_000_000.0f;
         float linear = Math.clamp(elapsedMs / (float) durationMs, 0.0f, 1.0f);
 
@@ -305,7 +411,7 @@ public class ClickGuiScreen extends Screen {
                 currentAnimProgress = 0.0f;
             }
         } else {
-            float ease = LensParams.easeOutExpo(linear);
+            float ease = "Волна".equals(animMode) ? (float) Math.sin(linear * Math.PI * 0.5f) : 1.0f - (float) Math.pow(1.0f - linear, 3.0);
             currentAnimProgress = animStartProgress + (1.0f - animStartProgress) * ease;
             if (linear >= 1.0f || (1.0f - currentAnimProgress) <= 0.001f) {
                 currentAnimProgress = 1.0f;
@@ -324,11 +430,21 @@ public class ClickGuiScreen extends Screen {
 
             }
         }
+        if (currentAnimProgress > 0.01f) {
+            int dimAlpha = (int) (155 * currentAnimProgress);
+            int acc = Theme.getAccent();
+            int dr = Math.min(18, (int) (ColorUtil.red(acc) * 0.030f));
+            int dg = Math.min(18, (int) (ColorUtil.green(acc) * 0.030f));
+            int db = Math.min(22, (int) (ColorUtil.blue(acc) * 0.040f));
+            context.fill(0, 0, width, height, ColorUtil.rgba(dr, dg, db, dimAlpha));
+        }
     }
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         updateAnimationProgress();
+        activeCandidateModule = null;
+        activeCandidateSetting = null;
         WorldTweaks wtModule = ModuleManager.getInstance().getModule(WorldTweaks.class);
         if (wtModule != null) wtModule.syncAudioState();
 
@@ -343,24 +459,52 @@ public class ClickGuiScreen extends Screen {
         String animMode = ClientSettings.getOpenAnimationMode();
         float p = currentAnimProgress;
 
-        if (!cascadeStarted && p >= 0.55f && !closing) {
+        if (!cascadeStarted && p >= 0.35f && !closing) {
             cascadeStarted = true;
             resetCascade();
         }
 
-        scrollOffset += (targetScroll - scrollOffset) * 0.26f;
+        float prevScroll = scrollOffset;
+        scrollOffset += (targetScroll - scrollOffset) * 0.22f;
+        scrollVelocity = scrollOffset - prevScroll;
+        if (Math.abs(scrollVelocity) > Math.abs(smoothedScrollVelocity)) {
+            smoothedScrollVelocity = MathHelper.lerp(0.55f, smoothedScrollVelocity, scrollVelocity);
+        } else {
+            smoothedScrollVelocity = MathHelper.lerp(0.12f, smoothedScrollVelocity, scrollVelocity);
+        }
+        sidebarScrollOffset += (sidebarTargetScroll - sidebarScrollOffset) * 0.26f;
 
-        int overlayAlpha = (int) (130 * p);
-        Render2D.drawRect(context, 0, 0, width, height, ColorUtil.rgba(4, 5, 8, overlayAlpha));
-
-        float guiWidth = Math.clamp(width * 0.58f, 520.0f, 580.0f);
-        float guiHeight = Math.clamp(height * 0.76f, 330.0f, 380.0f);
+        float guiWidth = Math.clamp(width * 0.58f, 540.0f, 600.0f);
+        float guiHeight = Math.clamp(height * 0.62f, 280.0f, 320.0f);
         float gx = (float) Math.round((width - guiWidth) / 2.0f);
         float gy = (float) Math.round((height - guiHeight) / 2.0f);
 
         if ("Простая".equals(animMode)) {
             renderDirectWindow(context, gx, gy, guiWidth, guiHeight, mouseX, mouseY, p, p);
             renderOpenDropdown(context, mouseX, mouseY, 1.0f);
+            updateAndRenderDeferredTooltip(context, mouseX, mouseY);
+            this.lateMouseX = mouseX;
+            this.lateMouseY = mouseY;
+            return;
+        }
+
+        if ("Волна".equals(animMode)) {
+            float waveP = p;
+            float waveOffsetY = (1.0f - waveP) * 16.0f;
+            float curGy = gy + waveOffsetY;
+            float alphaVal = Math.clamp(waveP * 1.25f, 0.0f, 1.0f);
+
+            Render2D.drawShadow(context, gx, curGy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 28.0f, ColorUtil.rgba(0, 0, 0, (int) (135 * alphaVal)));
+            int mainBg = ColorUtil.withAlphaFloat(Theme.getWindowBg(), alphaVal);
+            Render2D.drawRoundedRect(context, gx, curGy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, mainBg);
+            Render2D.drawRoundedOutline(context, gx, curGy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (16 * alphaVal)));
+
+            context.enableScissor((int) gx, (int) Math.max(0, curGy), (int) (gx + guiWidth), (int) (curGy + guiHeight));
+            renderWindowContent(context, gx, curGy, guiWidth, guiHeight, mouseX, mouseY, alphaVal);
+            context.disableScissor();
+
+            renderOpenDropdown(context, mouseX, mouseY, 1.0f);
+            updateAndRenderDeferredTooltip(context, mouseX, mouseY);
             this.lateMouseX = mouseX;
             this.lateMouseY = mouseY;
             return;
@@ -385,47 +529,23 @@ public class ClickGuiScreen extends Screen {
         float curRadius = MathHelper.lerp(morphToRect, curH / 2.0f, Theme.WINDOW_RADIUS);
 
         if (p < 0.999f) {
-
-            boolean shadowEnabled = ClientSettings.isShadowEnabled() && !FpsBenchmark.overrideNoShadow;
-            if (shadowEnabled && p > 0.01f) {
-                Render2D.drawShadow(context, curX, curY, curW, curH, curRadius, 16.0f, ColorUtil.rgba(0, 0, 0, (int) (150 * p)));
-            }
-
+            Render2D.drawShadow(context, curX, curY, curW, curH, curRadius, 28.0f, ColorUtil.rgba(0, 0, 0, (int) (135 * p)));
             int mainBg = ColorUtil.withAlphaFloat(Theme.getWindowBg(), p);
-            int mainBorder = ColorUtil.withAlphaFloat(Theme.WINDOW_BORDER, p);
             Render2D.drawRoundedRect(context, curX, curY, curW, curH, curRadius, mainBg);
-            Render2D.drawRoundedOutline(context, curX, curY, curW, curH, curRadius, 1.0f, mainBorder);
-
-            if (k > 0.04f) {
-                float timeSec = (float) ((System.nanoTime() - animStartTime) / 1_000_000_000.0);
-                float wave = (float) Math.sin(timeSec * LensParams.RIPPLE_SPEED) * 2.5f * k;
-                int sheenCol = ColorUtil.rgba(255, 255, 255, (int) (LensParams.GLASS_SHEEN_ALPHA * k * 255.0f));
-                Render2D.drawRoundedOutline(context, curX - wave, curY - wave, curW + wave * 2.0f, curH + wave * 2.0f, curRadius + wave, 1.5f, sheenCol);
-
-                float innerWave = (float) Math.cos(timeSec * 7.0f) * 3.0f * k;
-                int innerSheen = ColorUtil.withAlphaFloat(Theme.getAccent(), LensParams.GLASS_SHEEN_ALPHA * k * 0.75f);
-                Render2D.drawRoundedOutline(context, curX + 2.0f + innerWave, curY + 2.0f + innerWave, curW - 4.0f - innerWave * 2.0f, curH - 4.0f - innerWave * 2.0f, Math.max(1.0f, curRadius - 2.0f), 1.0f, innerSheen);
-            }
+            Render2D.drawRoundedOutline(context, curX, curY, curW, curH, curRadius, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (16 * p)));
 
             float contentAlpha = LensParams.smoothstep(0.55f, 0.90f, p) * p;
             if (contentAlpha > 0.01f) {
-                HalloweenGuiRenderer.renderEmbers(context, curX, curY, curW, curH, contentAlpha);
                 context.enableScissor((int) curX, (int) curY, (int) (curX + curW), (int) (curY + curH));
                 renderWindowContent(context, gx, gy, guiWidth, guiHeight, mouseX, mouseY, contentAlpha);
-                HalloweenGuiRenderer.renderWebs(context, curX, curY, curW, curH, contentAlpha);
-                HalloweenGuiRenderer.renderSpider(context, curX, curY, (float) mouseX, (float) mouseY, contentAlpha);
                 context.disableScissor();
-
-                if (p > 0.85f) {
-                    HalloweenGuiRenderer.renderPumpkins(context, curX, curY, curW, curH, (float) mouseX, (float) mouseY, contentAlpha);
-                }
             }
         } else {
-
             renderDirectWindow(context, gx, gy, guiWidth, guiHeight, mouseX, mouseY, 1.0f, 1.0f);
         }
 
         renderOpenDropdown(context, mouseX, mouseY, 1.0f);
+        updateAndRenderDeferredTooltip(context, mouseX, mouseY);
 
         this.lateMouseX = mouseX;
         this.lateMouseY = mouseY;
@@ -442,94 +562,175 @@ public class ClickGuiScreen extends Screen {
     }
 
     private void renderDirectWindow(DrawContext context, float gx, float gy, float guiWidth, float guiHeight, float mouseX, float mouseY, float containerAlpha, float contentAlpha) {
-        boolean shadowEnabled = ClientSettings.isShadowEnabled() && !FpsBenchmark.overrideNoShadow;
-        if (shadowEnabled && containerAlpha > 0.01f) {
-            int shadowColor = ColorUtil.rgba(0, 0, 0, (int) (150 * containerAlpha));
-            Render2D.drawShadow(context, gx, gy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 16.0f, shadowColor);
-        }
-
+        Render2D.drawShadow(context, gx, gy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 28.0f, ColorUtil.rgba(0, 0, 0, (int) (135 * containerAlpha)));
         int mainBg = ColorUtil.withAlphaFloat(Theme.getWindowBg(), containerAlpha);
-        int mainBorder = ColorUtil.withAlphaFloat(Theme.WINDOW_BORDER, containerAlpha);
         Render2D.drawRoundedRect(context, gx, gy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, mainBg);
-        Render2D.drawRoundedOutline(context, gx, gy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 1.0f, mainBorder);
-        Render2D.drawDiagonalSheen(context, gx, gy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 1200L);
-
-        HalloweenGuiRenderer.renderEmbers(context, gx, gy, guiWidth, guiHeight, contentAlpha);
+        Render2D.drawRoundedOutline(context, gx, gy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (16 * containerAlpha)));
 
         context.enableScissor((int) gx, (int) gy, (int) (gx + guiWidth), (int) (gy + guiHeight));
         renderWindowContent(context, gx, gy, guiWidth, guiHeight, mouseX, mouseY, contentAlpha);
-        HalloweenGuiRenderer.renderWebs(context, gx, gy, guiWidth, guiHeight, contentAlpha);
-        HalloweenGuiRenderer.renderSpider(context, gx, gy, (float) mouseX, (float) mouseY, contentAlpha);
         context.disableScissor();
-
-        HalloweenGuiRenderer.renderPumpkins(context, gx, gy, guiWidth, guiHeight, (float) mouseX, (float) mouseY, contentAlpha);
     }
 
     private void renderWindowContent(DrawContext context, float gx, float gy, float guiWidth, float guiHeight, float mouseX, float mouseY, float alpha) {
-        float sidebarWidth = 114.0f;
+        float collapseProgress = sidebarCollapseAnim.getValue();
+        float sidebarWidth = MathHelper.lerp(collapseProgress, 132.0f, 36.0f);
+        float headerHeight = 44.0f;
+        deferredRailTooltipCat = null;
+
+        if (ClientSettings.isCursorGlow() && mouseX >= gx && mouseX <= gx + guiWidth && mouseY >= gy && mouseY <= gy + guiHeight) {
+            float distLeft = mouseX - gx;
+            float distRight = (gx + guiWidth) - mouseX;
+            float distTop = mouseY - gy;
+            float distBottom = (gy + guiHeight) - mouseY;
+            float edgeDist = Math.min(Math.min(distLeft, distRight), Math.min(distTop, distBottom));
+
+            float cornerRadius = 16.0f;
+            if (distLeft < cornerRadius && distTop < cornerRadius) {
+                float cx = gx + cornerRadius;
+                float cy = gy + cornerRadius;
+                edgeDist = Math.min(edgeDist, cornerRadius - (float) Math.hypot(cx - mouseX, cy - mouseY));
+            } else if (distRight < cornerRadius && distTop < cornerRadius) {
+                float cx = gx + guiWidth - cornerRadius;
+                float cy = gy + cornerRadius;
+                edgeDist = Math.min(edgeDist, cornerRadius - (float) Math.hypot(mouseX - cx, cy - mouseY));
+            } else if (distLeft < cornerRadius && distBottom < cornerRadius) {
+                float cx = gx + cornerRadius;
+                float cy = gy + guiHeight - cornerRadius;
+                edgeDist = Math.min(edgeDist, cornerRadius - (float) Math.hypot(cx - mouseX, mouseY - cy));
+            } else if (distRight < cornerRadius && distBottom < cornerRadius) {
+                float cx = gx + guiWidth - cornerRadius;
+                float cy = gy + guiHeight - cornerRadius;
+                edgeDist = Math.min(edgeDist, cornerRadius - (float) Math.hypot(mouseX - cx, mouseY - cy));
+            }
+
+            float fadeMargin = 40.0f;
+            float edgeFade = Math.clamp(edgeDist / fadeMargin, 0.0f, 1.0f);
+            edgeFade = edgeFade * edgeFade * (3.0f - 2.0f * edgeFade);
+
+            float glowSpread = 16.0f;
+            float glowSize = 36.0f;
+            float glowRadius = 18.0f;
+            float glowAlpha = 0.03f * edgeFade * alpha;
+            if (glowAlpha > 0.002f) {
+                Render2D.drawShadow(context, mouseX - glowRadius, mouseY - glowRadius, glowSize, glowSize, glowRadius, glowSpread, ColorUtil.withAlphaFloat(Theme.getAccent(), glowAlpha));
+            }
+        }
+
+        context.enableScissor((int) gx, (int) gy, (int) (gx + sidebarWidth), (int) (gy + guiHeight));
+        Render2D.drawRoundedRect(context, gx, gy, sidebarWidth + Theme.WINDOW_RADIUS, guiHeight, Theme.WINDOW_RADIUS, ColorUtil.withAlphaFloat(Theme.getSidebarBg(), alpha));
+        context.disableScissor();
+
+        GuiDotGrid.render(context, gx + sidebarWidth, gy + headerHeight, guiWidth - sidebarWidth, guiHeight - headerHeight, mouseX, mouseY, alpha);
 
         int dividerColor = ColorUtil.withAlphaFloat(Theme.SIDEBAR_DIVIDER, alpha);
         Render2D.drawRect(context, gx + sidebarWidth, gy, 1.0f, guiHeight, dividerColor);
+        Render2D.drawRect(context, gx + sidebarWidth, gy + headerHeight, guiWidth - sidebarWidth, 1.0f, dividerColor);
 
-        renderSidebar(context, gx, gy, sidebarWidth, guiHeight, mouseX, mouseY, alpha);
+        renderSidebar(context, gx, gy, sidebarWidth, guiHeight, mouseX, mouseY, alpha, collapseProgress);
 
-        float headerHeight = 36.0f;
         renderHeader(context, gx + sidebarWidth, gy, guiWidth - sidebarWidth, headerHeight, mouseX, mouseY, alpha);
 
-        float contentX = gx + sidebarWidth + 12.0f;
-        float contentY = gy + headerHeight + 8.0f;
-        float contentW = guiWidth - sidebarWidth - 24.0f;
-        float contentH = guiHeight - headerHeight - 14.0f;
+        float contentX = gx + sidebarWidth + 14.0f;
+        float contentY = gy + headerHeight + 10.0f;
+        float contentW = guiWidth - sidebarWidth - 28.0f;
+        float contentH = guiHeight - headerHeight - 16.0f;
 
         if (selectedCategory == Category.INVENTORY) {
             egg.client.ui.section.InventoryConfigPanel.render(context, contentX, contentY, contentW, contentH, mouseX, mouseY, alpha);
         } else if (selectedCategory == Category.COSMETICS) {
             egg.client.ui.section.CosmeticsPanel.render(context, contentX, contentY, contentW, contentH, mouseX, mouseY, alpha);
+        } else if (selectedCategory == Category.SETTINGS) {
+            renderClientSettingsPanel(context, contentX, contentY, contentW, contentH, mouseX, mouseY, alpha);
         } else {
             renderModules(context, contentX, contentY, contentW, contentH, mouseX, mouseY, alpha);
         }
 
-        renderSearchMatchesPopup(context, gx + guiWidth - 160.0f - 14.0f, gy + headerHeight + 2.0f, 160.0f, mouseX, mouseY, alpha);
+        if (collapseProgress < 0.2f) {
+            float searchPopupW = sidebarWidth - 16.0f;
+            renderSearchMatchesPopup(context, gx + 8.0f, gy + 60.0f, searchPopupW, mouseX, mouseY, alpha);
+        }
+
+        if (collapseProgress > 0.6f && deferredRailTooltipCat != null) {
+            float ttAlpha = Math.clamp((collapseProgress - 0.6f) / 0.4f, 0.0f, 1.0f) * alpha;
+            float ttX = gx + sidebarWidth + 8.0f;
+            float ttY = Math.clamp(deferredRailTooltipY + 1.0f, gy + 6.0f, gy + guiHeight - 24.0f);
+            String ttText = deferredRailTooltipCat.getName() + " (" + getCategoryModuleCount(deferredRailTooltipCat) + ")";
+            float ttW = ClientFont.getWidth(ttText, ClientFont.SF_MEDIUM) + 14.0f;
+            float ttH = 20.0f;
+            Render2D.drawShadow(context, ttX, ttY, ttW, ttH, 5.0f, 8.0f, ColorUtil.rgba(0, 0, 0, (int) (140 * ttAlpha)));
+            Render2D.drawRoundedRect(context, ttX, ttY, ttW, ttH, 5.0f, ColorUtil.rgba(24, 24, 27, (int) (250 * ttAlpha)));
+            Render2D.drawRoundedOutline(context, ttX, ttY, ttW, ttH, 5.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (20 * ttAlpha)));
+            ClientFont.draw(context, ttText, ttX + 7.0f, ttY + 5.5f, ClientFont.SF_MEDIUM, ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, ttAlpha));
+        }
     }
 
-    private void renderSidebar(DrawContext context, float x, float y, float width, float height, float mouseX, float mouseY, float alpha) {
+    private void renderSidebar(DrawContext context, float x, float y, float width, float height, float mouseX, float mouseY, float alpha, float collapseProgress) {
+        float logoAreaH = 34.0f;
+        renderLogo(context, x, y, width, logoAreaH, mouseX, mouseY, alpha, collapseProgress);
 
-        float logoAreaH = 46.0f;
-        renderLogo(context, x, y, width, logoAreaH, alpha);
+        float searchH = 22.0f * (1.0f - collapseProgress);
+        float searchY = y + logoAreaH + 2.0f * (1.0f - collapseProgress);
+        float searchAlpha = Math.max(0.0f, 1.0f - collapseProgress * 2.5f) * alpha;
+        if (searchAlpha > 0.01f) {
+            renderSidebarSearch(context, x + 8.0f, searchY, width - 16.0f, searchH, searchAlpha, mouseX, mouseY);
+        }
 
-        Render2D.drawRect(context, x, y + logoAreaH, width, 1.0f, ColorUtil.withAlphaFloat(Theme.SIDEBAR_DIVIDER, alpha));
+        float listStartY = searchY + searchH + MathHelper.lerp(collapseProgress, 4.0f, 4.0f);
+        context.enableScissor((int) x, (int) listStartY, (int) (x + width), (int) (y + height));
 
-        float itemY = y + logoAreaH + 6.0f;
-        float itemPad = 7.0f;
+        float startItemY = listStartY + 4.0f;
+        float itemY = startItemY - sidebarScrollOffset;
+        float itemPad = MathHelper.lerp(collapseProgress, 8.0f, 4.0f);
         float itemW = width - (itemPad * 2.0f);
-        float itemH = 20.0f;
+        float itemH = 22.0f;
+
+        boolean isSearchOpen = collapseProgress < 0.2f && searchFocused && !searchQuery.trim().isEmpty() && selectedSearchModule == null;
+        float listAlpha = isSearchOpen ? alpha * 0.35f : alpha;
 
         String lastSection = "";
         Category[] categories = Category.values();
+        boolean isWave = "Волна".equals(ClientSettings.getOpenAnimationMode());
+        float pAnim = this.currentAnimProgress;
 
-        int activePillColor = ColorUtil.withAlphaFloat(Theme.SIDEBAR_ACTIVE_PILL, alpha);
+        int activePillColor = ColorUtil.withAlphaFloat(Theme.SIDEBAR_ACTIVE_PILL, listAlpha);
+        float pillW = MathHelper.lerp(collapseProgress, width - 16.0f, 24.0f);
+        float pillX = MathHelper.lerp(collapseProgress, x + 8.0f, x + (width - 24.0f) / 2.0f);
         float pillY = categoryPillY.getValue();
         if (pillY > 0.0f) {
-            Render2D.drawRoundedRect(context, x + itemPad, pillY, itemW, categoryPillHeight.getValue(), 5.0f, activePillColor);
-            Render2D.drawRoundedOutline(context, x + itemPad, pillY, itemW, categoryPillHeight.getValue(), 5.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (18 * alpha)));
+            Render2D.drawRoundedRect(context, pillX, pillY, pillW, categoryPillHeight.getValue(), 6.0f, activePillColor);
+            Render2D.drawRoundedOutline(context, pillX, pillY, pillW, categoryPillHeight.getValue(), 6.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (14 * listAlpha)));
         }
 
         for (Category cat : categories) {
             if (!cat.getSection().equals(lastSection)) {
                 lastSection = cat.getSection();
-                if (itemY > y + logoAreaH + 8.0f) {
-                    itemY += 4.0f;
+                if (itemY > startItemY - sidebarScrollOffset + 2.0f) {
+                    itemY += MathHelper.lerp(collapseProgress, 8.0f, 2.0f);
                 }
-                int secColor = ColorUtil.withAlphaFloat(Theme.TEXT_DIM, alpha);
-                if (!FpsBenchmark.overrideNoText) {
-                    ClientFont.draw(context, lastSection, x + itemPad + 4.0f, itemY, ClientFont.SF_MEDIUM, secColor);
+                float secAlpha = Math.max(0.0f, 1.0f - collapseProgress * 2.0f) * listAlpha;
+                if (secAlpha > 0.01f && !FpsBenchmark.overrideNoText) {
+                    ClientFont.draw(context, lastSection, x + 14.0f, itemY, ClientFont.SF_MEDIUM, ColorUtil.withAlphaFloat(Theme.TEXT_DIM, secAlpha));
                 }
-                itemY += 11.0f;
+                itemY += MathHelper.lerp(collapseProgress, 13.0f, 4.0f);
             }
 
+            float catWaveY = 0.0f;
+            if (isWave && pAnim < 0.999f) {
+                float wavePhase = Math.max(0.0f, pAnim * (float) Math.PI * 1.8f - (float) cat.ordinal() * 0.15f);
+                catWaveY = (1.0f - pAnim) * 6.0f * Math.max(0.0f, (float) Math.sin(wavePhase));
+            }
+            float curItemY = itemY + catWaveY;
+
             boolean isSelected = (cat == selectedCategory);
-            boolean isHovered = mouseX >= (x + itemPad) && mouseX <= (x + itemPad + itemW) &&
-                    mouseY >= itemY && mouseY <= (itemY + itemH);
+            boolean isHovered = mouseX >= x && mouseX <= (x + width) &&
+                    mouseY >= listStartY && mouseY <= (y + height) &&
+                    mouseY >= curItemY && mouseY <= (curItemY + itemH);
+
+            if (isHovered && collapseProgress > 0.6f) {
+                deferredRailTooltipCat = cat;
+                deferredRailTooltipY = curItemY;
+            }
 
             Animation hoverAnim = categoryHoverAnims.get(cat);
             if (hoverAnim != null) {
@@ -538,66 +739,155 @@ public class ClickGuiScreen extends Screen {
             float hoverProgress = (hoverAnim != null) ? hoverAnim.getValue() : 0.0f;
 
             if (isSelected) {
-                categoryPillY.setTarget(itemY);
+                categoryPillY.setTarget(curItemY);
                 categoryPillHeight.setTarget(itemH);
             } else if (hoverProgress > 0.01f) {
-                int hoverBg = ColorUtil.withAlphaFloat(Theme.SIDEBAR_HOVER_PILL, hoverProgress * alpha);
-                Render2D.drawRoundedRect(context, x + itemPad, itemY, itemW, itemH, 5.0f, hoverBg);
+                int hoverBg = ColorUtil.withAlphaFloat(Theme.SIDEBAR_HOVER_PILL, hoverProgress * listAlpha);
+                float hovW = MathHelper.lerp(collapseProgress, width - 16.0f, 24.0f);
+                float hovX = MathHelper.lerp(collapseProgress, x + 8.0f, x + (width - 24.0f) / 2.0f);
+                Render2D.drawRoundedRect(context, hovX, curItemY, hovW, itemH, 6.0f, hoverBg);
             }
 
             int baseColor = isSelected ? Theme.TEXT_TITLE : Theme.TEXT_MUTED;
             int finalColor = ColorUtil.interpolate(baseColor, Theme.TEXT_TITLE, hoverProgress);
-            finalColor = ColorUtil.withAlphaFloat(finalColor, alpha);
+            finalColor = ColorUtil.withAlphaFloat(finalColor, listAlpha);
 
             float iconSize = 12.0f;
-            float iconY = itemY + (itemH - iconSize) / 2.0f;
-            float textY = itemY + (itemH - 9.0f) / 2.0f + 0.5f;
-            IconRenderer.drawCategoryIcon(context, cat, x + itemPad + 6.0f, iconY, iconSize, finalColor);
+            float iconX = MathHelper.lerp(collapseProgress, x + 8.0f + 7.0f, x + (width - iconSize) / 2.0f);
+            float iconY = curItemY + (itemH - iconSize) / 2.0f;
+            int iconCol = isSelected ? ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, listAlpha) : finalColor;
+            IconRenderer.drawCategoryIcon(context, cat, iconX, iconY, iconSize, iconCol);
 
-            if (!FpsBenchmark.overrideNoText) {
-                ClientFont.draw(context, cat.getName(), x + itemPad + 22.0f, textY, ClientFont.SF_REGULAR, finalColor);
+            float textAlpha = Math.max(0.0f, 1.0f - collapseProgress * 2.0f) * listAlpha;
+            if (textAlpha > 0.01f && !FpsBenchmark.overrideNoText) {
+                float textX = x + 8.0f + 7.0f + iconSize + 7.0f;
+                float textY = curItemY + (itemH - 9.0f) / 2.0f + 0.5f;
+                int labelCol = isSelected ? ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, textAlpha) : ColorUtil.withAlphaFloat(finalColor, textAlpha);
+                ClientFont.draw(context, cat.getName(), textX, textY, isSelected ? ClientFont.SF_MEDIUM : ClientFont.SF_REGULAR, labelCol);
+
+                int count = getCategoryModuleCount(cat);
+                String countStr = String.valueOf(count);
+                float countW = ClientFont.getWidth(countStr, ClientFont.SF_REGULAR);
+                float countAlpha = Math.max(0.0f, 1.0f - collapseProgress * 2.5f) * listAlpha;
+                if (countAlpha > 0.01f) {
+                    int countCol = isSelected ? ColorUtil.withAlphaFloat(Theme.TEXT_MUTED, countAlpha) : ColorUtil.withAlphaFloat(Theme.TEXT_DIM, countAlpha);
+                    ClientFont.draw(context, countStr, x + width - countW - 13.0f, textY, ClientFont.SF_REGULAR, countCol);
+                }
             }
 
-            itemY += itemH + 2.0f;
+            itemY += itemH + 3.0f;
+        }
+
+        context.disableScissor();
+
+        float totalItemsH = (itemY + sidebarScrollOffset) - startItemY + 6.0f;
+        float viewportH = height - listStartY;
+        sidebarMaxScroll = Math.max(0.0f, totalItemsH - viewportH + 6.0f);
+        sidebarTargetScroll = Math.clamp(sidebarTargetScroll, 0.0f, sidebarMaxScroll);
+
+        if (sidebarMaxScroll > 0.0f && collapseProgress < 0.6f) {
+            float sbarW = 2.0f;
+            float sbarPad = 2.0f;
+            float trackH = viewportH - 8.0f;
+            float thumbH = Math.max(16.0f, trackH * (viewportH / totalItemsH));
+            float thumbY = listStartY + 4.0f + (sidebarScrollOffset / sidebarMaxScroll) * (trackH - thumbH);
+            Render2D.drawRoundedRect(context, x + width - sbarW - sbarPad, thumbY, sbarW, thumbH, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (40 * alpha)));
         }
     }
 
-    private void renderLogo(DrawContext context, float x, float y, float width, float height, float alpha) {
-        float cx = x + width / 2.0f;
-        float cy = y + height / 2.0f;
-        float size = 26.0f;
-        int eggColor = ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, alpha);
-        IconRenderer.drawTextureScaled(context, LOGO_TEXTURE, cx - size / 2.0f, cy - size / 2.0f, size, size, 96, 96, eggColor);
-        HalloweenGuiRenderer.renderWitchHat(context, cx - 0.5f, cy - size * 0.30f, size * 0.65f, alpha);
-    }
+    private void renderLogo(DrawContext context, float x, float y, float width, float height, float mouseX, float mouseY, float alpha, float collapseProgress) {
+        float logoAlpha = Math.max(0.0f, 1.0f - collapseProgress * 2.2f) * alpha;
+        if (logoAlpha > 0.01f) {
+            float size = 16.0f;
+            float iconX = x + 10.0f;
+            float iconY = y + (height - size) / 2.0f;
+            long now = System.nanoTime();
+            float elapsedMs = (now - animStartTime) / 1_000_000.0f;
+            boolean animsEnabled = ClientSettings.animationsEnabled() && !"Выкл".equals(ClientSettings.getOpenAnimationMode());
 
-    private void renderHeader(DrawContext context, float x, float y, float width, float height, float mouseX, float mouseY, float alpha) {
+            float speedMult = ClientSettings.getSpeedMultiplier();
+            float speedFactor = (float) Math.sqrt(Math.clamp(speedMult, 0.4f, 2.5f));
+            float charDelayMs = 45.0f / speedFactor;
+            float charDurationMs = 520.0f / speedFactor;
+            float iconDurationMs = 560.0f / speedFactor;
 
-        Render2D.drawRect(context, x, y + height, width, 1.0f, ColorUtil.withAlphaFloat(Theme.SIDEBAR_DIVIDER, alpha));
+            float iconWave = 0.0f;
+            if (!closing && animsEnabled && elapsedMs < iconDurationMs) {
+                float iconP = Math.clamp(elapsedMs / iconDurationMs, 0.0f, 1.0f);
+                iconWave = -(float) Math.sin(iconP * Math.PI) * (1.0f - iconP * 0.35f) * 2.8f;
+            }
+            int eggColor = ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, logoAlpha);
+            IconRenderer.drawTextureScaled(context, LOGO_TEXTURE, iconX, iconY + iconWave, size, size, 128, 128, eggColor);
 
-        float titleFade = headerFadeAnim.getValue();
-        float slideX = (1.0f - titleFade) * 8.0f;
-        float headerTextY = y + (height - 9.0f) / 2.0f + 0.5f;
-        int titleColor = ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, alpha);
+            if (!FpsBenchmark.overrideNoText) {
+                float textX = iconX + size + 7.0f;
+                float textY = iconY + (size - ClientFont.FONT_HEIGHT) / 2.0f + 0.5f;
+                String logoText = "Egg Visuals";
+                int grad1 = ColorUtil.interpolate(0xFFFFFFFF, Theme.getGradient1(), 0.25f);
+                int grad2 = ColorUtil.interpolate(0xFFFFFFFF, Theme.getGradient2(), 0.60f);
+                float curCharX = textX;
+                for (int i = 0; i < logoText.length(); i++) {
+                    String ch = String.valueOf(logoText.charAt(i));
+                    float ratio = logoText.length() > 1 ? (float) i / (float) (logoText.length() - 1) : 0.0f;
+                    int charColor = ColorUtil.interpolate(grad1, grad2, ratio);
 
-        if (!FpsBenchmark.overrideNoText) {
-            ClientFont.draw(context, headerTitle, x + 16.0f + slideX, headerTextY, ClientFont.SF_REGULAR, titleColor);
+                    float charWave = 0.0f;
+                    float charAlpha = logoAlpha;
+                    if (!closing && animsEnabled) {
+                        float delay = (float) i * charDelayMs;
+                        if (elapsedMs < delay) {
+                            charAlpha = 0.0f;
+                        } else if (elapsedMs < delay + charDurationMs) {
+                            float charP = (elapsedMs - delay) / charDurationMs;
+                            float wave = (float) Math.sin(charP * Math.PI) * (1.0f - charP * 0.30f);
+                            charWave = -wave * 3.6f;
+                            float inEase = (float) Math.sin(Math.min(1.0f, charP * 1.6f) * Math.PI * 0.5f);
+                            charAlpha = logoAlpha * inEase;
+                        }
+                    }
+
+                    if (" ".equals(ch)) {
+                        curCharX += ClientFont.getWidth(" ", ClientFont.SF_BOLD);
+                        continue;
+                    }
+
+                    int finalCharColor = ColorUtil.withAlphaFloat(charColor, charAlpha);
+
+                    context.getMatrices().pushMatrix();
+                    context.getMatrices().translate(curCharX, textY + charWave);
+                    ClientFont.draw(context, ch, 0.0f, 0.0f, ClientFont.SF_BOLD, finalCharColor);
+                    context.getMatrices().popMatrix();
+
+                    curCharX += ClientFont.getWidth(ch, ClientFont.SF_BOLD);
+                }
+            }
         }
 
-        float searchW = 140.0f;
-        float searchH = 22.0f;
-        float searchX = x + width - searchW - 14.0f;
-        float searchY = y + (height - searchH) / 2.0f;
+        float glyphW = 13.0f;
+        float glyphH = 10.0f;
+        float glyphX = MathHelper.lerp(collapseProgress, x + width - glyphW - 10.0f, x + (width - glyphW) / 2.0f);
+        float glyphY = y + (height - glyphH) / 2.0f;
 
+        boolean btnHovered = (mouseX >= glyphX - 4.0f && mouseX <= glyphX + glyphW + 4.0f && mouseY >= glyphY - 4.0f && mouseY <= glyphY + glyphH + 4.0f)
+                || (collapseProgress > 0.5f && mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height);
+        int glyphCol = btnHovered ? Theme.TEXT_TITLE : (collapseProgress > 0.5f ? Theme.TEXT_MUTED : Theme.TEXT_DIM);
+        glyphCol = ColorUtil.withAlphaFloat(glyphCol, alpha);
+
+        if (btnHovered) {
+            Render2D.drawRoundedRect(context, glyphX - 3.0f, glyphY - 3.0f, glyphW + 6.0f, glyphH + 6.0f, 4.0f, ColorUtil.rgba(255, 255, 255, (int) (14 * alpha)));
+        }
+
+        IconRenderer.drawCollapseIcon(context, glyphX + glyphW / 2.0f, glyphY + glyphH / 2.0f, collapseProgress > 0.5f, glyphCol);
+    }
+
+    private void renderSidebarSearch(DrawContext context, float searchX, float searchY, float searchW, float searchH, float alpha, float mouseX, float mouseY) {
         searchFocusAnim.setTarget(searchFocused ? 1.0f : 0.0f);
         float focusVal = searchFocusAnim.getValue();
 
-        int searchBg = ColorUtil.rgba(22, 25, 35, (int) (220 * alpha));
-        int searchBorder = ColorUtil.interpolate(
-                ColorUtil.rgba(255, 255, 255, (int) (18 * alpha)),
-                ColorUtil.withAlphaFloat(Theme.getAccent(), alpha),
-                focusVal
-        );
+        int searchBg = ColorUtil.rgba(20, 20, 27, (int) (255 * alpha));
+        int normalBorder = ColorUtil.rgba(255, 255, 255, (int) (18 * alpha));
+        int focusedBorder = ColorUtil.rgba(120, 130, 255, (int) (140 * alpha));
+        int searchBorder = ColorUtil.interpolate(normalBorder, focusedBorder, focusVal);
 
         Render2D.drawRoundedRect(context, searchX, searchY, searchW, searchH, 5.0f, searchBg);
         Render2D.drawRoundedOutline(context, searchX, searchY, searchW, searchH, 5.0f, 1.0f, searchBorder);
@@ -607,32 +897,82 @@ public class ClickGuiScreen extends Screen {
                 ColorUtil.withAlphaFloat(Theme.getAccent(), alpha),
                 focusVal
         );
-        IconRenderer.drawSearchIcon(context, searchX + 7.0f, searchY + (searchH - 11.0f) / 2.0f, 11.0f, iconColor);
+        IconRenderer.drawSearchIcon(context, searchX + 6.0f, searchY + (searchH - 9.0f) / 2.0f, 9.0f, iconColor);
 
-        float textX = searchX + 22.0f;
+        float textX = searchX + 19.0f;
         float searchTextY = searchY + (searchH - 9.0f) / 2.0f + 0.5f;
         if (!FpsBenchmark.overrideNoText) {
-            if (searchQuery.isEmpty() && !searchFocused) {
-                ClientFont.draw(context, "Search module", textX, searchTextY, ClientFont.SF_REGULAR, ColorUtil.withAlphaFloat(Theme.TEXT_DIM, alpha));
+            if (searchQuery.isEmpty()) {
+                ClientFont.draw(context, "Search...", textX, searchTextY, ClientFont.SF_REGULAR, ColorUtil.withAlphaFloat(Theme.TEXT_DIM, alpha));
+                if (searchFocused) {
+                    float blink = 0.5f + 0.5f * (float) Math.sin((System.currentTimeMillis() - lastBlinkTime) * 0.007);
+                    int caretColor = ColorUtil.withAlphaFloat(Theme.getAccent(), alpha * blink);
+                    Render2D.drawRect(context, textX, searchTextY - 1.0f, 1.0f, 10.0f, caretColor);
+                }
             } else {
-
                 if (searchFocused && searchCursor != searchSelectionEnd) {
                     int selStart = Math.min(searchCursor, searchSelectionEnd);
                     int selEnd = Math.max(searchCursor, searchSelectionEnd);
                     float selX1 = textX + (selStart > 0 ? ClientFont.getWidth(searchQuery.substring(0, selStart), ClientFont.SF_REGULAR) : 0.0f);
                     float selX2 = textX + ClientFont.getWidth(searchQuery.substring(0, selEnd), ClientFont.SF_REGULAR);
                     int selBg = ColorUtil.withAlpha(Theme.getAccent(), (int) (130 * alpha));
-                    Render2D.drawRect(context, selX1, searchTextY - 1.5f, selX2 - selX1, 12.0f, selBg);
+                    Render2D.drawRect(context, selX1, searchTextY - 1.5f, selX2 - selX1, 11.0f, selBg);
                 }
 
                 ClientFont.draw(context, searchQuery, textX, searchTextY, ClientFont.SF_REGULAR, ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, alpha));
 
-                if (searchFocused && (System.currentTimeMillis() - lastBlinkTime) % 1000 < 500) {
+                if (searchFocused) {
                     int cPos = Math.clamp(searchCursor, 0, searchQuery.length());
                     float cursorOffset = cPos > 0 ? ClientFont.getWidth(searchQuery.substring(0, cPos), ClientFont.SF_REGULAR) : 0.0f;
-                    Render2D.drawRect(context, textX + cursorOffset, searchTextY - 1.0f, 1.0f, 11.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), alpha));
+                    float blink = 0.5f + 0.5f * (float) Math.sin((System.currentTimeMillis() - lastBlinkTime) * 0.007);
+                    int caretColor = ColorUtil.withAlphaFloat(Theme.getAccent(), alpha * blink);
+                    Render2D.drawRect(context, textX + cursorOffset, searchTextY - 1.0f, 1.0f, 10.0f, caretColor);
                 }
             }
+
+            if (!searchQuery.isEmpty()) {
+                float clearSize = 14.0f;
+                float clearX = searchX + searchW - clearSize - 4.5f;
+                float clearY = searchY + (searchH - clearSize) / 2.0f;
+                boolean isClearHov = mouseX >= clearX - 2.0f && mouseX <= clearX + clearSize + 2.0f && mouseY >= clearY - 2.0f && mouseY <= clearY + clearSize + 2.0f;
+                if (isClearHov) {
+                    Draw2DProcessor.INSTANCE.drawRect(null, clearX, clearY, clearSize, clearSize, clearSize / 2.0f, ColorUtil.rgba(255, 255, 255, (int) (24 * alpha)));
+                    DrawBatcher.flushPending();
+                }
+                int crossCol = isClearHov ? ColorUtil.rgba(255, 255, 255, (int) (255 * alpha)) : ColorUtil.rgba(160, 160, 175, (int) (180 * alpha));
+                IconRenderer.drawCrossIcon(context, clearX + clearSize / 2.0f, clearY + clearSize / 2.0f, 8.0f, crossCol);
+            }
+        }
+    }
+
+    private int getCategoryModuleCount(Category cat) {
+        if (cat == Category.SETTINGS) return 1;
+        if (cat == Category.INVENTORY) return 4;
+        if (cat == Category.COSMETICS) return 8;
+        return ModuleManager.getInstance().getModulesByCategory(cat).size();
+    }
+
+    private void renderHeader(DrawContext context, float x, float y, float width, float height, float mouseX, float mouseY, float alpha) {
+        float titleFade = headerFadeAnim.getValue();
+        float slideX = (1.0f - titleFade) * 6.0f;
+        int titleColor = ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, alpha);
+        int dimColor = ColorUtil.withAlphaFloat(Theme.TEXT_DIM, alpha);
+
+        if (!FpsBenchmark.overrideNoText) {
+            float iconSize = 10.0f;
+            float iconX = (float) Math.round(x + 16.0f + slideX);
+            float iconY = (float) Math.round(y + 5.5f);
+            IconRenderer.drawCategoryIcon(context, selectedCategory, iconX, iconY, iconSize, dimColor);
+
+            String breadcrumb = selectedCategory.getSection() + " / " + selectedCategory.getName();
+            float textX = iconX + iconSize + 5.0f;
+            float textY = (float) Math.round(y + 7.0f);
+            ClientFont.draw(context, breadcrumb, textX, textY, ClientFont.SF_REGULAR, dimColor);
+
+            String title = selectedCategory == Category.SETTINGS ? "Настройки" : selectedCategory.getName();
+            float titleX = (float) Math.round(x + 16.0f + slideX);
+            float titleY = (float) Math.round(y + 22.0f);
+            ClientFont.draw(context, title, titleX, titleY, ClientFont.SF_MEDIUM, titleColor);
         }
     }
 
@@ -651,6 +991,8 @@ public class ClickGuiScreen extends Screen {
 
         MODULE_KEYWORDS.put("Interface", new String[]{"интерфейс", "худ", "ватермарка", "айленд", "остров", "динамик", "музыка", "трек", "бар", "watermark", "island"});
         MODULE_KEYWORDS.put("Keybinds", new String[]{"бинды", "бинд", "клавиши", "кнопки", "keybinds", "keys", "binds"});
+        MODULE_KEYWORDS.put("EventTracker", new String[]{"ивенты", "мистики", "мистик", "радар", "компас", "сундук", "маяк", "босс", "метеорит", "алтарь", "вулкан", "посылка", "груз", "корабль", "event", "events", "radar", "tracker"});
+        MODULE_KEYWORDS.put("MotionBlur", new String[]{"моушен", "блюр", "моушен блюр", "размытие", "смазывание", "лунар", "натурал", "камера", "motion", "blur", "motion blur", "lunar", "natural"});
         MODULE_KEYWORDS.put("PotionHUD", new String[]{"зелья", "эффекты", "баффы", "поушн", "зельки", "hud", "potion"});
         MODULE_KEYWORDS.put("ArmorHUD", new String[]{"броня", "бронь", "шлем", "нагрудник", "поножи", "ботинки", "armor", "hud", "армор"});
         MODULE_KEYWORDS.put("FullBright", new String[]{"яркость", "свет", "гамма", "ночное видение", "ночь", "фулбрайт", "full bright"});
@@ -659,11 +1001,12 @@ public class ClickGuiScreen extends Screen {
         MODULE_KEYWORDS.put("NameTags", new String[]{"ники", "неймтаги", "имена", "таблички", "хп игроков", "name tags"});
         MODULE_KEYWORDS.put("Crosshair", new String[]{"прицел", "крестик", "точка", "кастом прицел", "crosshair"});
         MODULE_KEYWORDS.put("Hitmarker", new String[]{"хитмаркер", "маркер удара", "звук удара", "колокольчик", "hitmarker"});
+        MODULE_KEYWORDS.put("HitSounds", new String[]{"хитсаунд", "хит саунд", "звук удара", "звуки попадания", "звук попадания", "hitsounds", "hitsound", "skeet", "neverlose"});
         MODULE_KEYWORDS.put("ItemPhysic", new String[]{"физика", "дроп", "вещи", "предметы", "реалистичный дроп", "item physic"});
         MODULE_KEYWORDS.put("TargetESP", new String[]{"таргет", "есп", "снежинки", "созвездие", "нейросеть", "нити", "паутинка", "симбиот", "вх", "бокс", "души", "кубы", "таргет есп", "target esp", "esp"});
         MODULE_KEYWORDS.put("ViewModel", new String[]{"вьюмодель", "руки", "положение", "оружие", "вид рук", "рука", "view model"});
         MODULE_KEYWORDS.put("AspectRatio", new String[]{"аспект", "соотношение", "растяг", "экран", "4:3", "разрешение", "aspect ratio"});
-        MODULE_KEYWORDS.put("BreakBlock", new String[]{"брейк", "ломание", "прогресс", "анимация ломания", "break block"});
+        MODULE_KEYWORDS.put("BreakBlock", new String[]{"брейк", "ломание", "прогресс", "анимация ломания", "майнинг", "брейкер", "радиальный", "radialmining", "block breaker", "break block"});
         MODULE_KEYWORDS.put("Block Overlay", new String[]{"блок", "блок оверлей", "оверлей", "подсветка блока", "выделение", "шейдер", "неон", "куб", "block overlay", "overlay"});
         MODULE_KEYWORDS.put("HpCounter", new String[]{"хп", "хпшка", "здоровье", "сердечки", "жизни", "хп каунтер", "hp counter"});
         MODULE_KEYWORDS.put("SmoothEat", new String[]{"еда", "анимация еды", "плавная еда", "кушать", "smooth eat"});
@@ -671,15 +1014,11 @@ public class ClickGuiScreen extends Screen {
                 MODULE_KEYWORDS.put("ItemESP", new String[]{"предметы", "айтем", "item", "item esp", "esp", "лут", "дроп", "вещи", "items", "loot", "drop", "глитч", "оболочка"});
 MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбоксы", "customhitbox", "hitbox", "обводка", "заливка", "бокс", "кубы", "hitboxes"});
 
-        MODULE_KEYWORDS.put("AutoRespawn", new String[]{"автореспавн", "респавн", "возрождение", "смерть", "auto respawn"});
-        MODULE_KEYWORDS.put("NoChatBackground", new String[]{"чат", "фон чата", "прозрачный чат", "no chat background"});
         MODULE_KEYWORDS.put("FastEXP", new String[]{"опыт", "экспа", "пузырьки", "быстрый опыт", "fast exp"});
-        MODULE_KEYWORDS.put("AutoEat", new String[]{"автоеда", "кушать", "авто кушать", "еда", "auto eat"});
         MODULE_KEYWORDS.put("AutoAccept", new String[]{"автопринятие", "тп", "телепорт", "принять", "пати", "auto accept"});
         MODULE_KEYWORDS.put("ItemScroller", new String[]{"скроллер", "быстрое перемещение", "лут", "колесико", "инвентарь", "item scroller"});
         MODULE_KEYWORDS.put("SoundReducer", new String[]{"звуки", "уменьшение звуков", "тишина", "громкость", "sound reducer"});
         MODULE_KEYWORDS.put("ThirdPerson", new String[]{"третье лицо", "вид сзади", "камера", "ф5", "f5", "third person"});
-        MODULE_KEYWORDS.put("AutoAuth", new String[]{"автологин", "автоавторизация", "пароль", "логин", "авторегистрация", "auto auth"});
 
         MODULE_KEYWORDS.put("ClientSettings", new String[]{"настройки", "клиент", "тема", "блюр", "шрифт", "акцент", "цвета", "звук", "громкость", "звук меню", "client settings"});
         MODULE_KEYWORDS.put("StreamerMode", new String[]{"стример", "стрим", "скрыть ник", "ютуб", "защита", "streamer mode"});
@@ -729,39 +1068,242 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         int count = matches.size();
 
         int showCount = Math.min(5, count);
-        float itemH = 20.0f;
-        float popH = showCount > 0 ? (showCount * itemH + 6.0f) : 24.0f;
+        float itemH = 27.0f;
+        float popH = showCount > 0 ? (showCount * itemH + 8.0f) : 28.0f;
 
         if (ClientSettings.isShadowEnabled() && !FpsBenchmark.overrideNoShadow) {
-            Render2D.drawShadow(context, x, y, width, popH, 6.0f, 8.0f, ColorUtil.rgba(0, 0, 0, (int) (140 * alpha)));
+            Render2D.drawShadow(context, x, y + 6.0f, width, popH, 8.0f, 16.0f, ColorUtil.rgba(0, 0, 0, (int) (190 * alpha)));
         }
-        Render2D.drawRoundedRect(context, x, y, width, popH, 6.0f, ColorUtil.rgba(18, 20, 28, (int) (245 * alpha)));
-        Render2D.drawRoundedOutline(context, x, y, width, popH, 6.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (20 * alpha)));
+        Render2D.drawRoundedRect(context, x, y, width, popH, 8.0f, ColorUtil.rgba(23, 23, 31, (int) (255 * alpha)));
+        Render2D.drawRoundedOutline(context, x, y, width, popH, 8.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (23 * alpha)));
 
         if (count == 0) {
             if (!FpsBenchmark.overrideNoText) {
-                ClientFont.draw(context, "Ничего не найдено", x + 8.0f, y + 6.0f, ClientFont.SF_MEDIUM, ColorUtil.withAlphaFloat(Theme.TEXT_DIM, alpha));
+                String noMatchText = "Ничего не найдено";
+                float scale = 0.88f;
+                float textW = ClientFont.getWidth(noMatchText, ClientFont.SF_REGULAR) * scale;
+                float textX = x + (width - textW) / 2.0f;
+                float textY = y + (popH - ClientFont.FONT_HEIGHT * scale) / 2.0f;
+                int textCol = ColorUtil.withAlphaFloat(ColorUtil.rgb(114, 114, 127), alpha);
+                ClientFont.drawScaled(context, noMatchText, textX, textY, scale, ClientFont.SF_REGULAR, textCol);
             }
         } else {
-            float itemY = y + 3.0f;
+            if (searchSelectedIndex >= showCount) {
+                searchSelectedIndex = Math.max(0, showCount - 1);
+            }
+
+            float itemX = x + 4.0f;
+            float itemW = width - 8.0f;
+            float targetPillY = y + 4.0f + searchSelectedIndex * itemH;
+            searchPillY.setTarget(targetPillY);
+            if (searchPillY.getValue() <= 0.0f) {
+                searchPillY.setValue(targetPillY);
+            }
+
+            Render2D.drawRoundedRect(context, itemX, searchPillY.getValue(), itemW, itemH, 5.0f, ColorUtil.rgba(255, 255, 255, (int) (18 * alpha)));
+
             for (int i = 0; i < showCount; i++) {
                 Module m = matches.get(i);
-                boolean isHov = mouseX >= x + 4.0f && mouseX <= x + width - 4.0f && mouseY >= itemY && mouseY <= itemY + itemH;
-                if (isHov) {
-                    Render2D.drawRoundedRect(context, x + 4.0f, itemY, width - 8.0f, itemH, 4.0f, ColorUtil.rgba(255, 255, 255, (int) (16 * alpha)));
+                float itemY = y + 4.0f + i * itemH;
+                boolean isSelected = (i == searchSelectedIndex);
+
+                boolean isHov = mouseX >= itemX && mouseX <= itemX + itemW && mouseY >= itemY && mouseY <= itemY + itemH;
+                if (isHov && searchSelectedIndex != i) {
+                    searchSelectedIndex = i;
                 }
+
+                float iconSize = 12.0f;
+                float iconX = itemX + 6.0f;
+                float iconY = itemY + (itemH - iconSize) / 2.0f;
+                int iconCol = isSelected ? ColorUtil.withAlphaFloat(Theme.getAccent(), alpha) : ColorUtil.rgba(140, 140, 150, (int) (200 * alpha));
+                IconRenderer.drawCategoryIcon(context, m.getCategory(), iconX, iconY, iconSize, iconCol);
 
                 if (!FpsBenchmark.overrideNoText) {
-                    int nameColor = m.isEnabled() ? Theme.getAccentHover() : (isHov ? Theme.TEXT_TITLE : Theme.TEXT_SUB);
-                    ClientFont.draw(context, m.getName(), x + 8.0f, itemY + 5.0f, ClientFont.SF_MEDIUM, ColorUtil.withAlphaFloat(nameColor, alpha));
+                    float textX = itemX + 22.0f;
+                    float rightPad = m.isEnabled() ? 14.0f : 4.0f;
+                    float titleMaxW = itemW - 22.0f - rightPad;
+                    String title = getTruncatedLabel(m.getName(), titleMaxW, ClientFont.SF_MEDIUM);
+                    int titleColor = ColorUtil.withAlphaFloat(ColorUtil.rgb(242, 242, 247), alpha);
+                    ClientFont.draw(context, title, textX, itemY + 4.5f, ClientFont.SF_MEDIUM, titleColor);
 
                     String catName = m.getCategory().getName();
-                    float catW = ClientFont.getWidth(catName, ClientFont.SF_MEDIUM);
-                    ClientFont.draw(context, catName, x + width - catW - 8.0f, itemY + 5.5f, ClientFont.SF_MEDIUM, ColorUtil.withAlphaFloat(Theme.TEXT_DIM, alpha));
+                    int catColor = ColorUtil.withAlphaFloat(ColorUtil.rgb(120, 120, 133), isSelected ? alpha * 0.95f : alpha * 0.75f);
+                    ClientFont.drawScaled(context, catName, textX, itemY + 16.5f, 0.78f, ClientFont.SF_REGULAR, catColor);
                 }
 
-                itemY += itemH;
+                if (m.isEnabled()) {
+                    float dotSize = 4.0f;
+                    float dotX = itemX + itemW - dotSize - 5.0f;
+                    float dotY = itemY + 8.5f;
+                    Render2D.drawRoundedRect(context, dotX, dotY, dotSize, dotSize, dotSize / 2.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), alpha));
+                }
             }
+        }
+    }
+
+    private float calculateSettingsGroupHeight(List<Setting> settings) {
+        float h = 34.0f;
+        for (Setting s : settings) {
+            float progress = s.getVisibilityProgress();
+            if (progress <= 0.001f) continue;
+            if (s instanceof BooleanSetting) {
+                h += 26.0f * progress;
+            } else if (s instanceof SliderSetting) {
+                h += 34.0f * progress;
+            } else if (s instanceof ModeSetting) {
+                h += 28.0f * progress;
+            } else if (s instanceof ColorSetting) {
+                h += 26.0f * progress;
+            } else if (s instanceof BindSetting) {
+                h += 28.0f * progress;
+            }
+        }
+        return h + 6.0f;
+    }
+
+    private void renderClientSettingsPanel(DrawContext context, float x, float y, float width, float height, float mouseX, float mouseY, float alpha) {
+        context.enableScissor((int) (x - 2.0f), (int) y, (int) (x + width + 4.0f), (int) (y + height));
+
+        ClientSettings cs = ModuleManager.getInstance().getModule(ClientSettings.class);
+        if (cs == null) {
+            context.disableScissor();
+            return;
+        }
+
+        float currentY = y - scrollOffset;
+        float colGap = 8.0f;
+        float cardW = (width - colGap) / 2.0f;
+
+        float col0X = x;
+        float col1X = x + cardW + colGap;
+
+        float col0Y = currentY;
+        float col1Y = currentY;
+
+        List<Setting> leftSettings = new ArrayList<>();
+        List<Setting> rightSettings = new ArrayList<>();
+
+        for (Setting s : cs.getSettings()) {
+            String name = s.getName();
+            if (name.contains("Пресет") || name.contains("Accent") || name.contains("курсор") || name.contains("сетка") || name.contains("Сетка") || name.contains("открытия")) {
+                leftSettings.add(s);
+            } else {
+                rightSettings.add(s);
+            }
+        }
+
+        float leftH = calculateSettingsGroupHeight(leftSettings);
+        float rightH = calculateSettingsGroupHeight(rightSettings);
+
+        boolean blurEnabled = ClientSettings.isScrollMotionBlurEnabled();
+        float speed = Math.abs(smoothedScrollVelocity);
+        float blurFactor = blurEnabled ? Math.clamp(speed / 3.0f, 0.0f, 1.0f) : 0.0f;
+        float trailDist = Math.clamp(smoothedScrollVelocity * 1.85f, -24.0f, 24.0f);
+
+        if (blurFactor > 0.02f) {
+            float wake0Y = col0Y + trailDist * 0.70f;
+            float wake1Y = col1Y + trailDist * 0.70f;
+            int wakeBg = ColorUtil.withAlphaFloat(Theme.getCardBg(), alpha * 0.50f * blurFactor);
+            int wakeBorder = ColorUtil.withAlphaFloat(Theme.CARD_BORDER, alpha * 0.60f * blurFactor);
+            int accentGlow = ColorUtil.withAlphaFloat(Theme.getAccent(), alpha * 0.25f * blurFactor);
+
+            Render2D.drawRoundedRect(context, col0X, wake0Y, cardW, leftH, Theme.CARD_RADIUS, wakeBg);
+            Render2D.drawRoundedOutline(context, col0X, wake0Y, cardW, leftH, Theme.CARD_RADIUS, 1.0f, wakeBorder);
+            Render2D.drawRoundedOutline(context, col0X - 0.5f, wake0Y - 0.5f, cardW + 1.0f, leftH + 1.0f, Theme.CARD_RADIUS, 1.0f, accentGlow);
+
+            Render2D.drawRoundedRect(context, col1X, wake1Y, cardW, rightH, Theme.CARD_RADIUS, wakeBg);
+            Render2D.drawRoundedOutline(context, col1X, wake1Y, cardW, rightH, Theme.CARD_RADIUS, 1.0f, wakeBorder);
+            Render2D.drawRoundedOutline(context, col1X - 0.5f, wake1Y - 0.5f, cardW + 1.0f, rightH + 1.0f, Theme.CARD_RADIUS, 1.0f, accentGlow);
+        }
+
+        renderSettingsCard(context, "Оформление", leftSettings, col0X, col0Y, cardW, leftH, mouseX, mouseY, alpha);
+        renderSettingsCard(context, "Интерфейс", rightSettings, col1X, col1Y, cardW, rightH, mouseX, mouseY, alpha);
+
+        if (blurFactor > 0.02f) {
+            renderSettingsCardTrail(context, "Оформление", col0X, col0Y + trailDist * 0.32f, cardW, leftH, alpha * 0.44f * blurFactor);
+            renderSettingsCardTrail(context, "Оформление", col0X, col0Y + trailDist * 0.65f, cardW, leftH, alpha * 0.22f * blurFactor);
+            renderSettingsCardTrail(context, "Интерфейс", col1X, col1Y + trailDist * 0.32f, cardW, rightH, alpha * 0.44f * blurFactor);
+            renderSettingsCardTrail(context, "Интерфейс", col1X, col1Y + trailDist * 0.65f, cardW, rightH, alpha * 0.22f * blurFactor);
+        }
+
+        if (scrollOffset > 1.0f) {
+            float topFadeH = 16.0f;
+            int fadeCol = ColorUtil.withAlphaFloat(Theme.getWindowBg(), 0.96f * alpha);
+            int clearCol = ColorUtil.withAlphaFloat(Theme.getWindowBg(), 0.0f);
+            Render2D.drawGradientRect(context, x - 2.0f, y, width + 4.0f, topFadeH, 0.0f, fadeCol, fadeCol, clearCol, clearCol);
+        }
+        if (scrollOffset < maxScroll - 1.0f) {
+            float botFadeH = 22.0f;
+            int fadeCol = ColorUtil.withAlphaFloat(Theme.getWindowBg(), 0.96f * alpha);
+            int clearCol = ColorUtil.withAlphaFloat(Theme.getWindowBg(), 0.0f);
+            Render2D.drawGradientRect(context, x - 2.0f, y + height - botFadeH, width + 4.0f, botFadeH, 0.0f, clearCol, clearCol, fadeCol, fadeCol);
+        }
+
+        context.disableScissor();
+
+        float maxColY = Math.max(col0Y + leftH, col1Y + rightH);
+        float totalHeight = maxColY - (y - scrollOffset);
+        maxScroll = Math.max(0.0f, totalHeight - height);
+        targetScroll = Math.clamp(targetScroll, 0.0f, maxScroll);
+
+        long timeSinceScroll = System.currentTimeMillis() - lastScrollTime;
+        scrollbarAlphaAnim.setTarget(timeSinceScroll < 1200 ? 1.0f : 0.0f);
+        float sbarAlpha = scrollbarAlphaAnim.getValue() * alpha;
+
+        if (maxScroll > 0.0f && sbarAlpha > 0.01f) {
+            float sbarW = 3.0f;
+            float sbarX = x + width - sbarW;
+            float viewRatio = height / totalHeight;
+            float thumbH = Math.max(20.0f, height * viewRatio);
+            float thumbY = y + (scrollOffset / maxScroll) * (height - thumbH);
+
+            int sbarColor = ColorUtil.rgba(255, 255, 255, (int) (70 * sbarAlpha));
+            Render2D.drawRoundedRect(context, sbarX, thumbY, sbarW, thumbH, 1.5f, sbarColor);
+        }
+    }
+
+    private void renderSettingsCard(DrawContext context, String title, List<Setting> settings, float cardX, float cardY, float cardW, float cardH, float mouseX, float mouseY, float alpha) {
+        int cardBg = Theme.getCardBg();
+        int cardBorder = Theme.CARD_BORDER;
+
+        Render2D.drawRoundedRect(context, cardX, cardY, cardW, cardH, Theme.CARD_RADIUS, ColorUtil.withAlphaFloat(cardBg, alpha));
+        Render2D.drawRoundedOutline(context, cardX, cardY, cardW, cardH, Theme.CARD_RADIUS, 1.0f, ColorUtil.withAlphaFloat(cardBorder, alpha));
+
+        ClientFont.draw(context, title, cardX + 12.0f, cardY + 11.0f, ClientFont.SF_MEDIUM, ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, alpha));
+        Render2D.drawRect(context, cardX + 12.0f, cardY + 28.0f, cardW - 24.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (14 * alpha)));
+
+        float sY = cardY + 34.0f;
+        float settingsW = cardW - 24.0f;
+        float settingsX = cardX + 12.0f;
+
+        for (Setting setting : settings) {
+            float progress = setting.getVisibilityProgress();
+            if (progress <= 0.001f) continue;
+            float setAlpha = alpha * progress;
+            float setH = 0.0f;
+
+            if (setting instanceof BooleanSetting bool) {
+                setH = 26.0f * progress;
+                renderBooleanSetting(context, bool, settingsX, sY, settingsW, setAlpha);
+            } else if (setting instanceof SliderSetting slider) {
+                setH = 34.0f * progress;
+                renderSliderSetting(context, slider, settingsX, sY, settingsW, setAlpha);
+            } else if (setting instanceof ModeSetting mode) {
+                setH = 28.0f * progress;
+                renderModeSetting(context, mode, settingsX, sY, settingsW, setAlpha);
+            } else if (setting instanceof ColorSetting colorSetting) {
+                setH = 26.0f * progress;
+                renderColorSetting(context, colorSetting, settingsX, sY, settingsW, setAlpha);
+            } else if (setting instanceof BindSetting bind) {
+                setH = 28.0f * progress;
+                renderBindSetting(context, bind, settingsX, sY, settingsW, setAlpha);
+            }
+            if (mouseX >= settingsX && mouseX <= (settingsX + settingsW) && mouseY >= sY && mouseY <= (sY + setH)) {
+                if (setting.getDescription() != null && !setting.getDescription().isEmpty()) {
+                    activeCandidateSetting = setting;
+                }
+            }
+            sY += setH;
         }
     }
 
@@ -771,30 +1313,61 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         List<Module> modules = getFilteredModules();
         float currentY = y - scrollOffset;
 
-        float colGap = 8.0f;
-        float cardGap = 6.0f;
+        float colGap = 10.0f;
+        float cardGap = 10.0f;
         float cardW = (width - colGap) / 2.0f;
 
         float col0Y = currentY;
         float col1Y = currentY;
+
+        boolean blurEnabled = ClientSettings.isScrollMotionBlurEnabled();
+        float speed = Math.abs(smoothedScrollVelocity);
+        float blurFactor = blurEnabled ? Math.clamp(speed / 3.0f, 0.0f, 1.0f) : 0.0f;
+        float trailDist = Math.clamp(smoothedScrollVelocity * 1.85f, -24.0f, 24.0f);
+
+        boolean isWave = "Волна".equals(ClientSettings.getOpenAnimationMode());
+        float pAnim = this.currentAnimProgress;
 
         for (int i = 0; i < modules.size(); i++) {
             Module m = modules.get(i);
 
             Animation anim = cardCascadeAnims.get(m);
             float cascade = (anim != null) ? anim.getValue() : 1.0f;
-            float offsetY = (1.0f - cascade) * 12.0f;
+            float offsetY = (1.0f - cascade) * 10.0f;
+            if (isWave && pAnim < 0.999f) {
+                float wavePhase = Math.max(0.0f, pAnim * (float) Math.PI * 1.8f - (float) i * 0.16f);
+                float waveSin = (float) Math.sin(wavePhase);
+                offsetY += (1.0f - pAnim) * 8.0f * Math.max(0.0f, waveSin);
+            }
             float alphaM = alpha * cascade;
             float expandM = m.getExpandAnimation().getValue();
-            float h = 44.0f + (getSettingsHeight(m) * expandM);
+            float headerH = getModuleHeaderHeight(m, cardW);
+            float h = headerH + (getSettingsHeight(m) * expandM);
 
             boolean isLeft = (i % 2 == 0);
             float cardX = isLeft ? x : (x + cardW + colGap);
             float curColY = isLeft ? col0Y : col1Y;
             float cardY = curColY + offsetY;
 
-            if (cardY + h >= y && cardY <= y + height) {
-                renderModuleCard(context, m, cardX, cardY, cardW, h, mouseX, mouseY, alphaM, expandM);
+            if (cardY + h >= y - 24.0f && cardY <= y + height + 24.0f) {
+                if (blurFactor > 0.02f) {
+                    float wakeY = cardY + trailDist * 0.70f;
+                    int wakeBg = ColorUtil.withAlphaFloat(Theme.getCardBg(), alphaM * 0.50f * blurFactor);
+                    Render2D.drawRoundedRect(context, cardX, wakeY, cardW, h, Theme.CARD_RADIUS, wakeBg);
+                    int wakeBorder = ColorUtil.withAlphaFloat(Theme.CARD_BORDER, alphaM * 0.60f * blurFactor);
+                    Render2D.drawRoundedOutline(context, cardX, wakeY, cardW, h, Theme.CARD_RADIUS, 1.0f, wakeBorder);
+                    int accentGlow = ColorUtil.withAlphaFloat(Theme.getAccent(), alphaM * 0.25f * blurFactor);
+                    Render2D.drawRoundedOutline(context, cardX - 0.5f, wakeY - 0.5f, cardW + 1.0f, h + 1.0f, Theme.CARD_RADIUS, 1.0f, accentGlow);
+                }
+
+                if (cardY + h >= y && cardY <= y + height) {
+                    renderModuleCard(context, m, cardX, cardY, cardW, h, mouseX, mouseY, alphaM, expandM);
+                }
+
+                if (blurFactor > 0.02f && cardY + h >= y - 10.0f && cardY <= y + height + 10.0f) {
+                    renderCardMotionTrail(context, m, cardX, cardY, cardW, h, alphaM, trailDist * 0.32f, 0.44f * blurFactor);
+                    renderCardMotionTrail(context, m, cardX, cardY, cardW, h, alphaM, trailDist * 0.65f, 0.22f * blurFactor);
+                }
             }
 
             if (isLeft) {
@@ -802,6 +1375,19 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             } else {
                 col1Y += h + cardGap;
             }
+        }
+
+        if (scrollOffset > 1.0f) {
+            float topFadeH = 16.0f;
+            int fadeCol = ColorUtil.withAlphaFloat(Theme.getWindowBg(), 0.96f * alpha);
+            int clearCol = ColorUtil.withAlphaFloat(Theme.getWindowBg(), 0.0f);
+            Render2D.drawGradientRect(context, x - 2.0f, y, width + 4.0f, topFadeH, 0.0f, fadeCol, fadeCol, clearCol, clearCol);
+        }
+        if (scrollOffset < maxScroll - 1.0f) {
+            float botFadeH = 22.0f;
+            int fadeCol = ColorUtil.withAlphaFloat(Theme.getWindowBg(), 0.96f * alpha);
+            int clearCol = ColorUtil.withAlphaFloat(Theme.getWindowBg(), 0.0f);
+            Render2D.drawGradientRect(context, x - 2.0f, y + height - botFadeH, width + 4.0f, botFadeH, 0.0f, clearCol, clearCol, fadeCol, fadeCol);
         }
 
         context.disableScissor();
@@ -828,7 +1414,8 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
     }
 
     private void renderModuleCard(DrawContext context, Module module, float x, float y, float width, float height, float mouseX, float mouseY, float alpha, float expandProgress) {
-        boolean isHovered = mouseX >= x && mouseX <= (x + width) && mouseY >= y && mouseY <= (y + (expandProgress > 0 ? 44.0f : height));
+        float headerH = getModuleHeaderHeight(module, width);
+        boolean isHovered = mouseX >= x && mouseX <= (x + width) && mouseY >= y && mouseY <= (y + (expandProgress > 0 ? headerH : height));
 
         Animation hoverAnim = cardHoverAnims.get(module);
         if (hoverAnim != null) {
@@ -837,10 +1424,13 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         float hoverVal = (hoverAnim != null) ? hoverAnim.getValue() : 0.0f;
 
         int cardBg = ColorUtil.interpolate(Theme.getCardBg(), Theme.getCardBgHover(), hoverVal);
-        int cardBorder = ColorUtil.interpolate(Theme.CARD_BORDER, Theme.CARD_BORDER_HOVER, hoverVal);
+        int targetBorder = ColorUtil.interpolate(Theme.CARD_BORDER_HOVER, Theme.getAccentHover(), 0.35f);
+        int cardBorder = ColorUtil.interpolate(Theme.CARD_BORDER, targetBorder, hoverVal);
 
         Render2D.drawRoundedRect(context, x, y, width, height, Theme.CARD_RADIUS, ColorUtil.withAlphaFloat(cardBg, alpha));
         Render2D.drawRoundedOutline(context, x, y, width, height, Theme.CARD_RADIUS, 1.0f, ColorUtil.withAlphaFloat(cardBorder, alpha));
+
+        float switchProgress = module.getSwitchAnimation().getValue();
 
         boolean isListening = (listeningKeybindModule == module);
         if (isListening) {
@@ -849,137 +1439,480 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             Render2D.drawRoundedOutline(context, x - 0.5f, y - 0.5f, width + 1.0f, height + 1.0f, Theme.CARD_RADIUS, 1.5f, ColorUtil.withAlphaFloat(pulseBorder, alpha));
         }
 
-        float textX = x + 10.0f;
-        float titleY = y + 8.0f;
+        float toggleW = 34.0f;
+        float toggleH = 16.0f;
+        float toggleX = x + width - toggleW - 12.0f;
+        float toggleY = y + 10.0f;
 
-        float switchProgress = module.getSwitchAnimation().getValue();
-        int grad1, grad2;
-        if (switchProgress > 0.05f) {
-            grad1 = ColorUtil.rgba(255, 255, 255, (int) (255 * alpha));
-            grad2 = ColorUtil.interpolate(
-                    ColorUtil.rgba(215, 225, 250, (int) (255 * alpha)),
-                    Theme.getAccentHover(),
-                    switchProgress
-            );
-        } else {
-            int rightC = isHovered ? ColorUtil.rgba(180, 190, 210, (int) (240 * alpha)) : ColorUtil.rgba(148, 158, 175, (int) (210 * alpha));
-            grad1 = ColorUtil.rgba(240, 243, 250, (int) (230 * alpha));
-            grad2 = rightC;
+        float starX = toggleX - 14.0f;
+        float starY = toggleY + 1.0f;
+
+        boolean hasSettings = !module.getSettings().isEmpty();
+        float dotsX = hasSettings ? (starX - 11.0f) : starX;
+        float dotsY = toggleY + 1.0f;
+
+        float textX = x + 12.0f;
+        float titleY = y + 10.0f;
+        float controlsLeft = (hasSettings ? dotsX : starX) - 8.0f;
+        float availableTextW = Math.max(30.0f, controlsLeft - textX);
+        float maxTitleW = availableTextW;
+
+        if (isHovered && mouseX < controlsLeft && mouseY <= (y + headerH)) {
+            activeCandidateModule = module;
         }
 
         if (!FpsBenchmark.overrideNoText) {
-            ClientFont.drawGradient(context, module.getName(), textX, titleY, ClientFont.SF_REGULAR, grad1, grad2);
-            float nameW = ClientFont.getWidth(module.getName(), ClientFont.SF_REGULAR);
+            float badgeSpace = 0.0f;
+            if (isListening) {
+                float tw = ClientFont.getWidth("Жду клавишу...", ClientFont.SF_REGULAR);
+                badgeSpace = tw + 16.0f;
+            } else if (module.getKey() > 0) {
+                String keyStr = Keybinds.formatKey(module.getKey());
+                float tw = ClientFont.getWidth(keyStr, ClientFont.SF_REGULAR);
+                badgeSpace = Math.max(16.0f, tw + 8.0f) + 8.0f;
+            }
+            maxTitleW = Math.max(20.0f, maxTitleW - badgeSpace);
+
+            String title = getTruncatedLabel(module.getName(), maxTitleW, ClientFont.SF_MEDIUM);
+            ClientFont.draw(context, title, textX, titleY, ClientFont.SF_MEDIUM, ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, alpha));
+            float nameW = ClientFont.getWidth(title, ClientFont.SF_MEDIUM);
 
             if (isListening) {
-                float badgeX = textX + nameW + 6.0f;
+                float badgeX = textX + nameW + 8.0f;
                 String waitText = "Жду клавишу...";
                 float tw = ClientFont.getWidth(waitText, ClientFont.SF_REGULAR);
                 float bw = tw + 8.0f;
-                float bh = 11.5f;
+                float bh = 12.0f;
                 float by = titleY - 1.0f;
                 int bBg = ColorUtil.withAlphaFloat(Theme.getAccent(), alpha * 0.9f);
-                Render2D.drawRoundedRect(context, badgeX, by, bw, bh, 3.0f, bBg);
+                Render2D.drawRoundedRect(context, badgeX, by, bw, bh, 4.0f, bBg);
                 ClientFont.draw(context, waitText, badgeX + 4.0f, by + 1.5f, ClientFont.SF_REGULAR, 0xFFFFFFFF);
             } else if (module.getKey() > 0) {
                 String keyStr = Keybinds.formatKey(module.getKey());
                 float tw = ClientFont.getWidth(keyStr, ClientFont.SF_REGULAR);
                 float bw = Math.max(16.0f, tw + 8.0f);
-                float bh = 11.5f;
-                float badgeX = textX + nameW + 6.0f;
+                float bh = 12.0f;
+                float badgeX = textX + nameW + 8.0f;
                 float by = titleY - 1.0f;
                 boolean pressed = Keybinds.isKeyPressed(module.getKey());
-                int bBg = pressed ? ColorUtil.withAlphaFloat(Theme.getAccent(), alpha * 0.9f) : ColorUtil.rgba(36, 40, 52, (int) (190 * alpha));
-                int bBorder = pressed ? ColorUtil.withAlphaFloat(Theme.getAccentHover(), alpha) : ColorUtil.rgba(255, 255, 255, (int) (28 * alpha));
-                Render2D.drawRoundedRect(context, badgeX, by, bw, bh, 3.0f, bBg);
-                Render2D.drawRoundedOutline(context, badgeX, by, bw, bh, 3.0f, 0.8f, bBorder);
-                int kColor = pressed ? 0xFFFFFFFF : ColorUtil.rgba(215, 220, 235, (int) (230 * alpha));
+                int bBg = pressed ? ColorUtil.withAlphaFloat(Theme.getAccent(), alpha * 0.9f) : ColorUtil.rgba(35, 35, 37, (int) (220 * alpha));
+                int bBorder = pressed ? ColorUtil.withAlphaFloat(Theme.getAccentHover(), alpha) : ColorUtil.rgba(255, 255, 255, (int) (20 * alpha));
+                Render2D.drawRoundedRect(context, badgeX, by, bw, bh, 4.0f, bBg);
+                Render2D.drawRoundedOutline(context, badgeX, by, bw, bh, 4.0f, 1.0f, bBorder);
+                int kColor = pressed ? 0xFFFFFFFF : ColorUtil.withAlphaFloat(Theme.TEXT_MUTED, alpha);
                 ClientFont.draw(context, keyStr, badgeX + (bw - tw) / 2.0f, by + 1.5f, ClientFont.SF_REGULAR, kColor);
             }
 
-            float descY = titleY + 14.0f;
-            int descColor = ColorUtil.withAlphaFloat(Theme.TEXT_SUB, alpha);
-            String desc = getTruncatedDescription(module, width - 88.0f);
-            ClientFont.draw(context, desc, textX, descY, ClientFont.SF_REGULAR, descColor);
+            int descColor = ColorUtil.withAlphaFloat(Theme.TEXT_MUTED, alpha);
+            float maxDescW = width - 24.0f;
+            List<String> descLines = getWrappedDescriptionLines(module, maxDescW);
+            if (descLines.size() <= 1) {
+                float descY = y + 33.0f;
+                if (!descLines.isEmpty()) {
+                    ClientFont.draw(context, descLines.get(0), textX, descY, ClientFont.SF_REGULAR, descColor);
+                }
+            } else {
+                float descY1 = y + 31.0f;
+                float descY2 = y + 43.0f;
+                ClientFont.draw(context, descLines.get(0), textX, descY1, ClientFont.SF_REGULAR, descColor);
+                ClientFont.draw(context, descLines.get(1), textX, descY2, ClientFont.SF_REGULAR, descColor);
+            }
         }
 
-        float toggleW = 26.0f;
-        float toggleH = 14.0f;
-        float toggleX = x + width - toggleW - 10.0f;
-        float toggleY = y + (44.0f - toggleH) / 2.0f;
-
         renderToggle(context, module, toggleX, toggleY, toggleW, toggleH, alpha);
-
-        float starX = toggleX - 18.0f;
-        float starY = toggleY + 1.0f;
         renderStar(context, module, starX, starY, mouseX, mouseY, alpha);
-
-        float dotsX = starX - 16.0f;
-        float dotsY = toggleY + 1.0f;
-        renderDots(context, module, dotsX, dotsY, mouseX, mouseY, alpha);
+        if (hasSettings) {
+            renderDots(context, module, dotsX, dotsY, mouseX, mouseY, alpha);
+        }
 
         if (expandProgress > 0.01f) {
-            float settingsY = y + 44.0f;
-            float visibleH = height - 44.0f;
+            float settingsY = y + headerH;
+            float visibleH = height - headerH;
             if (visibleH > 1.0f) {
                 context.enableScissor((int) x, (int) settingsY, (int) (x + width), (int) (y + height));
-                renderSettings(context, module, x + 10.0f, settingsY, width - 20.0f, expandProgress * alpha, mouseX, mouseY);
+                renderSettings(context, module, x + 12.0f, settingsY, width - 24.0f, expandProgress * alpha, mouseX, mouseY);
                 context.disableScissor();
             }
         }
     }
 
-    private String getTruncatedDescription(Module module, float maxDescW) {
-        String cached = cachedDescriptions.get(module);
+    private void renderCardMotionTrail(DrawContext context, Module module, float x, float y, float width, float height, float alpha, float offset, float sampleAlpha) {
+        float trailY = y + offset;
+        float effAlpha = alpha * sampleAlpha;
+        if (effAlpha <= 0.005f) return;
+
+        int cardBorder = ColorUtil.withAlphaFloat(Theme.CARD_BORDER, effAlpha * 0.90f);
+        Render2D.drawRoundedOutline(context, x, trailY, width, height, Theme.CARD_RADIUS, 1.0f, cardBorder);
+
+        float toggleW = 34.0f;
+        float toggleH = 16.0f;
+        float toggleX = x + width - toggleW - 12.0f;
+        float toggleY = trailY + 10.0f;
+
+        float starX = toggleX - 18.0f;
+        float starY = toggleY + 1.0f;
+
+        boolean hasSettings = !module.getSettings().isEmpty();
+        float dotsX = hasSettings ? (starX - 16.0f) : starX;
+        float dotsY = toggleY + 1.0f;
+
+        float controlsLeft = (hasSettings ? dotsX : starX) - 8.0f;
+        float availableTextW = Math.max(30.0f, controlsLeft - (x + 12.0f));
+
+        if (!FpsBenchmark.overrideNoText) {
+            float textX = x + 12.0f;
+            float titleY = trailY + 9.0f;
+            float maxTitleW = availableTextW;
+            String title = getTruncatedLabel(module.getName(), maxTitleW, ClientFont.SF_MEDIUM);
+            int titleColor = ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, effAlpha * 0.85f);
+            ClientFont.draw(context, title, textX, titleY, ClientFont.SF_MEDIUM, titleColor);
+
+            float descY = titleY + 14.0f;
+            float maxDescW = availableTextW;
+            String desc = getTruncatedDescription(module, maxDescW);
+            int descColor = ColorUtil.withAlphaFloat(Theme.TEXT_SUB, effAlpha * 0.70f);
+            ClientFont.draw(context, desc, textX, descY, ClientFont.SF_REGULAR, descColor);
+        }
+
+        renderToggle(context, module, toggleX, toggleY, toggleW, toggleH, effAlpha * 0.80f);
+        renderStar(context, module, starX, starY, -1.0f, -1.0f, effAlpha * 0.75f);
+        if (hasSettings) {
+            renderDots(context, module, dotsX, dotsY, -1.0f, -1.0f, effAlpha * 0.75f);
+        }
+    }
+
+    private void renderSettingsCardTrail(DrawContext context, String title, float cardX, float cardY, float cardW, float cardH, float alpha) {
+        if (alpha <= 0.005f) return;
+        int cardBorder = ColorUtil.withAlphaFloat(Theme.CARD_BORDER, alpha * 0.90f);
+        Render2D.drawRoundedOutline(context, cardX, cardY, cardW, cardH, Theme.CARD_RADIUS, 1.0f, cardBorder);
+        if (!FpsBenchmark.overrideNoText) {
+            int titleCol = ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, alpha * 0.85f);
+            ClientFont.draw(context, title, cardX + 12.0f, cardY + 11.0f, ClientFont.SF_MEDIUM, titleCol);
+        }
+    }
+
+    private String getTruncatedLabel(String text, float maxW, StyleSpriteSource.Font font) {
+        if (text == null || text.isEmpty() || maxW <= 6.0f) return "";
+        if (ClientFont.getWidth(text, font) <= maxW) return text;
+
+        String cacheKey = text + "_" + (int) maxW + "_" + font.id().getPath();
+        String cached = truncatedLabelsCache.get(cacheKey);
         if (cached != null) return cached;
 
-        String raw = module.getDescription();
-        TextRenderer tr = client != null ? client.textRenderer : null;
-        if (tr != null && ClientFont.getWidth(raw, ClientFont.SF_REGULAR) > maxDescW) {
-            cached = tr.trimToWidth(raw, (int) (maxDescW - 8.0f)) + "..";
-        } else {
-            cached = raw;
+        String dots = "...";
+        float dotsW = ClientFont.getWidth(dots, font);
+        float targetW = maxW - dotsW;
+        if (targetW <= 2.0f) {
+            cached = dots;
+            truncatedLabelsCache.put(cacheKey, cached);
+            return cached;
         }
-        cachedDescriptions.put(module, cached);
+
+        int low = 0;
+        int high = text.length();
+        int best = 0;
+        while (low <= high) {
+            int mid = (low + high) >>> 1;
+            String sub = text.substring(0, mid);
+            if (ClientFont.getWidth(sub, font) <= targetW) {
+                best = mid;
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+        String result = text.substring(0, best).trim() + dots;
+        while (best > 0 && ClientFont.getWidth(result, font) > maxW) {
+            best--;
+            result = text.substring(0, best).trim() + dots;
+        }
+        if (ClientFont.getWidth(result, font) > maxW) {
+            result = dots;
+        }
+        cached = result;
+        truncatedLabelsCache.put(cacheKey, cached);
         return cached;
+    }
+
+    private float getColorBadgeWidth(ColorSetting colorSetting) {
+        String hex = colorSetting.getHex();
+        float hexW = ClientFont.getWidth(hex, ClientFont.SF_REGULAR);
+        return Math.max(54.0f, 11.0f + hexW + 12.0f);
+    }
+
+    private float getModeButtonWidth(ModeSetting mode, float availableWidth) {
+        float rawBtnW = ClientFont.getWidth(mode.get(), ClientFont.SF_REGULAR) + 22.0f;
+        float maxBtnW = Math.max(46.0f, availableWidth * 0.48f);
+        return Math.min(rawBtnW, maxBtnW);
+    }
+
+    private List<String> getWrappedDescriptionLines(Module module, float maxDescW) {
+        String rawDesc = module.getDescription();
+        if (rawDesc == null || rawDesc.isEmpty()) {
+            return Collections.emptyList();
+        }
+        float fullW = ClientFont.getWidth(rawDesc, ClientFont.SF_REGULAR);
+        if (fullW <= maxDescW) {
+            return Collections.singletonList(rawDesc);
+        }
+        String[] words = rawDesc.split(" ");
+        StringBuilder l1 = new StringBuilder();
+        int idx = 0;
+        while (idx < words.length) {
+            String w = words[idx];
+            String cand = l1.isEmpty() ? w : l1 + " " + w;
+            if (ClientFont.getWidth(cand, ClientFont.SF_REGULAR) <= maxDescW) {
+                l1.append(l1.isEmpty() ? "" : " ").append(w);
+                idx++;
+            } else {
+                break;
+            }
+        }
+        if (l1.isEmpty() && idx < words.length) {
+            l1.append(words[idx++]);
+        }
+        StringBuilder l2 = new StringBuilder();
+        while (idx < words.length) {
+            l2.append(l2.isEmpty() ? "" : " ").append(words[idx++]);
+        }
+        String line2Str = l2.toString();
+        if (ClientFont.getWidth(line2Str, ClientFont.SF_REGULAR) > maxDescW) {
+            line2Str = getTruncatedLabel(line2Str, maxDescW, ClientFont.SF_REGULAR);
+        }
+        return List.of(l1.toString(), line2Str);
+    }
+
+    private float getModuleHeaderHeight(Module module, float cardW) {
+        float maxDescW = cardW - 24.0f;
+        List<String> lines = getWrappedDescriptionLines(module, maxDescW);
+        return lines.size() > 1 ? 62.0f : 50.0f;
+    }
+
+    private String getTruncatedDescription(Module module, float maxDescW) {
+        String raw = module.getDescription();
+        return getTruncatedLabel(raw, maxDescW, ClientFont.SF_REGULAR);
+    }
+
+    private float calculateMarqueeOffset(long elapsedMs, float overflow) {
+        if (overflow <= 0.0f) return 0.0f;
+        float speed = 28.0f;
+        float travelSec = overflow / speed;
+        float pauseStart = 0.5f;
+        float pauseEnd = 0.8f;
+        float totalCycle = pauseStart + travelSec + pauseEnd + travelSec;
+        float sec = (elapsedMs % (long) (totalCycle * 1000.0f)) / 1000.0f;
+
+        if (sec < pauseStart) {
+            return 0.0f;
+        } else if (sec < pauseStart + travelSec) {
+            float t = (sec - pauseStart) / travelSec;
+            float ease = 0.5f - 0.5f * (float) Math.cos(t * Math.PI);
+            return ease * overflow;
+        } else if (sec < pauseStart + travelSec + pauseEnd) {
+            return overflow;
+        } else {
+            float t = (sec - (pauseStart + travelSec + pauseEnd)) / travelSec;
+            float ease = 0.5f - 0.5f * (float) Math.cos(t * Math.PI);
+            return (1.0f - ease) * overflow;
+        }
+    }
+
+    private List<String> wrapText(String text, float maxW, StyleSpriteSource.Font font) {
+        List<String> lines = new ArrayList<>();
+        if (text == null || text.isEmpty()) return lines;
+        String[] words = text.split(" ");
+        StringBuilder sb = new StringBuilder();
+        for (String w : words) {
+            if (w.isEmpty()) continue;
+            if (sb.length() == 0) {
+                sb.append(w);
+            } else {
+                String candidate = sb + " " + w;
+                if (ClientFont.getWidth(candidate, font) <= maxW) {
+                    sb.append(" ").append(w);
+                } else {
+                    lines.add(sb.toString());
+                    sb = new StringBuilder(w);
+                }
+            }
+        }
+        if (sb.length() > 0) {
+            lines.add(sb.toString());
+        }
+        return lines;
+    }
+
+    private void updateAndRenderDeferredTooltip(DrawContext context, float mouseX, float mouseY) {
+        if (activeCandidateModule != hoveredTooltipModule || activeCandidateSetting != hoveredTooltipSetting) {
+            hoveredTooltipModule = activeCandidateModule;
+            hoveredTooltipSetting = activeCandidateSetting;
+            hoverStateStartTime = System.currentTimeMillis();
+        }
+
+        long hoverDur = System.currentTimeMillis() - hoverStateStartTime;
+        boolean shouldShowTooltip = (hoveredTooltipModule != null || hoveredTooltipSetting != null) && hoverDur > 320L && !closing;
+        tooltipAlphaAnim.setTarget(shouldShowTooltip ? 1.0f : 0.0f);
+        if (shouldShowTooltip) {
+            tooltipMouseX = mouseX;
+            tooltipMouseY = mouseY;
+        }
+
+        renderDeferredTooltip(context, tooltipMouseX, tooltipMouseY, 1.0f);
+    }
+
+    private void renderDeferredTooltip(DrawContext context, float mouseX, float mouseY, float alpha) {
+        float ttAlpha = tooltipAlphaAnim.getValue() * alpha;
+        if (ttAlpha <= 0.01f) return;
+
+        String title = null;
+        String desc = null;
+        String hint = null;
+
+        if (hoveredTooltipModule != null) {
+            title = hoveredTooltipModule.getName();
+            desc = hoveredTooltipModule.getDescription();
+            boolean hasSet = !hoveredTooltipModule.getSettings().isEmpty();
+            int key = hoveredTooltipModule.getKey();
+            if (key > 0) {
+                hint = (hasSet ? "ПКМ — настройки  •  " : "") + "Бинд: " + Keybinds.formatKey(key);
+            } else {
+                hint = hasSet ? "ПКМ — настройки  •  СКМ — бинд" : "СКМ — назначить клавишу";
+            }
+        } else if (hoveredTooltipSetting != null) {
+            title = hoveredTooltipSetting.getName();
+            desc = hoveredTooltipSetting.getDescription();
+            if (hoveredTooltipSetting instanceof BooleanSetting) {
+                hint = "ЛКМ — переключить";
+            } else if (hoveredTooltipSetting instanceof SliderSetting) {
+                hint = "Перетащите ползунок для настройки";
+            } else if (hoveredTooltipSetting instanceof ModeSetting) {
+                hint = "ЛКМ — выбор режима";
+            } else if (hoveredTooltipSetting instanceof BindSetting) {
+                hint = "ЛКМ — назначить, ПКМ — сбросить";
+            } else if (hoveredTooltipSetting instanceof ColorSetting) {
+                hint = "ЛКМ — палитра цветов";
+            }
+        }
+
+        if (desc == null || desc.isEmpty()) return;
+
+        float wrapW = 180.0f;
+        List<String> lines = wrapText(desc, wrapW, ClientFont.SF_REGULAR);
+        if (lines.isEmpty()) return;
+
+        float padX = 9.0f;
+        float padY = 7.0f;
+        float titleH = (title != null && !title.isEmpty()) ? 11.5f : 0.0f;
+        float hintH = (hint != null && !hint.isEmpty()) ? 9.5f : 0.0f;
+        float linesH = lines.size() * 10.5f;
+
+        float maxContentW = 0.0f;
+        if (title != null) {
+            maxContentW = Math.max(maxContentW, ClientFont.getWidth(title, ClientFont.SF_MEDIUM));
+        }
+        for (String line : lines) {
+            maxContentW = Math.max(maxContentW, ClientFont.getWidth(line, ClientFont.SF_REGULAR));
+        }
+        if (hint != null) {
+            maxContentW = Math.max(maxContentW, ClientFont.getWidth(hint, ClientFont.SF_REGULAR));
+        }
+
+        float boxW = Math.max(80.0f, Math.min(wrapW, maxContentW) + padX * 2.0f);
+        float boxH = padY * 2.0f + titleH + (titleH > 0 ? 2.5f : 0.0f) + linesH + (hintH > 0 ? (hintH + 4.5f) : 0.0f);
+
+        float tx = mouseX + 12.0f;
+        float ty = mouseY + 14.0f;
+        int screenW = client != null ? client.getWindow().getScaledWidth() : 800;
+        int screenH = client != null ? client.getWindow().getScaledHeight() : 600;
+
+        if (tx + boxW > screenW - 8.0f) {
+            tx = mouseX - boxW - 8.0f;
+        }
+        if (tx < 8.0f) tx = 8.0f;
+
+        if (ty + boxH > screenH - 8.0f) {
+            ty = mouseY - boxH - 6.0f;
+        }
+        if (ty < 8.0f) ty = 8.0f;
+
+        Render2D.drawShadow(context, tx, ty, boxW, boxH, 4.5f, 6.0f, ColorUtil.rgba(0, 0, 0, (int) (140 * ttAlpha)));
+        Render2D.drawRoundedRect(context, tx, ty, boxW, boxH, 4.5f, ColorUtil.rgba(18, 18, 22, (int) (246 * ttAlpha)));
+        Render2D.drawRoundedOutline(context, tx, ty, boxW, boxH, 4.5f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (20 * ttAlpha)));
+
+        float curY = ty + padY;
+        float contentStartX = tx + padX;
+
+        if (title != null && !title.isEmpty()) {
+            ClientFont.draw(context, title, contentStartX, curY, ClientFont.SF_MEDIUM, ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, ttAlpha));
+            curY += titleH + 2.5f;
+        }
+
+        int bodyColor = ColorUtil.withAlphaFloat(Theme.TEXT_SUB, ttAlpha);
+        for (String line : lines) {
+            ClientFont.draw(context, line, contentStartX, curY, ClientFont.SF_REGULAR, bodyColor);
+            curY += 10.5f;
+        }
+
+        if (hint != null && !hint.isEmpty()) {
+            curY += 1.5f;
+            int divCol = ColorUtil.rgba(255, 255, 255, (int) (10 * ttAlpha));
+            Render2D.drawRect(context, contentStartX, curY, boxW - padX * 2.0f, 1.0f, divCol);
+            curY += 3.0f;
+            int hintColor = ColorUtil.withAlphaFloat(Theme.TEXT_MUTED, ttAlpha * 0.85f);
+            ClientFont.draw(context, hint, contentStartX, curY, ClientFont.SF_REGULAR, hintColor);
+        }
     }
 
     private void renderToggle(DrawContext context, Module module, float x, float y, float width, float height, float alpha) {
         float switchProgress = module.getSwitchAnimation().getValue();
 
-        int offColor = ColorUtil.rgb(32, 34, 44);
+        int offColor = Theme.TOGGLE_OFF;
         int onColor = Theme.getAccent();
         int bgColor = ColorUtil.interpolate(offColor, onColor, switchProgress);
-        Render2D.drawRoundedRect(context, x, y, width, height, height / 2.0f, ColorUtil.withAlphaFloat(bgColor, alpha));
+        if (switchProgress > 0.05f) {
+            Render2D.drawShadow(context, x, y, width, height, height / 2.0f, 5.0f, ColorUtil.withAlphaFloat(onColor, switchProgress * 0.40f * alpha));
+        }
+        Render2D.drawCapsule(context, x, y, width, height, ColorUtil.withAlphaFloat(bgColor, alpha));
 
         int borderColor = ColorUtil.interpolate(
-                ColorUtil.rgba(255, 255, 255, (int) (18 * alpha)),
-                ColorUtil.rgba(255, 255, 255, (int) (36 * alpha)),
+                ColorUtil.rgba(255, 255, 255, (int) (14 * alpha)),
+                0,
                 switchProgress
         );
-        Render2D.drawRoundedOutline(context, x, y, width, height, height / 2.0f, 1.0f, borderColor);
+        if ((borderColor >> 24) != 0) {
+            Render2D.drawCapsuleOutline(context, x, y, width, height, borderColor);
+        }
 
-        float knobRadius = height / 2.0f - 2.0f;
-        float knobMinX = x + knobRadius + 2.0f;
-        float knobMaxX = x + width - knobRadius - 2.0f;
+        float pad = 2.0f;
+        float knobH = height - pad * 2.0f;
+        float knobW = 21.0f;
+
+        float knobMinX = x + pad;
+        float knobMaxX = x + width - pad - knobW;
         float knobX = knobMinX + (knobMaxX - knobMinX) * switchProgress;
-        float knobY = y + height / 2.0f;
+        float knobY = y + pad;
 
-        Render2D.drawCircle(context, knobX, knobY, knobRadius, ColorUtil.withAlphaFloat(Theme.TOGGLE_KNOB, alpha));
+        Render2D.drawCapsule(context, knobX, knobY, knobW, knobH, ColorUtil.withAlphaFloat(Theme.TOGGLE_KNOB, alpha));
     }
 
     private void renderStar(DrawContext context, Module module, float x, float y, float mouseX, float mouseY, float alpha) {
         boolean isFavorite = module.isFavorite();
         boolean isHovered = mouseX >= x - 2 && mouseX <= x + 14 && mouseY >= y - 2 && mouseY <= y + 16;
 
-        int starColor = isFavorite ? Theme.STAR_ACTIVE : (isHovered ? Theme.TEXT_TITLE : Theme.STAR_INACTIVE);
+        int starColor = isFavorite ? Theme.STAR_ACTIVE : (isHovered ? Theme.TEXT_TITLE : ColorUtil.rgba(255, 255, 255, 56));
 
         IconRenderer.drawStarIcon(context, x + 5.0f, y + 8.0f, isFavorite, ColorUtil.withAlphaFloat(starColor, alpha));
     }
 
     private void renderDots(DrawContext context, Module module, float x, float y, float mouseX, float mouseY, float alpha) {
         boolean isHovered = mouseX >= x - 2 && mouseX <= x + 12 && mouseY >= y - 2 && mouseY <= y + 16;
-        int color = module.isExpanded() ? Theme.getAccent() : (isHovered ? Theme.DOTS_ACTIVE : Theme.DOTS_INACTIVE);
+        Animation hoverAnim = dotsHoverAnims.get(module);
+        if (hoverAnim != null) {
+            hoverAnim.setTarget(isHovered ? 1.0f : 0.0f);
+        }
+        float hoverVal = (hoverAnim != null) ? hoverAnim.getValue() : (isHovered ? 1.0f : 0.0f);
+        int baseColor = ColorUtil.interpolate(Theme.DOTS_INACTIVE, Theme.DOTS_ACTIVE, hoverVal);
+        int color = module.isExpanded() ? Theme.getAccent() : baseColor;
         int finalColor = ColorUtil.withAlphaFloat(color, alpha);
 
         IconRenderer.drawDotsIcon(context, x + 5.0f, y + 8.0f, finalColor);
@@ -991,25 +1924,26 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             h += WorldTweaksUI.getTotalHeight();
         }
         for (Setting s : module.getSettings()) {
+            if (isWorldTweaksCustomSetting(module, s)) continue;
             float progress = s.getVisibilityProgress();
             if (progress <= 0.001f) continue;
             float baseH = 0.0f;
             if (s instanceof BooleanSetting) {
-                baseH = 24.0f;
+                baseH = 26.0f;
             } else if (s instanceof SliderSetting) {
-                baseH = 32.0f;
+                baseH = 34.0f;
             } else if (s instanceof ModeSetting) {
-                baseH = 26.0f;
+                baseH = 28.0f;
             } else if (s instanceof ColorSetting cs) {
-                baseH = 24.0f;
+                baseH = 26.0f;
             } else if (s instanceof ButtonSetting) {
-                baseH = 26.0f;
+                baseH = 28.0f;
             } else if (s instanceof BindSetting) {
-                baseH = 26.0f;
+                baseH = 28.0f;
             }
             h += baseH * progress;
         }
-        h += 26.0f;
+        h += 28.0f;
         return h;
     }
 
@@ -1023,13 +1957,14 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             currentY += WorldTweaksUI.getTotalHeight();
         }
         for (Setting setting : module.getSettings()) {
+            if (isWorldTweaksCustomSetting(module, setting)) continue;
             float progress = setting.getVisibilityProgress();
             if (progress <= 0.001f) continue;
             float setAlpha = alpha * progress;
             float setH = 0.0f;
 
             if (setting instanceof BooleanSetting bool) {
-                setH = 24.0f * progress;
+                setH = 26.0f * progress;
                 if (progress < 0.99f) {
                     context.enableScissor((int) x, (int) currentY, (int) (x + width), (int) (currentY + setH));
                 }
@@ -1038,7 +1973,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                     context.disableScissor();
                 }
             } else if (setting instanceof SliderSetting slider) {
-                setH = 32.0f * progress;
+                setH = 34.0f * progress;
                 if (progress < 0.99f) {
                     context.enableScissor((int) x, (int) currentY, (int) (x + width), (int) (currentY + setH));
                 }
@@ -1047,7 +1982,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                     context.disableScissor();
                 }
             } else if (setting instanceof ModeSetting mode) {
-                setH = 26.0f * progress;
+                setH = 28.0f * progress;
                 if (progress < 0.99f) {
                     context.enableScissor((int) x, (int) currentY, (int) (x + width), (int) (currentY + setH));
                 }
@@ -1056,7 +1991,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                     context.disableScissor();
                 }
             } else if (setting instanceof ColorSetting colorSetting) {
-                setH = 24.0f * progress;
+                setH = 26.0f * progress;
                 if (progress < 0.99f) {
                     context.enableScissor((int) x, (int) currentY, (int) (x + width), (int) (currentY + setH));
                 }
@@ -1065,7 +2000,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                     context.disableScissor();
                 }
             } else if (setting instanceof ButtonSetting btn) {
-                setH = 26.0f * progress;
+                setH = 28.0f * progress;
                 if (progress < 0.99f) {
                     context.enableScissor((int) x, (int) currentY, (int) (x + width), (int) (currentY + setH));
                 }
@@ -1074,13 +2009,18 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                     context.disableScissor();
                 }
             } else if (setting instanceof BindSetting bind) {
-                setH = 26.0f * progress;
+                setH = 28.0f * progress;
                 if (progress < 0.99f) {
                     context.enableScissor((int) x, (int) currentY, (int) (x + width), (int) (currentY + setH));
                 }
                 renderBindSetting(context, bind, x, currentY, width, setAlpha);
                 if (progress < 0.99f) {
                     context.disableScissor();
+                }
+            }
+            if (mouseX >= x && mouseX <= (x + width) && mouseY >= currentY && mouseY <= (currentY + setH)) {
+                if (setting.getDescription() != null && !setting.getDescription().isEmpty()) {
+                    activeCandidateSetting = setting;
                 }
             }
             currentY += setH;
@@ -1090,104 +2030,159 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
     }
 
     private void renderButtonSetting(DrawContext context, ButtonSetting btn, float x, float y, float width, float alpha) {
-        float btnW = width - 12.0f;
-        float btnH = 20.0f;
-        float btnX = x + 6.0f;
+        float btnW = width;
+        float btnH = 22.0f;
+        float btnX = x;
         float btnY = y + 2.0f;
 
         boolean hovered = lateMouseX >= btnX && lateMouseX <= btnX + btnW && lateMouseY >= btnY && lateMouseY <= btnY + btnH;
-        int bg = hovered ? Theme.getAccentHover() : Theme.getAccent();
-        Render2D.drawRoundedRect(context, btnX, btnY, btnW, btnH, 5.0f, ColorUtil.withAlphaFloat(bg, alpha * 0.90f));
-        Render2D.drawRoundedOutline(context, btnX, btnY, btnW, btnH, 5.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (35 * alpha)));
+        int bg = hovered ? ColorUtil.rgba(255, 255, 255, (int) (28 * alpha)) : ColorUtil.rgba(255, 255, 255, (int) (15 * alpha));
+        int border = hovered ? ColorUtil.rgba(255, 255, 255, (int) (38 * alpha)) : ColorUtil.rgba(255, 255, 255, (int) (16 * alpha));
+        Render2D.drawRoundedRect(context, btnX, btnY, btnW, btnH, 5.0f, bg);
+        Render2D.drawRoundedOutline(context, btnX, btnY, btnW, btnH, 5.0f, 1.0f, border);
 
-        ClientFont.drawCentered(context, btn.getName(), btnX + btnW / 2.0f, btnY + btnH / 2.0f, ClientFont.SF_REGULAR, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha));
+        String lower = btn.getName().toLowerCase();
+        Identifier icon = null;
+        if (lower.contains("папк") || lower.contains("folder")) {
+            icon = DynamicGuiTextures.getFolderIcon();
+        } else if (lower.contains("обнов") || lower.contains("refresh") || lower.contains("sync")) {
+            icon = DynamicGuiTextures.getRefreshIcon();
+        }
+
+        String btnText = getTruncatedLabel(btn.getName(), btnW - (icon != null ? 32.0f : 12.0f), ClientFont.SF_REGULAR);
+        int textColor = hovered ? 0xFFFFFFFF : ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, alpha);
+
+        if (icon != null) {
+            float iconSize = 12.0f;
+            float gap = 5.0f;
+            float textW = ClientFont.getWidth(btnText, ClientFont.SF_REGULAR);
+            float totalW = iconSize + gap + textW;
+            float startX = btnX + (btnW - totalW) / 2.0f;
+            IconRenderer.drawTextureScaled(context, icon, startX, btnY + (btnH - iconSize) / 2.0f, iconSize, iconSize, 20, 20, textColor);
+            ClientFont.draw(context, btnText, startX + iconSize + gap, btnY + (btnH - 8.0f) / 2.0f, ClientFont.SF_REGULAR, textColor);
+        } else {
+            ClientFont.drawCentered(context, btnText, btnX + btnW / 2.0f, btnY + btnH / 2.0f, ClientFont.SF_REGULAR, textColor);
+        }
     }
 
     private void renderBindSetting(DrawContext context, BindSetting bind, float x, float y, float width, float alpha) {
-        int labelColor = ColorUtil.withAlphaFloat(Theme.TEXT_SUB, alpha);
-        if (!FpsBenchmark.overrideNoText) {
-            ClientFont.draw(context, bind.getName(), x + 6.0f, y + 4.0f, ClientFont.SF_REGULAR, labelColor);
-        }
         boolean isListening = (listeningBindSetting == bind);
         String keyText = isListening ? "Press Key/Mouse..." : bind.getKeyName();
-        float btnW = ClientFont.getWidth(keyText, ClientFont.SF_REGULAR) + 16.0f;
+        float rawBtnW = ClientFont.getWidth(keyText, ClientFont.SF_REGULAR) + 16.0f;
+        float maxBtnW = Math.max(50.0f, width * 0.48f);
+        float btnW = Math.min(rawBtnW, maxBtnW);
         float btnH = 18.0f;
-        float btnX = x + width - btnW - 6.0f;
-        float btnY = y + 1.0f;
+        float btnX = x + width - btnW;
+        float btnY = y + 2.0f;
 
-        int btnBg = isListening ? Theme.getAccentMuted() : ColorUtil.rgba(255, 255, 255, (int) (16 * alpha));
-        int btnBorder = isListening ? Theme.getAccent() : ColorUtil.rgba(255, 255, 255, (int) (26 * alpha));
-        Render2D.drawRoundedRect(context, btnX, btnY, btnW, btnH, 5.0f, btnBg);
-        Render2D.drawRoundedOutline(context, btnX, btnY, btnW, btnH, 5.0f, 1.0f, btnBorder);
+        float maxLabelW = Math.max(10.0f, btnX - x - 8.0f);
+        int labelColor = ColorUtil.withAlphaFloat(Theme.TEXT_SUB, alpha);
+        if (!FpsBenchmark.overrideNoText) {
+            String label = getTruncatedLabel(bind.getName(), maxLabelW, ClientFont.SF_REGULAR);
+            ClientFont.draw(context, label, x, y + 5.0f, ClientFont.SF_REGULAR, labelColor);
+        }
+
+        int btnBg = isListening ? Theme.getAccentMuted() : ColorUtil.rgba(255, 255, 255, (int) (15 * alpha));
+        int btnBorder = isListening ? Theme.getAccent() : ColorUtil.rgba(255, 255, 255, (int) (22 * alpha));
+        Render2D.drawRoundedRect(context, btnX, btnY, btnW, btnH, 4.0f, btnBg);
+        Render2D.drawRoundedOutline(context, btnX, btnY, btnW, btnH, 4.0f, 1.0f, btnBorder);
 
         if (!FpsBenchmark.overrideNoText) {
             int textColor = isListening ? Theme.getAccentHover() : Theme.TEXT_TITLE;
-            ClientFont.drawCentered(context, keyText, btnX + btnW / 2.0f, btnY + btnH / 2.0f, ClientFont.SF_REGULAR, ColorUtil.withAlphaFloat(textColor, alpha));
+            String text = getTruncatedLabel(keyText, btnW - 8.0f, ClientFont.SF_REGULAR);
+            ClientFont.drawCentered(context, text, btnX + btnW / 2.0f, btnY + btnH / 2.0f, ClientFont.SF_REGULAR, ColorUtil.withAlphaFloat(textColor, alpha));
         }
     }
 
     private void renderBooleanSetting(DrawContext context, BooleanSetting bool, float x, float y, float width, float alpha) {
+        float boxSize = 14.0f;
+        float boxX = x + width - boxSize;
+        float boxY = y + 6.0f;
+
+        float maxLabelW = Math.max(10.0f, boxX - x - 8.0f);
         int labelColor = ColorUtil.withAlphaFloat(Theme.TEXT_SUB, alpha);
         if (!FpsBenchmark.overrideNoText) {
-            ClientFont.draw(context, bool.getName(), x + 6.0f, y + 3.0f, ClientFont.SF_REGULAR, labelColor);
+            String label = getTruncatedLabel(bool.getName(), maxLabelW, ClientFont.SF_REGULAR);
+            ClientFont.draw(context, label, x, y + 6.0f, ClientFont.SF_REGULAR, labelColor);
         }
 
-        float boxW = 24.0f;
-        float boxH = 13.0f;
-        float boxX = x + width - boxW - 6.0f;
-        float boxY = y + 2.0f;
-
-        int boxBg = bool.get() ? Theme.getAccent() : Theme.TOGGLE_OFF;
-        Render2D.drawRoundedRect(context, boxX, boxY, boxW, boxH, boxH / 2.0f, ColorUtil.withAlphaFloat(boxBg, alpha));
-        Render2D.drawRoundedOutline(context, boxX, boxY, boxW, boxH, boxH / 2.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (18 * alpha)));
-
-        float knobR = boxH / 2.0f - 2.0f;
-        float knobX = bool.get() ? (boxX + boxW - knobR - 2.0f) : (boxX + knobR + 2.0f);
-        Render2D.drawCircle(context, knobX, boxY + boxH / 2.0f, knobR, ColorUtil.withAlphaFloat(Theme.TOGGLE_KNOB, alpha));
+        if (bool.get()) {
+            Render2D.drawShadow(context, boxX, boxY, boxSize, boxSize, 3.5f, 4.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), 0.35f * alpha));
+            Render2D.drawRoundedRect(context, boxX, boxY, boxSize, boxSize, 3.5f, ColorUtil.withAlphaFloat(Theme.getAccent(), alpha));
+            Render2D.drawCheckmark(context, boxX, boxY, boxSize, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha));
+        } else {
+            Render2D.drawRoundedRect(context, boxX, boxY, boxSize, boxSize, 3.5f, ColorUtil.rgba(255, 255, 255, (int) (12 * alpha)));
+            Render2D.drawRoundedOutline(context, boxX, boxY, boxSize, boxSize, 3.5f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (28 * alpha)));
+        }
     }
 
     private void renderModeSetting(DrawContext context, ModeSetting mode, float x, float y, float width, float alpha) {
+        String val = mode.get();
+        float btnW = getModeButtonWidth(mode, width);
+        float btnH = 18.0f;
+        float btnX = x + width - btnW;
+        float btnY = y + 4.0f;
+
+        float maxLabelW = Math.max(10.0f, btnX - x - 8.0f);
         int labelColor = ColorUtil.withAlphaFloat(Theme.TEXT_SUB, alpha);
         if (!FpsBenchmark.overrideNoText) {
-            ClientFont.draw(context, mode.getName(), x + 6.0f, y + 3.0f, ClientFont.SF_REGULAR, labelColor);
+            String label = getTruncatedLabel(mode.getName(), maxLabelW, ClientFont.SF_REGULAR);
+            ClientFont.draw(context, label, x, y + 6.0f, ClientFont.SF_REGULAR, labelColor);
         }
 
-        String val = mode.get();
-        float btnW = ClientFont.getWidth(val, ClientFont.SF_REGULAR) + 18.0f;
-        float btnH = 16.0f;
-        float btnX = x + width - btnW - 6.0f;
-        float btnY = y + 1.0f;
-
         boolean isOpened = (this.openDropdownSetting == mode);
-        int btnBg = isOpened ? ColorUtil.rgba(35, 42, 60, (int) (240 * alpha)) : ColorUtil.rgba(26, 30, 42, (int) (220 * alpha));
-        int btnBorder = isOpened ? Theme.getAccent() : ColorUtil.rgba(255, 255, 255, (int) (28 * alpha));
+        int btnBg = isOpened ? ColorUtil.rgba(35, 38, 48, (int) (245 * alpha)) : ColorUtil.rgba(255, 255, 255, (int) (15 * alpha));
+        int btnBorder = isOpened ? Theme.getAccent() : ColorUtil.rgba(255, 255, 255, (int) (22 * alpha));
         Render2D.drawRoundedRect(context, btnX, btnY, btnW, btnH, 4.0f, btnBg);
         Render2D.drawRoundedOutline(context, btnX, btnY, btnW, btnH, 4.0f, 1.0f, isOpened ? Theme.getAccent() : btnBorder);
 
         if (!FpsBenchmark.overrideNoText) {
-            ClientFont.drawCentered(context, val, btnX + btnW / 2.0f, btnY + btnH / 2.0f, ClientFont.SF_REGULAR, ColorUtil.withAlphaFloat(isOpened ? Theme.getAccent() : Theme.TEXT_TITLE, alpha));
+            String valText = val;
+            float textW = ClientFont.getWidth(val, ClientFont.SF_REGULAR);
+            float arrowW = 5.0f;
+            float gap = 4.0f;
+            float contentW = textW + gap + arrowW;
+            float startX;
+            float arrowX;
+            if (contentW <= btnW - 10.0f) {
+                startX = btnX + (btnW - contentW) / 2.0f;
+                arrowX = startX + textW + gap;
+            } else {
+                startX = btnX + 6.0f;
+                arrowX = btnX + btnW - 10.0f;
+                valText = getTruncatedLabel(val, arrowX - startX - gap, ClientFont.SF_REGULAR);
+            }
+            float textY = btnY + (btnH - ClientFont.FONT_HEIGHT) / 2.0f + 0.5f;
+            int textColor = ColorUtil.withAlphaFloat(isOpened ? Theme.getAccent() : Theme.TEXT_TITLE, alpha);
+            ClientFont.draw(context, valText, startX, textY, ClientFont.SF_REGULAR, textColor);
+
+            float arrowY = btnY + btnH / 2.0f;
+            int arrowColor = ColorUtil.withAlphaFloat(isOpened ? Theme.getAccent() : Theme.TEXT_MUTED, alpha);
+            IconRenderer.drawDropdownChevron(context, arrowX + 2.5f, arrowY, isOpened, arrowColor);
         }
     }
 
     private void renderColorSetting(DrawContext context, ColorSetting colorSetting, float x, float y, float width, float alpha) {
-        int labelColor = ColorUtil.withAlphaFloat(Theme.TEXT_SUB, alpha);
-        if (!FpsBenchmark.overrideNoText) {
-            ClientFont.draw(context, colorSetting.getName(), x + 6.0f, y + 4.0f, ClientFont.SF_REGULAR, labelColor);
-        }
-
         int col = colorSetting.get();
         String hex = colorSetting.getHex();
-        float badgeW = 76.0f;
-        float badgeH = 17.0f;
-        float badgeX = x + width - badgeW - 6.0f;
-        float badgeY = y + 1.5f;
+        float badgeW = getColorBadgeWidth(colorSetting);
+        float badgeH = 18.0f;
+        float badgeX = x + width - badgeW;
+        float badgeY = y + 3.0f;
+
+        float maxLabelW = Math.max(10.0f, badgeX - x - 8.0f);
+        int labelColor = ColorUtil.withAlphaFloat(Theme.TEXT_SUB, alpha);
+        if (!FpsBenchmark.overrideNoText) {
+            String label = getTruncatedLabel(colorSetting.getName(), maxLabelW, ClientFont.SF_REGULAR);
+            ClientFont.draw(context, label, x, y + 5.0f, ClientFont.SF_REGULAR, labelColor);
+        }
 
         boolean isOpened = (this.openColorPickerSetting == colorSetting);
 
         this.colorSettingBadgePositions.put(colorSetting, new float[]{badgeX, badgeY, badgeW, badgeH});
 
-        int badgeBg = isOpened ? 0xF0222738 : 0xC8171B26;
-        int badgeBorder = isOpened ? Theme.getAccent() : 0x24FFFFFF;
+        int badgeBg = isOpened ? ColorUtil.rgba(35, 38, 48, (int) (245 * alpha)) : ColorUtil.rgba(255, 255, 255, (int) (15 * alpha));
+        int badgeBorder = isOpened ? Theme.getAccent() : ColorUtil.rgba(255, 255, 255, (int) (22 * alpha));
 
         Render2D.drawRoundedRect(context, badgeX, badgeY, badgeW, badgeH, 4.0f, ColorUtil.withAlphaFloat(badgeBg, alpha));
         Render2D.drawRoundedOutline(context, badgeX, badgeY, badgeW, badgeH, 4.0f, 1.0f, ColorUtil.withAlphaFloat(badgeBorder, alpha));
@@ -1199,7 +2194,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         Render2D.drawRoundedOutline(context, swatchX, swatchY, swatchS, swatchS, 2.5f, 0.8f, ColorUtil.rgba(255, 255, 255, (int) (50 * alpha)));
 
         if (!FpsBenchmark.overrideNoText) {
-            ClientFont.draw(context, hex, swatchX + swatchS + 5.0f, badgeY + 4.0f, ClientFont.SF_REGULAR, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha));
+            ClientFont.draw(context, hex, swatchX + swatchS + 4.0f, badgeY + 4.0f, ClientFont.SF_REGULAR, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha));
         }
     }
 
@@ -1222,10 +2217,10 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             float badgeW = storedBadge[2];
             float badgeH = storedBadge[3];
 
-            float guiH = 280.0f;
+            float guiH = Math.clamp(height * 0.62f, 280.0f, 320.0f);
             float gy = (float) Math.round((height - guiH) / 2.0f);
-            float contentY = gy + 36.0f + 8.0f;
-            float contentH = guiH - 36.0f - 14.0f;
+            float contentY = gy + 38.0f + 8.0f;
+            float contentH = guiH - 38.0f - 14.0f;
             if (badgeY < contentY - 30.0f || badgeY > contentY + contentH + 30.0f) {
                 this.openColorPickerSetting = null;
                 return;
@@ -1318,10 +2313,10 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         Draw2DProcessor.INSTANCE.drawRect(null, svX, hexY, swS, swS, 2.5f, ColorUtil.withAlphaFloat(curCol, pAnim));
         Draw2DProcessor.INSTANCE.drawOutline(null, svX, hexY, swS, swS, 2.5f, 0.8f, ColorUtil.rgba(255, 255, 255, (int) (45 * pAnim)));
 
-        Fonts.d.a(null, cs.getHex(), svX + swS + 6.0f, hexY + 1.5f, 11.5f, ColorUtil.rgba(230, 235, 245, (int) (255 * pAnim)));
+        Fonts.ROCKSTAR_ROUND_BOLD.a(null, cs.getHex(), svX + swS + 6.0f, hexY + 1.5f, 11.5f, ColorUtil.rgba(230, 235, 245, (int) (255 * pAnim)));
 
         float resetX = popX + popW - 18.0f;
-        Fonts.d.a(null, "↺", resetX, hexY + 1.0f, 11.5f, ColorUtil.rgba(160, 165, 180, (int) (200 * pAnim)));
+        Fonts.ROCKSTAR_ROUND_BOLD.a(null, "↺", resetX, hexY + 1.0f, 11.5f, ColorUtil.rgba(160, 165, 180, (int) (200 * pAnim)));
 
         float presetY = hexY + 17.0f;
         int[] presets = new int[] {
@@ -1363,14 +2358,21 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
     }
 
     private void renderSliderSetting(DrawContext context, SliderSetting slider, float x, float y, float width, float alpha) {
+        String valStr = getSliderValueString(slider);
+        float valW = ClientFont.getWidth(valStr, ClientFont.SF_REGULAR);
+        float valX = x + width - valW;
+
         int labelColor = ColorUtil.withAlphaFloat(Theme.TEXT_SUB, alpha);
         if (!FpsBenchmark.overrideNoText) {
-            ClientFont.draw(context, slider.getName(), x + 6.0f, y + 1.0f, ClientFont.SF_REGULAR, labelColor);
+            float maxLabelW = Math.max(10.0f, valX - x - 8.0f);
+            String label = getTruncatedLabel(slider.getName(), maxLabelW, ClientFont.SF_REGULAR);
+            ClientFont.draw(context, label, x, y + 2.0f, ClientFont.SF_REGULAR, labelColor);
+            ClientFont.draw(context, valStr, valX, y + 2.0f, ClientFont.SF_REGULAR, ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, alpha));
         }
 
-        float trackCenterY = y + 19.0f;
-        float trackW = width - 12.0f;
-        float trackX = x + 6.0f;
+        float trackCenterY = y + 22.0f;
+        float trackW = width;
+        float trackX = x;
 
         final float targetProgress = Math.clamp((float) ((slider.get() - slider.getMin()) / (slider.getMax() - slider.getMin())), 0.0f, 1.0f);
         float curProgress = this.sliderAnimatedProgress.computeIfAbsent(slider, k -> targetProgress);
@@ -1382,67 +2384,21 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
         float fillW = trackW * curProgress;
 
-        float unfillX = trackX + fillW;
-        float unfillW = trackW - fillW;
-        float unfillH = 1.5f;
-        int unfillColor = ColorUtil.rgba(115, 120, 130, (int) (190 * alpha));
-        if (unfillW > 0.0f) {
-            Render2D.drawRect(context, unfillX, trackCenterY - unfillH / 2.0f, unfillW, unfillH, unfillColor);
-        }
-
-        float fillH = 2.5f;
-        int accentColor = ColorUtil.withAlphaFloat(Theme.getAccent(), alpha);
+        float trackH = 3.0f;
+        float trackY = trackCenterY - trackH / 2.0f;
+        Render2D.drawCapsule(context, trackX, trackY, trackW, trackH, ColorUtil.rgba(255, 255, 255, (int) (20 * alpha)));
         if (fillW > 0.0f) {
-            Render2D.drawRect(context, trackX, trackCenterY - fillH / 2.0f, fillW, fillH, accentColor);
+            context.enableScissor((int) trackX, (int) (trackY - 1.0f), (int) Math.ceil(trackX + fillW), (int) Math.ceil(trackY + trackH + 1.0f));
+            Render2D.drawCapsule(context, trackX, trackY, trackW, trackH, ColorUtil.withAlphaFloat(Theme.getAccent(), alpha));
+            context.disableScissor();
         }
 
-        float thumbW = 2.5f;
-        float thumbH = 12.0f;
-        float thumbX = trackX + fillW - thumbW / 2.0f;
-        float thumbY = trackCenterY - thumbH / 2.0f;
-        Render2D.drawRoundedRect(context, thumbX, thumbY, thumbW, thumbH, 1.0f, accentColor);
-
-        if (!FpsBenchmark.overrideNoText) {
-            String valStr = getSliderValueString(slider);
-            float valW = ClientFont.getWidth(valStr, ClientFont.SF_REGULAR);
-            float badgeW = valW + 10.0f;
-            float badgeH = 13.0f;
-
-            float defBadgeX = x + width - badgeW - 6.0f;
-            float defBadgeY = y;
-
-            float dragTargetX = Math.clamp(thumbX + thumbW / 2.0f - badgeW / 2.0f, trackX, trackX + trackW - badgeW);
-            float dragTargetY = trackCenterY - thumbH / 2.0f - badgeH - 3.5f;
-
-            float targetDrag = (this.draggingSlider == slider) ? 1.0f : 0.0f;
-            float curDrag = this.sliderDragProgress.computeIfAbsent(slider, k -> 0.0f);
-            curDrag = curDrag + (targetDrag - curDrag) * 0.22f;
-            if (Math.abs(curDrag - targetDrag) < 0.001f) {
-                curDrag = targetDrag;
-            }
-            this.sliderDragProgress.put(slider, curDrag);
-
-            float renderBadgeX = net.minecraft.util.math.MathHelper.lerp(curDrag, defBadgeX, dragTargetX);
-            float renderBadgeY = net.minecraft.util.math.MathHelper.lerp(curDrag, defBadgeY, dragTargetY);
-
-            if (curDrag > 0.02f) {
-                Render2D.drawShadow(context, renderBadgeX, renderBadgeY, badgeW, badgeH, 3.5f, 6.0f, ColorUtil.rgba(0, 0, 0, (int) (140 * curDrag * alpha)));
-            }
-            int badgeBg = ColorUtil.lerp(
-                    ColorUtil.rgba(22, 26, 36, (int) (220 * alpha)),
-                    ColorUtil.rgba(14, 16, 24, (int) (250 * alpha)),
-                    curDrag
-            );
-            int badgeBorder = ColorUtil.lerp(
-                    ColorUtil.rgba(255, 255, 255, (int) (18 * alpha)),
-                    ColorUtil.withAlphaFloat(Theme.getAccent(), alpha),
-                    curDrag
-            );
-
-            Render2D.drawRoundedRect(context, renderBadgeX, renderBadgeY, badgeW, badgeH, 3.0f, badgeBg);
-            Render2D.drawRoundedOutline(context, renderBadgeX, renderBadgeY, badgeW, badgeH, 3.0f, 1.0f, badgeBorder);
-            ClientFont.drawCentered(context, valStr, renderBadgeX + badgeW / 2.0f, renderBadgeY + badgeH / 2.0f, ClientFont.SF_REGULAR, ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, alpha));
-        }
+        float thumbR = 5.0f;
+        float thumbCenterX = trackX + fillW;
+        float thumbCenterY = trackCenterY;
+        Render2D.drawCircleShadow(context, thumbCenterX, thumbCenterY, thumbR, 4.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), 0.45f * alpha));
+        Render2D.drawCircle(context, thumbCenterX, thumbCenterY, thumbR, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha));
+        Render2D.drawCircleOutline(context, thumbCenterX, thumbCenterY, thumbR, 1.0f, ColorUtil.rgba(0, 0, 0, (int) (45 * alpha)));
     }
 
     private void renderOpenDropdown(DrawContext context, double mouseX, double mouseY, float alpha) {
@@ -1458,7 +2414,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
         float dAnim = this.openDropdownAnim * alpha;
         List<String> dModes = this.openDropdownSetting.getModes();
-        float dItemH = 17.0f;
+        float dItemH = 19.0f;
         int maxVisible = 6;
         int displayItems = Math.min(dModes.size(), maxVisible);
         float dListH = displayItems * dItemH;
@@ -1468,12 +2424,16 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         for (String m : dModes) {
             maxModeW = Math.max(maxModeW, ClientFont.getWidth(m, ClientFont.SF_REGULAR));
         }
-        float dPopW = Math.max(this.openDropdownW, maxModeW + 32.0f);
-        float dPopX = this.openDropdownX;
+        float dPopW = Math.max(this.openDropdownW, maxModeW + 28.0f);
+        float btnRight = this.openDropdownX + this.openDropdownW;
+        float dPopX = btnRight - dPopW;
         float dPopY = this.openDropdownY;
 
         float screenW = MinecraftClient.getInstance().getWindow().getScaledWidth();
         float screenH = MinecraftClient.getInstance().getWindow().getScaledHeight();
+        if (dPopX < 8.0f) {
+            dPopX = 8.0f;
+        }
         if (dPopX + dPopW > screenW - 8.0f) {
             dPopX = screenW - dPopW - 8.0f;
         }
@@ -1487,9 +2447,9 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         float dropOffset = (1.0f - this.openDropdownAnim) * 5.0f;
         float renderPopY = dPopY + dropOffset;
 
-        Render2D.drawShadow(context, dPopX, renderPopY, dPopW, dPopH, 5.0f, 10.0f, ColorUtil.rgba(0, 0, 0, (int) (140 * dAnim)));
-        Render2D.drawRoundedRect(context, dPopX, renderPopY, dPopW, dPopH, 5.0f, ColorUtil.rgba(18, 22, 32, (int) (245 * dAnim)));
-        Render2D.drawRoundedOutline(context, dPopX, renderPopY, dPopW, dPopH, 5.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (28 * dAnim)));
+        Render2D.drawShadow(context, dPopX, renderPopY, dPopW, dPopH, 6.0f, 12.0f, ColorUtil.rgba(0, 0, 0, (int) (180 * dAnim)));
+        Render2D.drawRoundedRect(context, dPopX, renderPopY, dPopW, dPopH, 6.0f, ColorUtil.rgba(18, 20, 26, (int) (255 * dAnim)));
+        Render2D.drawRoundedOutline(context, dPopX, renderPopY, dPopW, dPopH, 6.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (38 * dAnim)));
 
         context.enableScissor((int) dPopX, (int) (renderPopY + 3.0f), (int) (dPopX + dPopW), (int) (renderPopY + 3.0f + dListH));
 
@@ -1507,7 +2467,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                 }
 
                 int txtColor = isCur ? Theme.getAccent() : (isHov ? 0xFFFFFFFF : ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, dAnim));
-                ClientFont.draw(context, mName, dPopX + 8.0f, curItemY + 4.0f, ClientFont.SF_REGULAR, txtColor);
+                ClientFont.draw(context, mName, dPopX + 8.0f, curItemY + 5.0f, ClientFont.SF_REGULAR, txtColor);
 
                 if (isCur) {
                     float dotR = 2.5f;
@@ -1533,27 +2493,32 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
     }
 
     private void renderKeybindRow(DrawContext context, Module module, float x, float y, float width, float alpha) {
-        int labelColor = ColorUtil.withAlphaFloat(Theme.TEXT_SUB, alpha);
-        if (!FpsBenchmark.overrideNoText) {
-            ClientFont.draw(context, "Bind key", x + 6.0f, y + 4.0f, ClientFont.SF_REGULAR, labelColor);
-        }
-
         boolean isListening = (listeningKeybindModule == module);
         String keyText = getKeybindString(module);
 
-        float btnW = ClientFont.getWidth(keyText, ClientFont.SF_REGULAR) + 16.0f;
+        float rawBtnW = ClientFont.getWidth(keyText, ClientFont.SF_REGULAR) + 16.0f;
+        float maxBtnW = Math.max(50.0f, width * 0.48f);
+        float btnW = Math.min(rawBtnW, maxBtnW);
         float btnH = 18.0f;
         float btnX = x + width - btnW - 6.0f;
         float btnY = y + 1.0f;
 
-        int btnBg = isListening ? Theme.getAccentMuted() : ColorUtil.rgba(255, 255, 255, (int) (16 * alpha));
-        int btnBorder = isListening ? Theme.getAccent() : ColorUtil.rgba(255, 255, 255, (int) (26 * alpha));
+        int labelColor = ColorUtil.withAlphaFloat(Theme.TEXT_SUB, alpha);
+        if (!FpsBenchmark.overrideNoText) {
+            float maxLabelW = Math.max(10.0f, btnX - (x + 6.0f) - 10.0f);
+            String label = getTruncatedLabel("Bind key", maxLabelW, ClientFont.SF_REGULAR);
+            ClientFont.draw(context, label, x + 6.0f, y + 4.0f, ClientFont.SF_REGULAR, labelColor);
+        }
+
+        int btnBg = isListening ? Theme.getAccentMuted() : ColorUtil.rgba(35, 35, 37, (int) (220 * alpha));
+        int btnBorder = isListening ? Theme.getAccent() : ColorUtil.rgba(255, 255, 255, (int) (18 * alpha));
         Render2D.drawRoundedRect(context, btnX, btnY, btnW, btnH, 5.0f, btnBg);
         Render2D.drawRoundedOutline(context, btnX, btnY, btnW, btnH, 5.0f, 1.0f, btnBorder);
 
         if (!FpsBenchmark.overrideNoText) {
             int textColor = isListening ? Theme.getAccentHover() : Theme.TEXT_TITLE;
-            ClientFont.drawCentered(context, keyText, btnX + btnW / 2.0f, btnY + btnH / 2.0f, ClientFont.SF_REGULAR, ColorUtil.withAlphaFloat(textColor, alpha));
+            String dispKey = getTruncatedLabel(keyText, btnW - 8.0f, ClientFont.SF_REGULAR);
+            ClientFont.drawCentered(context, dispKey, btnX + btnW / 2.0f, btnY + btnH / 2.0f, ClientFont.SF_REGULAR, ColorUtil.withAlphaFloat(textColor, alpha));
         }
     }
 
@@ -1756,8 +2721,6 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         }
 
         if (this.openDropdownSetting != null) {
-            float dPopX = this.openDropdownX;
-            float dPopY = this.openDropdownY;
             List<String> dModes = this.openDropdownSetting.getModes();
             float dItemH = 17.0f;
             int maxVisible = 6;
@@ -1769,10 +2732,16 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             for (String m : dModes) {
                 maxModeW = Math.max(maxModeW, ClientFont.getWidth(m, ClientFont.SF_REGULAR));
             }
-            float dPopW = Math.max(this.openDropdownW, maxModeW + 32.0f);
+            float dPopW = Math.max(this.openDropdownW, maxModeW + 28.0f);
+            float btnRight = this.openDropdownX + this.openDropdownW;
+            float dPopX = btnRight - dPopW;
+            float dPopY = this.openDropdownY;
 
             float screenW = MinecraftClient.getInstance().getWindow().getScaledWidth();
             float screenH = MinecraftClient.getInstance().getWindow().getScaledHeight();
+            if (dPopX < 8.0f) {
+                dPopX = 8.0f;
+            }
             if (dPopX + dPopW > screenW - 8.0f) {
                 dPopX = screenW - dPopW - 8.0f;
             }
@@ -1797,37 +2766,54 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             }
         }
 
-        float guiWidth = Math.clamp(width * 0.58f, 520.0f, 580.0f);
-        float guiHeight = Math.clamp(height * 0.76f, 330.0f, 380.0f);
+        float guiWidth = Math.clamp(width * 0.58f, 540.0f, 600.0f);
+        float guiHeight = Math.clamp(height * 0.62f, 280.0f, 320.0f);
         float gx = (float) Math.round((width - guiWidth) / 2.0f);
         float gy = (float) Math.round((height - guiHeight) / 2.0f);
 
-        float sidebarWidth = 114.0f;
-        float headerHeight = 36.0f;
+        float collapseProgress = sidebarCollapseAnim.getValue();
+        float sidebarWidth = MathHelper.lerp(collapseProgress, 132.0f, 36.0f);
+        float headerHeight = 44.0f;
 
-        if (searchFocused && !searchQuery.trim().isEmpty() && selectedSearchModule == null) {
-            float popW = 160.0f;
-            float popX = gx + guiWidth - popW - 14.0f;
-            float popY = gy + headerHeight + 2.0f;
+        float btnW = 13.0f;
+        float btnH = 10.0f;
+        float btnX = MathHelper.lerp(collapseProgress, gx + sidebarWidth - btnW - 12.0f, gx + (sidebarWidth - btnW) / 2.0f);
+        float btnY = gy + (34.0f - btnH) / 2.0f;
+
+        boolean btnClicked = false;
+        if (collapseProgress > 0.5f) {
+            if (mouseX >= gx && mouseX <= (gx + sidebarWidth) && mouseY >= gy && mouseY <= (gy + 34.0f)) {
+                btnClicked = true;
+            }
+        } else {
+            if (mouseX >= (btnX - 5.0f) && mouseX <= (btnX + btnW + 5.0f) && mouseY >= (btnY - 5.0f) && mouseY <= (btnY + btnH + 5.0f)) {
+                btnClicked = true;
+            }
+        }
+
+        if (btnClicked) {
+            sidebarCollapsed = !sidebarCollapsed;
+            sidebarCollapseAnim.setTarget(sidebarCollapsed ? 1.0f : 0.0f);
+            savedSidebarCollapsed = sidebarCollapsed;
+            GuiSoundManager.playClick();
+            return true;
+        }
+
+        if (collapseProgress < 0.3f && searchFocused && !searchQuery.trim().isEmpty() && selectedSearchModule == null) {
+            float popW = sidebarWidth - 16.0f;
+            float popX = gx + 8.0f;
+            float popY = gy + 60.0f;
             List<Module> matches = getSearchMatches();
             int count = matches.size();
             int showCount = Math.min(5, count);
-            float itemH = 20.0f;
-            float popH = showCount > 0 ? (showCount * itemH + 6.0f) : 24.0f;
+            float itemH = 27.0f;
+            float popH = showCount > 0 ? (showCount * itemH + 8.0f) : 28.0f;
 
             if (mouseX >= popX && mouseX <= popX + popW && mouseY >= popY && mouseY <= popY + popH) {
                 if (showCount > 0) {
-                    int clickedIdx = (int) ((mouseY - (popY + 3.0f)) / itemH);
+                    int clickedIdx = (int) ((mouseY - (popY + 4.0f)) / itemH);
                     if (clickedIdx >= 0 && clickedIdx < showCount) {
-                        Module clickedMod = matches.get(clickedIdx);
-                        selectedCategory = clickedMod.getCategory();
-                        headerTitle = selectedCategory.getSection() + " - " + selectedCategory.getName();
-                        selectedSearchModule = clickedMod;
-                        searchQuery = clickedMod.getName();
-                        searchFocused = false;
-                        clickedMod.setExpanded(true);
-                        markModulesDirty();
-                        resetCascade();
+                        selectSearchModule(matches.get(clickedIdx));
                         return true;
                     }
                 }
@@ -1835,67 +2821,119 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             }
         }
 
-        float searchW = 140.0f;
-        float searchH = 22.0f;
-        float searchX = gx + guiWidth - searchW - 14.0f;
-        float searchY = gy + (headerHeight - searchH) / 2.0f;
-        if (mouseX >= searchX && mouseX <= (searchX + searchW) && mouseY >= searchY && mouseY <= (searchY + searchH)) {
-            searchFocused = true;
-            searchSelecting = true;
-            lastBlinkTime = System.currentTimeMillis();
-            if (selectedSearchModule != null) {
-                selectedSearchModule = null;
-                searchQuery = "";
+        float searchH = 22.0f * (1.0f - collapseProgress);
+        if (collapseProgress < 0.3f && searchH > 2.0f) {
+            float searchW = sidebarWidth - 16.0f;
+            float searchX = gx + 8.0f;
+            float searchY = gy + 34.0f + 2.0f;
+            if (mouseX >= searchX && mouseX <= (searchX + searchW) && mouseY >= searchY && mouseY <= (searchY + searchH)) {
+                if (!searchQuery.isEmpty()) {
+                    float clearSize = 14.0f;
+                    float clearX = searchX + searchW - clearSize - 4.5f;
+                    float clearY = searchY + (searchH - clearSize) / 2.0f;
+                    if (mouseX >= clearX - 3.0f && mouseX <= clearX + clearSize + 3.0f && mouseY >= clearY - 3.0f && mouseY <= clearY + clearSize + 3.0f) {
+                        searchQuery = "";
+                        searchCursor = 0;
+                        searchSelectionEnd = 0;
+                        selectedSearchModule = null;
+                        searchSelectedIndex = 0;
+                        markModulesDirty();
+                        GuiSoundManager.playClick();
+                        return true;
+                    }
+                }
+                searchFocused = true;
+                searchSelecting = true;
+                lastBlinkTime = System.currentTimeMillis();
+                if (selectedSearchModule != null) {
+                    selectedSearchModule = null;
+                    searchQuery = "";
+                    searchCursor = 0;
+                    searchSelectionEnd = 0;
+                    searchSelectedIndex = 0;
+                }
+                int idx = getSearchCursorIndex((float) mouseX, searchX);
+                searchCursor = idx;
+                searchSelectionEnd = idx;
+                markModulesDirty();
+                return true;
+            } else {
+                searchFocused = false;
+                searchSelecting = false;
             }
-            int idx = getSearchCursorIndex((float) mouseX, searchX);
-            searchCursor = idx;
-            searchSelectionEnd = idx;
-            markModulesDirty();
-            return true;
-        } else {
-            searchFocused = false;
-            searchSelecting = false;
         }
 
-        float itemPad = 7.0f;
-        float itemW = sidebarWidth - (itemPad * 2.0f);
-        float itemH = 20.0f;
-        float itemY = gy + 46.0f + 6.0f;
+        float listStartY = gy + 34.0f + 2.0f + searchH + MathHelper.lerp(collapseProgress, 4.0f, 4.0f);
+        if (mouseX >= gx && mouseX <= gx + sidebarWidth && mouseY >= listStartY && mouseY <= gy + guiHeight) {
+            float itemH = 22.0f;
+            float startItemY = listStartY + 4.0f;
+            float itemY = startItemY - sidebarScrollOffset;
 
-        String lastSec = "";
-        for (Category cat : Category.values()) {
-            if (!cat.getSection().equals(lastSec)) {
-                lastSec = cat.getSection();
-                if (itemY > gy + 46.0f + 8.0f) {
-                    itemY += 4.0f;
+            String lastSec = "";
+            for (Category cat : Category.values()) {
+                if (!cat.getSection().equals(lastSec)) {
+                    lastSec = cat.getSection();
+                    if (itemY > startItemY - sidebarScrollOffset + 2.0f) {
+                        itemY += MathHelper.lerp(collapseProgress, 8.0f, 2.0f);
+                    }
+                    itemY += MathHelper.lerp(collapseProgress, 13.0f, 4.0f);
                 }
-                itemY += 11.0f;
-            }
 
-            if (mouseX >= (gx + itemPad) && mouseX <= (gx + itemPad + itemW) &&
-                    mouseY >= itemY && mouseY <= (itemY + itemH)) {
-                if (selectedCategory != cat || selectedSearchModule != null) {
-                    selectedCategory = cat;
+                if (mouseX >= gx && mouseX <= (gx + sidebarWidth) &&
+                        mouseY >= itemY && mouseY <= (itemY + itemH)) {
+                    if (selectedCategory != cat || selectedSearchModule != null) {
+                        selectedCategory = cat;
+                        ensureCategoryVisible(cat);
+                        selectedSearchModule = null;
+                        searchQuery = "";
+                        searchFocused = false;
+                        headerTitle = cat.getSection() + " - " + cat.getName();
+                        headerFadeAnim.setValue(0.0f);
+                        headerFadeAnim.setTarget(1.0f);
+                        scrollOffset = 0.0f;
+                        targetScroll = 0.0f;
+                        scrollVelocity = 0.0f;
+                        smoothedScrollVelocity = 0.0f;
+                        markModulesDirty();
+                        resetCascade();
+                    }
+                    return true;
+                }
+                itemY += itemH + 3.0f;
+            }
+        }
+
+        if (collapseProgress > 0.6f && deferredRailTooltipCat != null) {
+            float ttX = gx + sidebarWidth + 8.0f;
+            float ttY = Math.clamp(deferredRailTooltipY + 1.0f, gy + 6.0f, gy + guiHeight - 24.0f);
+            String ttText = deferredRailTooltipCat.getName() + " (" + getCategoryModuleCount(deferredRailTooltipCat) + ")";
+            float ttW = ClientFont.getWidth(ttText, ClientFont.SF_MEDIUM) + 14.0f;
+            float ttH = 20.0f;
+            if (mouseX >= ttX && mouseX <= (ttX + ttW) && mouseY >= ttY && mouseY <= (ttY + ttH)) {
+                if (selectedCategory != deferredRailTooltipCat || selectedSearchModule != null) {
+                    selectedCategory = deferredRailTooltipCat;
+                    ensureCategoryVisible(deferredRailTooltipCat);
                     selectedSearchModule = null;
                     searchQuery = "";
                     searchFocused = false;
-                    headerTitle = cat.getSection() + " - " + cat.getName();
+                    headerTitle = deferredRailTooltipCat.getSection() + " - " + deferredRailTooltipCat.getName();
                     headerFadeAnim.setValue(0.0f);
                     headerFadeAnim.setTarget(1.0f);
                     scrollOffset = 0.0f;
                     targetScroll = 0.0f;
+                    scrollVelocity = 0.0f;
+                    smoothedScrollVelocity = 0.0f;
                     markModulesDirty();
                     resetCascade();
                 }
                 return true;
             }
-            itemY += itemH + 2.0f;
         }
 
-        float contentX = gx + sidebarWidth + 12.0f;
-        float contentY = gy + headerHeight + 8.0f;
-        float contentW = guiWidth - sidebarWidth - 24.0f;
-        float contentH = guiHeight - headerHeight - 14.0f;
+        float contentX = gx + sidebarWidth + 14.0f;
+        float contentY = gy + headerHeight + 10.0f;
+        float contentW = guiWidth - sidebarWidth - 28.0f;
+        float contentH = guiHeight - headerHeight - 16.0f;
 
         if (selectedCategory == Category.INVENTORY) {
             if (egg.client.ui.section.InventoryConfigPanel.mouseClicked(contentX, contentY, contentW, contentH, mouseX, mouseY, button)) {
@@ -1907,11 +2945,16 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                 return true;
             }
             return true;
+        } else if (selectedCategory == Category.SETTINGS) {
+            if (checkClientSettingsClick(contentX, contentY, contentW, contentH, mouseX, mouseY, button)) {
+                return true;
+            }
+            return true;
         }
 
         if (mouseX >= contentX && mouseX <= (contentX + contentW) && mouseY >= contentY && mouseY <= (contentY + contentH)) {
-            float colGap = 8.0f;
-            float cardGap = 6.0f;
+            float colGap = 10.0f;
+            float cardGap = 10.0f;
             float cardW = (contentW - colGap) / 2.0f;
             List<Module> modules = getFilteredModules();
             float col0Y = contentY - scrollOffset;
@@ -1919,12 +2962,18 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
             for (int i = 0; i < modules.size(); i++) {
                 Module m = modules.get(i);
-                float h = 44.0f + (getSettingsHeight(m) * m.getExpandAnimation().getValue());
+                Animation anim = cardCascadeAnims.get(m);
+                float cascade = (anim != null) ? anim.getValue() : 1.0f;
+                float offsetY = (1.0f - cascade) * 10.0f;
+                float expandM = m.getExpandAnimation().getValue();
+                float headerH = getModuleHeaderHeight(m, cardW);
+                float h = headerH + (getSettingsHeight(m) * expandM);
                 boolean isLeft = (i % 2 == 0);
                 float cardX = isLeft ? contentX : (contentX + cardW + colGap);
                 float curColY = isLeft ? col0Y : col1Y;
+                float cardY = curColY + offsetY;
 
-                if (checkModuleClick(m, cardX, curColY, cardW, h, mouseX, mouseY, button)) {
+                if (checkModuleClick(m, cardX, cardY, cardW, h, mouseX, mouseY, button)) {
                     return true;
                 }
 
@@ -1957,19 +3006,19 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             return true;
         }
 
-        float toggleW = 26.0f;
-        float toggleH = 14.0f;
-        float toggleX = cardX + cardW - toggleW - 10.0f;
-        float toggleY = cardY + (44.0f - toggleH) / 2.0f;
+        float toggleW = 34.0f;
+        float toggleH = 16.0f;
+        float toggleX = cardX + cardW - toggleW - 12.0f;
+        float toggleY = cardY + 10.0f;
 
-        if (mouseX >= toggleX && mouseX <= (toggleX + toggleW) && mouseY >= toggleY && mouseY <= (toggleY + toggleH)) {
+        if (mouseX >= toggleX - 2.0f && mouseX <= (toggleX + toggleW + 2.0f) && mouseY >= toggleY - 2.0f && mouseY <= (toggleY + toggleH + 2.0f)) {
             module.toggle();
             egg.client.config.ConfigManager.save();
             return true;
         }
 
-        float starX = toggleX - 18.0f;
-        if (mouseX >= starX - 4 && mouseX <= starX + 14 && mouseY >= toggleY - 2 && mouseY <= toggleY + 16) {
+        float starX = toggleX - 14.0f;
+        if (mouseX >= starX - 4 && mouseX <= starX + 11 && mouseY >= toggleY - 2 && mouseY <= toggleY + 18) {
             module.toggleFavorite();
             Animation starAnim = starScaleAnims.get(module);
             if (starAnim != null) {
@@ -1981,17 +3030,24 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             return true;
         }
 
-        float dotsX = starX - 16.0f;
-        if (button == 1 || (mouseX >= dotsX - 4 && mouseX <= dotsX + 14 && mouseY >= toggleY - 2 && mouseY <= toggleY + 16)) {
-            module.toggleExpanded();
-            return true;
+        float headerH = getModuleHeaderHeight(module, cardW);
+        boolean hasSettings = !module.getSettings().isEmpty() || (module instanceof WorldTweaks);
+        if (mouseY <= cardY + headerH) {
+            float dotsX = hasSettings ? (starX - 11.0f) : starX;
+            if (button == 1 || (hasSettings && mouseX >= dotsX - 4 && mouseX <= dotsX + 11 && mouseY >= toggleY - 2 && mouseY <= toggleY + 18)) {
+                if (hasSettings) {
+                    module.toggleExpanded();
+                    GuiSoundManager.playClick();
+                }
+                return true;
+            }
         }
 
         float expandProgress = module.getExpandAnimation().getValue();
-        if (expandProgress > 0.8f && mouseY > (cardY + 44.0f)) {
-            float sY = cardY + 44.0f + 6.0f;
-            float settingsW = cardW - 20.0f;
-            float settingsX = cardX + 10.0f;
+        if (expandProgress > 0.20f && mouseY > (cardY + headerH)) {
+            float sY = cardY + headerH + 6.0f;
+            float settingsW = cardW - 24.0f;
+            float settingsX = cardX + 12.0f;
 
             if (module instanceof WorldTweaks wt) {
                 if (WorldTweaksUI.mouseClicked(wt, settingsX, sY, settingsW, mouseX, mouseY, button)) {
@@ -2000,50 +3056,51 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                 sY += WorldTweaksUI.getTotalHeight();
             }
             for (Setting s : module.getSettings()) {
+                if (isWorldTweaksCustomSetting(module, s)) continue;
                 float progress = s.getVisibilityProgress();
                 if (progress <= 0.05f) continue;
                 if (s instanceof BooleanSetting bool) {
-                    float itemH = 24.0f * progress;
-                    if (progress > 0.6f && mouseY >= sY && mouseY <= (sY + 22.0f)) {
+                    float itemH = 26.0f * progress;
+                    if (progress > 0.6f && mouseY >= sY && mouseY <= (sY + 24.0f)) {
                         bool.set(!bool.get());
                         egg.client.config.ConfigManager.save();
                         return true;
                     }
                     sY += itemH;
                 } else if (s instanceof SliderSetting slider) {
-                    float itemH = 32.0f * progress;
-                    if (progress > 0.6f && mouseY >= sY + 8.0f && mouseY <= (sY + 24.0f)) {
+                    float itemH = 34.0f * progress;
+                    if (progress > 0.6f && mouseY >= sY + 6.0f && mouseY <= (sY + 30.0f)) {
                         draggingSlider = slider;
-                        dragTrackX = settingsX + 6.0f;
-                        dragTrackW = settingsW - 12.0f;
+                        dragTrackX = settingsX;
+                        dragTrackW = settingsW;
                         updateSliderValue(slider, dragTrackX, dragTrackW, mouseX);
                         return true;
                     }
                     sY += itemH;
                 } else if (s instanceof ModeSetting mode) {
-                    float itemH = 26.0f * progress;
-                    if (progress > 0.6f && mouseY >= sY && mouseY <= (sY + 22.0f)) {
+                    float itemH = 28.0f * progress;
+                    float btnW = getModeButtonWidth(mode, settingsW);
+                    float btnX = settingsX + settingsW - btnW;
+                    if (progress > 0.6f && mouseY >= sY && mouseY <= (sY + 24.0f)) {
                         if (this.openDropdownSetting == mode) {
                             this.openDropdownSetting = null;
                         } else {
                             this.openDropdownSetting = mode;
-                            float btnW = ClientFont.getWidth(mode.get(), ClientFont.SF_REGULAR) + 18.0f;
-                            float btnX = settingsX + settingsW - btnW - 6.0f;
                             this.openDropdownX = btnX;
-                            this.openDropdownY = sY + 20.0f;
-                            this.openDropdownW = Math.max(btnW, 105.0f);
+                            this.openDropdownY = sY + 22.0f;
+                            this.openDropdownW = btnW;
                             this.openDropdownScrollY = 0.0f;
                         }
                         return true;
                     }
                     sY += itemH;
                 } else if (s instanceof ColorSetting colorSetting) {
-                    float itemH = 24.0f * progress;
-                    float badgeW = 76.0f;
-                    float badgeH = 17.0f;
+                    float itemH = 26.0f * progress;
                     float[] storedBadge = this.colorSettingBadgePositions.get(colorSetting);
-                    float badgeX = storedBadge != null ? storedBadge[0] : (settingsX + settingsW - badgeW - 6.0f);
-                    float badgeY = storedBadge != null ? storedBadge[1] : (sY + 1.5f);
+                    float badgeW = storedBadge != null ? storedBadge[2] : getColorBadgeWidth(colorSetting);
+                    float badgeH = storedBadge != null ? storedBadge[3] : 18.0f;
+                    float badgeX = storedBadge != null ? storedBadge[0] : (settingsX + settingsW - badgeW);
+                    float badgeY = storedBadge != null ? storedBadge[1] : (sY + 3.0f);
                     if (progress > 0.6f && mouseY >= badgeY - 2.0f && mouseY <= badgeY + badgeH + 2.0f && mouseX >= badgeX && mouseX <= badgeX + badgeW) {
                         if (this.openColorPickerSetting == colorSetting) {
                             this.openColorPickerSetting = null;
@@ -2069,10 +3126,10 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                     }
                     sY += itemH;
                 } else if (s instanceof ButtonSetting btn) {
-                    float itemH = 26.0f * progress;
-                    float bW = settingsW - 12.0f;
-                    float bH = 20.0f;
-                    float bX = settingsX + 6.0f;
+                    float itemH = 28.0f * progress;
+                    float bW = settingsW;
+                    float bH = 22.0f;
+                    float bX = settingsX;
                     float bY = sY + 2.0f;
                     if (progress > 0.6f && mouseX >= bX && mouseX <= (bX + bW) && mouseY >= bY && mouseY <= (bY + bH)) {
                         btn.run();
@@ -2080,8 +3137,8 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                     }
                     sY += itemH;
                 } else if (s instanceof BindSetting bind) {
-                    float itemH = 26.0f * progress;
-                    if (progress > 0.6f && mouseY >= sY && mouseY <= (sY + 22.0f)) {
+                    float itemH = 28.0f * progress;
+                    if (progress > 0.6f && mouseY >= sY && mouseY <= (sY + 24.0f)) {
                         if (button == 1) {
                             bind.setKey(0);
                             listeningBindSetting = null;
@@ -2096,7 +3153,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                 }
             }
 
-            if (mouseY >= sY && mouseY <= (sY + 22.0f)) {
+            if (mouseY >= sY && mouseY <= (sY + 24.0f)) {
                 listeningKeybindModule = (listeningKeybindModule == module) ? null : module;
                 return true;
             }
@@ -2109,6 +3166,145 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         }
 
         return true;
+    }
+
+    private boolean checkClientSettingsClick(float contentX, float contentY, float contentW, float contentH, float mouseX, float mouseY, int button) {
+        if (mouseX < contentX || mouseX > contentX + contentW || mouseY < contentY || mouseY > contentY + contentH) {
+            return false;
+        }
+
+        ClientSettings cs = ModuleManager.getInstance().getModule(ClientSettings.class);
+        if (cs == null) return false;
+
+        float currentY = contentY - scrollOffset;
+        float colGap = 8.0f;
+        float cardW = (contentW - colGap) / 2.0f;
+
+        float col0X = contentX;
+        float col1X = contentX + cardW + colGap;
+
+        List<Setting> leftSettings = new ArrayList<>();
+        List<Setting> rightSettings = new ArrayList<>();
+
+        for (Setting s : cs.getSettings()) {
+            String name = s.getName();
+            if (name.contains("Пресет") || name.contains("Accent") || name.contains("курсор") || name.contains("сетка") || name.contains("Сетка") || name.contains("открытия")) {
+                leftSettings.add(s);
+            } else {
+                rightSettings.add(s);
+            }
+        }
+
+        float leftH = calculateSettingsGroupHeight(leftSettings);
+        float rightH = calculateSettingsGroupHeight(rightSettings);
+
+        if (checkSettingsGroupClick(leftSettings, col0X, currentY, cardW, leftH, mouseX, mouseY, button)) {
+            return true;
+        }
+        if (checkSettingsGroupClick(rightSettings, col1X, currentY, cardW, rightH, mouseX, mouseY, button)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private boolean checkSettingsGroupClick(List<Setting> settings, float cardX, float cardY, float cardW, float cardH, float mouseX, float mouseY, int button) {
+        if (mouseX < cardX || mouseX > cardX + cardW || mouseY < cardY || mouseY > cardY + cardH) {
+            return false;
+        }
+
+        float sY = cardY + 34.0f;
+        float settingsW = cardW - 24.0f;
+        float settingsX = cardX + 12.0f;
+
+        for (Setting s : settings) {
+            float progress = s.getVisibilityProgress();
+            if (progress <= 0.05f) continue;
+
+            if (s instanceof BooleanSetting bool) {
+                float itemH = 26.0f * progress;
+                if (progress > 0.6f && mouseY >= sY && mouseY <= (sY + 24.0f) && mouseX >= settingsX && mouseX <= settingsX + settingsW) {
+                    bool.set(!bool.get());
+                    egg.client.config.ConfigManager.save();
+                    GuiSoundManager.playToggle(bool.get());
+                    return true;
+                }
+                sY += itemH;
+            } else if (s instanceof SliderSetting slider) {
+                float itemH = 34.0f * progress;
+                if (progress > 0.6f && mouseY >= sY + 6.0f && mouseY <= (sY + 30.0f) && mouseX >= settingsX && mouseX <= settingsX + settingsW) {
+                    draggingSlider = slider;
+                    dragTrackX = settingsX;
+                    dragTrackW = settingsW;
+                    updateSliderValue(slider, dragTrackX, dragTrackW, mouseX);
+                    return true;
+                }
+                sY += itemH;
+            } else if (s instanceof ModeSetting mode) {
+                float itemH = 28.0f * progress;
+                float btnW = getModeButtonWidth(mode, settingsW);
+                float btnX = settingsX + settingsW - btnW;
+                if (progress > 0.6f && mouseY >= sY && mouseY <= (sY + 24.0f) && mouseX >= settingsX && mouseX <= settingsX + settingsW) {
+                    if (this.openDropdownSetting == mode) {
+                        this.openDropdownSetting = null;
+                    } else {
+                        this.openDropdownSetting = mode;
+                        this.openDropdownX = btnX;
+                        this.openDropdownY = sY + 22.0f;
+                        this.openDropdownW = btnW;
+                        this.openDropdownScrollY = 0.0f;
+                    }
+                    return true;
+                }
+                sY += itemH;
+            } else if (s instanceof ColorSetting colorSetting) {
+                float itemH = 26.0f * progress;
+                float[] storedBadge = this.colorSettingBadgePositions.get(colorSetting);
+                float badgeW = storedBadge != null ? storedBadge[2] : getColorBadgeWidth(colorSetting);
+                float badgeH = storedBadge != null ? storedBadge[3] : 18.0f;
+                float badgeX = storedBadge != null ? storedBadge[0] : (settingsX + settingsW - badgeW);
+                float badgeY = storedBadge != null ? storedBadge[1] : (sY + 3.0f);
+                if (progress > 0.6f && mouseY >= badgeY - 2.0f && mouseY <= badgeY + badgeH + 2.0f && mouseX >= badgeX && mouseX <= badgeX + badgeW) {
+                    if (this.openColorPickerSetting == colorSetting) {
+                        this.openColorPickerSetting = null;
+                        this.colorDragMode = ColorDragMode.NONE;
+                    } else {
+                        this.openColorPickerSetting = colorSetting;
+                        this.colorDragMode = ColorDragMode.NONE;
+                        this.colorPopupAnim = 0.0f;
+                        float popW = 144.0f;
+                        float popH = 132.0f;
+                        float px = badgeX + badgeW - popW;
+                        float py = badgeY + badgeH + 4.0f;
+                        int screenW = client != null ? client.getWindow().getScaledWidth() : 800;
+                        int screenH = client != null ? client.getWindow().getScaledHeight() : 600;
+                        if (px + popW > screenW - 8.0f) px = screenW - popW - 8.0f;
+                        if (px < 8.0f) px = 8.0f;
+                        if (py + popH > screenH - 8.0f) py = badgeY - popH - 4.0f;
+                        if (py < 8.0f) py = 8.0f;
+                        this.colorPopupX = px;
+                        this.colorPopupY = py;
+                    }
+                    return true;
+                }
+                sY += itemH;
+            } else if (s instanceof BindSetting bind) {
+                float itemH = 28.0f * progress;
+                if (progress > 0.6f && mouseY >= sY && mouseY <= (sY + 24.0f) && mouseX >= settingsX && mouseX <= settingsX + settingsW) {
+                    if (button == 1) {
+                        bind.setKey(0);
+                        listeningBindSetting = null;
+                        egg.client.config.ConfigManager.save();
+                    } else {
+                        listeningBindSetting = (listeningBindSetting == bind) ? null : bind;
+                    }
+                    GuiSoundManager.playClick();
+                    return true;
+                }
+                sY += itemH;
+            }
+        }
+        return false;
     }
 
     private void updateSliderValue(SliderSetting slider, float trackX, float trackW, float mouseX) {
@@ -2145,10 +3341,9 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
     public boolean mouseDragged(Click click, double dx, double dy) {
 
         if (searchFocused && searchSelecting) {
-            float gWidth = Math.clamp(this.width * 0.58f, 520.0f, 580.0f);
+            float gWidth = Math.clamp(this.width * 0.58f, 540.0f, 600.0f);
             float gX = (float) Math.round((this.width - gWidth) / 2.0f);
-            float sW = 140.0f;
-            float sX = gX + gWidth - sW - 14.0f;
+            float sX = gX + 8.0f;
             searchCursor = getSearchCursorIndex((float) click.x(), sX);
             return true;
         }
@@ -2202,18 +3397,27 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         if (closing || (!closing && currentAnimProgress < 0.70f)) {
             return false;
         }
+        float guiW = Math.clamp(width * 0.58f, 540.0f, 600.0f);
+        float guiH = Math.clamp(height * 0.62f, 280.0f, 320.0f);
+        float guiX = (float) Math.round((width - guiW) / 2.0f);
+        float guiY = (float) Math.round((height - guiH) / 2.0f);
+        float collapseProgress = sidebarCollapseAnim.getValue();
+        float sidebarW = MathHelper.lerp(collapseProgress, 132.0f, 36.0f);
+
+        if (mouseX >= guiX && mouseX <= guiX + sidebarW && mouseY >= guiY + 34.0f && mouseY <= guiY + guiH) {
+            sidebarTargetScroll -= (float) (verticalAmount * 26.0f);
+            sidebarTargetScroll = Math.clamp(sidebarTargetScroll, 0.0f, sidebarMaxScroll);
+            return true;
+        }
+
         if (selectedCategory == Category.INVENTORY) {
             egg.client.ui.section.InventoryConfigPanel.mouseScrolled(verticalAmount);
             return true;
         } else if (selectedCategory == Category.COSMETICS) {
-            float guiW = Math.clamp(width * 0.58f, 520.0f, 580.0f);
-            float guiH = Math.clamp(height * 0.62f, 360.0f, 420.0f);
-            float guiX = (float) Math.round((width - guiW) / 2.0f);
-            float guiY = (float) Math.round((height - guiH) / 2.0f);
-            float contentX = guiX + 114.0f + 12.0f;
-            float contentY = guiY + 38.0f;
-            float contentW = guiW - 114.0f - 24.0f;
-            float contentH = guiH - 38.0f - 12.0f;
+            float contentX = guiX + sidebarW + 14.0f;
+            float contentY = guiY + 44.0f + 10.0f;
+            float contentW = guiW - sidebarW - 28.0f;
+            float contentH = guiH - 44.0f - 16.0f;
             egg.client.ui.section.CosmeticsPanel.mouseScrolled(mouseX, mouseY, verticalAmount, contentX, contentY, contentW, contentH);
             return true;
         }
@@ -2221,7 +3425,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             this.openDropdownScrollY = Math.clamp(this.openDropdownScrollY - (float) verticalAmount * 14.0f, 0.0f, this.openDropdownMaxScroll);
             return true;
         }
-        targetScroll -= (float) (verticalAmount * 34.0f);
+        targetScroll -= (float) (verticalAmount * 38.0f);
         targetScroll = Math.clamp(targetScroll, 0.0f, maxScroll);
         lastScrollTime = System.currentTimeMillis();
         return true;
@@ -2244,7 +3448,8 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         }
 
         if (!closing && currentAnimProgress < 0.70f) {
-            if (key == GLFW.GLFW_KEY_RIGHT_SHIFT || key == GLFW.GLFW_KEY_ESCAPE) {
+            int openKey = ClientSettings.getOpenKey();
+            if ((openKey > 0 && key == openKey) || key == GLFW.GLFW_KEY_ESCAPE) {
                 closeWithAnimation();
                 return true;
             }
@@ -2281,8 +3486,37 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
         if (searchFocused) {
             lastBlinkTime = System.currentTimeMillis();
-            if (key == GLFW.GLFW_KEY_ESCAPE || key == GLFW.GLFW_KEY_ENTER) {
+            if (key == GLFW.GLFW_KEY_ESCAPE) {
                 searchFocused = false;
+                return true;
+            }
+
+            if (key == GLFW.GLFW_KEY_UP) {
+                List<Module> matches = getSearchMatches();
+                int showCount = Math.min(5, matches.size());
+                if (showCount > 0) {
+                    searchSelectedIndex = (searchSelectedIndex - 1 + showCount) % showCount;
+                    return true;
+                }
+            }
+
+            if (key == GLFW.GLFW_KEY_DOWN) {
+                List<Module> matches = getSearchMatches();
+                int showCount = Math.min(5, matches.size());
+                if (showCount > 0) {
+                    searchSelectedIndex = (searchSelectedIndex + 1) % showCount;
+                    return true;
+                }
+            }
+
+            if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+                List<Module> matches = getSearchMatches();
+                int showCount = Math.min(5, matches.size());
+                if (showCount > 0 && searchSelectedIndex >= 0 && searchSelectedIndex < showCount) {
+                    selectSearchModule(matches.get(searchSelectedIndex));
+                } else {
+                    searchFocused = false;
+                }
                 return true;
             }
 
@@ -2324,6 +3558,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                     }
                 }
                 selectedSearchModule = null;
+                searchSelectedIndex = 0;
                 markModulesDirty();
                 resetCascade();
                 return true;
@@ -2345,6 +3580,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                         searchCursor = Math.min(pre.length() + clip.length(), 32);
                         searchSelectionEnd = searchCursor;
                         selectedSearchModule = null;
+                        searchSelectedIndex = 0;
                         markModulesDirty();
                         resetCascade();
                     }
@@ -2374,6 +3610,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                     searchSelectionEnd = searchCursor;
                 }
                 selectedSearchModule = null;
+                searchSelectedIndex = 0;
                 markModulesDirty();
                 resetCascade();
                 return true;
@@ -2412,7 +3649,15 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
             return true;
         } else {
-            if (key == GLFW.GLFW_KEY_RIGHT_SHIFT || key == GLFW.GLFW_KEY_ESCAPE) {
+            if (isCtrlDown() && (key == GLFW.GLFW_KEY_F || key == GLFW.GLFW_KEY_K)) {
+                searchFocused = true;
+                searchCursor = searchQuery.length();
+                searchSelectionEnd = 0;
+                lastBlinkTime = System.currentTimeMillis();
+                return true;
+            }
+            int openKey = ClientSettings.getOpenKey();
+            if ((openKey > 0 && key == openKey) || key == GLFW.GLFW_KEY_ESCAPE) {
                 closeWithAnimation();
                 return true;
             }
@@ -2440,6 +3685,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                         searchCursor = pre.length() + 1;
                         searchSelectionEnd = searchCursor;
                         selectedSearchModule = null;
+                        searchSelectedIndex = 0;
                         lastBlinkTime = System.currentTimeMillis();
                         markModulesDirty();
                         resetCascade();

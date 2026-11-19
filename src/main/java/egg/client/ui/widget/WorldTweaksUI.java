@@ -2,6 +2,7 @@ package egg.client.ui.widget;
 
 import egg.client.module.render.WorldTweaks;
 import egg.client.render.DynamicGuiTextures;
+import egg.client.render.IconRenderer;
 import egg.client.render.Render2D;
 import egg.client.render.font.ClientFont;
 import egg.client.util.ColorUtil;
@@ -51,7 +52,6 @@ public class WorldTweaksUI {
         int topColor, bottomColor, orbColor, glowColor;
 
         if (t >= 0.22f && t < 0.48f) {
-
             title = "Day";
             subtitle = "Mostly clear";
             topColor = 0xFF2A84EE;
@@ -59,7 +59,6 @@ public class WorldTweaksUI {
             orbColor = 0xFFFFD84D;
             glowColor = 0xAAFFC830;
         } else if (t >= 0.48f && t < 0.65f) {
-
             title = "Evening";
             subtitle = "Golden hour";
             topColor = 0xFF584564;
@@ -67,7 +66,6 @@ public class WorldTweaksUI {
             orbColor = 0xFFFFD2A0;
             glowColor = 0xAAFF8A3A;
         } else if (t >= 0.65f && t < 0.92f) {
-
             title = "Night";
             subtitle = "Clear sky";
             topColor = 0xFF0B0E17;
@@ -75,7 +73,6 @@ public class WorldTweaksUI {
             orbColor = 0xFFE2E8F0;
             glowColor = 0x888AA8D4;
         } else {
-
             title = "Morning";
             subtitle = "Dawn rose";
             topColor = 0xFF4A3458;
@@ -84,9 +81,7 @@ public class WorldTweaksUI {
             glowColor = 0xAAFF8878;
         }
 
-        Render2D.drawRoundedGradientRect(context, x, y, w, h, 10.0f,
-                ColorUtil.withAlphaFloat(topColor, alpha),
-                ColorUtil.withAlphaFloat(bottomColor, alpha));
+        Render2D.drawRoundedRect(context, x, y, w, h, 10.0f, ColorUtil.withAlphaFloat(topColor, alpha));
         Render2D.drawRoundedOutline(context, x, y, w, h, 10.0f, 1.0f,
                 ColorUtil.rgba(255, 255, 255, (int) (55 * alpha)));
 
@@ -97,7 +92,7 @@ public class WorldTweaksUI {
         float arcAreaY = y + 24.0f;
         float arcAreaH = h - 24.0f;
         Identifier arcTex = DynamicGuiTextures.getCardArc(Math.round(w), Math.round(arcAreaH));
-        Render2D.drawTexture(context, arcTex, x, arcAreaY, w, arcAreaH, ColorUtil.rgba(255, 255, 255, (int) (220 * alpha)));
+        Render2D.drawDynamicTexture(context, arcTex, x, arcAreaY, w, arcAreaH, ColorUtil.rgba(255, 255, 255, (int) (220 * alpha)));
 
         float arcTopY = arcAreaY + 20.0f;
         float d = (w - 36.0f) / 2.0f;
@@ -111,7 +106,7 @@ public class WorldTweaksUI {
         float handleY = cy - (float) Math.sqrt(Math.max(0.0f, R * R - dx * dx));
 
         float haloSize = 36.0f;
-        Render2D.drawTexture(context, BLOOM_TEXTURE, handleX - haloSize * 0.5f, handleY - haloSize * 0.5f, haloSize, haloSize,
+        IconRenderer.drawTextureScaled(context, BLOOM_TEXTURE, handleX - haloSize * 0.5f, handleY - haloSize * 0.5f, haloSize, haloSize, 64, 64,
                 ColorUtil.withAlphaFloat(glowColor, alpha * 0.9f));
 
         float orbRadius = 7.0f;
@@ -126,16 +121,8 @@ public class WorldTweaksUI {
         int topColor, bottomColor, knobColor, glowColor;
         String seasonName, seasonDesc;
 
-        if ("Зима".equals(curSeason)) {
-            t = 0.08f;
-            seasonName = "Зима";
-            seasonDesc = "Морозный снег и снежинки";
-            topColor = 0xFF1B3852;
-            bottomColor = 0xFF35698C;
-            knobColor = 0xFFEAF5FF;
-            glowColor = 0xAA9AD5FF;
-        } else if ("Весна".equals(curSeason)) {
-            t = 0.35f;
+        if ("Весна".equals(curSeason)) {
+            t = 0.18f;
             seasonName = "Весна";
             seasonDesc = "Цветение сакуры и лепестки";
             topColor = 0xFF58243C;
@@ -143,7 +130,7 @@ public class WorldTweaksUI {
             knobColor = 0xFFFFD4E2;
             glowColor = 0xAAFF80A6;
         } else if ("Лето".equals(curSeason)) {
-            t = 0.65f;
+            t = 0.50f;
             seasonName = "Лето";
             seasonDesc = "Яркое солнце и корона";
             topColor = 0xFF704410;
@@ -151,7 +138,7 @@ public class WorldTweaksUI {
             knobColor = 0xFFFFE55C;
             glowColor = 0xAAFFB820;
         } else if ("Осень".equals(curSeason)) {
-            t = 0.92f;
+            t = 0.82f;
             seasonName = "Осень";
             seasonDesc = "Золотой лес и листопад";
             topColor = 0xFF5C2B14;
@@ -159,7 +146,7 @@ public class WorldTweaksUI {
             knobColor = 0xFFFF8A38;
             glowColor = 0xAAFF5A1C;
         } else {
-            t = 0.5f;
+            t = 0.50f;
             seasonName = "Выкл";
             seasonDesc = "Ванильный сезон";
             topColor = 0xFF1E222E;
@@ -168,9 +155,7 @@ public class WorldTweaksUI {
             glowColor = 0x66A0ACCC;
         }
 
-        Render2D.drawRoundedGradientRect(context, x, y, w, h, 10.0f,
-                ColorUtil.withAlphaFloat(topColor, alpha),
-                ColorUtil.withAlphaFloat(bottomColor, alpha));
+        Render2D.drawRoundedRect(context, x, y, w, h, 10.0f, ColorUtil.withAlphaFloat(topColor, alpha));
         Render2D.drawRoundedOutline(context, x, y, w, h, 10.0f, 1.0f,
                 ColorUtil.rgba(255, 255, 255, (int) (55 * alpha)));
 
@@ -180,7 +165,7 @@ public class WorldTweaksUI {
         float arcAreaY = y + 24.0f;
         float arcAreaH = h - 24.0f;
         Identifier arcTex = DynamicGuiTextures.getCardArc(Math.round(w), Math.round(arcAreaH));
-        Render2D.drawTexture(context, arcTex, x, arcAreaY, w, arcAreaH, ColorUtil.rgba(255, 255, 255, (int) (220 * alpha)));
+        Render2D.drawDynamicTexture(context, arcTex, x, arcAreaY, w, arcAreaH, ColorUtil.rgba(255, 255, 255, (int) (220 * alpha)));
 
         float arcTopY = arcAreaY + 20.0f;
         float d = (w - 36.0f) / 2.0f;
@@ -189,8 +174,8 @@ public class WorldTweaksUI {
         float cy = arcTopY + R;
         float cx = x + w / 2.0f;
 
-        float[] stations = new float[]{0.08f, 0.35f, 0.65f, 0.92f};
-        for (int i = 0; i < 4; i++) {
+        float[] stations = new float[]{0.18f, 0.50f, 0.82f};
+        for (int i = 0; i < 3; i++) {
             float st = stations[i];
             float sx = (cx - d) + st * (2.0f * d);
             float sdy = sx - cx;
@@ -204,7 +189,7 @@ public class WorldTweaksUI {
         float handleY = cy - (float) Math.sqrt(Math.max(0.0f, R * R - dx * dx));
 
         float haloSize = 36.0f;
-        Render2D.drawTexture(context, BLOOM_TEXTURE, handleX - haloSize * 0.5f, handleY - haloSize * 0.5f, haloSize, haloSize,
+        IconRenderer.drawTextureScaled(context, BLOOM_TEXTURE, handleX - haloSize * 0.5f, handleY - haloSize * 0.5f, haloSize, haloSize, 64, 64,
                 ColorUtil.withAlphaFloat(glowColor, alpha * 0.9f));
 
         float orbRadius = 7.0f;
@@ -324,11 +309,9 @@ public class WorldTweaksUI {
         float t = MathHelper.clamp((mouseX - arcX1) / (arcX2 - arcX1), 0.0f, 1.0f);
 
         String chosen;
-        if (t < 0.22f) {
-            chosen = "Зима";
-        } else if (t < 0.50f) {
+        if (t < 0.33f) {
             chosen = "Весна";
-        } else if (t < 0.78f) {
+        } else if (t < 0.67f) {
             chosen = "Лето";
         } else {
             chosen = "Осень";

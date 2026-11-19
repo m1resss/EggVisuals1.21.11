@@ -21,25 +21,29 @@ public enum DischargeRenderer {
     private static final long START_TIME = System.nanoTime();
     private SimpleFramebuffer captureTarget;
     private final PingPongBlurTarget blur = new PingPongBlurTarget("egg_discharge_blur");
+    private final Vector2f scratchVec1 = new Vector2f();
+    private final Vector2f scratchVec2 = new Vector2f();
+    private final Vector2f scratchVec3 = new Vector2f();
+    private final Vector2f scratchVec4 = new Vector2f();
 
     public void render(MatrixStack matrixStack, Camera camera, float f, Entity entity, int i, float f2, float f3, float f4, float f5) {
         Vec3d vec3d = ProjectionUtil.getInterpolatedPos(entity, f);
         Vec3d vec3d2 = vec3d.add(0.0, entity.getHeight() * 0.5, 0.0);
-        Vector2f vector2f = ProjectionUtil.worldToScreen(vec3d2);
-        if (vector2f != null && this.prepareTargets()) {
+        boolean hasCenter = ProjectionUtil.worldToScreen(vec3d2, this.scratchVec1);
+        if (hasCenter && this.prepareTargets()) {
             MinecraftClient mc = MinecraftClient.getInstance();
             int sw = mc.getWindow().getScaledWidth();
             int sh = mc.getWindow().getScaledHeight();
             float f6 = MathHelper.lerp((1.0F - MathHelper.cos(f5)) * 0.5F, f3, f4);
-            Vector2f vector2f2 = ProjectionUtil.worldToScreen(vec3d.add(0.0, f6, 0.0));
-            float f7 = vector2f2 == null ? -1.0F : 1.0F - vector2f2.y / sh;
+            boolean hasF6 = ProjectionUtil.worldToScreen(vec3d.x, vec3d.y + f6, vec3d.z, this.scratchVec2);
+            float f7 = !hasF6 ? -1.0F : 1.0F - this.scratchVec2.y / sh;
             Framebuffer framebuffer = mc.getFramebuffer();
             EntityMaskRenderer.renderEntities(this.captureTarget, matrixStack, camera, f, List.of(entity));
             double d = camera.getCameraPos().distanceTo(vec3d2);
             float f8 = ProjectionUtil.getPixelsPerBlock(d) / framebuffer.textureHeight;
-            Vector2f vector2f3 = ProjectionUtil.worldToScreen(vec3d.add(0.0, f3, 0.0));
-            Vector2f vector2f4 = ProjectionUtil.worldToScreen(vec3d.add(0.0, f4, 0.0));
-            float f9 = vector2f3 != null && vector2f4 != null ? (vector2f3.y - vector2f4.y) / sh : (f4 - f3) * f8;
+            boolean hasF3 = ProjectionUtil.worldToScreen(vec3d.x, vec3d.y + f3, vec3d.z, this.scratchVec3);
+            boolean hasF4 = ProjectionUtil.worldToScreen(vec3d.x, vec3d.y + f4, vec3d.z, this.scratchVec4);
+            float f9 = hasF3 && hasF4 ? (this.scratchVec3.y - this.scratchVec4.y) / sh : (f4 - f3) * f8;
             float f10 = Math.min(ProjectionUtil.getScaledSize(0.07F, d) / 2.0F, 16.0F);
             GpuSampler gpuSampler = RenderSystem.getSamplerCache().get(FilterMode.LINEAR);
 
@@ -58,8 +62,8 @@ public enum DischargeRenderer {
                 i,
                 getTime(),
                 f2,
-                vector2f.x / sw,
-                1.0F - vector2f.y / sh,
+                this.scratchVec1.x / sw,
+                1.0F - this.scratchVec1.y / sh,
                 f8,
                 (float)framebuffer.textureWidth / i2,
                 f7,
