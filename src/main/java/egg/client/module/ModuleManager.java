@@ -10,8 +10,6 @@ import egg.client.module.misc.ClientSettings;
 
 import egg.client.module.misc.StreamerMode;
 
-import egg.client.module.movement.NoJumpDelay;
-
 import egg.client.module.player.FastPlace;
 
 import egg.client.module.movement.Sprint;
@@ -47,8 +45,6 @@ public class ModuleManager {
         register(new egg.client.module.combat.AutoSwap());
 
         register(new Sprint());
-
-        register(new NoJumpDelay());
 
         register(new FastPlace());
 

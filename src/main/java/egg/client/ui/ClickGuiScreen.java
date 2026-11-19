@@ -986,7 +986,6 @@ public class ClickGuiScreen extends Screen {
         MODULE_KEYWORDS.put("NoFriendDamage", new String[]{"друг", "друзья", "без урона", "защита тиммейтов", "тимейт", "no friend damage"});
 
         MODULE_KEYWORDS.put("Sprint", new String[]{"спринт", "бег", "автобег", "разгон", "sprint", "run"});
-        MODULE_KEYWORDS.put("No Jump Delay", new String[]{"прыжок", "джамп", "распрыг", "no jump delay", "jump delay", "nojumpdelay", "bhop", "но джамп делей"});
         MODULE_KEYWORDS.put("Fast Place", new String[]{"фаст плейс", "блоки", "строительство", "fast place", "fastplace"});
 
         MODULE_KEYWORDS.put("Interface", new String[]{"интерфейс", "худ", "ватермарка", "айленд", "остров", "динамик", "музыка", "трек", "бар", "watermark", "island"});
