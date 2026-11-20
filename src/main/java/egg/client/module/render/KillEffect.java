@@ -22,6 +22,7 @@ import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.VertexFormats;
 import net.minecraft.client.util.BufferAllocator;
 import net.minecraft.client.util.DefaultSkinHelper;
+import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
@@ -32,6 +33,7 @@ import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.RotationAxis;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.shape.VoxelShape;
 import org.joml.Matrix4f;
@@ -95,6 +97,8 @@ public class KillEffect extends Module {
     private final SliderSetting singularityRadius = new SliderSetting("Радиус горизонта", 0.45, 0.20, 0.85, 0.05, "Радиус горизонта событий черной дыры");
     private final SliderSetting singularityInflow = new SliderSetting("Частицы материи", 54, 20, 110, 2, "Количество затягиваемых световых частиц материи");
     private final BooleanSetting singularityRays = new BooleanSetting("Лучи сверхновой", true, "Выброс радиальных лучей энергии при взрыве сверхновой");
+    private final BooleanSetting singularityRift = new BooleanSetting("Разлом пространства", true, "Остаточный пространственный разлом и туманность после взрыва");
+    private final BooleanSetting singularityDistortion = new BooleanSetting("Искажение пространства", true, "Гравитационные волны искажения и сотрясение камеры");
 
     private final List<ButterflySwarmInstance> butterflySwarms = new ArrayList<>();
     private final List<MonolithInstance> monolithInstances = new ArrayList<>();
@@ -115,6 +119,8 @@ public class KillEffect extends Module {
     private final Set<Integer> deadEntities = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Random random = new Random();
     private long lastFrameNanos = 0L;
+    private float cameraTrauma = 0.0f;
+    private long lastShakeNanos = 0L;
 
     public KillEffect() {
         super("KillEffect", "Воспроизводит визуальный эффект на месте гибели игрока", Category.ESP);
@@ -145,6 +151,8 @@ public class KillEffect extends Module {
         singularityRadius.setVisible(() -> "Черная дыра".equals(mode.get()));
         singularityInflow.setVisible(() -> "Черная дыра".equals(mode.get()));
         singularityRays.setVisible(() -> "Черная дыра".equals(mode.get()));
+        singularityRift.setVisible(() -> "Черная дыра".equals(mode.get()));
+        singularityDistortion.setVisible(() -> "Черная дыра".equals(mode.get()));
 
         color.setVisible(() -> !syncColor.isEnabled());
 
@@ -153,7 +161,7 @@ public class KillEffect extends Module {
                 monolithHeight, monolithScale, monolithRunes,
                 amount, size, speed, lifetime, bounce, sparkle,
                 dissolveDuration, dissolveDensity, dissolveRing,
-                singularityRadius, singularityInflow, singularityRays);
+                singularityRadius, singularityInflow, singularityRays, singularityRift, singularityDistortion);
     }
 
     public static KillEffect getInstance() {
@@ -198,6 +206,40 @@ public class KillEffect extends Module {
                 this.lastHealth = living.getHealth();
             }
         }
+    }
+
+    public void triggerCameraShockwave(double x, double y, double z) {
+        if (!singularityDistortion.isEnabled()) return;
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc.player == null) return;
+        double distSq = mc.player.squaredDistanceTo(x, y, z);
+        double maxDist = 28.0;
+        if (distSq > maxDist * maxDist) return;
+        double dist = Math.sqrt(distSq);
+        float distFactor = (float) Math.max(0.0, 1.0 - (dist / maxDist));
+        float traumaAdd = 0.85f * distFactor * distFactor;
+        this.cameraTrauma = Math.min(1.0f, this.cameraTrauma + traumaAdd);
+    }
+
+    public void applyCameraShake(MatrixStack matrices, float tickDelta) {
+        if (!isEnabled() || cameraTrauma <= 0.001f) return;
+        long now = System.nanoTime();
+        if (lastShakeNanos != 0L) {
+            float dt = (now - lastShakeNanos) / 1_000_000_000.0f;
+            cameraTrauma = Math.max(0.0f, cameraTrauma - dt * 1.35f);
+        }
+        lastShakeNanos = now;
+        if (cameraTrauma <= 0.001f) return;
+
+        float shake = cameraTrauma * cameraTrauma;
+        float time = (System.currentTimeMillis() % 100000) * 0.035f;
+        float pitch = (float) Math.sin(time * 1.3f) * 4.2f * shake;
+        float roll = (float) Math.cos(time * 1.7f) * 3.6f * shake;
+        float yaw = (float) Math.sin(time * 0.9f) * 2.1f * shake;
+
+        matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(pitch));
+        matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees(roll));
+        matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(yaw));
     }
 
     public void onAttack(Entity target) {
@@ -545,11 +587,13 @@ public class KillEffect extends Module {
         float radius = (float) singularityRadius.get();
         int inflow = (int) singularityInflow.get();
         boolean rays = singularityRays.isEnabled();
+        boolean rift = singularityRift.isEnabled();
+        boolean distortion = singularityDistortion.isEnabled();
 
         singularityInstances.add(new SingularityInstance(
                 bx, by, bz, (float) height, yaw, pitch, headYaw, isSneaking,
                 rLegPitch, lLegPitch, rArmPitch, lArmPitch, rArmRoll,
-                radius, inflow, rays, effectColor, random
+                radius, inflow, rays, rift, distortion, effectColor, random
         ));
 
         while (singularityInstances.size() > 8) {
@@ -638,6 +682,7 @@ public class KillEffect extends Module {
             if (!butterflySwarms.isEmpty()) butterflySwarms.clear();
             if (!dissolveInstances.isEmpty()) dissolveInstances.clear();
             if (!singularityInstances.isEmpty()) singularityInstances.clear();
+            cameraTrauma = 0.0f;
             recentAttacks.clear();
             victimsById.clear();
             victimsByName.clear();
@@ -1696,10 +1741,12 @@ public class KillEffect extends Module {
         butterflySwarms.clear();
         monolithInstances.clear();
         dissolveInstances.clear();
+        singularityInstances.clear();
         recentAttacks.clear();
         victimsById.clear();
         victimsByName.clear();
         deadEntities.clear();
+        cameraTrauma = 0.0f;
     }
 
     private static class DeathGlassShard {
@@ -2871,7 +2918,7 @@ public class KillEffect extends Module {
                         SoundEvents.ENTITY_GENERIC_EXPLODE.value(), SoundCategory.PLAYERS,
                         1.2f, 1.35f, false);
             }
-            inst.spawnSupernovaSparks(random);
+            inst.spawnSupernovaSparks(random, this, cx, cy, cz);
         }
 
         if (age < 0.40f) {
@@ -2898,11 +2945,19 @@ public class KillEffect extends Module {
         }
 
         if (age >= 0.70f) {
-            emitSupernovaShockwave(lightBuf, camPos, cx, cy, cz, age, inst.color);
+            emitSupernovaShockwave(lightBuf, camPos, cx, cy, cz, age, inst.color, inst.distortionEnabled);
+            if (inst.distortionEnabled) {
+                emitGravitationalLensingBubble(lightBuf, camPos, cx, cy, cz, age, inst.color);
+            }
             if (inst.raysEnabled) {
                 emitNovaRays(lightBuf, inst, camPos, cx, cy, cz, age, inst.color);
             }
             updateAndRenderStardust(lightBuf, inst, camPos, dt);
+            if (inst.riftEnabled) {
+                renderSpacetimeRift(quadBuf, lightBuf, inst, camPos, cx, cy, cz, age, inst.color);
+                updateAndRenderNebulaClouds(lightBuf, inst, camPos, cx, cy, cz, dt);
+                updateAndRenderQuantumEmbers(lightBuf, inst, camPos, cx, cy, cz, dt);
+            }
         }
     }
 
@@ -3302,16 +3357,11 @@ public class KillEffect extends Module {
     }
 
     private void emitSupernovaShockwave(VertexConsumer lightBuf, Vec3d camPos, double cx, double cy, double cz,
-                                        float age, int color) {
-        float prog = (age - 0.70f) / 0.58f;
-        if (prog < 0.0f || prog > 1.0f) return;
-
-        float ease = 1.0f - (float) Math.pow(1.0f - prog, 3.2);
-        float outerR = 0.15f + ease * 4.10f;
-        float innerR = outerR * (0.75f + 0.20f * prog);
-
-        int alpha = (int) (255 * (1.0f - (float) Math.pow(prog, 1.5)));
-        if (alpha <= 2) return;
+                                        float age, int color, boolean distortion) {
+        float prog = (age - 0.70f) / 0.65f;
+        if (prog < 0.0f || prog > 1.0f) {
+            if (!distortion) return;
+        }
 
         float px = (float) (cx - camPos.x);
         float py = (float) (cy - camPos.y);
@@ -3326,6 +3376,67 @@ public class KillEffect extends Module {
         int b = color & 0xFF;
 
         int segs = 36;
+
+        if (prog >= 0.0f && prog <= 1.0f) {
+            float ease = 1.0f - (float) Math.pow(1.0f - prog, 3.2);
+            float baseOuterR = 0.15f + ease * 4.40f;
+            int mainAlpha = (int) (255 * (1.0f - (float) Math.pow(prog, 1.4)));
+
+            if (mainAlpha > 2) {
+                float innerR = baseOuterR * (0.78f + 0.18f * prog);
+                emitFlatWaveRing(lightBuf, px, py, pz, u, v, innerR, baseOuterR, 255, 255, 255, mainAlpha, r, g, b, 0, segs);
+
+                if (distortion) {
+                    float redProg = MathHelper.clamp((age - 0.70f) / 0.58f, 0.0f, 1.0f);
+                    float redEase = 1.0f - (float) Math.pow(1.0f - redProg, 3.0);
+                    float redOuterR = 0.15f + redEase * 4.75f;
+                    float redInnerR = redOuterR * 0.88f;
+                    int redAlpha = (int) (175 * (1.0f - redProg));
+                    if (redAlpha > 2) {
+                        emitFlatWaveRing(lightBuf, px, py, pz, u, v, redInnerR, redOuterR, 255, 60, 95, redAlpha, 255, 40, 60, 0, segs);
+                    }
+
+                    float blueProg = MathHelper.clamp((age - 0.70f) / 0.74f, 0.0f, 1.0f);
+                    float blueEase = 1.0f - (float) Math.pow(1.0f - blueProg, 3.4);
+                    float blueOuterR = 0.15f + blueEase * 4.05f;
+                    float blueInnerR = blueOuterR * 0.85f;
+                    int blueAlpha = (int) (185 * (1.0f - blueProg));
+                    if (blueAlpha > 2) {
+                        emitFlatWaveRing(lightBuf, px, py, pz, u, v, blueInnerR, blueOuterR, 40, 200, 255, blueAlpha, 10, 80, 255, 0, segs);
+                    }
+                }
+            }
+        }
+
+        if (distortion) {
+            float echo1Prog = (age - 0.88f) / 0.62f;
+            if (echo1Prog >= 0.0f && echo1Prog <= 1.0f) {
+                float echoEase = 1.0f - (float) Math.pow(1.0f - echo1Prog, 2.8);
+                float echoOuterR = 0.12f + echoEase * 3.8f;
+                float echoInnerR = echoOuterR * 0.90f;
+                int echoAlpha = (int) (140 * (1.0f - echo1Prog));
+                if (echoAlpha > 2) {
+                    emitFlatWaveRing(lightBuf, px, py, pz, u, v, echoInnerR, echoOuterR, 255, 255, 255, echoAlpha, r, g, b, 0, segs);
+                }
+            }
+
+            float echo2Prog = (age - 1.15f) / 0.70f;
+            if (echo2Prog >= 0.0f && echo2Prog <= 1.0f) {
+                float echoEase = 1.0f - (float) Math.pow(1.0f - echo2Prog, 2.5);
+                float echoOuterR = 0.10f + echoEase * 3.2f;
+                float echoInnerR = echoOuterR * 0.92f;
+                int echoAlpha = (int) (95 * (1.0f - echo2Prog));
+                if (echoAlpha > 2) {
+                    emitFlatWaveRing(lightBuf, px, py, pz, u, v, echoInnerR, echoOuterR, 120, 220, 255, echoAlpha, 40, 100, 220, 0, segs);
+                }
+            }
+        }
+    }
+
+    private void emitFlatWaveRing(VertexConsumer lightBuf, float px, float py, float pz,
+                                  Vector3f u, Vector3f v, float innerR, float outerR,
+                                  int inR, int inG, int inB, int inA,
+                                  int outR, int outG, int outB, int outA, int segs) {
         for (int i = 0; i < segs; i++) {
             float a0 = (float) (i * 2.0 * Math.PI / segs);
             float a1 = (float) ((i + 1) * 2.0 * Math.PI / segs);
@@ -3336,10 +3447,316 @@ public class KillEffect extends Module {
             float d0x = u.x * c0 + v.x * s0; float d0y = u.y * c0 + v.y * s0; float d0z = u.z * c0 + v.z * s0;
             float d1x = u.x * c1 + v.x * s1; float d1y = u.y * c1 + v.y * s1; float d1z = u.z * c1 + v.z * s1;
 
-            lightBuf.vertex(px + d0x * innerR, py + d0y * innerR, pz + d0z * innerR).color(255, 255, 255, alpha);
-            lightBuf.vertex(px + d1x * innerR, py + d1y * innerR, pz + d1z * innerR).color(255, 255, 255, alpha);
-            lightBuf.vertex(px + d1x * outerR, py + d1y * outerR, pz + d1z * outerR).color(r, g, b, 0);
-            lightBuf.vertex(px + d0x * outerR, py + d0y * outerR, pz + d0z * outerR).color(r, g, b, 0);
+            lightBuf.vertex(px + d0x * innerR, py + d0y * innerR, pz + d0z * innerR).color(inR, inG, inB, inA);
+            lightBuf.vertex(px + d1x * innerR, py + d1y * innerR, pz + d1z * innerR).color(inR, inG, inB, inA);
+            lightBuf.vertex(px + d1x * outerR, py + d1y * outerR, pz + d1z * outerR).color(outR, outG, outB, outA);
+            lightBuf.vertex(px + d0x * outerR, py + d0y * outerR, pz + d0z * outerR).color(outR, outG, outB, outA);
+        }
+    }
+
+    private void emitGravitationalLensingBubble(VertexConsumer lightBuf, Vec3d camPos,
+                                                double cx, double cy, double cz, float age, int color) {
+        float prog = (age - 0.70f) / 0.95f;
+        if (prog < 0.0f || prog > 1.0f) return;
+
+        float ease = 1.0f - (float) Math.pow(1.0f - prog, 2.5);
+        float radius = 0.25f + ease * 4.2f;
+        int alpha = (int) (160 * (1.0f - prog) * (prog < 0.15f ? (prog / 0.15f) : 1.0f));
+        if (alpha <= 2) return;
+
+        float px = (float) (cx - camPos.x);
+        float py = (float) (cy - camPos.y);
+        float pz = (float) (cz - camPos.z);
+
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+
+        int latRings = 8;
+        int lonSegs = 16;
+
+        for (int i = 0; i < latRings; i++) {
+            float phi0 = (float) (-Math.PI * 0.5 + i * Math.PI / latRings);
+            float phi1 = (float) (-Math.PI * 0.5 + (i + 1) * Math.PI / latRings);
+
+            float y0 = (float) Math.sin(phi0) * radius;
+            float y1 = (float) Math.sin(phi1) * radius;
+            float r0 = (float) Math.cos(phi0) * radius;
+            float r1 = (float) Math.cos(phi1) * radius;
+
+            float midPhi = (phi0 + phi1) * 0.5f;
+            float midCos = (float) Math.cos(midPhi);
+
+            for (int j = 0; j < lonSegs; j++) {
+                float th0 = (float) (j * 2.0 * Math.PI / lonSegs);
+                float th1 = (float) ((j + 1) * 2.0 * Math.PI / lonSegs);
+
+                float cth0 = (float) Math.cos(th0); float sth0 = (float) Math.sin(th0);
+                float cth1 = (float) Math.cos(th1); float sth1 = (float) Math.sin(th1);
+
+                float midTh = (th0 + th1) * 0.5f;
+                float nx = (float) Math.cos(midTh) * midCos;
+                float ny = (float) Math.sin(midPhi);
+                float nz = (float) Math.sin(midTh) * midCos;
+
+                float vx = (px + nx * radius);
+                float vy = (py + ny * radius);
+                float vz = (pz + nz * radius);
+                float vdist = (float) Math.sqrt(vx * vx + vy * vy + vz * vz);
+                if (vdist > 0.001f) {
+                    vx /= vdist; vy /= vdist; vz /= vdist;
+                }
+
+                float dot = Math.abs(nx * vx + ny * vy + nz * vz);
+                float fresnel = (float) Math.pow(1.0f - dot, 2.2);
+                int ringAlpha = (int) (alpha * fresnel);
+                if (ringAlpha <= 1) continue;
+
+                float x00 = px + cth0 * r0; float z00 = pz + sth0 * r0;
+                float x10 = px + cth1 * r0; float z10 = pz + sth1 * r0;
+                float x11 = px + cth1 * r1; float z11 = pz + sth1 * r1;
+                float x01 = px + cth0 * r1; float z01 = pz + sth0 * r1;
+
+                int fr = MathHelper.clamp((int) (r * 0.5f + 120), 0, 255);
+                int fg = MathHelper.clamp((int) (g * 0.5f + 160), 0, 255);
+                int fb = MathHelper.clamp((int) (b * 0.5f + 255), 0, 255);
+
+                lightBuf.vertex(x00, py + y0, z00).color(fr, fg, fb, ringAlpha);
+                lightBuf.vertex(x10, py + y0, z10).color(fr, fg, fb, ringAlpha);
+                lightBuf.vertex(x11, py + y1, z11).color(fr, fg, fb, ringAlpha);
+                lightBuf.vertex(x01, py + y1, z01).color(fr, fg, fb, ringAlpha);
+            }
+        }
+    }
+
+    private void renderSpacetimeRift(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                     SingularityInstance inst, Vec3d camPos,
+                                     double cx, double cy, double cz, float age, int color) {
+        if (age < 0.72f || age > 2.80f) return;
+
+        float progOpen = MathHelper.clamp((age - 0.72f) / 0.16f, 0.0f, 1.0f);
+        float healProg = MathHelper.clamp((age - 1.65f) / 1.15f, 0.0f, 1.0f);
+        float globalScale = progOpen * (1.0f - (float) Math.pow(healProg, 2.0));
+        if (globalScale <= 0.01f) return;
+
+        float px = (float) (cx - camPos.x);
+        float py = (float) (cy - camPos.y);
+        float pz = (float) (cz - camPos.z);
+
+        float toCamX = -px;
+        float toCamY = -py;
+        float toCamZ = -pz;
+        float dist = (float) Math.sqrt(toCamX * toCamX + toCamY * toCamY + toCamZ * toCamZ);
+        if (dist > 0.01f) {
+            toCamX /= dist; toCamY /= dist; toCamZ /= dist;
+        }
+
+        float ux = -toCamZ;
+        float uz = toCamX;
+        float uLen = (float) Math.sqrt(ux * ux + uz * uz);
+        if (uLen > 0.001f) {
+            ux /= uLen; uz /= uLen;
+        } else {
+            ux = 1.0f; uz = 0.0f;
+        }
+
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+
+        int alpha = (int) (245 * (1.0f - healProg * 0.85f));
+
+        int n = inst.riftVertices.size();
+        if (n < 2) return;
+
+        float maxHalfW = 0.12f * globalScale;
+        float glowMargin = 0.07f * globalScale;
+
+        Vector3f[] leftPts = new Vector3f[n];
+        Vector3f[] rightPts = new Vector3f[n];
+        Vector3f[] leftGlowPts = new Vector3f[n];
+        Vector3f[] rightGlowPts = new Vector3f[n];
+
+        for (int i = 0; i < n; i++) {
+            SingularityRiftVertex rv = inst.riftVertices.get(i);
+            float normY = Math.abs(rv.yOffset) / 0.90f;
+            float localHeal = Math.min(1.0f, healProg * (1.0f + normY * 1.5f));
+            float localW = maxHalfW * (1.0f - normY * 0.65f) * (1.0f - localHeal);
+
+            float jitter = (float) Math.sin(age * 22.0f + rv.phase) * 0.025f * (1.0f - healProg);
+            float vx = px + (rv.ox + jitter * ux) * globalScale;
+            float vy = py + rv.yOffset * globalScale;
+            float vz = pz + (rv.oz + jitter * uz) * globalScale;
+
+            leftPts[i] = new Vector3f(vx - ux * localW, vy, vz - uz * localW);
+            rightPts[i] = new Vector3f(vx + ux * localW, vy, vz + uz * localW);
+            leftGlowPts[i] = new Vector3f(vx - ux * (localW + glowMargin), vy, vz - uz * (localW + glowMargin));
+            rightGlowPts[i] = new Vector3f(vx + ux * (localW + glowMargin), vy, vz + uz * (localW + glowMargin));
+        }
+
+        for (int i = 0; i < n - 1; i++) {
+            Vector3f l0 = leftPts[i];
+            Vector3f l1 = leftPts[i + 1];
+            Vector3f r0 = rightPts[i];
+            Vector3f r1 = rightPts[i + 1];
+
+            quadBuf.vertex(l0.x, l0.y, l0.z).color(1, 1, 2, 255);
+            quadBuf.vertex(r0.x, r0.y, r0.z).color(1, 1, 2, 255);
+            quadBuf.vertex(r1.x, r1.y, r1.z).color(1, 1, 2, 255);
+            quadBuf.vertex(l1.x, l1.y, l1.z).color(1, 1, 2, 255);
+
+            Vector3f lg0 = leftGlowPts[i];
+            Vector3f lg1 = leftGlowPts[i + 1];
+            Vector3f rg0 = rightGlowPts[i];
+            Vector3f rg1 = rightGlowPts[i + 1];
+
+            lightBuf.vertex(l0.x, l0.y, l0.z).color(255, 255, 255, alpha);
+            lightBuf.vertex(l1.x, l1.y, l1.z).color(255, 255, 255, alpha);
+            lightBuf.vertex(lg1.x, lg1.y, lg1.z).color(r, g, b, 0);
+            lightBuf.vertex(lg0.x, lg0.y, lg0.z).color(r, g, b, 0);
+
+            lightBuf.vertex(r0.x, r0.y, r0.z).color(255, 255, 255, alpha);
+            lightBuf.vertex(rg0.x, rg0.y, rg0.z).color(r, g, b, 0);
+            lightBuf.vertex(rg1.x, rg1.y, rg1.z).color(r, g, b, 0);
+            lightBuf.vertex(r1.x, r1.y, r1.z).color(255, 255, 255, alpha);
+        }
+
+        if (age < 2.2f && (random.nextFloat() < 0.35f)) {
+            int i0 = random.nextInt(n);
+            int i1 = Math.clamp(i0 + (random.nextBoolean() ? 1 : -1), 0, n - 1);
+            Vector3f pStart = random.nextBoolean() ? leftPts[i0] : rightPts[i0];
+            Vector3f pEnd = random.nextBoolean() ? leftPts[i1] : rightPts[i1];
+            float midArcX = (pStart.x + pEnd.x) * 0.5f + (random.nextFloat() - 0.5f) * 0.12f;
+            float midArcY = (pStart.y + pEnd.y) * 0.5f + (random.nextFloat() - 0.5f) * 0.08f;
+            float midArcZ = (pStart.z + pEnd.z) * 0.5f + (random.nextFloat() - 0.5f) * 0.12f;
+            emitLineQuad(lightBuf, pStart, new Vector3f(midArcX, midArcY, midArcZ), 0.015f, 255, 255, 255, alpha);
+            emitLineQuad(lightBuf, new Vector3f(midArcX, midArcY, midArcZ), pEnd, 0.015f, r, g, b, alpha);
+        }
+    }
+
+    private void updateAndRenderNebulaClouds(VertexConsumer lightBuf, SingularityInstance inst,
+                                             Vec3d camPos, double cx, double cy, double cz, float dt) {
+        float px = (float) (cx - camPos.x);
+        float py = (float) (cy - camPos.y);
+        float pz = (float) (cz - camPos.z);
+
+        float toCamX = -px;
+        float toCamY = -py;
+        float toCamZ = -pz;
+        float dist = (float) Math.sqrt(toCamX * toCamX + toCamY * toCamY + toCamZ * toCamZ);
+        if (dist > 0.01f) {
+            toCamX /= dist; toCamY /= dist; toCamZ /= dist;
+        }
+
+        float ux, uy, uz;
+        if (Math.abs(toCamY) < 0.95f) {
+            ux = -toCamZ; uy = 0; uz = toCamX;
+            float uLen = (float) Math.sqrt(ux * ux + uz * uz);
+            ux /= uLen; uz /= uLen;
+        } else {
+            ux = 0; uy = -toCamZ; uz = toCamY;
+            float uLen = (float) Math.sqrt(uy * uy + uz * uz);
+            uy /= uLen; uz /= uLen;
+        }
+        float vx = toCamY * uz - toCamZ * uy;
+        float vy = toCamZ * ux - toCamX * uz;
+        float vz = toCamX * uy - toCamY * ux;
+
+        for (SingularityNebulaCloud cloud : inst.nebulaClouds) {
+            cloud.age += dt;
+            if (cloud.age >= cloud.maxLife) continue;
+
+            cloud.x += cloud.vx * dt;
+            cloud.y += cloud.vy * dt;
+            cloud.z += cloud.vz * dt;
+
+            cloud.vx *= (1.0f - 1.1f * dt);
+            cloud.vy = cloud.vy * (1.0f - 1.1f * dt) + 0.12f * dt;
+            cloud.vz *= (1.0f - 1.1f * dt);
+
+            float curDist = (float) Math.sqrt(cloud.x * cloud.x + cloud.z * cloud.z);
+            if (curDist > 0.01f) {
+                float angle = cloud.swirl * dt * 0.75f;
+                float cosA = (float) Math.cos(angle);
+                float sinA = (float) Math.sin(angle);
+                float nx = cloud.x * cosA - cloud.z * sinA;
+                float nz = cloud.x * sinA + cloud.z * cosA;
+                cloud.x = nx;
+                cloud.z = nz;
+            }
+
+            float prog = cloud.age / cloud.maxLife;
+            float curR = cloud.baseSize + cloud.growth * (float) Math.pow(prog, 0.65);
+
+            float alphaProg = prog < 0.18f ? (prog / 0.18f) : (1.0f - (prog - 0.18f) / 0.82f);
+            int a = (int) (125 * MathHelper.clamp(alphaProg, 0.0f, 1.0f));
+            if (a <= 2) continue;
+
+            int cr = (cloud.color >> 16) & 0xFF;
+            int cg = (cloud.color >> 8) & 0xFF;
+            int cb = cloud.color & 0xFF;
+
+            float cx0 = px + cloud.x;
+            float cy0 = py + cloud.y;
+            float cz0 = pz + cloud.z;
+
+            int segs = 8;
+            for (int s = 0; s < segs; s++) {
+                float a0 = (float) (s * 2.0 * Math.PI / segs);
+                float a1 = (float) ((s + 1) * 2.0 * Math.PI / segs);
+
+                float c0 = (float) Math.cos(a0); float s0 = (float) Math.sin(a0);
+                float c1 = (float) Math.cos(a1); float s1 = (float) Math.sin(a1);
+
+                float d0x = (ux * c0 + vx * s0) * curR;
+                float d0y = (uy * c0 + vy * s0) * curR;
+                float d0z = (uz * c0 + vz * s0) * curR;
+
+                float d1x = (ux * c1 + vx * s1) * curR;
+                float d1y = (uy * c1 + vy * s1) * curR;
+                float d1z = (uz * c1 + vz * s1) * curR;
+
+                lightBuf.vertex(cx0, cy0, cz0).color(cr, cg, cb, a);
+                lightBuf.vertex(cx0 + d0x, cy0 + d0y, cz0 + d0z).color(cr, cg, cb, 0);
+                lightBuf.vertex(cx0 + d1x, cy0 + d1y, cz0 + d1z).color(cr, cg, cb, 0);
+                lightBuf.vertex(cx0, cy0, cz0).color(cr, cg, cb, a);
+            }
+        }
+    }
+
+    private void updateAndRenderQuantumEmbers(VertexConsumer lightBuf, SingularityInstance inst,
+                                              Vec3d camPos, double cx, double cy, double cz, float dt) {
+        float px = (float) (cx - camPos.x);
+        float py = (float) (cy - camPos.y);
+        float pz = (float) (cz - camPos.z);
+
+        int r = (inst.color >> 16) & 0xFF;
+        int g = (inst.color >> 8) & 0xFF;
+        int b = inst.color & 0xFF;
+
+        for (SingularityQuantumEmber ember : inst.quantumEmbers) {
+            ember.age += dt;
+            if (ember.age >= ember.life) continue;
+
+            float prog = ember.age / ember.life;
+            ember.y += ember.vy * dt;
+            ember.x += ember.vx * dt + (float) Math.cos(ember.age * ember.freq + ember.phase) * 0.15f * dt;
+            ember.z += ember.vz * dt + (float) Math.sin(ember.age * ember.freq + ember.phase) * 0.15f * dt;
+
+            float pulse = 0.6f + 0.4f * (float) Math.sin(ember.age * 12.0f + ember.phase);
+            float alphaProg = prog < 0.15f ? (prog / 0.15f) : (1.0f - (prog - 0.15f) / 0.85f);
+            int a = (int) (235 * MathHelper.clamp(alphaProg, 0.0f, 1.0f) * pulse);
+            if (a <= 2) continue;
+
+            float sx = px + ember.x;
+            float sy = py + ember.y;
+            float sz = pz + ember.z;
+            float szQuad = ember.size * (1.0f - prog * 0.4f);
+
+            lightBuf.vertex(sx - szQuad, sy - szQuad, sz).color(r, g, b, 0);
+            lightBuf.vertex(sx + szQuad, sy - szQuad, sz).color(255, 255, 255, a);
+            lightBuf.vertex(sx + szQuad, sy + szQuad, sz).color(255, 255, 255, a);
+            lightBuf.vertex(sx - szQuad, sy + szQuad, sz).color(r, g, b, 0);
         }
     }
 
@@ -3489,6 +3906,67 @@ public class KillEffect extends Module {
         }
     }
 
+    private static class SingularityRiftVertex {
+        final float ox, yOffset, oz, phase;
+
+        SingularityRiftVertex(float ox, float yOffset, float oz, float phase) {
+            this.ox = ox;
+            this.yOffset = yOffset;
+            this.oz = oz;
+            this.phase = phase;
+        }
+    }
+
+    private static class SingularityNebulaCloud {
+        float x, y, z;
+        float vx, vy, vz;
+        final float swirl;
+        final float baseSize;
+        final float growth;
+        final float maxLife;
+        final int color;
+        float age = 0.0f;
+
+        SingularityNebulaCloud(float x, float y, float z, float vx, float vy, float vz,
+                               float swirl, float baseSize, float growth, float maxLife, int color) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.vx = vx;
+            this.vy = vy;
+            this.vz = vz;
+            this.swirl = swirl;
+            this.baseSize = baseSize;
+            this.growth = growth;
+            this.maxLife = maxLife;
+            this.color = color;
+        }
+    }
+
+    private static class SingularityQuantumEmber {
+        float x, y, z;
+        final float vx, vy, vz;
+        final float size;
+        final float life;
+        final float freq;
+        final float phase;
+        float age = 0.0f;
+
+        SingularityQuantumEmber(float x, float y, float z, float vx, float vy, float vz,
+                                float size, float life, float freq, float phase) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.vx = vx;
+            this.vy = vy;
+            this.vz = vz;
+            this.size = size;
+            this.life = life;
+            this.freq = freq;
+            this.phase = phase;
+        }
+    }
+
     private static class SingularityInstance {
         final double x, y, z;
         final float height;
@@ -3498,17 +3976,23 @@ public class KillEffect extends Module {
         final float baseRadius;
         final int inflowCount;
         final boolean raysEnabled;
+        final boolean riftEnabled;
+        final boolean distortionEnabled;
         final int color;
         float age = 0.0f;
-        final float totalDuration = 1.30f;
+        final float totalDuration = 2.85f;
         boolean soundPlayedBoom = false;
         final List<SingularityInflowParticle> inflowParticles = new ArrayList<>();
         final List<SingularityNovaRay> novaRays = new ArrayList<>();
         final List<SingularityStardust> stardust = new ArrayList<>();
+        final List<SingularityNebulaCloud> nebulaClouds = new ArrayList<>();
+        final List<SingularityRiftVertex> riftVertices = new ArrayList<>();
+        final List<SingularityQuantumEmber> quantumEmbers = new ArrayList<>();
 
         SingularityInstance(double x, double y, double z, float height, float yaw, float pitch, float headYaw, boolean isSneaking,
                             float rLegPitch, float lLegPitch, float rArmPitch, float lArmPitch, float rArmRoll,
-                            float baseRadius, int inflowCount, boolean raysEnabled, int color, Random random) {
+                            float baseRadius, int inflowCount, boolean raysEnabled, boolean riftEnabled, boolean distortionEnabled,
+                            int color, Random random) {
             this.x = x;
             this.y = y;
             this.z = z;
@@ -3525,6 +4009,8 @@ public class KillEffect extends Module {
             this.baseRadius = baseRadius;
             this.inflowCount = inflowCount;
             this.raysEnabled = raysEnabled;
+            this.riftEnabled = riftEnabled;
+            this.distortionEnabled = distortionEnabled;
             this.color = color;
 
             for (int i = 0; i < inflowCount; i++) {
@@ -3552,21 +4038,90 @@ public class KillEffect extends Module {
                     novaRays.add(new SingularityNovaRay(dx, dy, dz, maxLen, width));
                 }
             }
+
+            if (riftEnabled) {
+                int vCount = 16;
+                for (int i = 0; i < vCount; i++) {
+                    float yOffset = -0.90f + i * (1.80f / (vCount - 1));
+                    float envelope = 1.0f - Math.abs(yOffset) / 0.90f;
+                    float ox = (random.nextFloat() - 0.5f) * 0.16f * envelope;
+                    float oz = (random.nextFloat() - 0.5f) * 0.16f * envelope;
+                    float phase = random.nextFloat() * (float) Math.PI * 2.0f;
+                    riftVertices.add(new SingularityRiftVertex(ox, yOffset, oz, phase));
+                }
+            }
         }
 
-        void spawnSupernovaSparks(Random random) {
-            int sparkCount = 36;
+        void spawnSupernovaSparks(Random random, KillEffect parent, double cx, double cy, double cz) {
+            if (distortionEnabled) {
+                parent.triggerCameraShockwave(cx, cy, cz);
+            }
+
+            int sparkCount = 38;
             for (int i = 0; i < sparkCount; i++) {
                 float theta = random.nextFloat() * (float) Math.PI * 2.0f;
                 float zDir = (random.nextFloat() * 2.0f) - 1.0f;
                 float sinZ = (float) Math.sqrt(Math.max(0.0f, 1.0f - zDir * zDir));
-                float spd = 2.5f + random.nextFloat() * 4.5f;
+                float spd = 2.8f + random.nextFloat() * 4.8f;
                 float vx = (float) Math.cos(theta) * sinZ * spd;
                 float vy = (float) Math.sin(theta) * sinZ * spd;
                 float vz = zDir * spd;
-                float size = 0.035f + random.nextFloat() * 0.04f;
-                float life = 0.35f + random.nextFloat() * 0.25f;
+                float size = 0.035f + random.nextFloat() * 0.045f;
+                float life = 0.40f + random.nextFloat() * 0.30f;
                 stardust.add(new SingularityStardust(0, 0, 0, vx, vy, vz, size, life));
+            }
+
+            if (riftEnabled) {
+                int cloudCount = 46;
+                for (int i = 0; i < cloudCount; i++) {
+                    float theta = random.nextFloat() * (float) Math.PI * 2.0f;
+                    float dist = 0.15f + random.nextFloat() * 0.65f;
+                    float startX = (float) Math.cos(theta) * dist;
+                    float startY = (random.nextFloat() - 0.5f) * 0.85f;
+                    float startZ = (float) Math.sin(theta) * dist;
+
+                    float expSpeed = 0.6f + random.nextFloat() * 1.8f;
+                    float vx = (startX / Math.max(0.01f, dist)) * expSpeed;
+                    float vy = (random.nextFloat() - 0.4f) * 0.6f;
+                    float vz = (startZ / Math.max(0.01f, dist)) * expSpeed;
+
+                    float swirl = (random.nextFloat() > 0.5f ? 1.0f : -1.0f) * (0.8f + random.nextFloat() * 1.4f);
+                    float baseSize = 0.22f + random.nextFloat() * 0.28f;
+                    float growth = 0.35f + random.nextFloat() * 0.45f;
+                    float maxLife = 1.4f + random.nextFloat() * 0.75f;
+
+                    int cloudColor;
+                    float cPick = random.nextFloat();
+                    if (cPick < 0.35f) {
+                        cloudColor = color;
+                    } else if (cPick < 0.65f) {
+                        cloudColor = 0xFF552288;
+                    } else if (cPick < 0.85f) {
+                        cloudColor = 0xFF114488;
+                    } else {
+                        cloudColor = 0xFF2277AA;
+                    }
+
+                    nebulaClouds.add(new SingularityNebulaCloud(
+                            startX, startY, startZ, vx, vy, vz, swirl,
+                            baseSize, growth, maxLife, cloudColor
+                    ));
+                }
+
+                int emberCount = 30;
+                for (int i = 0; i < emberCount; i++) {
+                    float ox = (random.nextFloat() - 0.5f) * 0.5f;
+                    float oy = (random.nextFloat() - 0.5f) * 0.4f;
+                    float oz = (random.nextFloat() - 0.5f) * 0.5f;
+                    float vy = 0.35f + random.nextFloat() * 0.75f;
+                    float vx = (random.nextFloat() - 0.5f) * 0.25f;
+                    float vz = (random.nextFloat() - 0.5f) * 0.25f;
+                    float size = 0.025f + random.nextFloat() * 0.035f;
+                    float life = 1.2f + random.nextFloat() * 0.85f;
+                    float freq = 2.0f + random.nextFloat() * 4.0f;
+                    float phase = random.nextFloat() * (float) Math.PI * 2.0f;
+                    quantumEmbers.add(new SingularityQuantumEmber(ox, oy, oz, vx, vy, vz, size, life, freq, phase));
+                }
             }
         }
     }

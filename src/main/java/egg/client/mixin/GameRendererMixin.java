@@ -74,17 +74,16 @@ public abstract class GameRendererMixin {
     }
 
     @Inject(method = "tiltViewWhenHurt", at = @At("HEAD"), cancellable = true)
-
     private void onTiltViewWhenHurt(MatrixStack matrices, float tickDelta, CallbackInfo ci) {
-
-        NoRender noRender = ModuleManager.getInstance().getModule(NoRender.class);
-
-        if (noRender != null && noRender.isEnabled() && noRender.getHurtCam().isEnabled()) {
-
-            ci.cancel();
-
+        KillEffect killEffect = ModuleManager.getInstance().getModule(KillEffect.class);
+        if (killEffect != null && killEffect.isEnabled()) {
+            killEffect.applyCameraShake(matrices, tickDelta);
         }
 
+        NoRender noRender = ModuleManager.getInstance().getModule(NoRender.class);
+        if (noRender != null && noRender.isEnabled() && noRender.getHurtCam().isEnabled()) {
+            ci.cancel();
+        }
     }
 
     @Inject(method = "render", at = @At("HEAD"))
