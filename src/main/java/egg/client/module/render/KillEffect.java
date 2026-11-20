@@ -239,7 +239,7 @@ public class KillEffect extends Module {
                 }
             }
             if (this.skinTexture == null) {
-                this.skinTexture = DefaultSkinHelper.getTexture();
+                this.skinTexture = resolveEntityTexture(living);
             }
 
             ItemStack head = living.getEquippedStack(EquipmentSlot.HEAD);
@@ -282,6 +282,22 @@ public class KillEffect extends Module {
             if (path.contains("copper")) return "copper";
         }
         return null;
+    }
+
+    private static Identifier resolveEntityTexture(Entity entity) {
+        if (entity == null) return DefaultSkinHelper.getTexture();
+        String type = Registries.ENTITY_TYPE.getId(entity.getType()).getPath();
+        if (type.contains("zombie")) return Identifier.ofVanilla("textures/entity/zombie/zombie.png");
+        if (type.contains("skeleton")) return Identifier.ofVanilla("textures/entity/skeleton/skeleton.png");
+        if (type.contains("creeper")) return Identifier.ofVanilla("textures/entity/creeper/creeper.png");
+        if (type.contains("spider")) return Identifier.ofVanilla("textures/entity/spider/spider.png");
+        if (type.contains("enderman")) return Identifier.ofVanilla("textures/entity/enderman/enderman.png");
+        if (type.contains("piglin")) return Identifier.ofVanilla("textures/entity/piglin/piglin.png");
+        if (type.contains("blaze")) return Identifier.ofVanilla("textures/entity/blaze.png");
+        if (type.contains("cow")) return Identifier.ofVanilla("textures/entity/cow/cow.png");
+        if (type.contains("pig")) return Identifier.ofVanilla("textures/entity/pig/pig.png");
+        if (type.contains("sheep")) return Identifier.ofVanilla("textures/entity/sheep/sheep.png");
+        return DefaultSkinHelper.getTexture();
     }
 
     public void triggerCameraShockwave(double x, double y, double z) {
@@ -676,7 +692,7 @@ public class KillEffect extends Module {
                 }
             }
             if (skinTexture == null) {
-                skinTexture = DefaultSkinHelper.getTexture();
+                skinTexture = resolveEntityTexture(living);
             }
 
             ItemStack head = living.getEquippedStack(EquipmentSlot.HEAD);
@@ -896,27 +912,33 @@ public class KillEffect extends Module {
         lastFrameNanos = now;
         if (dt > 0.05f) dt = 0.05f;
 
-        VertexConsumer quadBuffer = immediate.getBuffer(RenderLayers.debugQuads());
-        VertexConsumer lightBuffer = immediate.getBuffer(RenderLayers.lightning());
         Vector3f lightDir = new Vector3f(0.35f, 0.90f, 0.25f).normalize();
 
         if (!butterflySwarms.isEmpty()) {
+            VertexConsumer quadBuffer = immediate.getBuffer(RenderLayers.debugQuads());
+            VertexConsumer lightBuffer = immediate.getBuffer(RenderLayers.lightning());
             renderButterflySwarms(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
         }
 
         if (!monolithInstances.isEmpty()) {
+            VertexConsumer quadBuffer = immediate.getBuffer(RenderLayers.debugQuads());
+            VertexConsumer lightBuffer = immediate.getBuffer(RenderLayers.lightning());
             renderMonolithInstances(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
         }
 
         if (!dissolveInstances.isEmpty()) {
+            VertexConsumer quadBuffer = immediate.getBuffer(RenderLayers.debugQuads());
+            VertexConsumer lightBuffer = immediate.getBuffer(RenderLayers.lightning());
             renderDissolveInstances(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
         }
 
         if (!singularityInstances.isEmpty()) {
-            renderSingularityInstances(immediate, quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
+            renderSingularityInstances(immediate, camPos, lightDir, dt, mc);
         }
 
         if (!particles.isEmpty()) {
+            VertexConsumer quadBuffer = immediate.getBuffer(RenderLayers.debugQuads());
+            VertexConsumer lightBuffer = immediate.getBuffer(RenderLayers.lightning());
             renderGlassParticles(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
         }
     }
@@ -3031,7 +3053,7 @@ public class KillEffect extends Module {
         }
     }
 
-    private void renderSingularityInstances(VertexConsumerProvider immediate, VertexConsumer quadBuf, VertexConsumer lightBuf,
+    private void renderSingularityInstances(VertexConsumerProvider immediate,
                                             Vec3d camPos, Vector3f lightDir, float dt, MinecraftClient mc) {
         Iterator<SingularityInstance> it = singularityInstances.iterator();
         while (it.hasNext()) {
@@ -3039,60 +3061,71 @@ public class KillEffect extends Module {
             inst.age += dt;
             if (inst.age >= inst.totalDuration) {
                 it.remove();
-                continue;
             }
-            renderSingleSingularity(immediate, quadBuf, lightBuf, inst, camPos, lightDir, dt, mc);
         }
-    }
+        if (singularityInstances.isEmpty()) return;
 
-    private void renderSingleSingularity(VertexConsumerProvider immediate, VertexConsumer quadBuf, VertexConsumer lightBuf,
-                                         SingularityInstance inst, Vec3d camPos, Vector3f lightDir, float dt, MinecraftClient mc) {
-        float age = inst.age;
-        double cx = inst.cx;
-        double cy = inst.cy;
-        double cz = inst.cz;
-
-        if (age >= 1.55f && !inst.soundPlayedBoom) {
-            inst.soundPlayedBoom = true;
-            if (sound.isEnabled() && mc.world != null) {
-                mc.world.playSoundClient(cx, cy, cz,
-                        SoundEvents.BLOCK_RESPAWN_ANCHOR_DEPLETE.value(), SoundCategory.PLAYERS,
-                        1.8f, 0.80f, false);
-                mc.world.playSoundClient(cx, cy, cz,
-                        SoundEvents.BLOCK_END_PORTAL_FRAME_FILL, SoundCategory.PLAYERS,
-                        1.6f, 0.70f, false);
-                mc.world.playSoundClient(cx, cy, cz,
-                        SoundEvents.ENTITY_WARDEN_ATTACK_IMPACT, SoundCategory.PLAYERS,
-                        1.4f, 1.30f, false);
-                mc.world.playSoundClient(cx, cy, cz,
-                        SoundEvents.ENTITY_GENERIC_EXPLODE.value(), SoundCategory.PLAYERS,
-                        1.3f, 1.25f, false);
+        for (SingularityInstance inst : singularityInstances) {
+            if (inst.age < 1.62f) {
+                renderFlexibleCharacterSheet(immediate, inst, camPos, inst.age);
             }
-            inst.spawnSupernovaSparks(random, this, cx, cy, cz);
         }
 
-        if (inst.riftEnabled) {
-            renderSpacetimeRift(quadBuf, lightBuf, inst, camPos, cx, cy, cz, age, inst.color);
-        }
-
-        if (age < 1.62f) {
-            renderFlexibleCharacterSheet(immediate, inst, camPos, age);
-            renderInflowParticles(lightBuf, inst, camPos, cx, cy, cz, 0.15f);
-        }
-
-        if (age >= 1.55f) {
-            float shockAge = age - 0.85f;
-            emitSupernovaShockwave(lightBuf, camPos, cx, cy, cz, shockAge, inst.color, inst.distortionEnabled);
-            if (inst.distortionEnabled) {
-                emitGravitationalLensingBubble(lightBuf, camPos, cx, cy, cz, shockAge, inst.color);
-            }
-            if (inst.raysEnabled) {
-                emitNovaRays(lightBuf, inst, camPos, cx, cy, cz, shockAge, inst.color);
-            }
-            updateAndRenderStardust(lightBuf, inst, camPos, dt);
+        VertexConsumer quadBuf = immediate.getBuffer(RenderLayers.debugQuads());
+        for (SingularityInstance inst : singularityInstances) {
             if (inst.riftEnabled) {
-                updateAndRenderNebulaClouds(lightBuf, inst, camPos, cx, cy, cz, dt);
-                updateAndRenderQuantumEmbers(lightBuf, inst, camPos, cx, cy, cz, dt);
+                renderSpacetimeRiftQuads(quadBuf, inst, camPos, inst.cx, inst.cy, inst.cz, inst.age);
+            }
+        }
+
+        VertexConsumer lightBuf = immediate.getBuffer(RenderLayers.lightning());
+        for (SingularityInstance inst : singularityInstances) {
+            float age = inst.age;
+            double cx = inst.cx;
+            double cy = inst.cy;
+            double cz = inst.cz;
+
+            if (age >= 1.55f && !inst.soundPlayedBoom) {
+                inst.soundPlayedBoom = true;
+                if (sound.isEnabled() && mc.world != null) {
+                    mc.world.playSoundClient(cx, cy, cz,
+                            SoundEvents.BLOCK_RESPAWN_ANCHOR_DEPLETE.value(), SoundCategory.PLAYERS,
+                            1.8f, 0.80f, false);
+                    mc.world.playSoundClient(cx, cy, cz,
+                            SoundEvents.BLOCK_END_PORTAL_FRAME_FILL, SoundCategory.PLAYERS,
+                            1.6f, 0.70f, false);
+                    mc.world.playSoundClient(cx, cy, cz,
+                            SoundEvents.ENTITY_WARDEN_ATTACK_IMPACT, SoundCategory.PLAYERS,
+                            1.4f, 1.30f, false);
+                    mc.world.playSoundClient(cx, cy, cz,
+                            SoundEvents.ENTITY_GENERIC_EXPLODE.value(), SoundCategory.PLAYERS,
+                            1.3f, 1.25f, false);
+                }
+                inst.spawnSupernovaSparks(random, this, cx, cy, cz);
+            }
+
+            if (inst.riftEnabled) {
+                renderSpacetimeRiftGlowAndArcs(lightBuf, inst, camPos, cx, cy, cz, age, inst.color);
+            }
+
+            if (age < 1.62f) {
+                renderInflowParticles(lightBuf, inst, camPos, cx, cy, cz, 0.15f);
+            }
+
+            if (age >= 1.55f) {
+                float shockAge = age - 0.85f;
+                emitSupernovaShockwave(lightBuf, camPos, cx, cy, cz, shockAge, inst.color, inst.distortionEnabled);
+                if (inst.distortionEnabled) {
+                    emitGravitationalLensingBubble(lightBuf, camPos, cx, cy, cz, shockAge, inst.color);
+                }
+                if (inst.raysEnabled) {
+                    emitNovaRays(lightBuf, inst, camPos, cx, cy, cz, shockAge, inst.color);
+                }
+                updateAndRenderStardust(lightBuf, inst, camPos, dt);
+                if (inst.riftEnabled) {
+                    updateAndRenderNebulaClouds(lightBuf, inst, camPos, cx, cy, cz, dt);
+                    updateAndRenderQuantumEmbers(lightBuf, inst, camPos, cx, cy, cz, dt);
+                }
             }
         }
     }
@@ -3297,11 +3330,7 @@ public class KillEffect extends Module {
             renderSheetBodyMesh(armor2Buf, inst, camPos, age, 2);
         }
 
-        if (immediate instanceof VertexConsumerProvider.Immediate imm) {
-            imm.draw(RenderLayers.entityTranslucent(inst.skinTexture));
-            if (inst.armorLayer1 != null) imm.draw(RenderLayers.armorTranslucent(inst.armorLayer1));
-            if (inst.armorLayer2 != null) imm.draw(RenderLayers.armorTranslucent(inst.armorLayer2));
-        }
+
     }
 
     private void renderSheetBodyMesh(VertexConsumer consumer, SingularityInstance inst, Vec3d camPos, float age, int passType) {
@@ -3940,14 +3969,77 @@ public class KillEffect extends Module {
         }
     }
 
-    private void renderSpacetimeRift(VertexConsumer quadBuf, VertexConsumer lightBuf,
-                                     SingularityInstance inst, Vec3d camPos,
-                                     double cx, double cy, double cz, float age, int color) {
+    private void renderSpacetimeRiftQuads(VertexConsumer quadBuf, SingularityInstance inst,
+                                          Vec3d camPos, double cx, double cy, double cz, float age) {
         if (age < 0.01f || age > 1.88f) return;
 
         float progOpen = MathHelper.clamp(age / 0.20f, 0.0f, 1.0f);
         float closeProg = MathHelper.clamp((age - 1.60f) / 0.28f, 0.0f, 1.0f);
-        float healProg = closeProg;
+        float globalScale = progOpen * (1.0f - (float) Math.pow(closeProg, 2.5));
+        if (globalScale <= 0.005f) return;
+
+        float px = (float) (cx - camPos.x);
+        float py = (float) (cy - camPos.y);
+        float pz = (float) (cz - camPos.z);
+
+        float toCamX = -px;
+        float toCamY = -py;
+        float toCamZ = -pz;
+        float dist = (float) Math.sqrt(toCamX * toCamX + toCamY * toCamY + toCamZ * toCamZ);
+        if (dist > 0.01f) {
+            toCamX /= dist; toCamY /= dist; toCamZ /= dist;
+        }
+
+        float ux = -toCamZ;
+        float uz = toCamX;
+        float uLen = (float) Math.sqrt(ux * ux + uz * uz);
+        if (uLen > 0.001f) {
+            ux /= uLen; uz /= uLen;
+        } else {
+            ux = 1.0f; uz = 0.0f;
+        }
+
+        int n = inst.riftVertices.size();
+        if (n < 2) return;
+
+        float maxHalfW = 0.12f * globalScale;
+        Vector3f[] leftPts = new Vector3f[n];
+        Vector3f[] rightPts = new Vector3f[n];
+
+        for (int i = 0; i < n; i++) {
+            SingularityRiftVertex rv = inst.riftVertices.get(i);
+            float normY = Math.abs(rv.yOffset) / 0.90f;
+            float localHeal = Math.min(1.0f, closeProg * (1.0f + normY * 1.5f));
+            float localW = maxHalfW * (1.0f - normY * 0.65f) * (1.0f - localHeal);
+
+            float jitter = (float) Math.sin(age * 22.0f + rv.phase) * 0.025f * (1.0f - closeProg);
+            float vx = px + (rv.ox + jitter * ux) * globalScale;
+            float vy = py + rv.yOffset * globalScale;
+            float vz = pz + (rv.oz + jitter * uz) * globalScale;
+
+            leftPts[i] = new Vector3f(vx - ux * localW, vy, vz - uz * localW);
+            rightPts[i] = new Vector3f(vx + ux * localW, vy, vz + uz * localW);
+        }
+
+        for (int i = 0; i < n - 1; i++) {
+            Vector3f l0 = leftPts[i];
+            Vector3f l1 = leftPts[i + 1];
+            Vector3f r0 = rightPts[i];
+            Vector3f r1 = rightPts[i + 1];
+
+            quadBuf.vertex(l0.x, l0.y, l0.z).color(1, 1, 2, 255);
+            quadBuf.vertex(r0.x, r0.y, r0.z).color(1, 1, 2, 255);
+            quadBuf.vertex(r1.x, r1.y, r1.z).color(1, 1, 2, 255);
+            quadBuf.vertex(l1.x, l1.y, l1.z).color(1, 1, 2, 255);
+        }
+    }
+
+    private void renderSpacetimeRiftGlowAndArcs(VertexConsumer lightBuf, SingularityInstance inst,
+                                                Vec3d camPos, double cx, double cy, double cz, float age, int color) {
+        if (age < 0.01f || age > 1.88f) return;
+
+        float progOpen = MathHelper.clamp(age / 0.20f, 0.0f, 1.0f);
+        float closeProg = MathHelper.clamp((age - 1.60f) / 0.28f, 0.0f, 1.0f);
         float globalScale = progOpen * (1.0f - (float) Math.pow(closeProg, 2.5));
         if (globalScale <= 0.005f) return;
 
@@ -3976,7 +4068,7 @@ public class KillEffect extends Module {
         int g = (color >> 8) & 0xFF;
         int b = color & 0xFF;
 
-        int alpha = (int) (245 * (1.0f - healProg * 0.85f));
+        int alpha = (int) (245 * (1.0f - closeProg * 0.85f));
 
         int n = inst.riftVertices.size();
         if (n < 2) return;
@@ -3992,10 +4084,10 @@ public class KillEffect extends Module {
         for (int i = 0; i < n; i++) {
             SingularityRiftVertex rv = inst.riftVertices.get(i);
             float normY = Math.abs(rv.yOffset) / 0.90f;
-            float localHeal = Math.min(1.0f, healProg * (1.0f + normY * 1.5f));
+            float localHeal = Math.min(1.0f, closeProg * (1.0f + normY * 1.5f));
             float localW = maxHalfW * (1.0f - normY * 0.65f) * (1.0f - localHeal);
 
-            float jitter = (float) Math.sin(age * 22.0f + rv.phase) * 0.025f * (1.0f - healProg);
+            float jitter = (float) Math.sin(age * 22.0f + rv.phase) * 0.025f * (1.0f - closeProg);
             float vx = px + (rv.ox + jitter * ux) * globalScale;
             float vy = py + rv.yOffset * globalScale;
             float vz = pz + (rv.oz + jitter * uz) * globalScale;
@@ -4011,11 +4103,6 @@ public class KillEffect extends Module {
             Vector3f l1 = leftPts[i + 1];
             Vector3f r0 = rightPts[i];
             Vector3f r1 = rightPts[i + 1];
-
-            quadBuf.vertex(l0.x, l0.y, l0.z).color(1, 1, 2, 255);
-            quadBuf.vertex(r0.x, r0.y, r0.z).color(1, 1, 2, 255);
-            quadBuf.vertex(r1.x, r1.y, r1.z).color(1, 1, 2, 255);
-            quadBuf.vertex(l1.x, l1.y, l1.z).color(1, 1, 2, 255);
 
             Vector3f lg0 = leftGlowPts[i];
             Vector3f lg1 = leftGlowPts[i + 1];
@@ -4033,7 +4120,7 @@ public class KillEffect extends Module {
             lightBuf.vertex(r1.x, r1.y, r1.z).color(255, 255, 255, alpha);
         }
 
-        if (age < 2.2f && (random.nextFloat() < 0.35f)) {
+        if (age < 1.60f && (random.nextFloat() < 0.35f)) {
             int i0 = random.nextInt(n);
             int i1 = Math.clamp(i0 + (random.nextBoolean() ? 1 : -1), 0, n - 1);
             Vector3f pStart = random.nextBoolean() ? leftPts[i0] : rightPts[i0];
