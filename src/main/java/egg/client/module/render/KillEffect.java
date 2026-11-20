@@ -17,6 +17,11 @@ import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.BuiltBuffer;
 import net.minecraft.client.render.RenderLayers;
+import net.minecraft.client.render.OverlayTexture;
+import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.item.ItemStack;
+import net.minecraft.registry.Registries;
+import net.minecraft.entity.player.SkinTextures;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.VertexFormats;
@@ -180,6 +185,14 @@ public class KillEffect extends Module {
         public volatile boolean isSneaking;
         public volatile long lastAttackTime;
         public volatile float lastHealth;
+        public volatile Identifier skinTexture;
+        public volatile boolean isSlim;
+        public volatile Identifier armorLayer1;
+        public volatile Identifier armorLayer2;
+        public volatile boolean hasHelmet;
+        public volatile boolean hasChestplate;
+        public volatile boolean hasLeggings;
+        public volatile boolean hasBoots;
 
         public TrackedVictim(Entity e) {
             this.id = e.getId();
@@ -193,6 +206,9 @@ public class KillEffect extends Module {
             this.isSneaking = e.isSneaking();
             this.lastAttackTime = System.currentTimeMillis();
             this.lastHealth = (e instanceof LivingEntity living) ? living.getHealth() : 20.0f;
+            if (e instanceof LivingEntity living) {
+                captureAppearance(living);
+            }
         }
 
         public void update(Entity e) {
@@ -204,8 +220,68 @@ public class KillEffect extends Module {
             this.isSneaking = e.isSneaking();
             if (e instanceof LivingEntity living) {
                 this.lastHealth = living.getHealth();
+                captureAppearance(living);
             }
         }
+
+        private void captureAppearance(LivingEntity living) {
+            if (living instanceof AbstractClientPlayerEntity player) {
+                SkinTextures st = player.getSkin();
+                if (st != null && st.body() != null) {
+                    this.skinTexture = st.body().id();
+                    this.isSlim = (st.model() == PlayerSkinType.SLIM);
+                }
+            } else if (living instanceof PlayerEntity player) {
+                SkinTextures st = DefaultSkinHelper.getSkinTextures(player.getGameProfile());
+                if (st != null && st.body() != null) {
+                    this.skinTexture = st.body().id();
+                    this.isSlim = (st.model() == PlayerSkinType.SLIM);
+                }
+            }
+            if (this.skinTexture == null) {
+                this.skinTexture = DefaultSkinHelper.getTexture();
+            }
+
+            ItemStack head = living.getEquippedStack(EquipmentSlot.HEAD);
+            ItemStack chest = living.getEquippedStack(EquipmentSlot.CHEST);
+            ItemStack legs = living.getEquippedStack(EquipmentSlot.LEGS);
+            ItemStack feet = living.getEquippedStack(EquipmentSlot.FEET);
+
+            this.hasHelmet = head != null && !head.isEmpty();
+            this.hasChestplate = chest != null && !chest.isEmpty();
+            this.hasLeggings = legs != null && !legs.isEmpty();
+            this.hasBoots = feet != null && !feet.isEmpty();
+
+            String mat1 = resolveArmorMaterial(head, chest, feet);
+            if (mat1 != null) {
+                this.armorLayer1 = Identifier.ofVanilla("textures/models/armor/" + mat1 + "_layer_1.png");
+            } else {
+                this.armorLayer1 = null;
+            }
+
+            String mat2 = resolveArmorMaterial(legs);
+            if (mat2 != null) {
+                this.armorLayer2 = Identifier.ofVanilla("textures/models/armor/" + mat2 + "_layer_2.png");
+            } else {
+                this.armorLayer2 = null;
+            }
+        }
+    }
+
+    private static String resolveArmorMaterial(ItemStack... stacks) {
+        for (ItemStack s : stacks) {
+            if (s == null || s.isEmpty()) continue;
+            String path = Registries.ITEM.getId(s.getItem()).getPath();
+            if (path.contains("netherite")) return "netherite";
+            if (path.contains("diamond")) return "diamond";
+            if (path.contains("iron")) return "iron";
+            if (path.contains("gold")) return "gold";
+            if (path.contains("chain")) return "chainmail";
+            if (path.contains("leather")) return "leather";
+            if (path.contains("turtle")) return "turtle";
+            if (path.contains("copper")) return "copper";
+        }
+        return null;
     }
 
     public void triggerCameraShockwave(double x, double y, double z) {
@@ -566,13 +642,83 @@ public class KillEffect extends Module {
             rArmRoll += swingProgress * 0.35f;
         }
 
+        Identifier skinTexture = null;
+        boolean isSlim = false;
+        Identifier armorLayer1 = null;
+        Identifier armorLayer2 = null;
+        boolean hasHelmet = false;
+        boolean hasChestplate = false;
+        boolean hasLeggings = false;
+        boolean hasBoots = false;
+
+        TrackedVictim v = victimsById.get(entity.getId());
+        if (v != null && v.skinTexture != null) {
+            skinTexture = v.skinTexture;
+            isSlim = v.isSlim;
+            armorLayer1 = v.armorLayer1;
+            armorLayer2 = v.armorLayer2;
+            hasHelmet = v.hasHelmet;
+            hasChestplate = v.hasChestplate;
+            hasLeggings = v.hasLeggings;
+            hasBoots = v.hasBoots;
+        } else if (entity instanceof LivingEntity living) {
+            if (living instanceof AbstractClientPlayerEntity player) {
+                SkinTextures st = player.getSkin();
+                if (st != null && st.body() != null) {
+                    skinTexture = st.body().id();
+                    isSlim = (st.model() == PlayerSkinType.SLIM);
+                }
+            } else if (living instanceof PlayerEntity player) {
+                SkinTextures st = DefaultSkinHelper.getSkinTextures(player.getGameProfile());
+                if (st != null && st.body() != null) {
+                    skinTexture = st.body().id();
+                    isSlim = (st.model() == PlayerSkinType.SLIM);
+                }
+            }
+            if (skinTexture == null) {
+                skinTexture = DefaultSkinHelper.getTexture();
+            }
+
+            ItemStack head = living.getEquippedStack(EquipmentSlot.HEAD);
+            ItemStack chest = living.getEquippedStack(EquipmentSlot.CHEST);
+            ItemStack legs = living.getEquippedStack(EquipmentSlot.LEGS);
+            ItemStack feet = living.getEquippedStack(EquipmentSlot.FEET);
+
+            hasHelmet = head != null && !head.isEmpty();
+            hasChestplate = chest != null && !chest.isEmpty();
+            hasLeggings = legs != null && !legs.isEmpty();
+            hasBoots = feet != null && !feet.isEmpty();
+
+            String mat1 = resolveArmorMaterial(head, chest, feet);
+            if (mat1 != null) {
+                armorLayer1 = Identifier.ofVanilla("textures/models/armor/" + mat1 + "_layer_1.png");
+            }
+            String mat2 = resolveArmorMaterial(legs);
+            if (mat2 != null) {
+                armorLayer2 = Identifier.ofVanilla("textures/models/armor/" + mat2 + "_layer_2.png");
+            }
+        }
+        if (skinTexture == null) {
+            skinTexture = DefaultSkinHelper.getTexture();
+        }
+
         spawnSingularityEffectAt(entity.getX(), entity.getY(), entity.getZ(),
                 entity.getYaw(), entity.getPitch(), entity.getHeadYaw(), entity.isSneaking(),
-                rLegPitch, lLegPitch, rArmPitch, lArmPitch, rArmRoll, entity.getHeight());
+                rLegPitch, lLegPitch, rArmPitch, lArmPitch, rArmRoll, entity.getHeight(),
+                skinTexture, isSlim, armorLayer1, armorLayer2, hasHelmet, hasChestplate, hasLeggings, hasBoots);
     }
 
     public void spawnSingularityEffectAt(double bx, double by, double bz, float yaw, float pitch, float headYaw, boolean isSneaking,
                                          float rLegPitch, float lLegPitch, float rArmPitch, float lArmPitch, float rArmRoll, double height) {
+        spawnSingularityEffectAt(bx, by, bz, yaw, pitch, headYaw, isSneaking,
+                rLegPitch, lLegPitch, rArmPitch, lArmPitch, rArmRoll, height,
+                DefaultSkinHelper.getTexture(), false, null, null, false, false, false, false);
+    }
+
+    public void spawnSingularityEffectAt(double bx, double by, double bz, float yaw, float pitch, float headYaw, boolean isSneaking,
+                                         float rLegPitch, float lLegPitch, float rArmPitch, float lArmPitch, float rArmRoll, double height,
+                                         Identifier skinTexture, boolean isSlim, Identifier armorLayer1, Identifier armorLayer2,
+                                         boolean hasHelmet, boolean hasChestplate, boolean hasLeggings, boolean hasBoots) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (sound.isEnabled() && mc.world != null) {
             mc.world.playSoundClient(bx, by + height * 0.55, bz,
@@ -593,7 +739,8 @@ public class KillEffect extends Module {
         singularityInstances.add(new SingularityInstance(
                 bx, by, bz, (float) height, yaw, pitch, headYaw, isSneaking,
                 rLegPitch, lLegPitch, rArmPitch, lArmPitch, rArmRoll,
-                radius, inflow, rays, rift, distortion, effectColor, random
+                radius, inflow, rays, rift, distortion, effectColor,
+                skinTexture, isSlim, armorLayer1, armorLayer2, hasHelmet, hasChestplate, hasLeggings, hasBoots, random
         ));
 
         while (singularityInstances.size() > 8) {
@@ -766,7 +913,7 @@ public class KillEffect extends Module {
         }
 
         if (!singularityInstances.isEmpty()) {
-            renderSingularityInstances(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
+            renderSingularityInstances(immediate, quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
         }
 
         if (!particles.isEmpty()) {
@@ -2884,7 +3031,7 @@ public class KillEffect extends Module {
         }
     }
 
-    private void renderSingularityInstances(VertexConsumer quadBuf, VertexConsumer lightBuf,
+    private void renderSingularityInstances(VertexConsumerProvider immediate, VertexConsumer quadBuf, VertexConsumer lightBuf,
                                             Vec3d camPos, Vector3f lightDir, float dt, MinecraftClient mc) {
         Iterator<SingularityInstance> it = singularityInstances.iterator();
         while (it.hasNext()) {
@@ -2894,67 +3041,56 @@ public class KillEffect extends Module {
                 it.remove();
                 continue;
             }
-            renderSingleSingularity(quadBuf, lightBuf, inst, camPos, lightDir, dt, mc);
+            renderSingleSingularity(immediate, quadBuf, lightBuf, inst, camPos, lightDir, dt, mc);
         }
     }
 
-    private void renderSingleSingularity(VertexConsumer quadBuf, VertexConsumer lightBuf,
+    private void renderSingleSingularity(VertexConsumerProvider immediate, VertexConsumer quadBuf, VertexConsumer lightBuf,
                                          SingularityInstance inst, Vec3d camPos, Vector3f lightDir, float dt, MinecraftClient mc) {
         float age = inst.age;
-        double cx = inst.x;
-        double cy = inst.y + inst.height * 0.55;
-        double cz = inst.z;
+        double cx = inst.cx;
+        double cy = inst.cy;
+        double cz = inst.cz;
 
-        if (age >= 0.70f && !inst.soundPlayedBoom) {
+        if (age >= 1.55f && !inst.soundPlayedBoom) {
             inst.soundPlayedBoom = true;
             if (sound.isEnabled() && mc.world != null) {
                 mc.world.playSoundClient(cx, cy, cz,
-                        SoundEvents.ENTITY_FIREWORK_ROCKET_BLAST, SoundCategory.PLAYERS,
-                        1.5f, 0.70f, false);
+                        SoundEvents.BLOCK_RESPAWN_ANCHOR_DEPLETE.value(), SoundCategory.PLAYERS,
+                        1.8f, 0.80f, false);
                 mc.world.playSoundClient(cx, cy, cz,
                         SoundEvents.BLOCK_END_PORTAL_FRAME_FILL, SoundCategory.PLAYERS,
-                        1.4f, 0.85f, false);
+                        1.6f, 0.70f, false);
+                mc.world.playSoundClient(cx, cy, cz,
+                        SoundEvents.ENTITY_WARDEN_ATTACK_IMPACT, SoundCategory.PLAYERS,
+                        1.4f, 1.30f, false);
                 mc.world.playSoundClient(cx, cy, cz,
                         SoundEvents.ENTITY_GENERIC_EXPLODE.value(), SoundCategory.PLAYERS,
-                        1.2f, 1.35f, false);
+                        1.3f, 1.25f, false);
             }
             inst.spawnSupernovaSparks(random, this, cx, cy, cz);
         }
 
-        if (age < 0.40f) {
-            float collapseProg = MathHelper.clamp(age / 0.38f, 0.0f, 1.0f);
-            renderCollapsingSilhouette(quadBuf, lightBuf, inst, camPos, lightDir, collapseProg, cx, cy, cz);
-            emitAccretionRibbons(lightBuf, camPos, cx, cy, cz, age, inst.color);
+        if (inst.riftEnabled) {
+            renderSpacetimeRift(quadBuf, lightBuf, inst, camPos, cx, cy, cz, age, inst.color);
         }
 
-        if (age >= 0.30f && age < 0.74f) {
-            float rHole;
-            if (age < 0.42f) {
-                rHole = inst.baseRadius * ((age - 0.30f) / 0.12f);
-            } else if (age < 0.68f) {
-                rHole = inst.baseRadius * (1.0f + 0.045f * (float) Math.sin((age - 0.42f) * 24.0f));
-            } else {
-                float collapseProg = (age - 0.68f) / 0.06f;
-                rHole = inst.baseRadius * MathHelper.clamp(1.0f - collapseProg * 0.75f, 0.20f, 1.0f);
-            }
-
-            emitBlackHoleSphere(quadBuf, camPos, cx, cy, cz, rHole);
-            emitPhotonHaloRing(lightBuf, camPos, cx, cy, cz, rHole, inst.color, age);
-            emitAccretionDisk(lightBuf, camPos, cx, cy, cz, rHole, inst.color, age);
-            renderInflowParticles(lightBuf, inst, camPos, cx, cy, cz, rHole);
+        if (age < 1.62f) {
+            renderFlexibleCharacterSheet(immediate, inst, camPos, age);
+            renderInflowParticles(lightBuf, inst, camPos, cx, cy, cz, 0.15f);
         }
 
-        if (age >= 0.70f) {
-            emitSupernovaShockwave(lightBuf, camPos, cx, cy, cz, age, inst.color, inst.distortionEnabled);
+        if (age >= 1.55f) {
+            float shockAge = age - 0.85f;
+            emitSupernovaShockwave(lightBuf, camPos, cx, cy, cz, shockAge, inst.color, inst.distortionEnabled);
             if (inst.distortionEnabled) {
-                emitGravitationalLensingBubble(lightBuf, camPos, cx, cy, cz, age, inst.color);
+                emitGravitationalLensingBubble(lightBuf, camPos, cx, cy, cz, shockAge, inst.color);
             }
             if (inst.raysEnabled) {
-                emitNovaRays(lightBuf, inst, camPos, cx, cy, cz, age, inst.color);
+                emitNovaRays(lightBuf, inst, camPos, cx, cy, cz, shockAge, inst.color);
             }
             updateAndRenderStardust(lightBuf, inst, camPos, dt);
             if (inst.riftEnabled) {
-                renderSpacetimeRift(quadBuf, lightBuf, inst, camPos, cx, cy, cz, age, inst.color);
                 updateAndRenderNebulaClouds(lightBuf, inst, camPos, cx, cy, cz, dt);
                 updateAndRenderQuantumEmbers(lightBuf, inst, camPos, cx, cy, cz, dt);
             }
@@ -3143,6 +3279,281 @@ public class KillEffect extends Module {
                 lightBuf.vertex(x0, y0 + w0, z0).color(255, 255, 255, a0Val);
             }
         }
+    }
+
+    private void renderFlexibleCharacterSheet(VertexConsumerProvider immediate, SingularityInstance inst, Vec3d camPos, float age) {
+        if (age < 0.02f || age > 1.62f) return;
+
+        VertexConsumer skinBuf = immediate.getBuffer(RenderLayers.entityTranslucent(inst.skinTexture));
+        renderSheetBodyMesh(skinBuf, inst, camPos, age, 0);
+
+        if (inst.armorLayer1 != null && (inst.hasHelmet || inst.hasChestplate || inst.hasBoots)) {
+            VertexConsumer armor1Buf = immediate.getBuffer(RenderLayers.armorTranslucent(inst.armorLayer1));
+            renderSheetBodyMesh(armor1Buf, inst, camPos, age, 1);
+        }
+
+        if (inst.armorLayer2 != null && inst.hasLeggings) {
+            VertexConsumer armor2Buf = immediate.getBuffer(RenderLayers.armorTranslucent(inst.armorLayer2));
+            renderSheetBodyMesh(armor2Buf, inst, camPos, age, 2);
+        }
+
+        if (immediate instanceof VertexConsumerProvider.Immediate imm) {
+            imm.draw(RenderLayers.entityTranslucent(inst.skinTexture));
+            if (inst.armorLayer1 != null) imm.draw(RenderLayers.armorTranslucent(inst.armorLayer1));
+            if (inst.armorLayer2 != null) imm.draw(RenderLayers.armorTranslucent(inst.armorLayer2));
+        }
+    }
+
+    private void renderSheetBodyMesh(VertexConsumer consumer, SingularityInstance inst, Vec3d camPos, float age, int passType) {
+        boolean slim = inst.isSlim;
+        float armW = slim ? 0.15f : 0.20f;
+
+        if (passType == 0) {
+            renderSheetPart(consumer, inst, camPos, age, -0.20f, 0.20f, 1.42f, 1.82f, 4, 4,
+                    8f / 64f, 8f / 64f, 16f / 64f, 16f / 64f,
+                    24f / 64f, 8f / 64f, 32f / 64f, 16f / 64f, 0.0f);
+
+            renderSheetPart(consumer, inst, camPos, age, -0.21f, 0.21f, 1.41f, 1.83f, 4, 4,
+                    40f / 64f, 8f / 64f, 48f / 64f, 16f / 64f,
+                    56f / 64f, 8f / 64f, 64f / 64f, 16f / 64f, 0.012f);
+
+            renderSheetPart(consumer, inst, camPos, age, -0.20f, 0.20f, 0.72f, 1.42f, 4, 6,
+                    20f / 64f, 20f / 64f, 28f / 64f, 32f / 64f,
+                    32f / 64f, 20f / 64f, 40f / 64f, 32f / 64f, 0.0f);
+
+            renderSheetPart(consumer, inst, camPos, age, -0.208f, 0.208f, 0.71f, 1.43f, 4, 6,
+                    20f / 64f, 36f / 64f, 28f / 64f, 48f / 64f,
+                    32f / 64f, 36f / 64f, 40f / 64f, 48f / 64f, 0.010f);
+
+            float rArmU0 = 44f / 64f;
+            float rArmU1 = (slim ? 47f : 48f) / 64f;
+            float rArmBU0 = 52f / 64f;
+            float rArmBU1 = (slim ? 55f : 56f) / 64f;
+
+            renderSheetPart(consumer, inst, camPos, age, -0.20f - armW, -0.20f, 0.72f, 1.38f, 2, 6,
+                    rArmU0, 20f / 64f, rArmU1, 32f / 64f,
+                    rArmBU0, 20f / 64f, rArmBU1, 32f / 64f, 0.0f);
+
+            renderSheetPart(consumer, inst, camPos, age, -0.205f - armW, -0.195f, 0.71f, 1.39f, 2, 6,
+                    rArmU0, 36f / 64f, rArmU1, 48f / 64f,
+                    rArmBU0, 36f / 64f, rArmBU1, 48f / 64f, 0.010f);
+
+            float lArmU0 = 36f / 64f;
+            float lArmU1 = (slim ? 39f : 40f) / 64f;
+            float lArmBU0 = 44f / 64f;
+            float lArmBU1 = (slim ? 47f : 48f) / 64f;
+
+            renderSheetPart(consumer, inst, camPos, age, 0.20f, 0.20f + armW, 0.72f, 1.38f, 2, 6,
+                    lArmU0, 52f / 64f, lArmU1, 64f / 64f,
+                    lArmBU0, 52f / 64f, lArmBU1, 64f / 64f, 0.0f);
+
+            renderSheetPart(consumer, inst, camPos, age, 0.195f, 0.205f + armW, 0.71f, 1.39f, 2, 6,
+                    52f / 64f, 52f / 64f, (slim ? 55f : 56f) / 64f, 64f / 64f,
+                    60f / 64f, 52f / 64f, (slim ? 63f : 64f) / 64f, 64f / 64f, 0.010f);
+
+            renderSheetPart(consumer, inst, camPos, age, -0.20f, 0.0f, 0.02f, 0.72f, 2, 6,
+                    4f / 64f, 20f / 64f, 8f / 64f, 32f / 64f,
+                    12f / 64f, 20f / 64f, 16f / 64f, 32f / 64f, 0.0f);
+
+            renderSheetPart(consumer, inst, camPos, age, -0.205f, 0.005f, 0.01f, 0.73f, 2, 6,
+                    4f / 64f, 36f / 64f, 8f / 64f, 48f / 64f,
+                    12f / 64f, 36f / 64f, 16f / 64f, 48f / 64f, 0.010f);
+
+            renderSheetPart(consumer, inst, camPos, age, 0.0f, 0.20f, 0.02f, 0.72f, 2, 6,
+                    20f / 64f, 52f / 64f, 24f / 64f, 64f / 64f,
+                    28f / 64f, 52f / 64f, 32f / 64f, 64f / 64f, 0.0f);
+
+            renderSheetPart(consumer, inst, camPos, age, -0.005f, 0.205f, 0.01f, 0.73f, 2, 6,
+                    4f / 64f, 52f / 64f, 8f / 64f, 64f / 64f,
+                    12f / 64f, 52f / 64f, 16f / 64f, 64f / 64f, 0.010f);
+        } else if (passType == 1) {
+            if (inst.hasHelmet) {
+                renderSheetPart(consumer, inst, camPos, age, -0.215f, 0.215f, 1.40f, 1.84f, 4, 4,
+                        8f / 64f, 8f / 32f, 16f / 64f, 16f / 32f,
+                        24f / 64f, 8f / 32f, 32f / 64f, 16f / 32f, 0.018f);
+            }
+            if (inst.hasChestplate) {
+                renderSheetPart(consumer, inst, camPos, age, -0.21f, 0.21f, 0.71f, 1.43f, 4, 6,
+                        20f / 64f, 20f / 32f, 28f / 64f, 32f / 32f,
+                        32f / 64f, 20f / 32f, 40f / 64f, 32f / 32f, 0.018f);
+
+                renderSheetPart(consumer, inst, camPos, age, -0.205f - armW, -0.195f, 0.71f, 1.39f, 2, 6,
+                        44f / 64f, 20f / 32f, 48f / 64f, 32f / 32f,
+                        52f / 64f, 20f / 32f, 56f / 64f, 32f / 32f, 0.018f);
+
+                renderSheetPart(consumer, inst, camPos, age, 0.195f, 0.205f + armW, 0.71f, 1.39f, 2, 6,
+                        44f / 64f, 20f / 32f, 48f / 64f, 32f / 32f,
+                        52f / 64f, 20f / 32f, 56f / 64f, 32f / 32f, 0.018f);
+            }
+            if (inst.hasBoots) {
+                renderSheetPart(consumer, inst, camPos, age, -0.21f, 0.01f, 0.01f, 0.32f, 2, 3,
+                        4f / 64f, 26f / 32f, 8f / 64f, 32f / 32f,
+                        12f / 64f, 26f / 32f, 16f / 64f, 32f / 32f, 0.018f);
+
+                renderSheetPart(consumer, inst, camPos, age, -0.01f, 0.21f, 0.01f, 0.32f, 2, 3,
+                        4f / 64f, 26f / 32f, 8f / 64f, 32f / 32f,
+                        12f / 64f, 26f / 32f, 16f / 64f, 32f / 32f, 0.018f);
+            }
+        } else if (passType == 2) {
+            if (inst.hasLeggings) {
+                renderSheetPart(consumer, inst, camPos, age, -0.208f, 0.208f, 0.65f, 0.88f, 4, 3,
+                        20f / 64f, 20f / 32f, 28f / 64f, 26f / 32f,
+                        32f / 64f, 20f / 32f, 40f / 64f, 26f / 32f, 0.014f);
+
+                renderSheetPart(consumer, inst, camPos, age, -0.208f, 0.008f, 0.22f, 0.72f, 2, 5,
+                        4f / 64f, 20f / 32f, 8f / 64f, 30f / 32f,
+                        12f / 64f, 20f / 32f, 16f / 64f, 30f / 32f, 0.014f);
+
+                renderSheetPart(consumer, inst, camPos, age, -0.008f, 0.208f, 0.22f, 0.72f, 2, 5,
+                        4f / 64f, 20f / 32f, 8f / 64f, 30f / 32f,
+                        12f / 64f, 20f / 32f, 16f / 64f, 30f / 32f, 0.014f);
+            }
+        }
+    }
+
+    private void renderSheetPart(VertexConsumer consumer, SingularityInstance inst, Vec3d camPos, float age,
+                                 float minLx, float maxLx, float minLy, float maxLy, int cols, int rows,
+                                 float u0, float v0, float u1, float v1,
+                                 float bu0, float bv0, float bu1, float bv1, float layerNudge) {
+        for (int c = 0; c < cols; c++) {
+            float lxA = minLx + (maxLx - minLx) * ((float) c / cols);
+            float lxB = minLx + (maxLx - minLx) * ((float) (c + 1) / cols);
+
+            float cuA = u0 + (u1 - u0) * ((float) c / cols);
+            float cuB = u0 + (u1 - u0) * ((float) (c + 1) / cols);
+
+            float bcuA = bu0 + (bu1 - bu0) * ((float) (cols - c) / cols);
+            float bcuB = bu0 + (bu1 - bu0) * ((float) (cols - (c + 1)) / cols);
+
+            for (int r = 0; r < rows; r++) {
+                float lyA = minLy + (maxLy - minLy) * ((float) r / rows);
+                float lyB = minLy + (maxLy - minLy) * ((float) (r + 1) / rows);
+
+                float cvA = v0 + (v1 - v0) * ((float) (rows - r) / rows);
+                float cvB = v0 + (v1 - v0) * ((float) (rows - (r + 1)) / rows);
+
+                float bcvA = bv0 + (bv1 - bv0) * ((float) (rows - r) / rows);
+                float bcvB = bv0 + (bv1 - bv0) * ((float) (rows - (r + 1)) / rows);
+
+                int alpha = getSheetAlpha(lyA, inst, age);
+                if (alpha <= 2) continue;
+
+                Vector3f p00 = deformSheetPoint(lxA, lyA, layerNudge, inst, age, camPos);
+                Vector3f p10 = deformSheetPoint(lxB, lyA, layerNudge, inst, age, camPos);
+                Vector3f p11 = deformSheetPoint(lxB, lyB, layerNudge, inst, age, camPos);
+                Vector3f p01 = deformSheetPoint(lxA, lyB, layerNudge, inst, age, camPos);
+
+                float d1x = p10.x - p00.x;
+                float d1y = p10.y - p00.y;
+                float d1z = p10.z - p00.z;
+                float d2x = p01.x - p00.x;
+                float d2y = p01.y - p00.y;
+                float d2z = p01.z - p00.z;
+                float nx = d1y * d2z - d1z * d2y;
+                float ny = d1z * d2x - d1x * d2z;
+                float nz = d1x * d2y - d1y * d2x;
+                float len = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+                if (len > 0.001f) {
+                    nx /= len; ny /= len; nz /= len;
+                } else {
+                    nx = 0f; ny = 1f; nz = 0f;
+                }
+
+                consumer.vertex(p00.x, p00.y, p00.z).color(255, 255, 255, alpha).texture(cuA, cvA).overlay(OverlayTexture.DEFAULT_UV).light(15728880).normal(nx, ny, nz);
+                consumer.vertex(p10.x, p10.y, p10.z).color(255, 255, 255, alpha).texture(cuB, cvA).overlay(OverlayTexture.DEFAULT_UV).light(15728880).normal(nx, ny, nz);
+                consumer.vertex(p11.x, p11.y, p11.z).color(255, 255, 255, alpha).texture(cuB, cvB).overlay(OverlayTexture.DEFAULT_UV).light(15728880).normal(nx, ny, nz);
+                consumer.vertex(p01.x, p01.y, p01.z).color(255, 255, 255, alpha).texture(cuA, cvB).overlay(OverlayTexture.DEFAULT_UV).light(15728880).normal(nx, ny, nz);
+
+                consumer.vertex(p01.x, p01.y, p01.z).color(255, 255, 255, alpha).texture(bcuA, bcvB).overlay(OverlayTexture.DEFAULT_UV).light(15728880).normal(-nx, -ny, -nz);
+                consumer.vertex(p11.x, p11.y, p11.z).color(255, 255, 255, alpha).texture(bcuB, bcvB).overlay(OverlayTexture.DEFAULT_UV).light(15728880).normal(-nx, -ny, -nz);
+                consumer.vertex(p10.x, p10.y, p10.z).color(255, 255, 255, alpha).texture(bcuB, bcvA).overlay(OverlayTexture.DEFAULT_UV).light(15728880).normal(-nx, -ny, -nz);
+                consumer.vertex(p00.x, p00.y, p00.z).color(255, 255, 255, alpha).texture(bcuA, bcvA).overlay(OverlayTexture.DEFAULT_UV).light(15728880).normal(-nx, -ny, -nz);
+            }
+        }
+    }
+
+    private int getSheetAlpha(float ly, SingularityInstance inst, float age) {
+        float globalProg = MathHelper.clamp((age - 0.05f) / 1.50f, 0.0f, 1.0f);
+        float normY = ly / 1.82f;
+        float localProg = MathHelper.clamp(globalProg * 1.30f - (1.0f - normY) * 0.30f, 0.0f, 1.0f);
+        float alphaProg = localProg < 0.05f ? (localProg / 0.05f) : (localProg > 0.88f ? (1.0f - (localProg - 0.88f) / 0.12f) : 1.0f);
+        return (int) (255 * MathHelper.clamp(alphaProg, 0.0f, 1.0f));
+    }
+
+    private Vector3f deformSheetPoint(float lx, float ly, float layerNudge, SingularityInstance inst, float age, Vec3d camPos) {
+        float globalProg = MathHelper.clamp((age - 0.05f) / 1.50f, 0.0f, 1.0f);
+        float normY = ly / 1.82f;
+        float localProg = MathHelper.clamp(globalProg * 1.30f - (1.0f - normY) * 0.30f, 0.0f, 1.0f);
+
+        float t = (float) Math.pow(localProg, 1.6);
+        float oneMinusT = 1.0f - t;
+
+        float yawRad = (float) Math.toRadians(-inst.yaw);
+        double fwdX = -Math.sin(yawRad);
+        double fwdZ = Math.cos(yawRad);
+        double latX = fwdZ;
+        double latZ = -fwdX;
+
+        double startX = inst.x;
+        double startY = inst.y + ly;
+        double startZ = inst.z;
+
+        double midX = (startX + inst.cx) * 0.5 + latX * 0.65 * (1.0f - localProg);
+        double midY = Math.max(startY, inst.cy) + 0.45 * (1.0f - localProg);
+        double midZ = (startZ + inst.cz) * 0.5 + latZ * 0.65 * (1.0f - localProg);
+
+        double curX = oneMinusT * oneMinusT * startX + 2.0 * oneMinusT * t * midX + t * t * inst.cx;
+        double curY = oneMinusT * oneMinusT * startY + 2.0 * oneMinusT * t * midY + t * t * inst.cy;
+        double curZ = oneMinusT * oneMinusT * startZ + 2.0 * oneMinusT * t * midZ + t * t * inst.cz;
+
+        double toRiftX = inst.cx - curX;
+        double toRiftY = inst.cy - curY;
+        double toRiftZ = inst.cz - curZ;
+        double toRiftLen = Math.sqrt(toRiftX * toRiftX + toRiftY * toRiftY + toRiftZ * toRiftZ);
+        if (toRiftLen > 0.001) {
+            toRiftX /= toRiftLen; toRiftY /= toRiftLen; toRiftZ /= toRiftLen;
+        } else {
+            toRiftX = fwdX; toRiftY = 0; toRiftZ = fwdZ;
+        }
+
+        double align = Math.min(1.0, localProg * 1.5);
+        double curFwdX = fwdX * (1.0 - align) + toRiftX * align;
+        double curFwdY = toRiftY * align;
+        double curFwdZ = fwdZ * (1.0 - align) + toRiftZ * align;
+        double curFwdLen = Math.sqrt(curFwdX * curFwdX + curFwdY * curFwdY + curFwdZ * curFwdZ);
+        if (curFwdLen > 0.001) {
+            curFwdX /= curFwdLen; curFwdY /= curFwdLen; curFwdZ /= curFwdLen;
+        }
+
+        double curLatX = -curFwdZ;
+        double curLatY = 0.0;
+        double curLatZ = curFwdX;
+        double curLatLen = Math.sqrt(curLatX * curLatX + curLatZ * curLatZ);
+        if (curLatLen > 0.001) {
+            curLatX /= curLatLen; curLatZ /= curLatLen;
+        }
+
+        double curNormX = curLatY * curFwdZ - curLatZ * curFwdY;
+        double curNormY = curLatZ * curFwdX - curLatX * curFwdZ;
+        double curNormZ = curLatX * curFwdY - curLatY * curFwdX;
+
+        float waveTime = age * 16.0f;
+        float flutter = (float) (Math.sin(waveTime - normY * 7.5f + (lx / 0.45f) * 3.2f) * 0.13f * (1.0f - localProg * 0.65f)
+                + Math.cos(waveTime * 1.3f + normY * 4.8f - (lx / 0.45f) * 3.8f) * 0.06f * (1.0f - localProg * 0.65f));
+
+        float curlAmount = MathHelper.clamp((localProg - 0.15f) / 0.75f, 0.0f, 1.0f);
+        float curlAngle = (lx / 0.45f) * (float) Math.PI * 1.15f * curlAmount;
+        float curledLx = (float) Math.sin(curlAngle) * 0.28f * (1.0f - localProg * 0.65f);
+        float curlDepth = (1.0f - (float) Math.cos(curlAngle)) * 0.16f * curlAmount;
+
+        float widthComp = MathHelper.lerp(localProg, 1.0f, 0.22f);
+        curledLx = (curledLx * curlAmount + lx * (1.0f - curlAmount)) * widthComp;
+
+        double finalX = curX + curLatX * curledLx + curNormX * (flutter + curlDepth + layerNudge);
+        double finalY = curY + curLatY * curledLx + curNormY * (flutter + curlDepth + layerNudge);
+        double finalZ = curZ + curLatZ * curledLx + curNormZ * (flutter + curlDepth + layerNudge);
+
+        return new Vector3f((float) (finalX - camPos.x), (float) (finalY - camPos.y), (float) (finalZ - camPos.z));
     }
 
     private void emitBlackHoleSphere(VertexConsumer quadBuf, Vec3d camPos, double cx, double cy, double cz, float radius) {
@@ -3532,12 +3943,13 @@ public class KillEffect extends Module {
     private void renderSpacetimeRift(VertexConsumer quadBuf, VertexConsumer lightBuf,
                                      SingularityInstance inst, Vec3d camPos,
                                      double cx, double cy, double cz, float age, int color) {
-        if (age < 0.72f || age > 2.80f) return;
+        if (age < 0.01f || age > 1.88f) return;
 
-        float progOpen = MathHelper.clamp((age - 0.72f) / 0.16f, 0.0f, 1.0f);
-        float healProg = MathHelper.clamp((age - 1.65f) / 1.15f, 0.0f, 1.0f);
-        float globalScale = progOpen * (1.0f - (float) Math.pow(healProg, 2.0));
-        if (globalScale <= 0.01f) return;
+        float progOpen = MathHelper.clamp(age / 0.20f, 0.0f, 1.0f);
+        float closeProg = MathHelper.clamp((age - 1.60f) / 0.28f, 0.0f, 1.0f);
+        float healProg = closeProg;
+        float globalScale = progOpen * (1.0f - (float) Math.pow(closeProg, 2.5));
+        if (globalScale <= 0.005f) return;
 
         float px = (float) (cx - camPos.x);
         float py = (float) (cy - camPos.y);
@@ -3969,6 +4381,7 @@ public class KillEffect extends Module {
 
     private static class SingularityInstance {
         final double x, y, z;
+        final double cx, cy, cz;
         final float height;
         final float yaw, pitch, headYaw;
         final boolean isSneaking;
@@ -3979,6 +4392,14 @@ public class KillEffect extends Module {
         final boolean riftEnabled;
         final boolean distortionEnabled;
         final int color;
+        final Identifier skinTexture;
+        final boolean isSlim;
+        final Identifier armorLayer1;
+        final Identifier armorLayer2;
+        final boolean hasHelmet;
+        final boolean hasChestplate;
+        final boolean hasLeggings;
+        final boolean hasBoots;
         float age = 0.0f;
         final float totalDuration = 2.85f;
         boolean soundPlayedBoom = false;
@@ -3992,7 +4413,8 @@ public class KillEffect extends Module {
         SingularityInstance(double x, double y, double z, float height, float yaw, float pitch, float headYaw, boolean isSneaking,
                             float rLegPitch, float lLegPitch, float rArmPitch, float lArmPitch, float rArmRoll,
                             float baseRadius, int inflowCount, boolean raysEnabled, boolean riftEnabled, boolean distortionEnabled,
-                            int color, Random random) {
+                            int color, Identifier skinTexture, boolean isSlim, Identifier armorLayer1, Identifier armorLayer2,
+                            boolean hasHelmet, boolean hasChestplate, boolean hasLeggings, boolean hasBoots, Random random) {
             this.x = x;
             this.y = y;
             this.z = z;
@@ -4012,6 +4434,20 @@ public class KillEffect extends Module {
             this.riftEnabled = riftEnabled;
             this.distortionEnabled = distortionEnabled;
             this.color = color;
+            this.skinTexture = skinTexture;
+            this.isSlim = isSlim;
+            this.armorLayer1 = armorLayer1;
+            this.armorLayer2 = armorLayer2;
+            this.hasHelmet = hasHelmet;
+            this.hasChestplate = hasChestplate;
+            this.hasLeggings = hasLeggings;
+            this.hasBoots = hasBoots;
+
+            float yawRad = (float) Math.toRadians(-yaw);
+            double riftDist = 1.45;
+            this.cx = x - Math.sin(yawRad) * riftDist;
+            this.cy = y + height * 0.55;
+            this.cz = z + Math.cos(yawRad) * riftDist;
 
             for (int i = 0; i < inflowCount; i++) {
                 float startR = 1.8f + random.nextFloat() * 1.5f;
