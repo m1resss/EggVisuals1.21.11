@@ -80,6 +80,7 @@ public class NameTags extends Module {
     }
 
     private final Map<UUID, PlayerTagState> stateMap = new ConcurrentHashMap<>();
+    private static final Map<Integer, Long> VISIBILITY_CACHE = new ConcurrentHashMap<>();
     private final Matrix3x2f tagMat = new Matrix3x2f();
     private final Vector2f scratchScreenPos = new Vector2f();
     private final Vector2f scratchItemPos = new Vector2f();
@@ -109,12 +110,20 @@ public class NameTags extends Module {
         super.onDisable();
         this.stateMap.clear();
         this.lastFrameNanos = 0L;
+        VISIBILITY_CACHE.clear();
     }
 
     public static boolean isPlayerVisible(MinecraftClient mc, PlayerEntity player) {
         if (mc == null || mc.world == null || mc.player == null || player == null) return false;
         if (EntityUtil.isInvisible(player)) {
             return false;
+        }
+
+        int id = player.getId();
+        long now = System.currentTimeMillis();
+        long cached = VISIBILITY_CACHE.getOrDefault(id, 0L);
+        if (now < (cached >>> 1)) {
+            return (cached & 1L) != 0L;
         }
 
         Vec3d eye = mc.player.getEyePos();
@@ -124,45 +133,62 @@ public class NameTags extends Module {
         BlockHitResult hit1 = mc.world.raycast(new RaycastContext(
                 eye, targetEye, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player
         ));
+        boolean visible = false;
         if (hit1.getType() == HitResult.Type.MISS || hit1.getPos().squaredDistanceTo(eye) >= rayDistSq1 - 0.15) {
-            return true;
+            visible = true;
+        } else {
+            Vec3d targetCenter = player.getBoundingBox().getCenter();
+            double rayDistSq2 = eye.squaredDistanceTo(targetCenter);
+            BlockHitResult hit2 = mc.world.raycast(new RaycastContext(
+                    eye, targetCenter, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player
+            ));
+            if (hit2.getType() == HitResult.Type.MISS || hit2.getPos().squaredDistanceTo(eye) >= rayDistSq2 - 0.15) {
+                visible = true;
+            } else {
+                Vec3d targetFeet = new Vec3d(player.getX(), player.getY() + 0.25, player.getZ());
+                double rayDistSq3 = eye.squaredDistanceTo(targetFeet);
+                BlockHitResult hit3 = mc.world.raycast(new RaycastContext(
+                        eye, targetFeet, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player
+                ));
+                visible = hit3.getType() == HitResult.Type.MISS || hit3.getPos().squaredDistanceTo(eye) >= rayDistSq3 - 0.15;
+            }
         }
 
-        Vec3d targetCenter = player.getBoundingBox().getCenter();
-        double rayDistSq2 = eye.squaredDistanceTo(targetCenter);
-        BlockHitResult hit2 = mc.world.raycast(new RaycastContext(
-                eye, targetCenter, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player
-        ));
-        if (hit2.getType() == HitResult.Type.MISS || hit2.getPos().squaredDistanceTo(eye) >= rayDistSq2 - 0.15) {
-            return true;
-        }
-
-        Vec3d targetFeet = new Vec3d(player.getX(), player.getY() + 0.25, player.getZ());
-        double rayDistSq3 = eye.squaredDistanceTo(targetFeet);
-        BlockHitResult hit3 = mc.world.raycast(new RaycastContext(
-                eye, targetFeet, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player
-        ));
-        return hit3.getType() == HitResult.Type.MISS || hit3.getPos().squaredDistanceTo(eye) >= rayDistSq3 - 0.15;
+        long expires = now + 90L + (id & 0xF) * 3L;
+        VISIBILITY_CACHE.put(id, (expires << 1) | (visible ? 1L : 0L));
+        return visible;
     }
 
     public static boolean isItemVisible(MinecraftClient mc, ItemEntity item) {
         if (mc == null || mc.world == null || mc.player == null || item == null) return false;
+        int id = item.getId();
+        long now = System.currentTimeMillis();
+        long cached = VISIBILITY_CACHE.getOrDefault(id, 0L);
+        if (now < (cached >>> 1)) {
+            return (cached & 1L) != 0L;
+        }
+
         Vec3d eye = mc.player.getEyePos();
         Vec3d itemTop = new Vec3d(item.getX(), item.getY() + item.getHeight() * 0.9 + 0.05, item.getZ());
         double distSqTop = eye.squaredDistanceTo(itemTop);
         BlockHitResult hitTop = mc.world.raycast(new RaycastContext(
                 eye, itemTop, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player
         ));
+        boolean visible = false;
         if (hitTop.getType() == HitResult.Type.MISS || hitTop.getPos().squaredDistanceTo(eye) >= distSqTop - 0.20) {
-            return true;
+            visible = true;
+        } else {
+            Vec3d itemCenter = item.getBoundingBox().getCenter();
+            double distSqCenter = eye.squaredDistanceTo(itemCenter);
+            BlockHitResult hitCenter = mc.world.raycast(new RaycastContext(
+                    eye, itemCenter, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player
+            ));
+            visible = hitCenter.getType() == HitResult.Type.MISS || hitCenter.getPos().squaredDistanceTo(eye) >= distSqCenter - 0.20;
         }
 
-        Vec3d itemCenter = item.getBoundingBox().getCenter();
-        double distSqCenter = eye.squaredDistanceTo(itemCenter);
-        BlockHitResult hitCenter = mc.world.raycast(new RaycastContext(
-                eye, itemCenter, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player
-        ));
-        return hitCenter.getType() == HitResult.Type.MISS || hitCenter.getPos().squaredDistanceTo(eye) >= distSqCenter - 0.20;
+        long expires = now + 90L + (id & 0xF) * 3L;
+        VISIBILITY_CACHE.put(id, (expires << 1) | (visible ? 1L : 0L));
+        return visible;
     }
 
     public static boolean isValuable(ItemStack stack) {
@@ -297,6 +323,9 @@ public class NameTags extends Module {
         }
 
         this.stateMap.entrySet().removeIf(e -> nowMs - e.getValue().lastSeenTime > 4000L);
+        if (VISIBILITY_CACHE.size() > 300) {
+            VISIBILITY_CACHE.entrySet().removeIf(e -> nowMs > (e.getValue() >>> 1));
+        }
         DrawBatcher.flushPending();
 
         if (this.showItems.get()) {
@@ -486,8 +515,6 @@ public class NameTags extends Module {
         if (hpText != null) {
             font.a(tagMat, hpText, curX, textY, fontSize, hpColor);
         }
-
-        DrawBatcher.flushPending();
     }
 
     private void renderItemTags(DrawContext context, MinecraftClient mc, float tickDelta, float dt, long nowMs) {
@@ -560,9 +587,8 @@ public class NameTags extends Module {
             font.a(tagMat, name, curX, textY, fontSize, rarityColor);
             font.a(tagMat, distText, curX + nameW + 5.0f, textY, fontSize, 0xFF94A3B8);
 
-            DrawBatcher.flushPending();
-
             if (drawIcon) {
+                DrawBatcher.flushPending();
                 context.getMatrices().pushMatrix();
                 context.getMatrices().translate(scratchItemPos.x, scratchItemPos.y);
                 context.getMatrices().scale(tagScale, tagScale);
@@ -572,6 +598,8 @@ public class NameTags extends Module {
                 context.getMatrices().popMatrix();
             }
         }
+
+        DrawBatcher.flushPending();
     }
 
     public void renderWorld3D(MatrixStack matrices, Camera camera, float tickDelta, VertexConsumerProvider.Immediate immediate, Vec3d camPos) {

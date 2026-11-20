@@ -161,6 +161,62 @@ public class ClickGuiScreen extends Screen {
     private final Map<Module, Integer> lastModuleKeys = new HashMap<>();
     private final Map<String, String> truncatedLabelsCache = new HashMap<>();
     private final Map<Module, Long> cardHoverTimes = new HashMap<>();
+
+    private float lastWrappedCardW = -1.0f;
+    private final Map<Module, List<String>> cachedDescLines = new HashMap<>();
+    private final Map<Module, Float> cachedHeaderHeights = new HashMap<>();
+    private final Map<Module, String> cachedTruncatedDescs = new HashMap<>();
+
+    private String lastSearchQuery = null;
+    private final List<Module> cachedSearchMatches = new ArrayList<>();
+
+    private List<Setting> cachedClientSettingsLeft = null;
+    private List<Setting> cachedClientSettingsRight = null;
+
+    private Object lastTooltipTarget = null;
+    private List<String> cachedTooltipLines = null;
+
+    private float openDropdownMaxModeW = 0.0f;
+
+    private static final int[] CATEGORY_MODULE_COUNTS = new int[Category.values().length];
+    private static final String[] CATEGORY_COUNT_STRINGS = new String[Category.values().length];
+    private static final float[] CATEGORY_COUNT_WIDTHS = new float[Category.values().length];
+    private static final String[] CATEGORY_BREADCRUMBS = new String[Category.values().length];
+    private static boolean categoryCountsInitialized = false;
+
+    private static void initCategoryData() {
+        if (categoryCountsInitialized) return;
+        Category[] cats = Category.values();
+        for (int i = 0; i < cats.length; i++) {
+            Category cat = cats[i];
+            int count;
+            if (cat == Category.SETTINGS) count = 1;
+            else if (cat == Category.INVENTORY) count = 4;
+            else if (cat == Category.COSMETICS) count = 8;
+            else count = ModuleManager.getInstance().getModulesByCategory(cat).size();
+
+            CATEGORY_MODULE_COUNTS[i] = count;
+            String str = String.valueOf(count);
+            CATEGORY_COUNT_STRINGS[i] = str;
+            CATEGORY_COUNT_WIDTHS[i] = ClientFont.getWidth(str, ClientFont.SF_REGULAR);
+            CATEGORY_BREADCRUMBS[i] = cat.getSection() + " / " + cat.getName();
+        }
+        categoryCountsInitialized = true;
+    }
+
+    private void ensureClientSettingsSplit(ClientSettings cs) {
+        if (cachedClientSettingsLeft != null && cachedClientSettingsRight != null) return;
+        cachedClientSettingsLeft = new ArrayList<>();
+        cachedClientSettingsRight = new ArrayList<>();
+        for (Setting s : cs.getSettings()) {
+            String name = s.getName();
+            if (name.contains("Пресет") || name.contains("Accent") || name.contains("курсор") || name.contains("сетка") || name.contains("Сетка") || name.contains("открытия")) {
+                cachedClientSettingsLeft.add(s);
+            } else {
+                cachedClientSettingsRight.add(s);
+            }
+        }
+    }
     private Module activeCandidateModule = null;
     private Setting activeCandidateSetting = null;
     private Module hoveredTooltipModule = null;
@@ -310,6 +366,10 @@ public class ClickGuiScreen extends Screen {
     public void markModulesDirty() {
         this.modulesDirty = true;
         this.truncatedLabelsCache.clear();
+        this.cachedDescLines.clear();
+        this.cachedHeaderHeights.clear();
+        this.cachedTruncatedDescs.clear();
+        this.lastSearchQuery = null;
     }
 
     private void resetCascade() {
@@ -765,9 +825,9 @@ public class ClickGuiScreen extends Screen {
                 int labelCol = isSelected ? ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, textAlpha) : ColorUtil.withAlphaFloat(finalColor, textAlpha);
                 ClientFont.draw(context, cat.getName(), textX, textY, isSelected ? ClientFont.SF_MEDIUM : ClientFont.SF_REGULAR, labelCol);
 
-                int count = getCategoryModuleCount(cat);
-                String countStr = String.valueOf(count);
-                float countW = ClientFont.getWidth(countStr, ClientFont.SF_REGULAR);
+                initCategoryData();
+                String countStr = CATEGORY_COUNT_STRINGS[cat.ordinal()];
+                float countW = CATEGORY_COUNT_WIDTHS[cat.ordinal()];
                 float countAlpha = Math.max(0.0f, 1.0f - collapseProgress * 2.5f) * listAlpha;
                 if (countAlpha > 0.01f) {
                     int countCol = isSelected ? ColorUtil.withAlphaFloat(Theme.TEXT_MUTED, countAlpha) : ColorUtil.withAlphaFloat(Theme.TEXT_DIM, countAlpha);
@@ -936,8 +996,7 @@ public class ClickGuiScreen extends Screen {
                 float clearY = searchY + (searchH - clearSize) / 2.0f;
                 boolean isClearHov = mouseX >= clearX - 2.0f && mouseX <= clearX + clearSize + 2.0f && mouseY >= clearY - 2.0f && mouseY <= clearY + clearSize + 2.0f;
                 if (isClearHov) {
-                    Draw2DProcessor.INSTANCE.drawRect(null, clearX, clearY, clearSize, clearSize, clearSize / 2.0f, ColorUtil.rgba(255, 255, 255, (int) (24 * alpha)));
-                    DrawBatcher.flushPending();
+                    Render2D.drawRoundedRect(context, clearX, clearY, clearSize, clearSize, clearSize / 2.0f, ColorUtil.rgba(255, 255, 255, (int) (24 * alpha)));
                 }
                 int crossCol = isClearHov ? ColorUtil.rgba(255, 255, 255, (int) (255 * alpha)) : ColorUtil.rgba(160, 160, 175, (int) (180 * alpha));
                 IconRenderer.drawCrossIcon(context, clearX + clearSize / 2.0f, clearY + clearSize / 2.0f, 8.0f, crossCol);
@@ -946,10 +1005,8 @@ public class ClickGuiScreen extends Screen {
     }
 
     private int getCategoryModuleCount(Category cat) {
-        if (cat == Category.SETTINGS) return 1;
-        if (cat == Category.INVENTORY) return 4;
-        if (cat == Category.COSMETICS) return 8;
-        return ModuleManager.getInstance().getModulesByCategory(cat).size();
+        initCategoryData();
+        return CATEGORY_MODULE_COUNTS[cat.ordinal()];
     }
 
     private void renderHeader(DrawContext context, float x, float y, float width, float height, float mouseX, float mouseY, float alpha) {
@@ -964,7 +1021,8 @@ public class ClickGuiScreen extends Screen {
             float iconY = (float) Math.round(y + 5.5f);
             IconRenderer.drawCategoryIcon(context, selectedCategory, iconX, iconY, iconSize, dimColor);
 
-            String breadcrumb = selectedCategory.getSection() + " / " + selectedCategory.getName();
+            initCategoryData();
+            String breadcrumb = CATEGORY_BREADCRUMBS[selectedCategory.ordinal()];
             float textX = iconX + iconSize + 5.0f;
             float textY = (float) Math.round(y + 7.0f);
             ClientFont.draw(context, breadcrumb, textX, textY, ClientFont.SF_REGULAR, dimColor);
@@ -1047,18 +1105,22 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
     }
 
     private List<Module> getSearchMatches() {
-        List<Module> result = new ArrayList<>();
-        if (searchQuery.trim().isEmpty()) return result;
+        if (lastSearchQuery != null && lastSearchQuery.equals(searchQuery)) {
+            return cachedSearchMatches;
+        }
+        cachedSearchMatches.clear();
+        lastSearchQuery = searchQuery;
+        if (searchQuery.trim().isEmpty()) return cachedSearchMatches;
         List<Module> all = EggClient.getInstance().getModuleManager().getModules();
         String q = searchQuery.toLowerCase().trim();
         String qEn = LayoutHelper.toEn(q).toLowerCase().trim();
         String qRu = LayoutHelper.toRu(q).toLowerCase().trim();
         for (Module m : all) {
             if (!m.isBlocked() && matchesModule(m, q, qEn, qRu)) {
-                result.add(m);
+                cachedSearchMatches.add(m);
             }
         }
-        return result;
+        return cachedSearchMatches;
     }
 
     private void renderSearchMatchesPopup(DrawContext context, float x, float y, float width, float mouseX, float mouseY, float alpha) {
@@ -1179,17 +1241,9 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         float col0Y = currentY;
         float col1Y = currentY;
 
-        List<Setting> leftSettings = new ArrayList<>();
-        List<Setting> rightSettings = new ArrayList<>();
-
-        for (Setting s : cs.getSettings()) {
-            String name = s.getName();
-            if (name.contains("Пресет") || name.contains("Accent") || name.contains("курсор") || name.contains("сетка") || name.contains("Сетка") || name.contains("открытия")) {
-                leftSettings.add(s);
-            } else {
-                rightSettings.add(s);
-            }
-        }
+        ensureClientSettingsSplit(cs);
+        List<Setting> leftSettings = cachedClientSettingsLeft;
+        List<Setting> rightSettings = cachedClientSettingsRight;
 
         float leftH = calculateSettingsGroupHeight(leftSettings);
         float rightH = calculateSettingsGroupHeight(rightSettings);
@@ -1341,7 +1395,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             float alphaM = alpha * cascade;
             float expandM = m.getExpandAnimation().getValue();
             float headerH = getModuleHeaderHeight(m, cardW);
-            float h = headerH + (getSettingsHeight(m) * expandM);
+            float h = headerH + (expandM > 0.001f ? (getSettingsHeight(m) * expandM) : 0.0f);
 
             boolean isLeft = (i % 2 == 0);
             float cardX = isLeft ? x : (x + cardW + colGap);
@@ -1594,7 +1648,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         if (text == null || text.isEmpty() || maxW <= 6.0f) return "";
         if (ClientFont.getWidth(text, font) <= maxW) return text;
 
-        String cacheKey = text + "_" + (int) maxW + "_" + font.id().getPath();
+        String cacheKey = text + "_" + (int) maxW + "_" + font.hashCode();
         String cached = truncatedLabelsCache.get(cacheKey);
         if (cached != null) return cached;
 
@@ -1645,14 +1699,29 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         return Math.min(rawBtnW, maxBtnW);
     }
 
+    private void checkWrappedCache(float cardW) {
+        if (Math.abs(cardW - lastWrappedCardW) > 0.5f) {
+            lastWrappedCardW = cardW;
+            cachedDescLines.clear();
+            cachedHeaderHeights.clear();
+            cachedTruncatedDescs.clear();
+        }
+    }
+
     private List<String> getWrappedDescriptionLines(Module module, float maxDescW) {
+        List<String> cached = cachedDescLines.get(module);
+        if (cached != null) return cached;
         String rawDesc = module.getDescription();
         if (rawDesc == null || rawDesc.isEmpty()) {
-            return Collections.emptyList();
+            cached = Collections.emptyList();
+            cachedDescLines.put(module, cached);
+            return cached;
         }
         float fullW = ClientFont.getWidth(rawDesc, ClientFont.SF_REGULAR);
         if (fullW <= maxDescW) {
-            return Collections.singletonList(rawDesc);
+            cached = Collections.singletonList(rawDesc);
+            cachedDescLines.put(module, cached);
+            return cached;
         }
         String[] words = rawDesc.split(" ");
         StringBuilder l1 = new StringBuilder();
@@ -1678,18 +1747,29 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         if (ClientFont.getWidth(line2Str, ClientFont.SF_REGULAR) > maxDescW) {
             line2Str = getTruncatedLabel(line2Str, maxDescW, ClientFont.SF_REGULAR);
         }
-        return List.of(l1.toString(), line2Str);
+        cached = List.of(l1.toString(), line2Str);
+        cachedDescLines.put(module, cached);
+        return cached;
     }
 
     private float getModuleHeaderHeight(Module module, float cardW) {
+        checkWrappedCache(cardW);
+        Float h = cachedHeaderHeights.get(module);
+        if (h != null) return h;
         float maxDescW = cardW - 24.0f;
         List<String> lines = getWrappedDescriptionLines(module, maxDescW);
-        return lines.size() > 1 ? 62.0f : 50.0f;
+        float computed = lines.size() > 1 ? 62.0f : 50.0f;
+        cachedHeaderHeights.put(module, computed);
+        return computed;
     }
 
     private String getTruncatedDescription(Module module, float maxDescW) {
+        String cached = cachedTruncatedDescs.get(module);
+        if (cached != null) return cached;
         String raw = module.getDescription();
-        return getTruncatedLabel(raw, maxDescW, ClientFont.SF_REGULAR);
+        cached = getTruncatedLabel(raw, maxDescW, ClientFont.SF_REGULAR);
+        cachedTruncatedDescs.put(module, cached);
+        return cached;
     }
 
     private float calculateMarqueeOffset(long elapsedMs, float overflow) {
@@ -1796,7 +1876,15 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         if (desc == null || desc.isEmpty()) return;
 
         float wrapW = 180.0f;
-        List<String> lines = wrapText(desc, wrapW, ClientFont.SF_REGULAR);
+        Object currentTarget = hoveredTooltipModule != null ? hoveredTooltipModule : hoveredTooltipSetting;
+        List<String> lines;
+        if (currentTarget == lastTooltipTarget && cachedTooltipLines != null) {
+            lines = cachedTooltipLines;
+        } else {
+            lines = wrapText(desc, wrapW, ClientFont.SF_REGULAR);
+            lastTooltipTarget = currentTarget;
+            cachedTooltipLines = lines;
+        }
         if (lines.isEmpty()) return;
 
         float padX = 9.0f;
@@ -2400,6 +2488,19 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         Render2D.drawCircleOutline(context, thumbCenterX, thumbCenterY, thumbR, 1.0f, ColorUtil.rgba(0, 0, 0, (int) (45 * alpha)));
     }
 
+    private void openDropdown(ModeSetting mode, float x, float y, float w) {
+        this.openDropdownSetting = mode;
+        this.openDropdownX = x;
+        this.openDropdownY = y;
+        this.openDropdownW = w;
+        this.openDropdownScrollY = 0.0f;
+        float maxW = 0.0f;
+        for (String m : mode.getModes()) {
+            maxW = Math.max(maxW, ClientFont.getWidth(m, ClientFont.SF_REGULAR));
+        }
+        this.openDropdownMaxModeW = maxW;
+    }
+
     private void renderOpenDropdown(DrawContext context, double mouseX, double mouseY, float alpha) {
         boolean shouldShow = (this.openDropdownSetting != null);
         if (shouldShow) {
@@ -2419,11 +2520,14 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         float dListH = displayItems * dItemH;
         float dPopH = dListH + 6.0f;
 
-        float maxModeW = 0.0f;
-        for (String m : dModes) {
-            maxModeW = Math.max(maxModeW, ClientFont.getWidth(m, ClientFont.SF_REGULAR));
+        if (this.openDropdownMaxModeW <= 0.0f) {
+            float maxW = 0.0f;
+            for (String m : dModes) {
+                maxW = Math.max(maxW, ClientFont.getWidth(m, ClientFont.SF_REGULAR));
+            }
+            this.openDropdownMaxModeW = maxW;
         }
-        float dPopW = Math.max(this.openDropdownW, maxModeW + 28.0f);
+        float dPopW = Math.max(this.openDropdownW, this.openDropdownMaxModeW + 28.0f);
         float btnRight = this.openDropdownX + this.openDropdownW;
         float dPopX = btnRight - dPopW;
         float dPopY = this.openDropdownY;
@@ -2721,17 +2825,20 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
         if (this.openDropdownSetting != null) {
             List<String> dModes = this.openDropdownSetting.getModes();
-            float dItemH = 17.0f;
+            float dItemH = 19.0f;
             int maxVisible = 6;
             int displayItems = Math.min(dModes.size(), maxVisible);
             float dListH = displayItems * dItemH;
             float dPopH = dListH + 6.0f;
 
-            float maxModeW = 0.0f;
-            for (String m : dModes) {
-                maxModeW = Math.max(maxModeW, ClientFont.getWidth(m, ClientFont.SF_REGULAR));
+            if (this.openDropdownMaxModeW <= 0.0f) {
+                float maxW = 0.0f;
+                for (String m : dModes) {
+                    maxW = Math.max(maxW, ClientFont.getWidth(m, ClientFont.SF_REGULAR));
+                }
+                this.openDropdownMaxModeW = maxW;
             }
-            float dPopW = Math.max(this.openDropdownW, maxModeW + 28.0f);
+            float dPopW = Math.max(this.openDropdownW, this.openDropdownMaxModeW + 28.0f);
             float btnRight = this.openDropdownX + this.openDropdownW;
             float dPopX = btnRight - dPopW;
             float dPopY = this.openDropdownY;
@@ -2966,7 +3073,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                 float offsetY = (1.0f - cascade) * 10.0f;
                 float expandM = m.getExpandAnimation().getValue();
                 float headerH = getModuleHeaderHeight(m, cardW);
-                float h = headerH + (getSettingsHeight(m) * expandM);
+                float h = headerH + (expandM > 0.001f ? (getSettingsHeight(m) * expandM) : 0.0f);
                 boolean isLeft = (i % 2 == 0);
                 float cardX = isLeft ? contentX : (contentX + cardW + colGap);
                 float curColY = isLeft ? col0Y : col1Y;
@@ -3084,11 +3191,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                         if (this.openDropdownSetting == mode) {
                             this.openDropdownSetting = null;
                         } else {
-                            this.openDropdownSetting = mode;
-                            this.openDropdownX = btnX;
-                            this.openDropdownY = sY + 22.0f;
-                            this.openDropdownW = btnW;
-                            this.openDropdownScrollY = 0.0f;
+                            openDropdown(mode, btnX, sY + 22.0f, btnW);
                         }
                         return true;
                     }
@@ -3182,17 +3285,9 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         float col0X = contentX;
         float col1X = contentX + cardW + colGap;
 
-        List<Setting> leftSettings = new ArrayList<>();
-        List<Setting> rightSettings = new ArrayList<>();
-
-        for (Setting s : cs.getSettings()) {
-            String name = s.getName();
-            if (name.contains("Пресет") || name.contains("Accent") || name.contains("курсор") || name.contains("сетка") || name.contains("Сетка") || name.contains("открытия")) {
-                leftSettings.add(s);
-            } else {
-                rightSettings.add(s);
-            }
-        }
+        ensureClientSettingsSplit(cs);
+        List<Setting> leftSettings = cachedClientSettingsLeft;
+        List<Setting> rightSettings = cachedClientSettingsRight;
 
         float leftH = calculateSettingsGroupHeight(leftSettings);
         float rightH = calculateSettingsGroupHeight(rightSettings);
@@ -3247,11 +3342,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                     if (this.openDropdownSetting == mode) {
                         this.openDropdownSetting = null;
                     } else {
-                        this.openDropdownSetting = mode;
-                        this.openDropdownX = btnX;
-                        this.openDropdownY = sY + 22.0f;
-                        this.openDropdownW = btnW;
-                        this.openDropdownScrollY = 0.0f;
+                        openDropdown(mode, btnX, sY + 22.0f, btnW);
                     }
                     return true;
                 }
@@ -3618,7 +3709,10 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             int mods = input.modifiers();
             boolean shift = (mods & GLFW.GLFW_MOD_SHIFT) != 0;
             if (key == GLFW.GLFW_KEY_LEFT) {
-                if (searchCursor > 0) {
+                if (!shift && searchCursor != searchSelectionEnd) {
+                    searchCursor = Math.min(searchCursor, searchSelectionEnd);
+                    searchSelectionEnd = searchCursor;
+                } else if (searchCursor > 0) {
                     searchCursor--;
                     if (!shift) searchSelectionEnd = searchCursor;
                 } else if (!shift) {
@@ -3627,7 +3721,10 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                 return true;
             }
             if (key == GLFW.GLFW_KEY_RIGHT) {
-                if (searchCursor < searchQuery.length()) {
+                if (!shift && searchCursor != searchSelectionEnd) {
+                    searchCursor = Math.max(searchCursor, searchSelectionEnd);
+                    searchSelectionEnd = searchCursor;
+                } else if (searchCursor < searchQuery.length()) {
                     searchCursor++;
                     if (!shift) searchSelectionEnd = searchCursor;
                 } else if (!shift) {

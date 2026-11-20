@@ -25,19 +25,26 @@ public final class GuiDotGrid {
         int g = ColorUtil.green(baseColor);
         int b = ColorUtil.blue(baseColor);
 
+        int baseAlphaInt = (int) (0.04f * alpha * 255.0f);
+        if (baseAlphaInt <= 0) return;
+        int defaultColor = ColorUtil.rgba(r, g, b, baseAlphaInt);
+
         for (float py = startY; py < endY; py += spacing) {
+            float dy = py - mouseY;
+            float dySq = dy * dy;
+            boolean rowNearMouse = dySq < 2500.0f;
+
             for (float px = startX; px < endX; px += spacing) {
-                float dx = px - mouseX;
-                float dy = py - mouseY;
-                float distSq = dx * dx + dy * dy;
-
-                float dotAlpha = 0.04f;
-                if (distSq < 2500.0f) {
-                    float dist = (float) Math.sqrt(distSq);
-                    dotAlpha += (1.0f - dist / 50.0f) * 0.07f;
+                int color = defaultColor;
+                if (rowNearMouse) {
+                    float dx = px - mouseX;
+                    float distSq = dx * dx + dySq;
+                    if (distSq < 2500.0f) {
+                        float dist = (float) Math.sqrt(distSq);
+                        float dotAlpha = 0.04f + (1.0f - dist / 50.0f) * 0.07f;
+                        color = ColorUtil.rgba(r, g, b, (int) (dotAlpha * alpha * 255.0f));
+                    }
                 }
-
-                int color = ColorUtil.rgba(r, g, b, (int) (dotAlpha * alpha * 255.0f));
                 Render2D.drawRect(context, px, py, 1.0f, 1.0f, color);
             }
         }

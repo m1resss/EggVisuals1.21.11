@@ -72,11 +72,13 @@ public class ZakoOptimization extends Module {
         addSettings(settingsBtn);
         setEnabled(true);
         sanitizeUnsafeFeatures();
+        java.util.concurrent.CompletableFuture.runAsync(this::sanitizeConfigFile);
     }
 
     @Override
     public void onEnable() {
         setZakoOptEnabled(true);
+        java.util.concurrent.CompletableFuture.runAsync(this::sanitizeConfigFile);
     }
 
     @Override
@@ -122,8 +124,6 @@ public class ZakoOptimization extends Module {
                 foreignModField.set(null, "egg");
             } catch (Throwable ignored) {}
         } catch (Throwable ignored) {}
-
-        sanitizeConfigFile();
     }
 
     private void sanitizeConfigFile() {

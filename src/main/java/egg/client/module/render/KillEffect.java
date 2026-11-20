@@ -63,7 +63,7 @@ public class KillEffect extends Module {
             0xFFE040FB
     };
 
-    private final ModeSetting mode = new ModeSetting("Эффект", "Бабочки", "Тип эффекта при смерти противника", "Бабочки", "Обелиск", "Стекло", "Распад");
+    private final ModeSetting mode = new ModeSetting("Эффект", "Бабочки", "Тип эффекта при смерти противника", "Бабочки", "Обелиск", "Стекло", "Распад", "Черная дыра");
     private final BooleanSetting onlyTarget = new BooleanSetting("Только цель", true, "Создавать эффект только для атакованных вами врагов");
     private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", false, "Создавать эффект только при смерти игроков");
     private final BooleanSetting sound = new BooleanSetting("Звуки", true, "Звуковые эффекты при убийстве");
@@ -92,10 +92,15 @@ public class KillEffect extends Module {
     private final SliderSetting dissolveDensity = new SliderSetting("Плотность частиц", 130, 40, 260, 10, "Количество восходящих вокселей пепла");
     private final BooleanSetting dissolveRing = new BooleanSetting("Рунический круг", true, "Светящийся рунический круг на земле под сущностью");
 
+    private final SliderSetting singularityRadius = new SliderSetting("Радиус горизонта", 0.45, 0.20, 0.85, 0.05, "Радиус горизонта событий черной дыры");
+    private final SliderSetting singularityInflow = new SliderSetting("Частицы материи", 54, 20, 110, 2, "Количество затягиваемых световых частиц материи");
+    private final BooleanSetting singularityRays = new BooleanSetting("Лучи сверхновой", true, "Выброс радиальных лучей энергии при взрыве сверхновой");
+
     private final List<ButterflySwarmInstance> butterflySwarms = new ArrayList<>();
     private final List<MonolithInstance> monolithInstances = new ArrayList<>();
     private final List<DeathGlassShard> particles = new ArrayList<>();
     private final List<DissolveInstance> dissolveInstances = new ArrayList<>();
+    private final List<SingularityInstance> singularityInstances = new ArrayList<>();
     private final Map<Integer, Long> recentAttacks = new ConcurrentHashMap<>();
     private final Map<Integer, TrackedVictim> victimsById = new ConcurrentHashMap<>();
 
@@ -137,13 +142,18 @@ public class KillEffect extends Module {
         dissolveDensity.setVisible(() -> "Распад".equals(mode.get()));
         dissolveRing.setVisible(() -> "Распад".equals(mode.get()));
 
+        singularityRadius.setVisible(() -> "Черная дыра".equals(mode.get()));
+        singularityInflow.setVisible(() -> "Черная дыра".equals(mode.get()));
+        singularityRays.setVisible(() -> "Черная дыра".equals(mode.get()));
+
         color.setVisible(() -> !syncColor.isEnabled());
 
         addSettings(mode, onlyTarget, onlyPlayers, sound, syncColor, color,
                 butterflyAmount, butterflySize, butterflySpeed, butterflyLifetime, butterflyTrails, butterflyRainbow,
                 monolithHeight, monolithScale, monolithRunes,
                 amount, size, speed, lifetime, bounce, sparkle,
-                dissolveDuration, dissolveDensity, dissolveRing);
+                dissolveDuration, dissolveDensity, dissolveRing,
+                singularityRadius, singularityInflow, singularityRays);
     }
 
     public static KillEffect getInstance() {
@@ -230,6 +240,8 @@ public class KillEffect extends Module {
                 spawnMonolithEffect(entity);
             } else if ("Распад".equals(curMode)) {
                 spawnDissolveEffect(entity);
+            } else if ("Черная дыра".equals(curMode)) {
+                spawnSingularityEffect(entity);
             } else {
                 spawnGlassBurst(entity);
             }
@@ -340,6 +352,8 @@ public class KillEffect extends Module {
             spawnMonolithEffectAt(bx, by, bz, yaw, pitch, headYaw, isSneaking, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
         } else if ("Распад".equals(curMode)) {
             spawnDissolveEffectAt(bx, by, bz, yaw, pitch, headYaw, isSneaking, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+        } else if ("Черная дыра".equals(curMode)) {
+            spawnSingularityEffectAt(bx, by, bz, yaw, pitch, headYaw, isSneaking, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, height);
         } else {
             spawnGlassBurstAt(bx, by, bz, height);
         }
@@ -490,6 +504,59 @@ public class KillEffect extends Module {
         }
     }
 
+    public void spawnSingularityEffect(Entity entity) {
+        float limbProgress = 0.0f;
+        float limbSpeed = 0.0f;
+        float swingProgress = 0.0f;
+        if (entity instanceof LivingEntity living) {
+            limbProgress = living.limbAnimator.getAnimationProgress();
+            limbSpeed = living.limbAnimator.getSpeed();
+            swingProgress = living.getHandSwingProgress(1.0f);
+        }
+
+        float rLegPitch = (float) Math.cos(limbProgress * 0.6662f) * 1.4f * limbSpeed;
+        float lLegPitch = (float) Math.cos(limbProgress * 0.6662f + (float) Math.PI) * 1.4f * limbSpeed;
+        float rArmPitch = (float) Math.cos(limbProgress * 0.6662f + (float) Math.PI) * 1.8f * limbSpeed;
+        float lArmPitch = (float) Math.cos(limbProgress * 0.6662f) * 1.8f * limbSpeed;
+        float rArmRoll = 0.0f;
+        if (swingProgress > 0.01f) {
+            rArmPitch -= swingProgress * 1.4f;
+            rArmRoll += swingProgress * 0.35f;
+        }
+
+        spawnSingularityEffectAt(entity.getX(), entity.getY(), entity.getZ(),
+                entity.getYaw(), entity.getPitch(), entity.getHeadYaw(), entity.isSneaking(),
+                rLegPitch, lLegPitch, rArmPitch, lArmPitch, rArmRoll, entity.getHeight());
+    }
+
+    public void spawnSingularityEffectAt(double bx, double by, double bz, float yaw, float pitch, float headYaw, boolean isSneaking,
+                                         float rLegPitch, float lLegPitch, float rArmPitch, float lArmPitch, float rArmRoll, double height) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (sound.isEnabled() && mc.world != null) {
+            mc.world.playSoundClient(bx, by + height * 0.55, bz,
+                    SoundEvents.BLOCK_BEACON_DEACTIVATE, SoundCategory.PLAYERS,
+                    1.4f, 0.65f, false);
+            mc.world.playSoundClient(bx, by + height * 0.55, bz,
+                    SoundEvents.ENTITY_WARDEN_SONIC_CHARGE, SoundCategory.PLAYERS,
+                    1.1f, 1.45f, false);
+        }
+
+        int effectColor = syncColor.isEnabled() ? Theme.getAccent() : color.get();
+        float radius = (float) singularityRadius.get();
+        int inflow = (int) singularityInflow.get();
+        boolean rays = singularityRays.isEnabled();
+
+        singularityInstances.add(new SingularityInstance(
+                bx, by, bz, (float) height, yaw, pitch, headYaw, isSneaking,
+                rLegPitch, lLegPitch, rArmPitch, lArmPitch, rArmRoll,
+                radius, inflow, rays, effectColor, random
+        ));
+
+        while (singularityInstances.size() > 8) {
+            singularityInstances.remove(0);
+        }
+    }
+
     public void spawnGlassBurst(Entity entity) {
         spawnGlassBurstAt(entity.getX(), entity.getY(), entity.getZ(), entity.getHeight());
     }
@@ -570,6 +637,7 @@ public class KillEffect extends Module {
             if (!particles.isEmpty()) particles.clear();
             if (!butterflySwarms.isEmpty()) butterflySwarms.clear();
             if (!dissolveInstances.isEmpty()) dissolveInstances.clear();
+            if (!singularityInstances.isEmpty()) singularityInstances.clear();
             recentAttacks.clear();
             victimsById.clear();
             victimsByName.clear();
@@ -650,6 +718,10 @@ public class KillEffect extends Module {
 
         if (!dissolveInstances.isEmpty()) {
             renderDissolveInstances(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
+        }
+
+        if (!singularityInstances.isEmpty()) {
+            renderSingularityInstances(quadBuffer, lightBuffer, camPos, lightDir, dt, mc);
         }
 
         if (!particles.isEmpty()) {
@@ -2761,6 +2833,740 @@ public class KillEffect extends Module {
                     lightBuf.vertex(px + sparkSize, py, pz).color(vr, vg, vb, 0);
                     lightBuf.vertex(px, py - sparkSize, pz).color(255, 255, 255, haloAlpha);
                 }
+            }
+        }
+    }
+
+    private void renderSingularityInstances(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                            Vec3d camPos, Vector3f lightDir, float dt, MinecraftClient mc) {
+        Iterator<SingularityInstance> it = singularityInstances.iterator();
+        while (it.hasNext()) {
+            SingularityInstance inst = it.next();
+            inst.age += dt;
+            if (inst.age >= inst.totalDuration) {
+                it.remove();
+                continue;
+            }
+            renderSingleSingularity(quadBuf, lightBuf, inst, camPos, lightDir, dt, mc);
+        }
+    }
+
+    private void renderSingleSingularity(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                         SingularityInstance inst, Vec3d camPos, Vector3f lightDir, float dt, MinecraftClient mc) {
+        float age = inst.age;
+        double cx = inst.x;
+        double cy = inst.y + inst.height * 0.55;
+        double cz = inst.z;
+
+        if (age >= 0.70f && !inst.soundPlayedBoom) {
+            inst.soundPlayedBoom = true;
+            if (sound.isEnabled() && mc.world != null) {
+                mc.world.playSoundClient(cx, cy, cz,
+                        SoundEvents.ENTITY_FIREWORK_ROCKET_BLAST, SoundCategory.PLAYERS,
+                        1.5f, 0.70f, false);
+                mc.world.playSoundClient(cx, cy, cz,
+                        SoundEvents.BLOCK_END_PORTAL_FRAME_FILL, SoundCategory.PLAYERS,
+                        1.4f, 0.85f, false);
+                mc.world.playSoundClient(cx, cy, cz,
+                        SoundEvents.ENTITY_GENERIC_EXPLODE.value(), SoundCategory.PLAYERS,
+                        1.2f, 1.35f, false);
+            }
+            inst.spawnSupernovaSparks(random);
+        }
+
+        if (age < 0.40f) {
+            float collapseProg = MathHelper.clamp(age / 0.38f, 0.0f, 1.0f);
+            renderCollapsingSilhouette(quadBuf, lightBuf, inst, camPos, lightDir, collapseProg, cx, cy, cz);
+            emitAccretionRibbons(lightBuf, camPos, cx, cy, cz, age, inst.color);
+        }
+
+        if (age >= 0.30f && age < 0.74f) {
+            float rHole;
+            if (age < 0.42f) {
+                rHole = inst.baseRadius * ((age - 0.30f) / 0.12f);
+            } else if (age < 0.68f) {
+                rHole = inst.baseRadius * (1.0f + 0.045f * (float) Math.sin((age - 0.42f) * 24.0f));
+            } else {
+                float collapseProg = (age - 0.68f) / 0.06f;
+                rHole = inst.baseRadius * MathHelper.clamp(1.0f - collapseProg * 0.75f, 0.20f, 1.0f);
+            }
+
+            emitBlackHoleSphere(quadBuf, camPos, cx, cy, cz, rHole);
+            emitPhotonHaloRing(lightBuf, camPos, cx, cy, cz, rHole, inst.color, age);
+            emitAccretionDisk(lightBuf, camPos, cx, cy, cz, rHole, inst.color, age);
+            renderInflowParticles(lightBuf, inst, camPos, cx, cy, cz, rHole);
+        }
+
+        if (age >= 0.70f) {
+            emitSupernovaShockwave(lightBuf, camPos, cx, cy, cz, age, inst.color);
+            if (inst.raysEnabled) {
+                emitNovaRays(lightBuf, inst, camPos, cx, cy, cz, age, inst.color);
+            }
+            updateAndRenderStardust(lightBuf, inst, camPos, dt);
+        }
+    }
+
+    private void renderCollapsingSilhouette(VertexConsumer quadBuf, VertexConsumer lightBuf,
+                                            SingularityInstance inst, Vec3d camPos, Vector3f lightDir,
+                                            float prog, double cx, double cy, double cz) {
+        float s = (float) Math.pow(1.0f - prog, 1.75);
+        if (s <= 0.01f) return;
+
+        float spin = (float) Math.toRadians(-inst.yaw) + inst.age * inst.age * 36.0f;
+        int alpha = (int) (240 * (1.0f - prog));
+        if (alpha <= 2) return;
+
+        bodyMat.identity();
+        bodyMat.translate((float) (cx - camPos.x), (float) (cy - camPos.y), (float) (cz - camPos.z));
+        bodyMat.rotateY(spin);
+        bodyMat.scale(s, s, s);
+
+        torsoMat.set(bodyMat);
+        if (inst.isSneaking) {
+            torsoMat.rotateX((float) Math.toRadians(25.0f));
+        }
+        renderSwirlingBox(quadBuf, lightBuf, torsoMat, -0.25f, -0.38f, -0.125f, 0.25f, 0.38f, 0.125f, inst.color, alpha);
+
+        headMat.set(bodyMat);
+        headMat.translate(0, 0.42f, 0);
+        headMat.rotateY((float) Math.toRadians(-(inst.headYaw - inst.yaw)));
+        headMat.rotateX((float) Math.toRadians(-inst.pitch));
+        renderSwirlingBox(quadBuf, lightBuf, headMat, -0.22f, 0.0f, -0.22f, 0.22f, 0.44f, 0.22f, inst.color, alpha);
+
+        rArmMat.set(bodyMat);
+        rArmMat.translate(-0.36f, 0.32f, 0);
+        rArmMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.rArmPitch)));
+        rArmMat.rotateZ((float) Math.toRadians(-Math.toDegrees(inst.rArmRoll)));
+        renderSwirlingBox(quadBuf, lightBuf, rArmMat, -0.11f, -0.65f, -0.11f, 0.11f, 0.03f, 0.11f, inst.color, alpha);
+
+        lArmMat.set(bodyMat);
+        lArmMat.translate(0.36f, 0.32f, 0);
+        lArmMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.lArmPitch)));
+        renderSwirlingBox(quadBuf, lightBuf, lArmMat, -0.11f, -0.65f, -0.11f, 0.11f, 0.03f, 0.11f, inst.color, alpha);
+
+        rLegMat.set(bodyMat);
+        rLegMat.translate(-0.13f, -0.38f, 0);
+        rLegMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.rLegPitch)));
+        renderSwirlingBox(quadBuf, lightBuf, rLegMat, -0.11f, -0.70f, -0.11f, 0.11f, 0.0f, 0.11f, inst.color, alpha);
+
+        lLegMat.set(bodyMat);
+        lLegMat.translate(0.13f, -0.38f, 0);
+        lLegMat.rotateX((float) Math.toRadians(-Math.toDegrees(inst.lLegPitch)));
+        renderSwirlingBox(quadBuf, lightBuf, lLegMat, -0.11f, -0.70f, -0.11f, 0.11f, 0.0f, 0.11f, inst.color, alpha);
+    }
+
+    private void renderSwirlingBox(VertexConsumer quadBuf, VertexConsumer lightBuf, Matrix4f mat,
+                                   float minX, float minY, float minZ, float maxX, float maxY, float maxZ,
+                                   int col, int a) {
+        Vector3f c0 = new Vector3f(minX, minY, minZ).mulPosition(mat);
+        Vector3f c1 = new Vector3f(maxX, minY, minZ).mulPosition(mat);
+        Vector3f c2 = new Vector3f(maxX, maxY, minZ).mulPosition(mat);
+        Vector3f c3 = new Vector3f(minX, maxY, minZ).mulPosition(mat);
+        Vector3f c4 = new Vector3f(minX, minY, maxZ).mulPosition(mat);
+        Vector3f c5 = new Vector3f(maxX, minY, maxZ).mulPosition(mat);
+        Vector3f c6 = new Vector3f(maxX, maxY, maxZ).mulPosition(mat);
+        Vector3f c7 = new Vector3f(minX, maxY, maxZ).mulPosition(mat);
+
+        int r = (col >> 16) & 0xFF;
+        int g = (col >> 8) & 0xFF;
+        int b = col & 0xFF;
+
+        int qr = MathHelper.clamp((int) (r * 0.15f + 10), 0, 255);
+        int qg = MathHelper.clamp((int) (g * 0.15f + 10), 0, 255);
+        int qb = MathHelper.clamp((int) (b * 0.15f + 18), 0, 255);
+
+        quadBuf.vertex(c4.x, c4.y, c4.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c5.x, c5.y, c5.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c6.x, c6.y, c6.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c7.x, c7.y, c7.z).color(qr, qg, qb, a);
+
+        quadBuf.vertex(c1.x, c1.y, c1.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c0.x, c0.y, c0.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c3.x, c3.y, c3.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c2.x, c2.y, c2.z).color(qr, qg, qb, a);
+
+        quadBuf.vertex(c3.x, c3.y, c3.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c7.x, c7.y, c7.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c6.x, c6.y, c6.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c2.x, c2.y, c2.z).color(qr, qg, qb, a);
+
+        quadBuf.vertex(c0.x, c0.y, c0.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c1.x, c1.y, c1.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c5.x, c5.y, c5.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c4.x, c4.y, c4.z).color(qr, qg, qb, a);
+
+        quadBuf.vertex(c0.x, c0.y, c0.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c4.x, c4.y, c4.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c7.x, c7.y, c7.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c3.x, c3.y, c3.z).color(qr, qg, qb, a);
+
+        quadBuf.vertex(c5.x, c5.y, c5.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c1.x, c1.y, c1.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c2.x, c2.y, c2.z).color(qr, qg, qb, a);
+        quadBuf.vertex(c6.x, c6.y, c6.z).color(qr, qg, qb, a);
+
+        int edgeA = (int) (a * 0.75f);
+        if (edgeA > 2) {
+            emitLineQuad(lightBuf, c0, c1, 0.012f, r, g, b, edgeA);
+            emitLineQuad(lightBuf, c1, c2, 0.012f, r, g, b, edgeA);
+            emitLineQuad(lightBuf, c2, c3, 0.012f, r, g, b, edgeA);
+            emitLineQuad(lightBuf, c3, c0, 0.012f, r, g, b, edgeA);
+            emitLineQuad(lightBuf, c4, c5, 0.012f, r, g, b, edgeA);
+            emitLineQuad(lightBuf, c5, c6, 0.012f, r, g, b, edgeA);
+            emitLineQuad(lightBuf, c6, c7, 0.012f, r, g, b, edgeA);
+            emitLineQuad(lightBuf, c7, c4, 0.012f, r, g, b, edgeA);
+            emitLineQuad(lightBuf, c0, c4, 0.012f, r, g, b, edgeA);
+            emitLineQuad(lightBuf, c1, c5, 0.012f, r, g, b, edgeA);
+            emitLineQuad(lightBuf, c2, c6, 0.012f, r, g, b, edgeA);
+            emitLineQuad(lightBuf, c3, c7, 0.012f, r, g, b, edgeA);
+        }
+    }
+
+    private void emitLineQuad(VertexConsumer buf, Vector3f p0, Vector3f p1, float width, int r, int g, int b, int a) {
+        float dx = p1.x - p0.x;
+        float dy = p1.y - p0.y;
+        float dz = p1.z - p0.z;
+        float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (len < 0.001f) return;
+
+        float nx = -dz / len * width;
+        float nz = dx / len * width;
+
+        buf.vertex(p0.x - nx, p0.y, p0.z - nz).color(r, g, b, a);
+        buf.vertex(p1.x - nx, p1.y, p1.z - nz).color(r, g, b, a);
+        buf.vertex(p1.x + nx, p1.y, p1.z + nz).color(r, g, b, a);
+        buf.vertex(p0.x + nx, p0.y, p0.z + nz).color(r, g, b, a);
+    }
+
+    private void emitAccretionRibbons(VertexConsumer lightBuf, Vec3d camPos, double cx, double cy, double cz, float age, int color) {
+        float prog = MathHelper.clamp(age / 0.38f, 0.0f, 1.0f);
+        int alpha = (int) (220 * (1.0f - prog));
+        if (alpha <= 2) return;
+
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+
+        float px = (float) (cx - camPos.x);
+        float py = (float) (cy - camPos.y);
+        float pz = (float) (cz - camPos.z);
+
+        int ribbons = 12;
+        int segs = 14;
+        for (int i = 0; i < ribbons; i++) {
+            float baseAngle = (float) (i * 2.0 * Math.PI / ribbons) + age * 18.0f;
+            float heightOffset = ((i % 5) - 2) * 0.12f;
+
+            for (int s = 0; s < segs; s++) {
+                float t0 = (float) s / segs;
+                float t1 = (float) (s + 1) / segs;
+
+                float r0 = 0.08f + (1.0f - t0) * (1.4f * (1.0f - prog));
+                float r1 = 0.08f + (1.0f - t1) * (1.4f * (1.0f - prog));
+
+                float a0 = baseAngle + t0 * 3.8f;
+                float a1 = baseAngle + t1 * 3.8f;
+
+                float y0 = py + heightOffset * (1.0f - t0 * 0.8f);
+                float y1 = py + heightOffset * (1.0f - t1 * 0.8f);
+
+                float x0 = px + (float) Math.cos(a0) * r0;
+                float z0 = pz + (float) Math.sin(a0) * r0;
+
+                float x1 = px + (float) Math.cos(a1) * r1;
+                float z1 = pz + (float) Math.sin(a1) * r1;
+
+                float w0 = 0.025f * (1.0f - t0 * 0.5f);
+                float w1 = 0.025f * (1.0f - t1 * 0.5f);
+
+                int a0Val = (int) (alpha * (1.0f - t0 * 0.7f));
+                int a1Val = (int) (alpha * (1.0f - t1 * 0.7f));
+
+                lightBuf.vertex(x0, y0 - w0, z0).color(r, g, b, a0Val);
+                lightBuf.vertex(x1, y1 - w1, z1).color(r, g, b, a1Val);
+                lightBuf.vertex(x1, y1 + w1, z1).color(255, 255, 255, a1Val);
+                lightBuf.vertex(x0, y0 + w0, z0).color(255, 255, 255, a0Val);
+            }
+        }
+    }
+
+    private void emitBlackHoleSphere(VertexConsumer quadBuf, Vec3d camPos, double cx, double cy, double cz, float radius) {
+        if (radius <= 0.01f) return;
+
+        float px = (float) (cx - camPos.x);
+        float py = (float) (cy - camPos.y);
+        float pz = (float) (cz - camPos.z);
+
+        int latRings = 10;
+        int lonSegs = 20;
+
+        for (int i = 0; i < latRings; i++) {
+            float phi0 = (float) (-Math.PI * 0.5 + i * Math.PI / latRings);
+            float phi1 = (float) (-Math.PI * 0.5 + (i + 1) * Math.PI / latRings);
+
+            float y0 = py + (float) Math.sin(phi0) * radius;
+            float y1 = py + (float) Math.sin(phi1) * radius;
+            float r0 = (float) Math.cos(phi0) * radius;
+            float r1 = (float) Math.cos(phi1) * radius;
+
+            for (int j = 0; j < lonSegs; j++) {
+                float th0 = (float) (j * 2.0 * Math.PI / lonSegs);
+                float th1 = (float) ((j + 1) * 2.0 * Math.PI / lonSegs);
+
+                float x00 = px + (float) Math.cos(th0) * r0;
+                float z00 = pz + (float) Math.sin(th0) * r0;
+
+                float x10 = px + (float) Math.cos(th1) * r0;
+                float z10 = pz + (float) Math.sin(th1) * r0;
+
+                float x11 = px + (float) Math.cos(th1) * r1;
+                float z11 = pz + (float) Math.sin(th1) * r1;
+
+                float x01 = px + (float) Math.cos(th0) * r1;
+                float z01 = pz + (float) Math.sin(th0) * r1;
+
+                quadBuf.vertex(x00, y0, z00).color(2, 2, 4, 255);
+                quadBuf.vertex(x10, y0, z10).color(2, 2, 4, 255);
+                quadBuf.vertex(x11, y1, z11).color(2, 2, 4, 255);
+                quadBuf.vertex(x01, y1, z01).color(2, 2, 4, 255);
+            }
+        }
+    }
+
+    private void emitPhotonHaloRing(VertexConsumer lightBuf, Vec3d camPos, double cx, double cy, double cz,
+                                    float radius, int color, float age) {
+        if (radius <= 0.01f) return;
+
+        float px = (float) (cx - camPos.x);
+        float py = (float) (cy - camPos.y);
+        float pz = (float) (cz - camPos.z);
+
+        float toCamX = -px;
+        float toCamY = -py;
+        float toCamZ = -pz;
+        float dist = (float) Math.sqrt(toCamX * toCamX + toCamY * toCamY + toCamZ * toCamZ);
+        if (dist < 0.01f) return;
+        toCamX /= dist; toCamY /= dist; toCamZ /= dist;
+
+        float ux, uy, uz;
+        if (Math.abs(toCamY) < 0.95f) {
+            ux = -toCamZ; uy = 0; uz = toCamX;
+            float uLen = (float) Math.sqrt(ux * ux + uz * uz);
+            ux /= uLen; uz /= uLen;
+        } else {
+            ux = 0; uy = -toCamZ; uz = toCamY;
+            float uLen = (float) Math.sqrt(uy * uy + uz * uz);
+            uy /= uLen; uz /= uLen;
+        }
+        float vx = toCamY * uz - toCamZ * uy;
+        float vy = toCamZ * ux - toCamX * uz;
+        float vz = toCamX * uy - toCamY * ux;
+
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+
+        int segs = 28;
+        float innerR = radius * 0.98f;
+        float midR = radius * 1.35f;
+        float outerR = radius * 1.95f;
+
+        for (int i = 0; i < segs; i++) {
+            float a0 = (float) (i * 2.0 * Math.PI / segs);
+            float a1 = (float) ((i + 1) * 2.0 * Math.PI / segs);
+
+            float c0 = (float) Math.cos(a0); float s0 = (float) Math.sin(a0);
+            float c1 = (float) Math.cos(a1); float s1 = (float) Math.sin(a1);
+
+            float d0x = ux * c0 + vx * s0; float d0y = uy * c0 + vy * s0; float d0z = uz * c0 + vz * s0;
+            float d1x = ux * c1 + vx * s1; float d1y = uy * c1 + vy * s1; float d1z = uz * c1 + vz * s1;
+
+            lightBuf.vertex(px + d0x * innerR, py + d0y * innerR, pz + d0z * innerR).color(255, 255, 255, 255);
+            lightBuf.vertex(px + d1x * innerR, py + d1y * innerR, pz + d1z * innerR).color(255, 255, 255, 255);
+            lightBuf.vertex(px + d1x * midR, py + d1y * midR, pz + d1z * midR).color(r, g, b, 140);
+            lightBuf.vertex(px + d0x * midR, py + d0y * midR, pz + d0z * midR).color(r, g, b, 140);
+
+            lightBuf.vertex(px + d0x * midR, py + d0y * midR, pz + d0z * midR).color(r, g, b, 140);
+            lightBuf.vertex(px + d1x * midR, py + d1y * midR, pz + d1z * midR).color(r, g, b, 140);
+            lightBuf.vertex(px + d1x * outerR, py + d1y * outerR, pz + d1z * outerR).color(r, g, b, 0);
+            lightBuf.vertex(px + d0x * outerR, py + d0y * outerR, pz + d0z * outerR).color(r, g, b, 0);
+        }
+    }
+
+    private void emitAccretionDisk(VertexConsumer lightBuf, Vec3d camPos, double cx, double cy, double cz,
+                                   float radius, int color, float age) {
+        if (radius <= 0.01f) return;
+
+        float px = (float) (cx - camPos.x);
+        float py = (float) (cy - camPos.y);
+        float pz = (float) (cz - camPos.z);
+
+        Vector3f norm = new Vector3f(0.28f, 0.93f, 0.22f).normalize();
+        Vector3f u = new Vector3f(-norm.z, 0, norm.x).normalize();
+        Vector3f v = new Vector3f(norm).cross(u).normalize();
+
+        float toCamX = -px;
+        float toCamY = -py;
+        float toCamZ = -pz;
+        float dist = (float) Math.sqrt(toCamX * toCamX + toCamY * toCamY + toCamZ * toCamZ);
+        if (dist > 0.01f) {
+            toCamX /= dist; toCamY /= dist; toCamZ /= dist;
+        }
+
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+
+        int segs = 32;
+        float innerR = radius * 1.15f;
+        float outerR = radius * 2.85f;
+        float rot = age * 16.0f;
+
+        for (int i = 0; i < segs; i++) {
+            float a0 = (float) (i * 2.0 * Math.PI / segs) + rot;
+            float a1 = (float) ((i + 1) * 2.0 * Math.PI / segs) + rot;
+
+            float c0 = (float) Math.cos(a0); float s0 = (float) Math.sin(a0);
+            float c1 = (float) Math.cos(a1); float s1 = (float) Math.sin(a1);
+
+            float d0x = u.x * c0 + v.x * s0; float d0y = u.y * c0 + v.y * s0; float d0z = u.z * c0 + v.z * s0;
+            float d1x = u.x * c1 + v.x * s1; float d1y = u.y * c1 + v.y * s1; float d1z = u.z * c1 + v.z * s1;
+
+            float tan0x = -u.x * s0 + v.x * c0; float tan0y = -u.y * s0 + v.y * c0; float tan0z = -u.z * s0 + v.z * c0;
+            float doppler = MathHelper.clamp(tan0x * toCamX + tan0y * toCamY + tan0z * toCamZ, -0.6f, 0.6f);
+            float intensity = 1.0f + doppler * 0.45f;
+
+            int ir = MathHelper.clamp((int) (r * intensity + 45 * Math.max(0.0f, doppler)), 0, 255);
+            int ig = MathHelper.clamp((int) (g * intensity + 45 * Math.max(0.0f, doppler)), 0, 255);
+            int ib = MathHelper.clamp((int) (b * intensity + 70 * Math.max(0.0f, doppler)), 0, 255);
+            int ia = MathHelper.clamp((int) (225 * intensity), 0, 255);
+
+            lightBuf.vertex(px + d0x * innerR, py + d0y * innerR, pz + d0z * innerR).color(255, 255, 255, ia);
+            lightBuf.vertex(px + d1x * innerR, py + d1y * innerR, pz + d1z * innerR).color(255, 255, 255, ia);
+            lightBuf.vertex(px + d1x * outerR, py + d1y * outerR, pz + d1z * outerR).color(ir, ig, ib, 0);
+            lightBuf.vertex(px + d0x * outerR, py + d0y * outerR, pz + d0z * outerR).color(ir, ig, ib, 0);
+        }
+    }
+
+    private void renderInflowParticles(VertexConsumer lightBuf, SingularityInstance inst, Vec3d camPos,
+                                       double cx, double cy, double cz, float rHole) {
+        float px = (float) (cx - camPos.x);
+        float py = (float) (cy - camPos.y);
+        float pz = (float) (cz - camPos.z);
+
+        for (SingularityInflowParticle p : inst.inflowParticles) {
+            if (inst.age < p.spawnDelay || inst.age >= p.spawnDelay + p.duration) continue;
+
+            float prog = (inst.age - p.spawnDelay) / p.duration;
+            float progOld = Math.max(0.0f, prog - 0.045f);
+
+            float r = p.startR * (float) Math.pow(1.0f - prog, 2.1);
+            if (r <= rHole * 0.95f) continue;
+            float rOld = p.startR * (float) Math.pow(1.0f - progOld, 2.1);
+
+            float a = p.startAngle + prog * p.spiralSpeed;
+            float aOld = p.startAngle + progOld * p.spiralSpeed;
+
+            float y = p.startY * (1.0f - prog * 0.88f);
+            float yOld = p.startY * (1.0f - progOld * 0.88f);
+
+            float x0 = px + (float) Math.cos(a) * r;
+            float z0 = pz + (float) Math.sin(a) * r;
+            float y0 = py + y;
+
+            float x1 = px + (float) Math.cos(aOld) * rOld;
+            float z1 = pz + (float) Math.sin(aOld) * rOld;
+            float y1 = py + yOld;
+
+            float dx = x0 - x1;
+            float dy = y0 - y1;
+            float dz = z0 - z1;
+            float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (len < 0.001f) continue;
+
+            float nx = -dz / len * 0.022f;
+            float nz = dx / len * 0.022f;
+
+            int alpha = (int) (240 * MathHelper.clamp(prog < 0.15f ? (prog / 0.15f) : (1.0f - (prog - 0.70f) / 0.30f), 0.0f, 1.0f));
+            if (alpha <= 2) continue;
+
+            int pr = (p.pColor >> 16) & 0xFF;
+            int pg = (p.pColor >> 8) & 0xFF;
+            int pb = p.pColor & 0xFF;
+
+            lightBuf.vertex(x0 - nx, y0, z0 - nz).color(255, 255, 255, alpha);
+            lightBuf.vertex(x1 - nx, y1, z1 - nz).color(pr, pg, pb, 0);
+            lightBuf.vertex(x1 + nx, y1, z1 + nz).color(pr, pg, pb, 0);
+            lightBuf.vertex(x0 + nx, y0, z0 + nz).color(255, 255, 255, alpha);
+        }
+    }
+
+    private void emitSupernovaShockwave(VertexConsumer lightBuf, Vec3d camPos, double cx, double cy, double cz,
+                                        float age, int color) {
+        float prog = (age - 0.70f) / 0.58f;
+        if (prog < 0.0f || prog > 1.0f) return;
+
+        float ease = 1.0f - (float) Math.pow(1.0f - prog, 3.2);
+        float outerR = 0.15f + ease * 4.10f;
+        float innerR = outerR * (0.75f + 0.20f * prog);
+
+        int alpha = (int) (255 * (1.0f - (float) Math.pow(prog, 1.5)));
+        if (alpha <= 2) return;
+
+        float px = (float) (cx - camPos.x);
+        float py = (float) (cy - camPos.y);
+        float pz = (float) (cz - camPos.z);
+
+        Vector3f norm = new Vector3f(0.28f, 0.93f, 0.22f).normalize();
+        Vector3f u = new Vector3f(-norm.z, 0, norm.x).normalize();
+        Vector3f v = new Vector3f(norm).cross(u).normalize();
+
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+
+        int segs = 36;
+        for (int i = 0; i < segs; i++) {
+            float a0 = (float) (i * 2.0 * Math.PI / segs);
+            float a1 = (float) ((i + 1) * 2.0 * Math.PI / segs);
+
+            float c0 = (float) Math.cos(a0); float s0 = (float) Math.sin(a0);
+            float c1 = (float) Math.cos(a1); float s1 = (float) Math.sin(a1);
+
+            float d0x = u.x * c0 + v.x * s0; float d0y = u.y * c0 + v.y * s0; float d0z = u.z * c0 + v.z * s0;
+            float d1x = u.x * c1 + v.x * s1; float d1y = u.y * c1 + v.y * s1; float d1z = u.z * c1 + v.z * s1;
+
+            lightBuf.vertex(px + d0x * innerR, py + d0y * innerR, pz + d0z * innerR).color(255, 255, 255, alpha);
+            lightBuf.vertex(px + d1x * innerR, py + d1y * innerR, pz + d1z * innerR).color(255, 255, 255, alpha);
+            lightBuf.vertex(px + d1x * outerR, py + d1y * outerR, pz + d1z * outerR).color(r, g, b, 0);
+            lightBuf.vertex(px + d0x * outerR, py + d0y * outerR, pz + d0z * outerR).color(r, g, b, 0);
+        }
+    }
+
+    private void emitNovaRays(VertexConsumer lightBuf, SingularityInstance inst, Vec3d camPos,
+                              double cx, double cy, double cz, float age, int color) {
+        float prog = (age - 0.70f) / 0.52f;
+        if (prog < 0.0f || prog > 1.0f) return;
+
+        float px = (float) (cx - camPos.x);
+        float py = (float) (cy - camPos.y);
+        float pz = (float) (cz - camPos.z);
+
+        float toCamX = -px;
+        float toCamY = -py;
+        float toCamZ = -pz;
+        float dist = (float) Math.sqrt(toCamX * toCamX + toCamY * toCamY + toCamZ * toCamZ);
+        if (dist > 0.01f) {
+            toCamX /= dist; toCamY /= dist; toCamZ /= dist;
+        }
+
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+
+        float lenProg = prog < 0.25f ? (prog / 0.25f) : 1.0f;
+        float alphaProg = prog < 0.15f ? (prog / 0.15f) : (1.0f - (prog - 0.15f) / 0.85f);
+        int alpha = (int) (255 * MathHelper.clamp(alphaProg, 0.0f, 1.0f));
+        if (alpha <= 2) return;
+
+        for (SingularityNovaRay ray : inst.novaRays) {
+            float curLen = ray.maxLen * (0.15f + 0.85f * (float) Math.pow(lenProg, 0.5));
+            float curWidth = ray.width * (1.0f - prog * 0.65f);
+
+            float wx = ray.dy * toCamZ - ray.dz * toCamY;
+            float wy = ray.dz * toCamX - ray.dx * toCamZ;
+            float wz = ray.dx * toCamY - ray.dy * toCamX;
+            float wLen = (float) Math.sqrt(wx * wx + wy * wy + wz * wz);
+            if (wLen > 0.001f) {
+                wx = (wx / wLen) * curWidth;
+                wy = (wy / wLen) * curWidth;
+                wz = (wz / wLen) * curWidth;
+            }
+
+            float midX = px + ray.dx * (curLen * 0.40f);
+            float midY = py + ray.dy * (curLen * 0.40f);
+            float midZ = pz + ray.dz * (curLen * 0.40f);
+
+            float tipX = px + ray.dx * curLen;
+            float tipY = py + ray.dy * curLen;
+            float tipZ = pz + ray.dz * curLen;
+
+            lightBuf.vertex(px, py, pz).color(255, 255, 255, alpha);
+            lightBuf.vertex(midX - wx, midY - wy, midZ - wz).color(r, g, b, (int) (alpha * 0.65f));
+            lightBuf.vertex(tipX, tipY, tipZ).color(r, g, b, 0);
+            lightBuf.vertex(midX + wx, midY + wy, midZ + wz).color(r, g, b, (int) (alpha * 0.65f));
+        }
+    }
+
+    private void updateAndRenderStardust(VertexConsumer lightBuf, SingularityInstance inst, Vec3d camPos, float dt) {
+        float px = (float) (inst.x - camPos.x);
+        float py = (float) (inst.y + inst.height * 0.55 - camPos.y);
+        float pz = (float) (inst.z - camPos.z);
+
+        int r = (inst.color >> 16) & 0xFF;
+        int g = (inst.color >> 8) & 0xFF;
+        int b = inst.color & 0xFF;
+
+        for (SingularityStardust spark : inst.stardust) {
+            spark.age += dt;
+            if (spark.age >= spark.life) continue;
+
+            spark.x += spark.vx * dt;
+            spark.y += spark.vy * dt;
+            spark.z += spark.vz * dt;
+
+            spark.vx *= (1.0f - 1.8f * dt);
+            spark.vy *= (1.0f - 1.8f * dt);
+            spark.vz *= (1.0f - 1.8f * dt);
+
+            float prog = spark.age / spark.life;
+            int a = (int) (255 * (1.0f - prog));
+            if (a <= 2) continue;
+
+            float sx = (float) (px + spark.x);
+            float sy = (float) (py + spark.y);
+            float sz = (float) (pz + spark.z);
+            float szQuad = spark.size * (1.0f - prog * 0.5f);
+
+            lightBuf.vertex(sx - szQuad, sy - szQuad, sz).color(r, g, b, 0);
+            lightBuf.vertex(sx + szQuad, sy - szQuad, sz).color(255, 255, 255, a);
+            lightBuf.vertex(sx + szQuad, sy + szQuad, sz).color(255, 255, 255, a);
+            lightBuf.vertex(sx - szQuad, sy + szQuad, sz).color(r, g, b, 0);
+        }
+    }
+
+    private static class SingularityInflowParticle {
+        final float startR;
+        final float startAngle;
+        final float startY;
+        final float spawnDelay;
+        final float duration;
+        final float spiralSpeed;
+        final int pColor;
+
+        SingularityInflowParticle(float startR, float startAngle, float startY,
+                                  float spawnDelay, float duration, float spiralSpeed, int pColor) {
+            this.startR = startR;
+            this.startAngle = startAngle;
+            this.startY = startY;
+            this.spawnDelay = spawnDelay;
+            this.duration = duration;
+            this.spiralSpeed = spiralSpeed;
+            this.pColor = pColor;
+        }
+    }
+
+    private static class SingularityNovaRay {
+        final float dx, dy, dz;
+        final float maxLen;
+        final float width;
+
+        SingularityNovaRay(float dx, float dy, float dz, float maxLen, float width) {
+            this.dx = dx;
+            this.dy = dy;
+            this.dz = dz;
+            this.maxLen = maxLen;
+            this.width = width;
+        }
+    }
+
+    private static class SingularityStardust {
+        double x, y, z;
+        float vx, vy, vz;
+        float size;
+        float life;
+        float age = 0.0f;
+
+        SingularityStardust(double x, double y, double z, float vx, float vy, float vz, float size, float life) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.vx = vx;
+            this.vy = vy;
+            this.vz = vz;
+            this.size = size;
+            this.life = life;
+        }
+    }
+
+    private static class SingularityInstance {
+        final double x, y, z;
+        final float height;
+        final float yaw, pitch, headYaw;
+        final boolean isSneaking;
+        final float rLegPitch, lLegPitch, rArmPitch, lArmPitch, rArmRoll;
+        final float baseRadius;
+        final int inflowCount;
+        final boolean raysEnabled;
+        final int color;
+        float age = 0.0f;
+        final float totalDuration = 1.30f;
+        boolean soundPlayedBoom = false;
+        final List<SingularityInflowParticle> inflowParticles = new ArrayList<>();
+        final List<SingularityNovaRay> novaRays = new ArrayList<>();
+        final List<SingularityStardust> stardust = new ArrayList<>();
+
+        SingularityInstance(double x, double y, double z, float height, float yaw, float pitch, float headYaw, boolean isSneaking,
+                            float rLegPitch, float lLegPitch, float rArmPitch, float lArmPitch, float rArmRoll,
+                            float baseRadius, int inflowCount, boolean raysEnabled, int color, Random random) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.height = height;
+            this.yaw = yaw;
+            this.pitch = pitch;
+            this.headYaw = headYaw;
+            this.isSneaking = isSneaking;
+            this.rLegPitch = rLegPitch;
+            this.lLegPitch = lLegPitch;
+            this.rArmPitch = rArmPitch;
+            this.lArmPitch = lArmPitch;
+            this.rArmRoll = rArmRoll;
+            this.baseRadius = baseRadius;
+            this.inflowCount = inflowCount;
+            this.raysEnabled = raysEnabled;
+            this.color = color;
+
+            for (int i = 0; i < inflowCount; i++) {
+                float startR = 1.8f + random.nextFloat() * 1.5f;
+                float startAngle = random.nextFloat() * (float) Math.PI * 2.0f;
+                float startY = (random.nextFloat() - 0.5f) * 1.6f;
+                float spawnDelay = 0.04f + random.nextFloat() * 0.38f;
+                float duration = 0.26f + random.nextFloat() * 0.20f;
+                float spiralSpeed = 14.0f + random.nextFloat() * 12.0f;
+                int pColor = (random.nextFloat() < 0.25f) ? 0xFFFFFFFF : color;
+                inflowParticles.add(new SingularityInflowParticle(startR, startAngle, startY, spawnDelay, duration, spiralSpeed, pColor));
+            }
+
+            if (raysEnabled) {
+                int rayCount = 22;
+                for (int i = 0; i < rayCount; i++) {
+                    float theta = random.nextFloat() * (float) Math.PI * 2.0f;
+                    float zDir = (random.nextFloat() * 2.0f) - 1.0f;
+                    float sinZ = (float) Math.sqrt(Math.max(0.0f, 1.0f - zDir * zDir));
+                    float dx = (float) Math.cos(theta) * sinZ;
+                    float dy = (float) Math.sin(theta) * sinZ;
+                    float dz = zDir;
+                    float maxLen = 2.4f + random.nextFloat() * 1.5f;
+                    float width = 0.07f + random.nextFloat() * 0.06f;
+                    novaRays.add(new SingularityNovaRay(dx, dy, dz, maxLen, width));
+                }
+            }
+        }
+
+        void spawnSupernovaSparks(Random random) {
+            int sparkCount = 36;
+            for (int i = 0; i < sparkCount; i++) {
+                float theta = random.nextFloat() * (float) Math.PI * 2.0f;
+                float zDir = (random.nextFloat() * 2.0f) - 1.0f;
+                float sinZ = (float) Math.sqrt(Math.max(0.0f, 1.0f - zDir * zDir));
+                float spd = 2.5f + random.nextFloat() * 4.5f;
+                float vx = (float) Math.cos(theta) * sinZ * spd;
+                float vy = (float) Math.sin(theta) * sinZ * spd;
+                float vz = zDir * spd;
+                float size = 0.035f + random.nextFloat() * 0.04f;
+                float life = 0.35f + random.nextFloat() * 0.25f;
+                stardust.add(new SingularityStardust(0, 0, 0, vx, vy, vz, size, life));
             }
         }
     }

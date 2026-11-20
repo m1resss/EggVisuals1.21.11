@@ -21,7 +21,9 @@ import net.minecraft.text.TextContent;
 import java.io.File;
 import java.nio.file.Files;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Globals extends Module {
     private static Globals instance;
@@ -41,6 +43,7 @@ public class Globals extends Module {
 
     private String lastKnownServer = "";
     private long lastLocalShareTime = 0L;
+    private final AtomicBoolean syncingLocalShare = new AtomicBoolean(false);
     private static final Gson GSON = new Gson();
 
     public Globals() {
@@ -120,7 +123,30 @@ public class Globals extends Module {
         long now = System.currentTimeMillis();
         if (now - this.lastLocalShareTime > 1000L) {
             this.lastLocalShareTime = now;
-            syncLocalShare(mc, now);
+            if (this.syncingLocalShare.compareAndSet(false, true)) {
+                String myName = mc.player.getNameForScoreboard().toLowerCase(Locale.ROOT);
+                String myUuid = mc.player.getUuidAsString();
+                File runDir = mc.runDirectory;
+                CosmeticsModule mod = CosmeticsModule.getInstance();
+                JsonObject cObj = null;
+                if (mod != null && mod.isEnabled()) {
+                    cObj = new JsonObject();
+                    cObj.addProperty("wings", mod.getSelectedWingId());
+                    cObj.addProperty("backpacks", mod.getSelectedBackpackId());
+                    cObj.addProperty("hats", mod.getSelectedHatId());
+                    cObj.addProperty("masks", mod.getSelectedMaskId());
+                    cObj.addProperty("pets", mod.getSelectedPetId());
+                    cObj.addProperty("sword", mod.selectedSword());
+                }
+                final JsonObject finalCObj = cObj;
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        syncLocalShareAsync(runDir, myName, myUuid, finalCObj, now);
+                    } finally {
+                        this.syncingLocalShare.set(false);
+                    }
+                });
+            }
         }
 
         this.peersByName.entrySet().removeIf(entry -> {
@@ -139,7 +165,7 @@ public class Globals extends Module {
         });
     }
 
-    private void syncLocalShare(MinecraftClient mc, long now) {
+    private void syncLocalShareAsync(File runDirectory, String myName, String myUuid, JsonObject selfCosmetics, long now) {
         try {
             List<File> shareFiles = new ArrayList<>();
             try {
@@ -149,8 +175,8 @@ public class Globals extends Module {
                 }
             } catch (Throwable ignored) {
             }
-            if (shareFiles.isEmpty() && mc.runDirectory != null) {
-                shareFiles.add(new File(mc.runDirectory, "egg_globals_share.json"));
+            if (shareFiles.isEmpty() && runDirectory != null) {
+                shareFiles.add(new File(runDirectory, "egg_globals_share.json"));
             }
 
             JsonObject mergedRoot = new JsonObject();
@@ -170,21 +196,11 @@ public class Globals extends Module {
                 }
             }
 
-            String myName = mc.player.getNameForScoreboard().toLowerCase(Locale.ROOT);
             JsonObject selfObj = new JsonObject();
-            selfObj.addProperty("uuid", mc.player.getUuidAsString());
+            selfObj.addProperty("uuid", myUuid);
             selfObj.addProperty("time", now);
-
-            CosmeticsModule mod = CosmeticsModule.getInstance();
-            if (mod != null && mod.isEnabled()) {
-                JsonObject cObj = new JsonObject();
-                cObj.addProperty("wings", mod.getSelectedWingId());
-                cObj.addProperty("backpacks", mod.getSelectedBackpackId());
-                cObj.addProperty("hats", mod.getSelectedHatId());
-                cObj.addProperty("masks", mod.getSelectedMaskId());
-                cObj.addProperty("pets", mod.getSelectedPetId());
-                cObj.addProperty("sword", mod.selectedSword());
-                selfObj.add("cosmetics", cObj);
+            if (selfCosmetics != null) {
+                selfObj.add("cosmetics", selfCosmetics);
             }
             mergedRoot.add(myName, selfObj);
 
