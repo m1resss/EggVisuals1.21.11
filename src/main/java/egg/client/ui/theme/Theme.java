@@ -15,9 +15,11 @@ public final class Theme {
         int r = Math.min(22, 7 + (int) (ColorUtil.red(acc) * 0.035f));
         int g = Math.min(22, 7 + (int) (ColorUtil.green(acc) * 0.035f));
         int b = Math.min(26, 9 + (int) (ColorUtil.blue(acc) * 0.045f));
-        return ColorUtil.rgba(r, g, b, 250);
+        float opacity = ClientSettings.getGuiBgOpacity();
+        int alpha = Math.clamp(Math.round(255 * opacity), 40, 255);
+        return ColorUtil.rgba(r, g, b, alpha);
     }
-    public static final int WINDOW_BG = ColorUtil.rgba(11, 12, 16, 250);
+    public static final int WINDOW_BG = ColorUtil.rgba(11, 12, 16, 215);
     public static final int WINDOW_BORDER = 0;
     public static final float WINDOW_RADIUS = 16.0f;
 
@@ -26,9 +28,11 @@ public final class Theme {
         int r = Math.min(18, 5 + (int) (ColorUtil.red(acc) * 0.025f));
         int g = Math.min(18, 5 + (int) (ColorUtil.green(acc) * 0.025f));
         int b = Math.min(22, 7 + (int) (ColorUtil.blue(acc) * 0.035f));
-        return ColorUtil.rgba(r, g, b, 252);
+        float opacity = Math.min(1.0f, ClientSettings.getGuiBgOpacity() * 1.05f);
+        int alpha = Math.clamp(Math.round(255 * opacity), 40, 255);
+        return ColorUtil.rgba(r, g, b, alpha);
     }
-    public static final int SIDEBAR_BG = ColorUtil.rgba(9, 9, 12, 175);
+    public static final int SIDEBAR_BG = ColorUtil.rgba(9, 9, 12, 225);
     public static final int SIDEBAR_ACTIVE_PILL = ColorUtil.rgba(36, 36, 44, 190);
     public static final int SIDEBAR_HOVER_PILL = ColorUtil.rgba(255, 255, 255, 14);
     public static final int SIDEBAR_DIVIDER = ColorUtil.rgba(255, 255, 255, 12);

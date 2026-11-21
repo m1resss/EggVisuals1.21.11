@@ -43,6 +43,7 @@ import net.minecraft.text.StyleSpriteSource;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.MathHelper;
+import org.joml.Matrix3x2f;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.*;
@@ -66,6 +67,7 @@ public class ClickGuiScreen extends Screen {
     private float lensOriginY = -1.0f;
     private boolean closing = false;
     private boolean cascadeStarted = false;
+    private int previousVanillaBlur = -1;
 
     private static Category savedCategory = Category.ESP;
     private static Module savedSearchModule = null;
@@ -273,6 +275,14 @@ public class ClickGuiScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        if (client != null && client.options != null) {
+            if (previousVanillaBlur == -1) {
+                previousVanillaBlur = client.options.getMenuBackgroundBlurrinessValue();
+            }
+            if (ClientSettings.isBlurEnabled()) {
+                client.options.getMenuBackgroundBlurriness().setValue(ClientSettings.getBlurStrength());
+            }
+        }
         GuiSoundManager.playScreenOpen();
         if (closing) {
             closing = false;
@@ -292,8 +302,11 @@ public class ClickGuiScreen extends Screen {
         if ("Курсор".equals(ClientSettings.getLensCenterMode()) && client != null && client.mouse != null && client.getWindow() != null) {
             double mx = client.mouse.getX() * (double) width / (double) client.getWindow().getWidth();
             double my = client.mouse.getY() * (double) height / (double) client.getWindow().getHeight();
-            lensOriginX = (float) mx;
-            lensOriginY = (float) my;
+            float scale = ClientSettings.getGuiScale();
+            float screenCenterX = width * 0.5f;
+            float screenCenterY = height * 0.5f;
+            lensOriginX = (float) ((mx - screenCenterX) / scale + screenCenterX);
+            lensOriginY = (float) ((my - screenCenterY) / scale + screenCenterY);
         } else {
             lensOriginX = gx + guiWidth / 2.0f;
             lensOriginY = gy + guiHeight / 2.0f;
@@ -413,6 +426,10 @@ public class ClickGuiScreen extends Screen {
     public void removed() {
         saveState();
         super.removed();
+        if (client != null && client.options != null && previousVanillaBlur != -1) {
+            client.options.getMenuBackgroundBlurriness().setValue(previousVanillaBlur);
+            previousVanillaBlur = -1;
+        }
         this.closing = false;
         this.cardHoverTimes.clear();
         this.activeCandidateModule = null;
@@ -484,6 +501,12 @@ public class ClickGuiScreen extends Screen {
         updateAnimationProgress();
         boolean blurEnabled = ClientSettings.isBlurEnabled() && !FpsBenchmark.overrideNoBlur;
         if (blurEnabled && currentAnimProgress > 0.01f && client != null && client.world != null) {
+            if (client.options != null) {
+                int targetBlur = ClientSettings.getBlurStrength();
+                if (client.options.getMenuBackgroundBlurrinessValue() != targetBlur) {
+                    client.options.getMenuBackgroundBlurriness().setValue(targetBlur);
+                }
+            }
             try {
                 context.applyBlur();
             } catch (IllegalStateException ignored) {
@@ -491,12 +514,20 @@ public class ClickGuiScreen extends Screen {
             }
         }
         if (currentAnimProgress > 0.01f) {
-            int dimAlpha = (int) (155 * currentAnimProgress);
+            float dimFactor = ClientSettings.getScreenDimOpacity();
+            int dimAlpha = (int) (255 * dimFactor * currentAnimProgress);
             int acc = Theme.getAccent();
-            int dr = Math.min(18, (int) (ColorUtil.red(acc) * 0.030f));
-            int dg = Math.min(18, (int) (ColorUtil.green(acc) * 0.030f));
-            int db = Math.min(22, (int) (ColorUtil.blue(acc) * 0.040f));
-            context.fill(0, 0, width, height, ColorUtil.rgba(dr, dg, db, dimAlpha));
+            int dr = Math.min(16, (int) (ColorUtil.red(acc) * 0.025f));
+            int dg = Math.min(16, (int) (ColorUtil.green(acc) * 0.025f));
+            int db = Math.min(20, (int) (ColorUtil.blue(acc) * 0.035f));
+
+            int topColor = ColorUtil.rgba(dr, dg, db, Math.min(255, (int) (dimAlpha * 1.15f)));
+            int midColor = ColorUtil.rgba(dr, dg, db, dimAlpha);
+            int botColor = ColorUtil.rgba(dr, dg, db, Math.min(255, (int) (dimAlpha * 1.25f)));
+
+            int halfH = height / 2;
+            context.fillGradient(0, 0, width, halfH, topColor, midColor);
+            context.fillGradient(0, halfH, width, height, midColor, botColor);
         }
     }
 
@@ -539,12 +570,26 @@ public class ClickGuiScreen extends Screen {
         float gx = (float) Math.round((width - guiWidth) / 2.0f);
         float gy = (float) Math.round((height - guiHeight) / 2.0f);
 
+        float scale = ClientSettings.getGuiScale();
+        float screenCenterX = width * 0.5f;
+        float screenCenterY = height * 0.5f;
+        float smX = (mouseX - screenCenterX) / scale + screenCenterX;
+        float smY = (mouseY - screenCenterY) / scale + screenCenterY;
+
+        context.getMatrices().pushMatrix();
+        if (Math.abs(scale - 1.0f) > 0.001f) {
+            context.getMatrices().translate(screenCenterX, screenCenterY);
+            context.getMatrices().scale(scale, scale);
+            context.getMatrices().translate(-screenCenterX, -screenCenterY);
+        }
+
         if ("Простая".equals(animMode)) {
-            renderDirectWindow(context, gx, gy, guiWidth, guiHeight, mouseX, mouseY, p, p);
-            renderOpenDropdown(context, mouseX, mouseY, 1.0f);
-            updateAndRenderDeferredTooltip(context, mouseX, mouseY);
-            this.lateMouseX = mouseX;
-            this.lateMouseY = mouseY;
+            renderDirectWindow(context, gx, gy, guiWidth, guiHeight, smX, smY, p, p);
+            renderOpenDropdown(context, smX, smY, 1.0f);
+            updateAndRenderDeferredTooltip(context, smX, smY);
+            this.lateMouseX = smX;
+            this.lateMouseY = smY;
+            context.getMatrices().popMatrix();
             return;
         }
 
@@ -560,22 +605,23 @@ public class ClickGuiScreen extends Screen {
             Render2D.drawRoundedOutline(context, gx, curGy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (16 * alphaVal)));
 
             context.enableScissor((int) gx, (int) Math.max(0, curGy), (int) (gx + guiWidth), (int) (curGy + guiHeight));
-            renderWindowContent(context, gx, curGy, guiWidth, guiHeight, mouseX, mouseY, alphaVal);
+            renderWindowContent(context, gx, curGy, guiWidth, guiHeight, smX, smY, alphaVal);
             context.disableScissor();
 
-            renderOpenDropdown(context, mouseX, mouseY, 1.0f);
-            updateAndRenderDeferredTooltip(context, mouseX, mouseY);
-            this.lateMouseX = mouseX;
-            this.lateMouseY = mouseY;
+            renderOpenDropdown(context, smX, smY, 1.0f);
+            updateAndRenderDeferredTooltip(context, smX, smY);
+            this.lateMouseX = smX;
+            this.lateMouseY = smY;
+            context.getMatrices().popMatrix();
             return;
         }
 
         float k = 1.0f - p;
-        float cx = lensOriginX;
-        float cy = lensOriginY;
-        if (cx < 0.0f || cy < 0.0f) {
-            cx = gx + guiWidth / 2.0f;
-            cy = gy + guiHeight / 2.0f;
+        float lcx = lensOriginX;
+        float lcy = lensOriginY;
+        if (lcx < 0.0f || lcy < 0.0f) {
+            lcx = gx + guiWidth / 2.0f;
+            lcy = gy + guiHeight / 2.0f;
         }
 
         float maxR = (float) Math.hypot(guiWidth / 2.0f, guiHeight / 2.0f) * 1.05f;
@@ -584,8 +630,8 @@ public class ClickGuiScreen extends Screen {
         float morphToRect = LensParams.smoothstep(0.65f, 0.96f, p);
         float curW = MathHelper.lerp(morphToRect, R * 2.0f, guiWidth);
         float curH = MathHelper.lerp(morphToRect, R * 2.0f, guiHeight);
-        float curX = MathHelper.lerp(morphToRect, cx - R, gx);
-        float curY = MathHelper.lerp(morphToRect, cy - R, gy);
+        float curX = MathHelper.lerp(morphToRect, lcx - R, gx);
+        float curY = MathHelper.lerp(morphToRect, lcy - R, gy);
         float curRadius = MathHelper.lerp(morphToRect, curH / 2.0f, Theme.WINDOW_RADIUS);
 
         if (p < 0.999f) {
@@ -597,18 +643,19 @@ public class ClickGuiScreen extends Screen {
             float contentAlpha = LensParams.smoothstep(0.55f, 0.90f, p) * p;
             if (contentAlpha > 0.01f) {
                 context.enableScissor((int) curX, (int) curY, (int) (curX + curW), (int) (curY + curH));
-                renderWindowContent(context, gx, gy, guiWidth, guiHeight, mouseX, mouseY, contentAlpha);
+                renderWindowContent(context, gx, gy, guiWidth, guiHeight, smX, smY, contentAlpha);
                 context.disableScissor();
             }
         } else {
-            renderDirectWindow(context, gx, gy, guiWidth, guiHeight, mouseX, mouseY, 1.0f, 1.0f);
+            renderDirectWindow(context, gx, gy, guiWidth, guiHeight, smX, smY, 1.0f, 1.0f);
         }
 
-        renderOpenDropdown(context, mouseX, mouseY, 1.0f);
-        updateAndRenderDeferredTooltip(context, mouseX, mouseY);
+        renderOpenDropdown(context, smX, smY, 1.0f);
+        updateAndRenderDeferredTooltip(context, smX, smY);
 
-        this.lateMouseX = mouseX;
-        this.lateMouseY = mouseY;
+        this.lateMouseX = smX;
+        this.lateMouseY = smY;
+        context.getMatrices().popMatrix();
     }
 
     private double lateMouseX;
@@ -2333,9 +2380,20 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         float popX = colorPopupX;
         float popY = colorPopupY;
 
-        Draw2DProcessor.INSTANCE.drawGlow(null, popX, popY, popW, popH, 6.0f, ColorUtil.rgba(0, 0, 0, (int) (180 * pAnim)), 10.0f);
-        Draw2DProcessor.INSTANCE.drawRect(null, popX, popY, popW, popH, 6.0f, ColorUtil.rgba(16, 17, 24, (int) (250 * pAnim)));
-        Draw2DProcessor.INSTANCE.drawOutline(null, popX, popY, popW, popH, 6.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (30 * pAnim)));
+        float scale = ClientSettings.getGuiScale();
+        Matrix3x2f mat = null;
+        if (Math.abs(scale - 1.0f) > 0.001f) {
+            float cx = this.width * 0.5f;
+            float cy = this.height * 0.5f;
+            mat = new Matrix3x2f();
+            mat.translate(cx, cy);
+            mat.scale(scale, scale);
+            mat.translate(-cx, -cy);
+        }
+
+        Draw2DProcessor.INSTANCE.drawGlow(mat, popX, popY, popW, popH, 6.0f, ColorUtil.rgba(0, 0, 0, (int) (180 * pAnim)), 10.0f);
+        Draw2DProcessor.INSTANCE.drawRect(mat, popX, popY, popW, popH, 6.0f, ColorUtil.rgba(16, 17, 24, (int) (250 * pAnim)));
+        Draw2DProcessor.INSTANCE.drawOutline(mat, popX, popY, popW, popH, 6.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (30 * pAnim)));
 
         ColorSetting cs = openColorPickerSetting;
         float[] hsb = cs.getHSB();
@@ -2351,59 +2409,59 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         float svW = 92.0f;
         float svH = 74.0f;
 
-        Draw2DProcessor.INSTANCE.drawGradient(null, svX, svY, svW, svH, 3.0f,
+        Draw2DProcessor.INSTANCE.drawGradient(mat, svX, svY, svW, svH, 3.0f,
                 ColorUtil.rgba(255, 255, 255, (int) (255 * pAnim)),
                 ColorUtil.withAlphaFloat((pureHueRgb | 0xFF000000), pAnim),
                 ColorUtil.rgba(0, 0, 0, (int) (255 * pAnim)),
                 ColorUtil.rgba(0, 0, 0, (int) (255 * pAnim)));
-        Draw2DProcessor.INSTANCE.drawOutline(null, svX, svY, svW, svH, 3.0f, 0.8f, ColorUtil.rgba(255, 255, 255, (int) (35 * pAnim)));
+        Draw2DProcessor.INSTANCE.drawOutline(mat, svX, svY, svW, svH, 3.0f, 0.8f, ColorUtil.rgba(255, 255, 255, (int) (35 * pAnim)));
 
         float curSX = svX + sat * svW;
         float curSY = svY + (1.0f - bri) * svH;
-        Draw2DProcessor.INSTANCE.drawGlow(null, curSX - 3.5f, curSY - 3.5f, 7.0f, 7.0f, 3.5f, ColorUtil.rgba(0, 0, 0, (int) (120 * pAnim)), 3.0f);
-        Draw2DProcessor.INSTANCE.drawRect(null, curSX - 3.0f, curSY - 3.0f, 6.0f, 6.0f, 3.0f, ColorUtil.withAlphaFloat(curCol | 0xFF000000, pAnim));
-        Draw2DProcessor.INSTANCE.drawOutline(null, curSX - 3.5f, curSY - 3.5f, 7.0f, 7.0f, 3.5f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (255 * pAnim)));
+        Draw2DProcessor.INSTANCE.drawGlow(mat, curSX - 3.5f, curSY - 3.5f, 7.0f, 7.0f, 3.5f, ColorUtil.rgba(0, 0, 0, (int) (120 * pAnim)), 3.0f);
+        Draw2DProcessor.INSTANCE.drawRect(mat, curSX - 3.0f, curSY - 3.0f, 6.0f, 6.0f, 3.0f, ColorUtil.withAlphaFloat(curCol | 0xFF000000, pAnim));
+        Draw2DProcessor.INSTANCE.drawOutline(mat, curSX - 3.5f, curSY - 3.5f, 7.0f, 7.0f, 3.5f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (255 * pAnim)));
 
         float hueX = svX + svW + 6.0f;
         float hueY = svY;
         float hueW = 12.0f;
         float hueH = svH;
 
-        Draw2DProcessor.INSTANCE.a(null, Identifier.of("delta", "pictures/color.png"), hueX, hueY, hueW, hueH, 2.5f, ColorUtil.rgba(255, 255, 255, (int) (255 * pAnim)));
-        Draw2DProcessor.INSTANCE.drawOutline(null, hueX, hueY, hueW, hueH, 2.5f, 0.8f, ColorUtil.rgba(255, 255, 255, (int) (35 * pAnim)));
+        Draw2DProcessor.INSTANCE.a(mat, Identifier.of("delta", "pictures/color.png"), hueX, hueY, hueW, hueH, 2.5f, ColorUtil.rgba(255, 255, 255, (int) (255 * pAnim)));
+        Draw2DProcessor.INSTANCE.drawOutline(mat, hueX, hueY, hueW, hueH, 2.5f, 0.8f, ColorUtil.rgba(255, 255, 255, (int) (35 * pAnim)));
 
         float hThumbY = Math.clamp(hueY + hue * (hueH - 2.5f), hueY, hueY + hueH - 2.5f);
-        Draw2DProcessor.INSTANCE.drawGlow(null, hueX - 1.0f, hThumbY - 0.5f, hueW + 2.0f, 3.5f, 1.5f, ColorUtil.rgba(0, 0, 0, (int) (120 * pAnim)), 2.0f);
-        Draw2DProcessor.INSTANCE.drawRect(null, hueX - 1.0f, hThumbY, hueW + 2.0f, 2.5f, 1.25f, ColorUtil.rgba(255, 255, 255, (int) (255 * pAnim)));
+        Draw2DProcessor.INSTANCE.drawGlow(mat, hueX - 1.0f, hThumbY - 0.5f, hueW + 2.0f, 3.5f, 1.5f, ColorUtil.rgba(0, 0, 0, (int) (120 * pAnim)), 2.0f);
+        Draw2DProcessor.INSTANCE.drawRect(mat, hueX - 1.0f, hThumbY, hueW + 2.0f, 2.5f, 1.25f, ColorUtil.rgba(255, 255, 255, (int) (255 * pAnim)));
 
         float alphaX = hueX + hueW + 6.0f;
         float alphaY = svY;
         float alphaW = 12.0f;
         float alphaH = svH;
 
-        Draw2DProcessor.INSTANCE.a(null, Identifier.of("delta", "pictures/opacity.png"), alphaX, alphaY, alphaW, alphaH, 2.5f, ColorUtil.rgba(255, 255, 255, (int) (255 * pAnim)));
+        Draw2DProcessor.INSTANCE.a(mat, Identifier.of("delta", "pictures/opacity.png"), alphaX, alphaY, alphaW, alphaH, 2.5f, ColorUtil.rgba(255, 255, 255, (int) (255 * pAnim)));
         int topRgb = (curCol & 0xFFFFFF) | 0xFF000000;
         int botRgb = (curCol & 0xFFFFFF) | 0x00000000;
-        Draw2DProcessor.INSTANCE.drawGradient(null, alphaX, alphaY, alphaW, alphaH, 2.5f,
+        Draw2DProcessor.INSTANCE.drawGradient(mat, alphaX, alphaY, alphaW, alphaH, 2.5f,
                 ColorUtil.withAlphaFloat(topRgb, pAnim),
                 ColorUtil.withAlphaFloat(topRgb, pAnim),
                 ColorUtil.withAlphaFloat(botRgb, pAnim),
                 ColorUtil.withAlphaFloat(botRgb, pAnim));
-        Draw2DProcessor.INSTANCE.drawOutline(null, alphaX, alphaY, alphaW, alphaH, 2.5f, 0.8f, ColorUtil.rgba(255, 255, 255, (int) (35 * pAnim)));
+        Draw2DProcessor.INSTANCE.drawOutline(mat, alphaX, alphaY, alphaW, alphaH, 2.5f, 0.8f, ColorUtil.rgba(255, 255, 255, (int) (35 * pAnim)));
 
         float aThumbY = Math.clamp(alphaY + (1.0f - curAlpha) * (alphaH - 2.5f), alphaY, alphaY + alphaH - 2.5f);
-        Draw2DProcessor.INSTANCE.drawGlow(null, alphaX - 1.0f, aThumbY - 0.5f, alphaW + 2.0f, 3.5f, 1.5f, ColorUtil.rgba(0, 0, 0, (int) (120 * pAnim)), 2.0f);
-        Draw2DProcessor.INSTANCE.drawRect(null, alphaX - 1.0f, aThumbY, alphaW + 2.0f, 2.5f, 1.25f, ColorUtil.rgba(255, 255, 255, (int) (255 * pAnim)));
+        Draw2DProcessor.INSTANCE.drawGlow(mat, alphaX - 1.0f, aThumbY - 0.5f, alphaW + 2.0f, 3.5f, 1.5f, ColorUtil.rgba(0, 0, 0, (int) (120 * pAnim)), 2.0f);
+        Draw2DProcessor.INSTANCE.drawRect(mat, alphaX - 1.0f, aThumbY, alphaW + 2.0f, 2.5f, 1.25f, ColorUtil.rgba(255, 255, 255, (int) (255 * pAnim)));
 
         float hexY = svY + svH + 7.0f;
         float swS = 13.0f;
-        Draw2DProcessor.INSTANCE.drawRect(null, svX, hexY, swS, swS, 2.5f, ColorUtil.withAlphaFloat(curCol, pAnim));
-        Draw2DProcessor.INSTANCE.drawOutline(null, svX, hexY, swS, swS, 2.5f, 0.8f, ColorUtil.rgba(255, 255, 255, (int) (45 * pAnim)));
+        Draw2DProcessor.INSTANCE.drawRect(mat, svX, hexY, swS, swS, 2.5f, ColorUtil.withAlphaFloat(curCol, pAnim));
+        Draw2DProcessor.INSTANCE.drawOutline(mat, svX, hexY, swS, swS, 2.5f, 0.8f, ColorUtil.rgba(255, 255, 255, (int) (45 * pAnim)));
 
-        Fonts.ROCKSTAR_ROUND_BOLD.a(null, cs.getHex(), svX + swS + 6.0f, hexY + 1.5f, 11.5f, ColorUtil.rgba(230, 235, 245, (int) (255 * pAnim)));
+        Fonts.ROCKSTAR_ROUND_BOLD.a(mat, cs.getHex(), svX + swS + 6.0f, hexY + 1.5f, 11.5f, ColorUtil.rgba(230, 235, 245, (int) (255 * pAnim)));
 
         float resetX = popX + popW - 18.0f;
-        Fonts.ROCKSTAR_ROUND_BOLD.a(null, "↺", resetX, hexY + 1.0f, 11.5f, ColorUtil.rgba(160, 165, 180, (int) (200 * pAnim)));
+        Fonts.ROCKSTAR_ROUND_BOLD.a(mat, "↺", resetX, hexY + 1.0f, 11.5f, ColorUtil.rgba(160, 165, 180, (int) (200 * pAnim)));
 
         float presetY = hexY + 17.0f;
         int[] presets = new int[] {
@@ -2414,9 +2472,9 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         for (int i = 0; i < presets.length; i++) {
             float px = popX + 8.0f + i * spacing + spacing / 2.0f;
             float py = presetY + 4.5f;
-            Draw2DProcessor.INSTANCE.drawRect(null, px - 4.5f, py - 4.5f, 9.0f, 9.0f, 4.5f, ColorUtil.withAlphaFloat(presets[i], pAnim));
+            Draw2DProcessor.INSTANCE.drawRect(mat, px - 4.5f, py - 4.5f, 9.0f, 9.0f, 4.5f, ColorUtil.withAlphaFloat(presets[i], pAnim));
             if ((presets[i] & 0xFFFFFF) == (curCol & 0xFFFFFF)) {
-                Draw2DProcessor.INSTANCE.drawOutline(null, px - 5.5f, py - 5.5f, 11.0f, 11.0f, 5.5f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (255 * pAnim)));
+                Draw2DProcessor.INSTANCE.drawOutline(mat, px - 5.5f, py - 5.5f, 11.0f, 11.0f, 5.5f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (255 * pAnim)));
             }
         }
 
@@ -2694,8 +2752,11 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             return false;
         }
 
-        float mouseX = (float) click.x();
-        float mouseY = (float) click.y();
+        float scale = ClientSettings.getGuiScale();
+        float screenCenterX = this.width * 0.5f;
+        float screenCenterY = this.height * 0.5f;
+        float mouseX = (float) ((click.x() - screenCenterX) / scale + screenCenterX);
+        float mouseY = (float) ((click.y() - screenCenterY) / scale + screenCenterY);
         int button = click.button();
 
         if (listeningBindSetting != null) {
@@ -3429,29 +3490,31 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
     @Override
     public boolean mouseDragged(Click click, double dx, double dy) {
+        float scale = ClientSettings.getGuiScale();
+        float screenCenterX = this.width * 0.5f;
+        float screenCenterY = this.height * 0.5f;
+        float mouseX = (float) ((click.x() - screenCenterX) / scale + screenCenterX);
+        float mouseY = (float) ((click.y() - screenCenterY) / scale + screenCenterY);
 
         if (searchFocused && searchSelecting) {
             float gWidth = Math.clamp(this.width * 0.58f, 540.0f, 600.0f);
             float gX = (float) Math.round((this.width - gWidth) / 2.0f);
             float sX = gX + 8.0f;
-            searchCursor = getSearchCursorIndex((float) click.x(), sX);
+            searchCursor = getSearchCursorIndex(mouseX, sX);
             return true;
         }
         if (closing || (!closing && currentAnimProgress < 0.70f)) {
             return false;
         }
         if (draggingSlider != null) {
-            float mouseX = (float) click.x();
             updateSliderValue(draggingSlider, dragTrackX, dragTrackW, mouseX);
             return true;
         }
         WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
-        if (wt != null && WorldTweaksUI.mouseDragged(wt, (float) click.x(), (float) click.y())) {
+        if (wt != null && WorldTweaksUI.mouseDragged(wt, mouseX, mouseY)) {
             return true;
         }
         if (openColorPickerSetting != null && colorDragMode != ColorDragMode.NONE) {
-            float mouseX = (float) click.x();
-            float mouseY = (float) click.y();
             float svX = colorPopupX + 8.0f;
             float svY = colorPopupY + 8.0f;
             float svW = 92.0f;
@@ -3475,7 +3538,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             }
         }
         if (selectedCategory == Category.COSMETICS) {
-            if (egg.client.ui.section.CosmeticsPanel.mouseDragged(click.x(), click.y())) {
+            if (egg.client.ui.section.CosmeticsPanel.mouseDragged(mouseX, mouseY)) {
                 return true;
             }
         }
@@ -3487,6 +3550,11 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         if (closing || (!closing && currentAnimProgress < 0.70f)) {
             return false;
         }
+        float scale = ClientSettings.getGuiScale();
+        float screenCenterX = width * 0.5f;
+        float screenCenterY = height * 0.5f;
+        mouseX = (mouseX - screenCenterX) / scale + screenCenterX;
+        mouseY = (mouseY - screenCenterY) / scale + screenCenterY;
         float guiW = Math.clamp(width * 0.58f, 540.0f, 600.0f);
         float guiH = Math.clamp(height * 0.62f, 280.0f, 320.0f);
         float guiX = (float) Math.round((width - guiW) / 2.0f);
