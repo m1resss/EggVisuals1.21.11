@@ -316,6 +316,7 @@ public class ClickGuiScreen extends Screen {
         }
         animStartTime = System.nanoTime();
         cascadeStarted = false;
+        DynamicGuiTextures.clearCache();
 
         currentGuiScale = ClientSettings.getGuiScale();
         float guiWidth = getGuiBaseWidth();

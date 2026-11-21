@@ -1229,11 +1229,47 @@ public final class DynamicGuiTextures {
         return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
     }
 
+    public static void clearCache() {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc != null && mc.getTextureManager() != null) {
+            for (Identifier oldId : REGISTERED_IDS) {
+                mc.getTextureManager().destroyTexture(oldId);
+            }
+        }
+        REGISTERED_IDS.clear();
+        RECT_CACHE.clear();
+        OUTLINE_CACHE.clear();
+        CIRCLE_CACHE.clear();
+        SHADOW_CACHE.clear();
+        SPEEDOMETER_CACHE.clear();
+        CLOCK_CACHE.clear();
+        EGG_3D_CACHE.clear();
+        FOLDER_CACHE.clear();
+        REFRESH_CACHE.clear();
+        TPS_CACHE.clear();
+        PING_CACHE.clear();
+        MUSIC_NOTE_CACHE.clear();
+        UPGRADE_GAUGE_CACHE.clear();
+        UPGRADE_NEEDLE_CACHE.clear();
+        CARD_ARC_CACHE.clear();
+        SECTOR_CACHE.clear();
+        WHEEL_BASE_CACHE.clear();
+        WHEEL_LINES_CACHE.clear();
+        CAPSULE_CACHE.clear();
+        CAPSULE_OUTLINE_CACHE.clear();
+        CHECKMARK_CACHE.clear();
+        CIRCLE_OUTLINE_CACHE.clear();
+        CIRCLE_GLOW_CACHE.clear();
+    }
+
     private static void register(Identifier id, NativeImage image) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc != null && mc.getTextureManager() != null) {
             NativeImageBackedTexture texture = new NativeImageBackedTexture(() -> id.toString(), image);
             texture.upload();
+            ((egg.client.mixin.AbstractTextureAccessor) texture).setSampler(
+                com.mojang.blaze3d.systems.RenderSystem.getSamplerCache().getRepeated(com.mojang.blaze3d.textures.FilterMode.LINEAR)
+            );
             mc.getTextureManager().registerTexture(id, texture);
             REGISTERED_IDS.add(id);
         }

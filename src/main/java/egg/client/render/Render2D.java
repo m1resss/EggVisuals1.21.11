@@ -109,8 +109,9 @@ public final class Render2D {
     public static void drawRoundedRect(DrawContext context, float x, float y, float width, float height, float radius, int color) {
         int r = Math.max(1, Math.round(radius));
         Identifier tex = DynamicGuiTextures.getRoundedRect(r);
-        int texSize = r * 2 * 2;
-        drawNineSlice(context, tex, x, y, width, height, radius, r * 2, texSize, color);
+        int scale = DynamicGuiTextures.getScale();
+        int texSize = r * 2 * scale;
+        drawNineSlice(context, tex, x, y, width, height, radius, r * scale, texSize, color);
     }
 
     public static void drawRoundedRect(DrawContext context, float x, float y, float width, float height, Vector4f radius, int color) {
@@ -120,8 +121,9 @@ public final class Render2D {
     public static void drawRoundedOutline(DrawContext context, float x, float y, float width, float height, float radius, float thickness, int color) {
         int r = Math.max(1, Math.round(radius));
         Identifier tex = DynamicGuiTextures.getRoundedOutline(r);
-        int texSize = r * 2 * 2;
-        drawNineSliceOutline(context, tex, x, y, width, height, radius, r * 2, texSize, color);
+        int scale = DynamicGuiTextures.getScale();
+        int texSize = r * 2 * scale;
+        drawNineSliceOutline(context, tex, x, y, width, height, radius, r * scale, texSize, color);
     }
 
     public static void drawShadow(DrawContext context, float x, float y, float width, float height, float radius, float spread, int color) {
