@@ -22,6 +22,7 @@ import egg.client.render.Render2D;
 import egg.client.render.font.ClientFont;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Fonts;
+import egg.client.render.msdf.ScissorUtil;
 import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.ui.grid.GuiDotGrid;
 import egg.client.ui.lens.LensParams;
@@ -639,15 +640,19 @@ public class ClickGuiScreen extends Screen {
             Render2D.drawRoundedRect(context, gx, curGy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, mainBg);
             Render2D.drawRoundedOutline(context, gx, curGy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (16 * alphaVal)));
 
-            context.enableScissor((int) gx, (int) Math.max(0, curGy), (int) (gx + guiWidth), (int) (curGy + guiHeight));
+            enableGuiScissor(context, gx, Math.max(0.0f, curGy), gx + guiWidth, curGy + guiHeight);
             renderWindowContent(context, gx, curGy, guiWidth, guiHeight, smX, smY, alphaVal);
-            context.disableScissor();
+            disableGuiScissor(context);
 
             renderOpenDropdown(context, smX, smY, 1.0f);
             updateAndRenderDeferredTooltip(context, smX, smY);
             this.lateMouseX = smX;
             this.lateMouseY = smY;
             context.getMatrices().popMatrix();
+            if (openColorPickerSetting != null || colorPopupAnim > 0.01f) {
+                renderOpenColorPicker(null, lateMouseX, lateMouseY, 1.0f);
+            }
+            DrawBatcher.flushPending();
             return;
         }
 
@@ -677,9 +682,9 @@ public class ClickGuiScreen extends Screen {
 
             float contentAlpha = LensParams.smoothstep(0.55f, 0.90f, p) * p;
             if (contentAlpha > 0.01f) {
-                context.enableScissor((int) curX, (int) curY, (int) (curX + curW), (int) (curY + curH));
+                enableGuiScissor(context, curX, curY, curX + curW, curY + curH);
                 renderWindowContent(context, gx, gy, guiWidth, guiHeight, smX, smY, contentAlpha);
-                context.disableScissor();
+                disableGuiScissor(context);
             }
         } else {
             renderDirectWindow(context, gx, gy, guiWidth, guiHeight, smX, smY, 1.0f, 1.0f);
@@ -703,15 +708,23 @@ public class ClickGuiScreen extends Screen {
         DrawBatcher.flushPending();
     }
 
+    private void enableGuiScissor(DrawContext context, float x1, float y1, float x2, float y2) {
+        Render2D.enableScissor(context, x1, y1, x2, y2);
+    }
+
+    private void disableGuiScissor(DrawContext context) {
+        Render2D.disableScissor(context);
+    }
+
     private void renderDirectWindow(DrawContext context, float gx, float gy, float guiWidth, float guiHeight, float mouseX, float mouseY, float containerAlpha, float contentAlpha) {
         Render2D.drawShadow(context, gx, gy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 28.0f, ColorUtil.rgba(0, 0, 0, (int) (135 * containerAlpha)));
         int mainBg = ColorUtil.withAlphaFloat(Theme.getWindowBg(), containerAlpha);
         Render2D.drawRoundedRect(context, gx, gy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, mainBg);
         Render2D.drawRoundedOutline(context, gx, gy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (16 * containerAlpha)));
 
-        context.enableScissor((int) gx, (int) gy, (int) (gx + guiWidth), (int) (gy + guiHeight));
+        enableGuiScissor(context, gx, gy, gx + guiWidth, gy + guiHeight);
         renderWindowContent(context, gx, gy, guiWidth, guiHeight, mouseX, mouseY, contentAlpha);
-        context.disableScissor();
+        disableGuiScissor(context);
     }
 
     private void renderWindowContent(DrawContext context, float gx, float gy, float guiWidth, float guiHeight, float mouseX, float mouseY, float alpha) {
@@ -759,9 +772,9 @@ public class ClickGuiScreen extends Screen {
             }
         }
 
-        context.enableScissor((int) gx, (int) gy, (int) (gx + sidebarWidth), (int) (gy + guiHeight));
+        enableGuiScissor(context, gx, gy, gx + sidebarWidth, gy + guiHeight);
         Render2D.drawRoundedRect(context, gx, gy, sidebarWidth + Theme.WINDOW_RADIUS, guiHeight, Theme.WINDOW_RADIUS, ColorUtil.withAlphaFloat(Theme.getSidebarBg(), alpha));
-        context.disableScissor();
+        disableGuiScissor(context);
 
         GuiDotGrid.render(context, gx + sidebarWidth, gy + headerHeight, guiWidth - sidebarWidth, guiHeight - headerHeight, mouseX, mouseY, alpha);
 
@@ -819,7 +832,7 @@ public class ClickGuiScreen extends Screen {
         }
 
         float listStartY = searchY + searchH + MathHelper.lerp(collapseProgress, 4.0f, 4.0f);
-        context.enableScissor((int) x, (int) listStartY, (int) (x + width), (int) (y + height));
+        enableGuiScissor(context, x, listStartY, x + width, y + height);
 
         float startItemY = listStartY + 4.0f;
         float itemY = startItemY - sidebarScrollOffset;
@@ -920,7 +933,7 @@ public class ClickGuiScreen extends Screen {
             itemY += itemH + 3.0f;
         }
 
-        context.disableScissor();
+        disableGuiScissor(context);
 
         float totalItemsH = (itemY + sidebarScrollOffset) - startItemY + 6.0f;
         float viewportH = height - listStartY;
@@ -1305,11 +1318,11 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
     }
 
     private void renderClientSettingsPanel(DrawContext context, float x, float y, float width, float height, float mouseX, float mouseY, float alpha) {
-        context.enableScissor((int) (x - 2.0f), (int) y, (int) (x + width + 4.0f), (int) (y + height));
+        enableGuiScissor(context, x - 2.0f, y, x + width + 4.0f, y + height);
 
         ClientSettings cs = ModuleManager.getInstance().getModule(ClientSettings.class);
         if (cs == null) {
-            context.disableScissor();
+            disableGuiScissor(context);
             return;
         }
 
@@ -1374,7 +1387,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             Render2D.drawGradientRect(context, x - 2.0f, y + height - botFadeH, width + 4.0f, botFadeH, 0.0f, clearCol, clearCol, fadeCol, fadeCol);
         }
 
-        context.disableScissor();
+        disableGuiScissor(context);
 
         float maxColY = Math.max(col0Y + leftH, col1Y + rightH);
         float totalHeight = maxColY - (y - scrollOffset);
@@ -1443,7 +1456,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
     }
 
     private void renderModules(DrawContext context, float x, float y, float width, float height, float mouseX, float mouseY, float alpha) {
-        context.enableScissor((int) (x - 2.0f), (int) y, (int) (x + width + 4.0f), (int) (y + height));
+        enableGuiScissor(context, x - 2.0f, y, x + width + 4.0f, y + height);
 
         List<Module> modules = getFilteredModules();
         float currentY = y - scrollOffset;
@@ -1525,7 +1538,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             Render2D.drawGradientRect(context, x - 2.0f, y + height - botFadeH, width + 4.0f, botFadeH, 0.0f, clearCol, clearCol, fadeCol, fadeCol);
         }
 
-        context.disableScissor();
+        disableGuiScissor(context);
 
         float maxColY = Math.max(col0Y, col1Y);
         float totalHeight = maxColY - (y - scrollOffset);
@@ -1664,9 +1677,9 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             float settingsY = y + headerH;
             float visibleH = height - headerH;
             if (visibleH > 1.0f) {
-                context.enableScissor((int) x, (int) settingsY, (int) (x + width), (int) (y + height));
+                enableGuiScissor(context, x, settingsY, x + width, y + height);
                 renderSettings(context, module, x + 12.0f, settingsY, width - 24.0f, expandProgress * alpha, mouseX, mouseY);
-                context.disableScissor();
+                disableGuiScissor(context);
             }
         }
     }
@@ -2135,56 +2148,56 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             if (setting instanceof BooleanSetting bool) {
                 setH = 26.0f * progress;
                 if (progress < 0.99f) {
-                    context.enableScissor((int) x, (int) currentY, (int) (x + width), (int) (currentY + setH));
+                    enableGuiScissor(context, x, currentY, x + width, currentY + setH);
                 }
                 renderBooleanSetting(context, bool, x, currentY, width, setAlpha);
                 if (progress < 0.99f) {
-                    context.disableScissor();
+                    disableGuiScissor(context);
                 }
             } else if (setting instanceof SliderSetting slider) {
                 setH = 34.0f * progress;
                 if (progress < 0.99f) {
-                    context.enableScissor((int) x, (int) currentY, (int) (x + width), (int) (currentY + setH));
+                    enableGuiScissor(context, x, currentY, x + width, currentY + setH);
                 }
                 renderSliderSetting(context, slider, x, currentY, width, setAlpha);
                 if (progress < 0.99f) {
-                    context.disableScissor();
+                    disableGuiScissor(context);
                 }
             } else if (setting instanceof ModeSetting mode) {
                 setH = 28.0f * progress;
                 if (progress < 0.99f) {
-                    context.enableScissor((int) x, (int) currentY, (int) (x + width), (int) (currentY + setH));
+                    enableGuiScissor(context, x, currentY, x + width, currentY + setH);
                 }
                 renderModeSetting(context, mode, x, currentY, width, setAlpha);
                 if (progress < 0.99f) {
-                    context.disableScissor();
+                    disableGuiScissor(context);
                 }
             } else if (setting instanceof ColorSetting colorSetting) {
                 setH = 26.0f * progress;
                 if (progress < 0.99f) {
-                    context.enableScissor((int) x, (int) currentY, (int) (x + width), (int) (currentY + setH));
+                    enableGuiScissor(context, x, currentY, x + width, currentY + setH);
                 }
                 renderColorSetting(context, colorSetting, x, currentY, width, setAlpha);
                 if (progress < 0.99f) {
-                    context.disableScissor();
+                    disableGuiScissor(context);
                 }
             } else if (setting instanceof ButtonSetting btn) {
                 setH = 28.0f * progress;
                 if (progress < 0.99f) {
-                    context.enableScissor((int) x, (int) currentY, (int) (x + width), (int) (currentY + setH));
+                    enableGuiScissor(context, x, currentY, x + width, currentY + setH);
                 }
                 renderButtonSetting(context, btn, x, currentY, width, setAlpha);
                 if (progress < 0.99f) {
-                    context.disableScissor();
+                    disableGuiScissor(context);
                 }
             } else if (setting instanceof BindSetting bind) {
                 setH = 28.0f * progress;
                 if (progress < 0.99f) {
-                    context.enableScissor((int) x, (int) currentY, (int) (x + width), (int) (currentY + setH));
+                    enableGuiScissor(context, x, currentY, x + width, currentY + setH);
                 }
                 renderBindSetting(context, bind, x, currentY, width, setAlpha);
                 if (progress < 0.99f) {
-                    context.disableScissor();
+                    disableGuiScissor(context);
                 }
             }
             if (mouseX >= x && mouseX <= (x + width) && mouseY >= currentY && mouseY <= (currentY + setH)) {
@@ -2568,9 +2581,9 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         float trackY = trackCenterY - trackH / 2.0f;
         Render2D.drawCapsule(context, trackX, trackY, trackW, trackH, ColorUtil.rgba(255, 255, 255, (int) (20 * alpha)));
         if (fillW > 0.0f) {
-            context.enableScissor((int) trackX, (int) (trackY - 1.0f), (int) Math.ceil(trackX + fillW), (int) Math.ceil(trackY + trackH + 1.0f));
+            enableGuiScissor(context, trackX, trackY - 1.0f, (float) Math.ceil(trackX + fillW), (float) Math.ceil(trackY + trackH + 1.0f));
             Render2D.drawCapsule(context, trackX, trackY, trackW, trackH, ColorUtil.withAlphaFloat(Theme.getAccent(), alpha));
-            context.disableScissor();
+            disableGuiScissor(context);
         }
 
         float thumbR = 5.0f;
@@ -2647,7 +2660,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         Render2D.drawRoundedRect(context, dPopX, renderPopY, dPopW, dPopH, 6.0f, ColorUtil.rgba(18, 20, 26, (int) (255 * dAnim)));
         Render2D.drawRoundedOutline(context, dPopX, renderPopY, dPopW, dPopH, 6.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (38 * dAnim)));
 
-        context.enableScissor((int) dPopX, (int) (renderPopY + 3.0f), (int) (dPopX + dPopW), (int) (renderPopY + 3.0f + dListH));
+        enableGuiScissor(context, dPopX, renderPopY + 3.0f, dPopX + dPopW, renderPopY + 3.0f + dListH);
 
         float curItemY = renderPopY + 3.0f - this.openDropdownScrollY;
         String curMode = this.openDropdownSetting.get();
@@ -2673,7 +2686,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             curItemY += dItemH;
         }
 
-        context.disableScissor();
+        disableGuiScissor(context);
     }
 
     private String getSliderValueString(SliderSetting slider) {

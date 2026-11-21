@@ -1267,9 +1267,6 @@ public final class DynamicGuiTextures {
         if (mc != null && mc.getTextureManager() != null) {
             NativeImageBackedTexture texture = new NativeImageBackedTexture(() -> id.toString(), image);
             texture.upload();
-            ((egg.client.mixin.AbstractTextureAccessor) texture).setSampler(
-                com.mojang.blaze3d.systems.RenderSystem.getSamplerCache().getRepeated(com.mojang.blaze3d.textures.FilterMode.LINEAR)
-            );
             mc.getTextureManager().registerTexture(id, texture);
             REGISTERED_IDS.add(id);
         }

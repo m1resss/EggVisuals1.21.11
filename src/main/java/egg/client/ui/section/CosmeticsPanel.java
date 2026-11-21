@@ -103,7 +103,7 @@ public class CosmeticsPanel {
         float gridTop = navY + navH * 2.0f + navRowGap + 5.0f;
         Render2D.drawRect(context, x, gridTop - 2.0f, mainW, 1.0f, 0x12FFFFFF);
 
-        context.enableScissor((int) x, (int) gridTop, (int) (x + mainW), (int) (y + h));
+        Render2D.enableScissor(context, x, gridTop, x + mainW, y + h);
 
         float currentCatY = gridTop + 4.0f - scrollOffset;
         List<String> activeCats = new ArrayList<>();
@@ -237,7 +237,7 @@ public class CosmeticsPanel {
         float measuredTotalH = currentCatY - (gridTop - scrollOffset);
         maxScroll = Math.max(0.0f, measuredTotalH - (h - (gridTop - y)));
 
-        context.disableScissor();
+        Render2D.disableScissor(context);
 
         Render2D.drawRoundedRect(context, rightPaneX, rightPaneY, rightPaneW, rightPaneH, 6.0f, Theme.CARD_BG);
         Render2D.drawRoundedOutline(context, rightPaneX, rightPaneY, rightPaneW, rightPaneH, 6.0f, 0.6f, Theme.CARD_BORDER);
@@ -261,7 +261,7 @@ public class CosmeticsPanel {
             float previewBoxW = rightPaneW - 8.0f;
             float previewBoxH = rightPaneH - 60.0f;
 
-            context.enableScissor((int) previewBoxX, (int) previewBoxY, (int) (previewBoxX + previewBoxW), (int) (previewBoxY + previewBoxH));
+            Render2D.enableScissor(context, previewBoxX, previewBoxY, previewBoxX + previewBoxW, previewBoxY + previewBoxH);
 
             float centerX = previewBoxX + previewBoxW * 0.5f;
             float centerY = previewBoxY + previewBoxH * 0.82f;

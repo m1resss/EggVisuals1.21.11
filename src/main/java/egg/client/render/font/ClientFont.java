@@ -1,5 +1,6 @@
 package egg.client.render.font;
 
+import egg.client.render.Render2D;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
@@ -9,6 +10,7 @@ import net.minecraft.text.StyleSpriteSource;
 import net.minecraft.text.Text;
 import net.minecraft.text.TextColor;
 import net.minecraft.util.Identifier;
+import org.joml.Matrix3x2f;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,9 +36,28 @@ public final class ClientFont {
     private static final Map<StyleSpriteSource.Font, Map<String, Float>> FONT_WIDTH_CACHE = new ConcurrentHashMap<>();
     private static final Map<Long, Map<String, Text>> GRADIENT_CACHE = new ConcurrentHashMap<>();
 
-    private static boolean isClickGui() {
+    public static boolean isClickGui() {
         MinecraftClient mc = MinecraftClient.getInstance();
         return mc != null && mc.currentScreen instanceof egg.client.ui.ClickGuiScreen;
+    }
+
+    public static egg.client.render.msdf.Font resolveMsdfFont(StyleSpriteSource.Font font) {
+        if (font == CLICKGUI_ICONS || font == ICON_CLIENT || font == ICONS) {
+            return egg.client.render.msdf.Fonts.a;
+        }
+        if (font == SF_REGULAR) {
+            return egg.client.render.msdf.Fonts.sfRegular;
+        }
+        if (font == SF_MEDIUM) {
+            return egg.client.render.msdf.Fonts.b;
+        }
+        if (font == SF_SEMIBOLD) {
+            return egg.client.render.msdf.Fonts.ROCKSTAR_SEMIBOLD;
+        }
+        if (font == SF_BOLD) {
+            return egg.client.render.msdf.Fonts.ROCKSTAR_BOLD;
+        }
+        return egg.client.render.msdf.Fonts.ROCKSTAR_ROUND_BOLD;
     }
 
     private static StyleSpriteSource.Font resolveFont(StyleSpriteSource.Font font) {
@@ -68,6 +89,12 @@ public final class ClientFont {
 
     public static void draw(DrawContext context, String text, float x, float y, StyleSpriteSource.Font font, int color) {
         if (text == null || text.isEmpty() || context == null) return;
+        if (isClickGui()) {
+            egg.client.render.msdf.Font msdf = resolveMsdfFont(font);
+            Matrix3x2f mat = Render2D.getMatrix(context);
+            msdf.a(mat, text, x, y, 11.0f, color);
+            return;
+        }
         TextRenderer tr = MinecraftClient.getInstance().textRenderer;
         if (tr == null) return;
         int ix = Math.round(x);
@@ -77,6 +104,12 @@ public final class ClientFont {
 
     public static void drawScaled(DrawContext context, String text, float x, float y, float scale, StyleSpriteSource.Font font, int color) {
         if (text == null || text.isEmpty() || context == null) return;
+        if (isClickGui()) {
+            egg.client.render.msdf.Font msdf = resolveMsdfFont(font);
+            Matrix3x2f mat = Render2D.getMatrix(context);
+            msdf.a(mat, text, x, y, 11.0f * scale, color);
+            return;
+        }
         context.getMatrices().pushMatrix();
         context.getMatrices().translate(x, y);
         context.getMatrices().scale(scale, scale);
@@ -86,6 +119,14 @@ public final class ClientFont {
 
     public static void drawCentered(DrawContext context, String text, float cx, float cy, StyleSpriteSource.Font font, int color) {
         if (text == null || text.isEmpty() || context == null) return;
+        if (isClickGui()) {
+            egg.client.render.msdf.Font msdf = resolveMsdfFont(font);
+            Matrix3x2f mat = Render2D.getMatrix(context);
+            float w = msdf.a(text, 11.0f);
+            float h = msdf.a(11.0f);
+            msdf.a(mat, text, cx - w / 2.0f, cy - h / 2.0f + 0.5f, 11.0f, color);
+            return;
+        }
         TextRenderer tr = MinecraftClient.getInstance().textRenderer;
         if (tr == null) return;
         float w = getWidth(text, font);
@@ -96,6 +137,15 @@ public final class ClientFont {
 
     public static void drawCenteredScaled(DrawContext context, String text, float cx, float cy, float scale, StyleSpriteSource.Font font, int color) {
         if (text == null || text.isEmpty() || context == null) return;
+        if (isClickGui()) {
+            egg.client.render.msdf.Font msdf = resolveMsdfFont(font);
+            Matrix3x2f mat = Render2D.getMatrix(context);
+            float size = 11.0f * scale;
+            float w = msdf.a(text, size);
+            float h = msdf.a(size);
+            msdf.a(mat, text, cx - w / 2.0f, cy - h / 2.0f + 0.5f, size, color);
+            return;
+        }
         TextRenderer tr = MinecraftClient.getInstance().textRenderer;
         if (tr == null) return;
         float w = getWidth(text, font);
@@ -111,6 +161,32 @@ public final class ClientFont {
 
     public static void drawGradient(DrawContext context, String text, float x, float y, StyleSpriteSource.Font font, int color1, int color2) {
         if (text == null || text.isEmpty() || context == null) return;
+        if (isClickGui()) {
+            egg.client.render.msdf.Font msdf = resolveMsdfFont(font);
+            Matrix3x2f mat = Render2D.getMatrix(context);
+            int len = text.length();
+            float curX = x;
+            int a1 = (color1 >> 24) & 0xFF;
+            int a2 = (color2 >> 24) & 0xFF;
+            int r1 = (color1 >> 16) & 0xFF;
+            int r2 = (color2 >> 16) & 0xFF;
+            int g1 = (color1 >> 8) & 0xFF;
+            int g2 = (color2 >> 8) & 0xFF;
+            int b1 = color1 & 0xFF;
+            int b2 = color2 & 0xFF;
+            for (int i = 0; i < len; i++) {
+                float ratio = len > 1 ? (float) i / (float) (len - 1) : 0.0f;
+                int a = (int) (a1 * (1.0f - ratio) + a2 * ratio);
+                int r = (int) (r1 * (1.0f - ratio) + r2 * ratio);
+                int g = (int) (g1 * (1.0f - ratio) + g2 * ratio);
+                int b = (int) (b1 * (1.0f - ratio) + b2 * ratio);
+                int col = (a << 24) | (r << 16) | (g << 8) | b;
+                String ch = String.valueOf(text.charAt(i));
+                msdf.a(mat, ch, curX, y, 11.0f, col);
+                curX += msdf.a(ch, 11.0f);
+            }
+            return;
+        }
         TextRenderer tr = MinecraftClient.getInstance().textRenderer;
         if (tr == null) return;
 
@@ -149,6 +225,9 @@ public final class ClientFont {
 
     public static float getWidth(String text, StyleSpriteSource.Font font) {
         if (text == null || text.isEmpty()) return 0.0f;
+        if (isClickGui()) {
+            return resolveMsdfFont(font).a(text, 11.0f);
+        }
         TextRenderer tr = MinecraftClient.getInstance().textRenderer;
         if (tr == null) return text.length() * 6.0f;
 

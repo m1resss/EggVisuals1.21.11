@@ -18,6 +18,14 @@ public class ScissorUtil {
         throw new UnsupportedOperationException("This is a utility class and cannot be instantiated");
     }
 
+    public static a getActiveScissor() {
+        return b.peek();
+    }
+
+    public static boolean hasActiveScissor() {
+        return !b.isEmpty();
+    }
+
     public static void a(Matrix3x2f matrixStack, float x, float y, float width, float height) {
         DrawBatcher.flushPending();
         MinecraftClient client = MinecraftClient.getInstance();
@@ -97,13 +105,13 @@ public class ScissorUtil {
         GL11.glScissor(box.a, box.b, box.c, box.d);
     }
 
-    static final class a {
-        final int a;
-        final int b;
-        final int c;
-        final int d;
+    public static final class a {
+        public final int a;
+        public final int b;
+        public final int c;
+        public final int d;
 
-        a(int x, int y, int w, int h) {
+        public a(int x, int y, int w, int h) {
             this.a = x;
             this.b = y;
             this.c = w;
@@ -126,7 +134,7 @@ public class ScissorUtil {
             return this.d;
         }
 
-        a a(a p) {
+        public a a(a p) {
             int nx = Math.max(this.a, p.a);
             int ny = Math.max(this.b, p.b);
             return new a(nx, ny, Math.max(0, Math.min(this.a + this.c, p.a + p.c) - nx), Math.max(0, Math.min(this.b + this.d, p.b + p.d) - ny));

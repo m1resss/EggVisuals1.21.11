@@ -4,6 +4,7 @@ import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.systems.CommandEncoder;
 import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
+import egg.client.render.msdf.ScissorUtil;
 import net.minecraft.client.MinecraftClient;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -80,6 +81,11 @@ public final class DrawBatcher {
                 client.getFramebuffer().getDepthAttachmentView(),
                 OptionalDouble.empty())) {
 
+            if (ScissorUtil.hasActiveScissor()) {
+                ScissorUtil.a box = ScissorUtil.getActiveScissor();
+                pass.enableScissor(box.a(), box.b(), box.c(), box.d());
+            }
+
             RenderSystem.bindDefaultUniforms(pass);
             pass.setUniform("DynamicTransforms", dynamicTransforms);
             for (int i = 0; i < active.size(); i++) {
@@ -117,6 +123,11 @@ public final class DrawBatcher {
                 OptionalInt.empty(),
                 client.getFramebuffer().getDepthAttachmentView(),
                 OptionalDouble.empty())) {
+
+            if (ScissorUtil.hasActiveScissor()) {
+                ScissorUtil.a box = ScissorUtil.getActiveScissor();
+                pass.enableScissor(box.a(), box.b(), box.c(), box.d());
+            }
 
             RenderSystem.bindDefaultUniforms(pass);
             pass.setUniform("DynamicTransforms", dynamicTransforms);

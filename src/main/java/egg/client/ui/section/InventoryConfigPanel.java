@@ -47,7 +47,7 @@ public class InventoryConfigPanel {
         hoveredRule = null;
         hoveredSlotId = -1;
 
-        context.enableScissor((int) x, (int) y, (int) (x + w), (int) (y + h));
+        Render2D.enableScissor(context, x, y, x + w, y + h);
 
         if (detailedPreset != null) {
             renderDetailView(context, x, y, w, h, mouseX, mouseY, alpha);
@@ -55,7 +55,7 @@ public class InventoryConfigPanel {
             renderCardsView(context, x, y, w, h, mouseX, mouseY, alpha);
         }
 
-        context.disableScissor();
+        Render2D.disableScissor(context);
 
         if (hoveredRule != null && !hoveredRule.getDisplayStack().isEmpty()) {
             renderTooltip(context, hoveredRule, hoveredSlotId, hoveredSlotHasItem, mouseX, mouseY);

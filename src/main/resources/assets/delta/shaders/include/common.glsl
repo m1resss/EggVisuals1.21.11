@@ -9,7 +9,9 @@ float rdist(vec2 pos, vec2 size, vec4 radius) {
 float ralpha(vec2 size, vec2 coord, vec4 radius, float smoothness) {
     vec2 center = size * 0.5;
     float dist = rdist(center - (coord * size), center - 1.0, radius);
-    return 1.0 - smoothstep(1.0 - smoothness, 1.0, dist);
+    float fw = max(fwidth(dist), 0.001);
+    float sm = max(smoothness, fw);
+    return 1.0 - smoothstep(1.0 - sm, 1.0, dist);
 }
 
 const vec2[4] RECT_VERTICES_COORDS = vec2[] (

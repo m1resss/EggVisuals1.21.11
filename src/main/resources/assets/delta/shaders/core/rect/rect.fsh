@@ -18,15 +18,20 @@ void main() {
     float distOuter = rdist(fragPos, center - 1.0, uRadius);
     float alpha;
 
+    float fwOuter = max(fwidth(distOuter), 0.001);
+    float smOuter = max(uSmoothness, fwOuter);
+
     if (uOutlineWidth > 0.001) {
         vec2 innerHalf = center - 1.0 - uOutlineWidth;
         vec4 radiusInner = max(uRadius - uOutlineWidth, vec4(0.01));
         float distInner = rdist(fragPos, innerHalf, radiusInner);
-        float outerFill = 1.0 - smoothstep(1.0 - uSmoothness, 1.0, distOuter);
-        float innerFill = 1.0 - smoothstep(1.0 - uSmoothness, 1.0, distInner);
+        float fwInner = max(fwidth(distInner), 0.001);
+        float smInner = max(uSmoothness, fwInner);
+        float outerFill = 1.0 - smoothstep(1.0 - smOuter, 1.0, distOuter);
+        float innerFill = 1.0 - smoothstep(1.0 - smInner, 1.0, distInner);
         alpha = outerFill * (1.0 - innerFill);
     } else {
-        alpha = 1.0 - smoothstep(1.0 - uSmoothness, 1.0, distOuter);
+        alpha = 1.0 - smoothstep(1.0 - smOuter, 1.0, distOuter);
     }
 
     vec4 color = vec4(FragColor.rgb, FragColor.a * alpha);

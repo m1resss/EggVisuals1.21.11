@@ -2,13 +2,30 @@ package egg.client.render;
 
 import egg.client.render.font.ClientFont;
 import egg.client.render.msdf.Draw2DProcessor;
+import egg.client.render.msdf.ScissorUtil;
 import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.util.Identifier;
+import org.joml.Matrix3x2f;
 import org.joml.Vector4f;
 
 public final class Render2D {
     private Render2D() {}
+
+    public static Matrix3x2f getMatrix(DrawContext context) {
+        if (context == null) return null;
+        return new Matrix3x2f(context.getMatrices());
+    }
+
+    public static void enableScissor(DrawContext context, float x1, float y1, float x2, float y2) {
+        context.enableScissor((int) x1, (int) y1, (int) x2, (int) y2);
+        ScissorUtil.a(getMatrix(context), x1, y1, Math.max(0.0f, x2 - x1), Math.max(0.0f, y2 - y1));
+    }
+
+    public static void disableScissor(DrawContext context) {
+        context.disableScissor();
+        ScissorUtil.a(getMatrix(context));
+    }
 
     public static void drawRect(DrawContext context, float x, float y, float width, float height, int color) {
         int x1 = Math.round(x);
@@ -107,42 +124,23 @@ public final class Render2D {
     }
 
     public static void drawRoundedRect(DrawContext context, float x, float y, float width, float height, float radius, int color) {
-        int r = Math.max(1, Math.round(radius));
-        Identifier tex = DynamicGuiTextures.getRoundedRect(r);
-        int scale = DynamicGuiTextures.getScale();
-        int texSize = r * 2 * scale;
-        drawNineSlice(context, tex, x, y, width, height, radius, r * scale, texSize, color);
+        if (width <= 0 || height <= 0 || ((color >> 24) & 0xFF) <= 0) return;
+        Draw2DProcessor.INSTANCE.drawRect(getMatrix(context), x, y, width, height, radius, color);
     }
 
     public static void drawRoundedRect(DrawContext context, float x, float y, float width, float height, Vector4f radius, int color) {
-        drawRoundedRect(context, x, y, width, height, radius.x, color);
+        if (width <= 0 || height <= 0 || ((color >> 24) & 0xFF) <= 0) return;
+        Draw2DProcessor.INSTANCE.a(getMatrix(context), x, y, width, height, radius, color);
     }
 
     public static void drawRoundedOutline(DrawContext context, float x, float y, float width, float height, float radius, float thickness, int color) {
-        int r = Math.max(1, Math.round(radius));
-        Identifier tex = DynamicGuiTextures.getRoundedOutline(r);
-        int scale = DynamicGuiTextures.getScale();
-        int texSize = r * 2 * scale;
-        drawNineSliceOutline(context, tex, x, y, width, height, radius, r * scale, texSize, color);
+        if (width <= 0 || height <= 0 || ((color >> 24) & 0xFF) <= 0) return;
+        Draw2DProcessor.INSTANCE.drawOutline(getMatrix(context), x, y, width, height, radius, thickness, color);
     }
 
     public static void drawShadow(DrawContext context, float x, float y, float width, float height, float radius, float spread, int color) {
-        if (spread <= 0.0f) return;
-        int alpha = (color >> 24) & 0xFF;
-        if (alpha <= 0) return;
-        float sx = x - spread;
-        float sy = y - spread;
-        float sw = width + spread * 2.0f;
-        float sh = height + spread * 2.0f;
-        float sr = radius + spread;
-
-        int r = Math.max(1, Math.round(radius));
-        int sp = Math.max(1, Math.round(spread));
-        int scale = DynamicGuiTextures.getScale();
-        Identifier tex = DynamicGuiTextures.getRoundedShadow(r, sp);
-        int corner = (r + sp) * scale;
-        int texSize = corner * 2 + scale;
-        drawNineSliceOutline(context, tex, sx, sy, sw, sh, sr, corner, texSize, color);
+        if (spread <= 0.0f || width <= 0 || height <= 0 || ((color >> 24) & 0xFF) <= 0) return;
+        Draw2DProcessor.INSTANCE.drawGlow(getMatrix(context), x, y, width, height, radius, color, spread);
     }
 
     public static void drawCheckmark(DrawContext context, float x, float y, float size, int color) {
@@ -157,33 +155,15 @@ public final class Render2D {
     }
 
     public static void drawCircle(DrawContext context, float cx, float cy, float radius, int color) {
-        if (radius <= 0.0f) return;
-        int alpha = (color >> 24) & 0xFF;
-        if (alpha <= 0) return;
-        int r = Math.max(1, Math.round(radius));
-        Identifier tex = DynamicGuiTextures.getCircle(r);
-        int scale = DynamicGuiTextures.getScale();
-        int isize = Math.max(1, Math.round(radius * 2.0f));
-        int ix = Math.round(cx - radius);
-        int iy = Math.round(cy - radius);
-        int texSize = r * 2 * scale;
-        context.drawTexture(RenderPipelines.GUI_TEXTURED, tex, ix, iy, 0.0f, 0.0f, isize, isize, texSize, texSize, texSize, texSize, color);
+        if (radius <= 0.0f || ((color >> 24) & 0xFF) <= 0) return;
+        float d = radius * 2.0f;
+        Draw2DProcessor.INSTANCE.drawRect(getMatrix(context), cx - radius, cy - radius, d, d, radius, color);
     }
 
     public static void drawCircleShadow(DrawContext context, float cx, float cy, float radius, float spread, int color) {
-        if (spread <= 0.0f || radius <= 0.0f) return;
-        int alpha = (color >> 24) & 0xFF;
-        if (alpha <= 0) return;
-        int r = Math.max(1, Math.round(radius));
-        int sp = Math.max(1, Math.round(spread));
-        Identifier tex = DynamicGuiTextures.getCircleGlow(r, sp);
-        int scale = DynamicGuiTextures.getScale();
-        float totalR = radius + spread;
-        int isize = Math.max(1, Math.round(totalR * 2.0f));
-        int texSize = (r + sp) * 2 * scale;
-        int ix = Math.round(cx - totalR);
-        int iy = Math.round(cy - totalR);
-        context.drawTexture(RenderPipelines.GUI_TEXTURED, tex, ix, iy, 0.0f, 0.0f, isize, isize, texSize, texSize, texSize, texSize, color);
+        if (spread <= 0.0f || radius <= 0.0f || ((color >> 24) & 0xFF) <= 0) return;
+        float d = radius * 2.0f;
+        Draw2DProcessor.INSTANCE.drawGlow(getMatrix(context), cx - radius, cy - radius, d, d, radius, color, spread);
     }
 
     public static void drawWheelSector(DrawContext context, float cx, float cy, float radius, int sectorIndex, int color) {
@@ -225,65 +205,31 @@ public final class Render2D {
     }
 
     public static void drawCircleOutline(DrawContext context, float cx, float cy, float radius, float thickness, int color) {
-        if (radius <= 0.0f) return;
-        int alpha = (color >> 24) & 0xFF;
-        if (alpha <= 0) return;
-        int r = Math.max(1, Math.round(radius));
-        Identifier tex = DynamicGuiTextures.getCircleOutline(r);
-        int scale = DynamicGuiTextures.getScale();
-        int isize = Math.max(1, Math.round(radius * 2.0f));
-        int ix = Math.round(cx - radius);
-        int iy = Math.round(cy - radius);
-        int texSize = r * 2 * scale;
-        context.drawTexture(RenderPipelines.GUI_TEXTURED, tex, ix, iy, 0.0f, 0.0f, isize, isize, texSize, texSize, texSize, texSize, color);
+        if (radius <= 0.0f || ((color >> 24) & 0xFF) <= 0) return;
+        float d = radius * 2.0f;
+        Draw2DProcessor.INSTANCE.drawOutline(getMatrix(context), cx - radius, cy - radius, d, d, radius, thickness, color);
     }
 
     public static void drawCapsule(DrawContext context, float x, float y, float width, float height, int color) {
-        if (width <= 0 || height <= 0) return;
-        int alpha = (color >> 24) & 0xFF;
-        if (alpha <= 0) return;
-        int iw = Math.max(1, Math.round(width));
-        int ih = Math.max(1, Math.round(height));
-        int ix = Math.round(x);
-        int iy = Math.round(y);
-        Identifier tex = DynamicGuiTextures.getCapsule(iw, ih);
-        int scale = DynamicGuiTextures.getScale();
-        int tw = iw * scale;
-        int th = ih * scale;
-        context.drawTexture(RenderPipelines.GUI_TEXTURED, tex, ix, iy, 0.0f, 0.0f, iw, ih, tw, th, tw, th, color);
+        if (width <= 0 || height <= 0 || ((color >> 24) & 0xFF) <= 0) return;
+        float r = Math.min(width, height) / 2.0f;
+        Draw2DProcessor.INSTANCE.drawRect(getMatrix(context), x, y, width, height, r, color);
     }
 
     public static void drawCapsuleOutline(DrawContext context, float x, float y, float width, float height, int color) {
-        if (width <= 0 || height <= 0) return;
-        int alpha = (color >> 24) & 0xFF;
-        if (alpha <= 0) return;
-        int iw = Math.max(1, Math.round(width));
-        int ih = Math.max(1, Math.round(height));
-        int ix = Math.round(x);
-        int iy = Math.round(y);
-        Identifier tex = DynamicGuiTextures.getCapsuleOutline(iw, ih);
-        int scale = DynamicGuiTextures.getScale();
-        int tw = iw * scale;
-        int th = ih * scale;
-        context.drawTexture(RenderPipelines.GUI_TEXTURED, tex, ix, iy, 0.0f, 0.0f, iw, ih, tw, th, tw, th, color);
+        if (width <= 0 || height <= 0 || ((color >> 24) & 0xFF) <= 0) return;
+        float r = Math.min(width, height) / 2.0f;
+        Draw2DProcessor.INSTANCE.drawOutline(getMatrix(context), x, y, width, height, r, 1.0f, color);
     }
 
     public static void drawGradientRect(DrawContext context, float x, float y, float width, float height, float radius, int colTL, int colTR, int colBL, int colBR) {
-        if (radius > 0.5f) {
-            Draw2DProcessor.INSTANCE.drawGradient(null, x, y, width, height, radius, colTL, colTR, colBL, colBR);
-            return;
-        }
-        int x1 = Math.round(x);
-        int y1 = Math.round(y);
-        int x2 = Math.round(x + width);
-        int y2 = Math.round(y + height);
-        int startColor = (colTL != 0) ? colTL : colTR;
-        int endColor = (colBR != 0) ? colBR : colBL;
-        context.fillGradient(x1, y1, x2, y2, startColor, endColor);
+        if (width <= 0 || height <= 0) return;
+        Draw2DProcessor.INSTANCE.drawGradient(getMatrix(context), x, y, width, height, radius, colTL, colTR, colBL, colBR);
     }
 
     public static void drawRoundedGradientRect(DrawContext context, float x, float y, float width, float height, float radius, int colTop, int colBot) {
-        Draw2DProcessor.INSTANCE.drawGradient(null, x, y, width, height, radius, colTop, colTop, colBot, colBot);
+        if (width <= 0 || height <= 0) return;
+        Draw2DProcessor.INSTANCE.drawGradient(getMatrix(context), x, y, width, height, radius, colTop, colTop, colBot, colBot);
     }
 
     public static void drawTexture(DrawContext context, Identifier texture, float x, float y, float width, float height, int color) {
