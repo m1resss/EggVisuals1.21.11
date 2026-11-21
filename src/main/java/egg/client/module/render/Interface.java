@@ -912,12 +912,15 @@ public class Interface extends Module {
         }
 
         ScissorUtil.a(mat, x, y - 2.0f, maxW, size + 8.0f);
-        if (isBold) {
-            Fonts.d.a(mat, text, x - offset, y, size, color);
-        } else {
-            Fonts.b.a(mat, text, x - offset, y, size, color);
+        try {
+            if (isBold) {
+                Fonts.d.a(mat, text, x - offset, y, size, color);
+            } else {
+                Fonts.b.a(mat, text, x - offset, y, size, color);
+            }
+        } finally {
+            ScissorUtil.a(mat);
         }
-        ScissorUtil.a(mat);
     }
 
     private void drawPlayIconVector(Matrix3x2f mat, float cx, float cy, float size, int color) {

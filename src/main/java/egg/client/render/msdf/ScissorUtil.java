@@ -26,9 +26,16 @@ public class ScissorUtil {
         return !b.isEmpty();
     }
 
+    public static void reset() {
+        DrawBatcher.flushPending();
+        b.clear();
+        GL11.glDisable(GL11.GL_SCISSOR_TEST);
+    }
+
     public static void a(Matrix3x2f matrixStack, float x, float y, float width, float height) {
         DrawBatcher.flushPending();
         MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.getWindow() == null) return;
         float scaleFactor = (float) client.getWindow().getScaleFactor();
         float actualX = x;
         float actualY = y;
@@ -44,7 +51,17 @@ public class ScissorUtil {
             actualW = Math.abs(x2 - x1);
             actualH = Math.abs(y2 - y1);
         }
-        a scissorBox = new a((int) (actualX * scaleFactor), (int) (((client.getWindow().getScaledHeight() - actualY) - actualH) * scaleFactor), (int) (actualW * scaleFactor), (int) (actualH * scaleFactor));
+        int fbHeight = client.getWindow().getFramebufferHeight();
+        int fbWidth = client.getWindow().getFramebufferWidth();
+        int sx = (int) Math.round(actualX * scaleFactor);
+        int sy = fbHeight - (int) Math.round((actualY + actualH) * scaleFactor);
+        int sw = (int) Math.round(actualW * scaleFactor);
+        int sh = (int) Math.round(actualH * scaleFactor);
+        sx = Math.max(0, Math.min(fbWidth, sx));
+        sy = Math.max(0, Math.min(fbHeight, sy));
+        sw = Math.max(0, Math.min(fbWidth - sx, sw));
+        sh = Math.max(0, Math.min(fbHeight - sy, sh));
+        a scissorBox = new a(sx, sy, sw, sh);
         if (!b.isEmpty()) {
             scissorBox = scissorBox.a(b.peek());
         }
@@ -73,8 +90,19 @@ public class ScissorUtil {
     public static void a(MatrixStack matrixStack, float x, float y, float width, float height) {
         DrawBatcher.flushPending();
         MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.getWindow() == null) return;
         float scaleFactor = (float) client.getWindow().getScaleFactor();
-        a scissorBox = new a((int) (x * scaleFactor), (int) (((client.getWindow().getScaledHeight() - y) - height) * scaleFactor), (int) (width * scaleFactor), (int) (height * scaleFactor));
+        int fbHeight = client.getWindow().getFramebufferHeight();
+        int fbWidth = client.getWindow().getFramebufferWidth();
+        int sx = (int) Math.round(x * scaleFactor);
+        int sy = fbHeight - (int) Math.round((y + height) * scaleFactor);
+        int sw = (int) Math.round(width * scaleFactor);
+        int sh = (int) Math.round(height * scaleFactor);
+        sx = Math.max(0, Math.min(fbWidth, sx));
+        sy = Math.max(0, Math.min(fbHeight, sy));
+        sw = Math.max(0, Math.min(fbWidth - sx, sw));
+        sh = Math.max(0, Math.min(fbHeight - sy, sh));
+        a scissorBox = new a(sx, sy, sw, sh);
         if (!b.isEmpty()) {
             scissorBox = scissorBox.a(b.peek());
         }
@@ -137,7 +165,9 @@ public class ScissorUtil {
         public a a(a p) {
             int nx = Math.max(this.a, p.a);
             int ny = Math.max(this.b, p.b);
-            return new a(nx, ny, Math.max(0, Math.min(this.a + this.c, p.a + p.c) - nx), Math.max(0, Math.min(this.b + this.d, p.b + p.d) - ny));
+            int rx = Math.min(this.a + this.c, p.a + p.c);
+            int ry = Math.min(this.b + this.d, p.b + p.d);
+            return new a(nx, ny, Math.max(0, rx - nx), Math.max(0, ry - ny));
         }
     }
 }

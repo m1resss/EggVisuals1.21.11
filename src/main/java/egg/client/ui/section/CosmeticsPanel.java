@@ -276,7 +276,7 @@ public class CosmeticsPanel {
             float lookY = centerY - playerPitch * 2.5f;
             InventoryScreen.drawEntity(context, x1, y1, x2, y2, baseSize, 0.0625f, lookX, lookY, mc.player);
 
-            context.disableScissor();
+            Render2D.disableScissor(context);
         }
 
         Render2D.drawRect(context, rightPaneX + 8.0f, rightPaneY + rightPaneH - 22.0f, rightPaneW - 16.0f, 1.0f, 0x15FFFFFF);

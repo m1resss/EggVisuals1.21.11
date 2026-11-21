@@ -11,6 +11,7 @@ import egg.client.module.combat.HitColor;
 import egg.client.module.render.*;
 
 import egg.client.render.msdf.Draw2DProcessor;
+import egg.client.render.msdf.ScissorUtil;
 import egg.client.render.msdf.pipeline.DrawBatcher;
 
 import net.minecraft.client.MinecraftClient;
@@ -87,60 +88,40 @@ public abstract class GameRendererMixin {
     }
 
     @Inject(method = "render", at = @At("HEAD"))
-
     private void onRenderHead(RenderTickCounter tickCounter, boolean tick, CallbackInfo ci) {
-
+        ScissorUtil.reset();
         HitColor hitColor = ModuleManager.getInstance().getModule(HitColor.class);
-
         GameRenderer self = (GameRenderer) (Object) this;
-
         if (hitColor != null) {
-
             hitColor.updateOverlay(self.getOverlayTexture());
-
         }
-
         BlockOverlay blockOverlay = ModuleManager.getInstance().getModule(BlockOverlay.class);
         if (blockOverlay != null && blockOverlay.isEnabled()) {
             self.setBlockOutlineEnabled(false);
         } else {
             self.setBlockOutlineEnabled(true);
         }
-
     }
 
     @Inject(
-
             method = "render",
-
             at = @At(
-
                     value = "INVOKE",
-
                     target = "Lnet/minecraft/client/MinecraftClient;getOverlay()Lnet/minecraft/client/gui/screen/Overlay;",
-
                     ordinal = 0
-
             )
-
     )
-
     private void onRenderHudBeforeOverlays(RenderTickCounter tickCounter, boolean tick, CallbackInfo ci, @Local DrawContext context) {
-
         MinecraftClient mc = MinecraftClient.getInstance();
-
-        if (mc == null || mc.world == null || mc.options.hudHidden || mc.getOverlay() != null) {
-
+        if (mc == null || mc.world == null || mc.options.hudHidden || mc.getOverlay() != null || mc.currentScreen instanceof egg.client.ui.ClickGuiScreen) {
             return;
-
         }
-
         renderCustomHud(context, tickCounter);
-
     }
 
     @Unique
     private void renderCustomHud(DrawContext context, RenderTickCounter tickCounter) {
+        ScissorUtil.reset();
         if (Interface.isHudBlurEnabled()) {
             Draw2DProcessor.INSTANCE.captureBlur(Interface.getHudBlurStrength());
         }
@@ -242,6 +223,7 @@ public abstract class GameRendererMixin {
         }
 
         DrawBatcher.flushPending();
+        ScissorUtil.reset();
 
     }
 
@@ -277,17 +259,12 @@ public abstract class GameRendererMixin {
     }
 
     @Inject(method = "render", at = @At("TAIL"))
-
     private void onRenderTail(RenderTickCounter tickCounter, boolean tick, CallbackInfo ci) {
-
         MinecraftClient mc = MinecraftClient.getInstance();
-
         if (mc != null && mc.currentScreen instanceof egg.client.ui.ClickGuiScreen gui) {
-
             gui.renderLate();
-
         }
-
+        ScissorUtil.reset();
     }
 
 }

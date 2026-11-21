@@ -428,6 +428,7 @@ public class NameTags extends Module {
         float cardY = -cardH;
 
         if (this.showArmor.get()) {
+            DrawBatcher.flushPending();
             context.getMatrices().pushMatrix();
             context.getMatrices().translate(state.smoothX, state.smoothY);
             context.getMatrices().scale(tagScale, tagScale);

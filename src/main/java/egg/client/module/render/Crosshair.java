@@ -30,7 +30,7 @@ public class Crosshair extends Module {
     public void render(DrawContext context, RenderTickCounter tickCounter) {
         if (!isEnabled()) return;
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc == null || mc.player == null || mc.options.hudHidden || !mc.options.getPerspective().isFirstPerson()) return;
+        if (mc == null || mc.player == null || mc.currentScreen != null || mc.options.hudHidden || !mc.options.getPerspective().isFirstPerson()) return;
 
         float tickProgress = tickCounter != null ? tickCounter.getTickProgress(true) : 0.0f;
         float cooldown = 1.0f - mc.player.getAttackCooldownProgress(tickProgress);

@@ -18,15 +18,21 @@ public final class Render2D {
     }
 
     public static void enableScissor(DrawContext context, float x1, float y1, float x2, float y2) {
+        float minX = Math.min(x1, x2);
+        float minY = Math.min(y1, y2);
+        float maxX = Math.max(x1, x2);
+        float maxY = Math.max(y1, y2);
         if (context != null) {
-            context.enableScissor((int) x1, (int) y1, (int) x2, (int) y2);
+            context.enableScissor((int) minX, (int) minY, (int) maxX, (int) maxY);
         }
-        ScissorUtil.a(getMatrix(context), x1, y1, Math.max(0.0f, x2 - x1), Math.max(0.0f, y2 - y1));
+        ScissorUtil.a(getMatrix(context), minX, minY, Math.max(0.0f, maxX - minX), Math.max(0.0f, maxY - minY));
     }
 
     public static void disableScissor(DrawContext context) {
         if (context != null) {
-            context.disableScissor();
+            try {
+                context.disableScissor();
+            } catch (Exception ignored) {}
         }
         ScissorUtil.a(getMatrix(context));
     }

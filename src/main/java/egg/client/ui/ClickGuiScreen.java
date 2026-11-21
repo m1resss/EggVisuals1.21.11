@@ -299,6 +299,7 @@ public class ClickGuiScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        ScissorUtil.reset();
         if (client != null && client.options != null) {
             if (previousVanillaBlur == -1) {
                 previousVanillaBlur = client.options.getMenuBackgroundBlurrinessValue();
@@ -452,6 +453,7 @@ public class ClickGuiScreen extends Screen {
     public void removed() {
         saveState();
         super.removed();
+        ScissorUtil.reset();
         if (client != null && client.options != null && previousVanillaBlur != -1) {
             client.options.getMenuBackgroundBlurriness().setValue(previousVanillaBlur);
             previousVanillaBlur = -1;
@@ -627,6 +629,7 @@ public class ClickGuiScreen extends Screen {
             this.lateMouseY = smY;
             context.getMatrices().popMatrix();
             DrawBatcher.flushPending();
+            ScissorUtil.reset();
             return;
         }
 
@@ -642,13 +645,17 @@ public class ClickGuiScreen extends Screen {
             Render2D.drawRoundedOutline(context, gx, curGy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (16 * alphaVal)));
 
             enableGuiScissor(context, gx, Math.max(0.0f, curGy), gx + guiWidth, curGy + guiHeight);
-            renderWindowContent(context, gx, curGy, guiWidth, guiHeight, smX, smY, alphaVal);
-            disableGuiScissor(context);
+            try {
+                renderWindowContent(context, gx, curGy, guiWidth, guiHeight, smX, smY, alphaVal);
+            } finally {
+                disableGuiScissor(context);
+            }
 
             this.lateMouseX = smX;
             this.lateMouseY = smY;
             context.getMatrices().popMatrix();
             DrawBatcher.flushPending();
+            ScissorUtil.reset();
             return;
         }
 
@@ -679,8 +686,11 @@ public class ClickGuiScreen extends Screen {
             float contentAlpha = LensParams.smoothstep(0.55f, 0.90f, p) * p;
             if (contentAlpha > 0.01f) {
                 enableGuiScissor(context, curX, curY, curX + curW, curY + curH);
-                renderWindowContent(context, gx, gy, guiWidth, guiHeight, smX, smY, contentAlpha);
-                disableGuiScissor(context);
+                try {
+                    renderWindowContent(context, gx, gy, guiWidth, guiHeight, smX, smY, contentAlpha);
+                } finally {
+                    disableGuiScissor(context);
+                }
             }
         } else {
             renderDirectWindow(context, gx, gy, guiWidth, guiHeight, smX, smY, 1.0f, 1.0f);
@@ -690,6 +700,7 @@ public class ClickGuiScreen extends Screen {
         this.lateMouseY = smY;
         context.getMatrices().popMatrix();
         DrawBatcher.flushPending();
+        ScissorUtil.reset();
     }
 
     private DrawContext lateContext;
@@ -718,6 +729,7 @@ public class ClickGuiScreen extends Screen {
             renderOpenColorPicker(null, lateMouseX, lateMouseY, 1.0f);
         }
         DrawBatcher.flushPending();
+        ScissorUtil.reset();
     }
 
     private void enableGuiScissor(DrawContext context, float x1, float y1, float x2, float y2) {
@@ -735,8 +747,11 @@ public class ClickGuiScreen extends Screen {
         Render2D.drawRoundedOutline(context, gx, gy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (16 * containerAlpha)));
 
         enableGuiScissor(context, gx, gy, gx + guiWidth, gy + guiHeight);
-        renderWindowContent(context, gx, gy, guiWidth, guiHeight, mouseX, mouseY, contentAlpha);
-        disableGuiScissor(context);
+        try {
+            renderWindowContent(context, gx, gy, guiWidth, guiHeight, mouseX, mouseY, contentAlpha);
+        } finally {
+            disableGuiScissor(context);
+        }
     }
 
     private void renderWindowContent(DrawContext context, float gx, float gy, float guiWidth, float guiHeight, float mouseX, float mouseY, float alpha) {

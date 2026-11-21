@@ -4,6 +4,7 @@ import egg.client.module.ModuleManager;
 import egg.client.module.render.Crosshair;
 import egg.client.module.render.NoRender;
 import egg.client.render.animation.HudAnimations;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.hud.InGameHud;
 import net.minecraft.client.render.RenderTickCounter;
@@ -37,6 +38,11 @@ public class InGameHudMixin {
 
     @Inject(method = "renderCrosshair", at = @At("HEAD"), cancellable = true)
     private void onRenderCrosshair(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc != null && mc.currentScreen != null) {
+            ci.cancel();
+            return;
+        }
         Crosshair crosshair = ModuleManager.getInstance().getModule(Crosshair.class);
         if (crosshair != null && crosshair.isEnabled()) {
             crosshair.render(context, tickCounter);

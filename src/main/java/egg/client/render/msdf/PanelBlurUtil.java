@@ -256,6 +256,13 @@ public final class PanelBlurUtil {
                     if (cullFace) GL11.glEnable(GL11.GL_CULL_FACE);
                     GL11.glDepthMask(true);
                     if (!blend) GL11.glDisable(GL11.GL_BLEND);
+                    if (ScissorUtil.hasActiveScissor()) {
+                        ScissorUtil.a box = ScissorUtil.getActiveScissor();
+                        if (box != null) {
+                            GL11.glEnable(GL11.GL_SCISSOR_TEST);
+                            GL11.glScissor(box.a, box.b, box.c, box.d);
+                        }
+                    }
 
                     GL30.glBindVertexArray(0);
                     GL20.glUseProgram(0);
