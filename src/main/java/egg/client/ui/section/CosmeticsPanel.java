@@ -17,6 +17,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
+import org.joml.Matrix3x2f;
 
 import java.util.*;
 
@@ -267,14 +268,25 @@ public class CosmeticsPanel {
             float centerY = previewBoxY + previewBoxH * 0.82f;
             int baseSize = (int) (previewBoxH * 0.44f);
 
-            int x1 = (int) (centerX - baseSize * 0.8f);
-            int y1 = (int) (centerY - baseSize * 1.8f);
-            int x2 = (int) (centerX + baseSize * 0.8f);
-            int y2 = (int) (centerY + baseSize * 0.3f);
+            Matrix3x2f mat = Render2D.getMatrix(context);
+            float actualCenterX = centerX;
+            float actualCenterY = centerY;
+            float matrixScale = 1.0f;
+            if (mat != null) {
+                actualCenterX = (mat.m00 * centerX) + (mat.m10 * centerY) + mat.m20;
+                actualCenterY = (mat.m01 * centerX) + (mat.m11 * centerY) + mat.m21;
+                matrixScale = (float) Math.hypot(mat.m00, mat.m01);
+            }
+            int scaledBaseSize = (int) Math.round(baseSize * matrixScale);
 
-            float lookX = centerX - playerYaw * 2.5f;
-            float lookY = centerY - playerPitch * 2.5f;
-            InventoryScreen.drawEntity(context, x1, y1, x2, y2, baseSize, 0.0625f, lookX, lookY, mc.player);
+            int x1 = (int) Math.round(actualCenterX - scaledBaseSize * 0.8f);
+            int y1 = (int) Math.round(actualCenterY - scaledBaseSize * 1.8f);
+            int x2 = (int) Math.round(actualCenterX + scaledBaseSize * 0.8f);
+            int y2 = (int) Math.round(actualCenterY + scaledBaseSize * 0.3f);
+
+            float lookX = actualCenterX - playerYaw * 2.5f * matrixScale;
+            float lookY = actualCenterY - playerPitch * 2.5f * matrixScale;
+            InventoryScreen.drawEntity(context, x1, y1, x2, y2, scaledBaseSize, 0.0625f, lookX, lookY, mc.player);
 
             Render2D.disableScissor(context);
         }

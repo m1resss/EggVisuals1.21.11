@@ -48,16 +48,7 @@ public final class ClientFont {
         if (font == SF_REGULAR) {
             return egg.client.render.msdf.Fonts.sfRegular;
         }
-        if (font == SF_MEDIUM) {
-            return egg.client.render.msdf.Fonts.b;
-        }
-        if (font == SF_SEMIBOLD) {
-            return egg.client.render.msdf.Fonts.ROCKSTAR_SEMIBOLD;
-        }
-        if (font == SF_BOLD) {
-            return egg.client.render.msdf.Fonts.ROCKSTAR_BOLD;
-        }
-        return egg.client.render.msdf.Fonts.ROCKSTAR_ROUND_BOLD;
+        return egg.client.render.msdf.Fonts.b;
     }
 
     private static StyleSpriteSource.Font resolveFont(StyleSpriteSource.Font font) {
@@ -92,7 +83,7 @@ public final class ClientFont {
         if (isClickGui()) {
             egg.client.render.msdf.Font msdf = resolveMsdfFont(font);
             Matrix3x2f mat = Render2D.getMatrix(context);
-            msdf.a(mat, text, x, y, 11.0f, color);
+            msdf.a(mat, text, x, y - 1.5f, 10.0f, color);
             return;
         }
         TextRenderer tr = MinecraftClient.getInstance().textRenderer;
@@ -107,7 +98,7 @@ public final class ClientFont {
         if (isClickGui()) {
             egg.client.render.msdf.Font msdf = resolveMsdfFont(font);
             Matrix3x2f mat = Render2D.getMatrix(context);
-            msdf.a(mat, text, x, y, 11.0f * scale, color);
+            msdf.a(mat, text, x, y - 1.5f * scale, 10.0f * scale, color);
             return;
         }
         context.getMatrices().pushMatrix();
@@ -122,9 +113,11 @@ public final class ClientFont {
         if (isClickGui()) {
             egg.client.render.msdf.Font msdf = resolveMsdfFont(font);
             Matrix3x2f mat = Render2D.getMatrix(context);
-            float w = msdf.a(text, 11.0f);
-            float h = msdf.a(11.0f);
-            msdf.a(mat, text, cx - w / 2.0f, cy - h / 2.0f + 0.5f, 11.0f, color);
+            float size = 10.0f;
+            float w = msdf.a(text, size);
+            float x = cx - w / 2.0f;
+            float y = cy - 5.0f;
+            msdf.a(mat, text, x, y, size, color);
             return;
         }
         TextRenderer tr = MinecraftClient.getInstance().textRenderer;
@@ -140,10 +133,11 @@ public final class ClientFont {
         if (isClickGui()) {
             egg.client.render.msdf.Font msdf = resolveMsdfFont(font);
             Matrix3x2f mat = Render2D.getMatrix(context);
-            float size = 11.0f * scale;
+            float size = 10.0f * scale;
             float w = msdf.a(text, size);
-            float h = msdf.a(size);
-            msdf.a(mat, text, cx - w / 2.0f, cy - h / 2.0f + 0.5f, size, color);
+            float x = cx - w / 2.0f;
+            float y = cy - 5.0f * scale;
+            msdf.a(mat, text, x, y, size, color);
             return;
         }
         TextRenderer tr = MinecraftClient.getInstance().textRenderer;
@@ -164,6 +158,7 @@ public final class ClientFont {
         if (isClickGui()) {
             egg.client.render.msdf.Font msdf = resolveMsdfFont(font);
             Matrix3x2f mat = Render2D.getMatrix(context);
+            float size = 10.0f;
             int len = text.length();
             float curX = x;
             int a1 = (color1 >> 24) & 0xFF;
@@ -182,8 +177,8 @@ public final class ClientFont {
                 int b = (int) (b1 * (1.0f - ratio) + b2 * ratio);
                 int col = (a << 24) | (r << 16) | (g << 8) | b;
                 String ch = String.valueOf(text.charAt(i));
-                msdf.a(mat, ch, curX, y, 11.0f, col);
-                curX += msdf.a(ch, 11.0f);
+                msdf.a(mat, ch, curX, y - 1.5f, size, col);
+                curX += msdf.a(ch, size);
             }
             return;
         }
@@ -226,7 +221,7 @@ public final class ClientFont {
     public static float getWidth(String text, StyleSpriteSource.Font font) {
         if (text == null || text.isEmpty()) return 0.0f;
         if (isClickGui()) {
-            return resolveMsdfFont(font).a(text, 11.0f);
+            return resolveMsdfFont(font).a(text, 10.0f);
         }
         TextRenderer tr = MinecraftClient.getInstance().textRenderer;
         if (tr == null) return text.length() * 6.0f;
