@@ -129,8 +129,6 @@ public class ScissorUtil {
     }
 
     private static void a(a box) {
-        GL11.glEnable(GL11.GL_SCISSOR_TEST);
-        GL11.glScissor(box.a, box.b, box.c, box.d);
     }
 
     public static final class a {

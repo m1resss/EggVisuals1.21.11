@@ -3,6 +3,8 @@ package egg.client.module.minigames.chess;
 import egg.client.render.IconRenderer;
 import egg.client.render.Render2D;
 import egg.client.render.font.ClientFont;
+import egg.client.render.msdf.ScissorUtil;
+import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
 import egg.client.util.GuiSoundManager;
@@ -90,6 +92,15 @@ public class ChessScreen extends Screen {
         renderSidePanel(context, mouseX, mouseY);
 
         super.render(context, mouseX, mouseY, delta);
+        DrawBatcher.flushPending();
+        ScissorUtil.reset();
+    }
+
+    @Override
+    public void removed() {
+        super.removed();
+        DrawBatcher.flushPending();
+        ScissorUtil.reset();
     }
 
     private void renderMainPlate(DrawContext context, int mouseX, int mouseY) {
@@ -395,7 +406,7 @@ public class ChessScreen extends Screen {
 
         historyScroll = Math.max(0.0f, Math.min(maxScroll, historyScroll));
 
-        context.enableScissor((int) x, (int) visibleY, (int) (x + w), (int) (y + h - 3.0f));
+        Render2D.enableScissor(context, x, visibleY, x + w, y + h - 3.0f);
 
         for (int t = 0; t < totalTurns; t++) {
             float rowY = visibleY + t * rowH - historyScroll;
@@ -412,7 +423,7 @@ public class ChessScreen extends Screen {
             }
         }
 
-        context.disableScissor();
+        Render2D.disableScissor(context);
 
         if (maxScroll > 0.0f) {
             float barH = Math.max(12.0f, visibleH * (visibleH / contentH));

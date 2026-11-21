@@ -113,7 +113,7 @@ public abstract class GameRendererMixin {
     )
     private void onRenderHudBeforeOverlays(RenderTickCounter tickCounter, boolean tick, CallbackInfo ci, @Local DrawContext context) {
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc == null || mc.world == null || mc.options.hudHidden || mc.getOverlay() != null || mc.currentScreen instanceof egg.client.ui.ClickGuiScreen) {
+        if (mc == null || mc.world == null || mc.options.hudHidden || mc.getOverlay() != null || mc.currentScreen instanceof egg.client.ui.ClickGuiScreen || mc.currentScreen instanceof egg.client.module.minigames.chess.ChessScreen) {
             return;
         }
         renderCustomHud(context, tickCounter);
@@ -264,6 +264,7 @@ public abstract class GameRendererMixin {
         if (mc != null && mc.currentScreen instanceof egg.client.ui.ClickGuiScreen gui) {
             gui.renderLate();
         }
+        DrawBatcher.flushPending();
         ScissorUtil.reset();
     }
 
