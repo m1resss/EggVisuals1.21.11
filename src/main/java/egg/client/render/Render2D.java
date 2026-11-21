@@ -18,12 +18,16 @@ public final class Render2D {
     }
 
     public static void enableScissor(DrawContext context, float x1, float y1, float x2, float y2) {
-        context.enableScissor((int) x1, (int) y1, (int) x2, (int) y2);
+        if (context != null) {
+            context.enableScissor((int) x1, (int) y1, (int) x2, (int) y2);
+        }
         ScissorUtil.a(getMatrix(context), x1, y1, Math.max(0.0f, x2 - x1), Math.max(0.0f, y2 - y1));
     }
 
     public static void disableScissor(DrawContext context) {
-        context.disableScissor();
+        if (context != null) {
+            context.disableScissor();
+        }
         ScissorUtil.a(getMatrix(context));
     }
 

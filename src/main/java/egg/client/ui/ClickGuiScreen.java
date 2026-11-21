@@ -534,8 +534,8 @@ public class ClickGuiScreen extends Screen {
                 }
             }
             try {
-                context.applyBlur();
-            } catch (IllegalStateException ignored) {
+                client.gameRenderer.renderBlur();
+            } catch (Throwable ignored) {
 
             }
         }
@@ -552,14 +552,16 @@ public class ClickGuiScreen extends Screen {
             int botColor = ColorUtil.rgba(dr, dg, db, Math.min(255, (int) (dimAlpha * 1.25f)));
 
             int halfH = height / 2;
-            context.fillGradient(0, 0, width, halfH, topColor, midColor);
-            context.fillGradient(0, halfH, width, height, midColor, botColor);
+            Render2D.drawGradientRect(context, 0, 0, width, halfH, 0.0f, topColor, topColor, midColor, midColor);
+            Render2D.drawGradientRect(context, 0, halfH, width, height - halfH, 0.0f, midColor, midColor, botColor, botColor);
+            DrawBatcher.flushPending();
         }
     }
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         updateAnimationProgress();
+        this.lateContext = context;
         activeCandidateModule = null;
         activeCandidateSetting = null;
         WorldTweaks wtModule = ModuleManager.getInstance().getModule(WorldTweaks.class);
@@ -621,11 +623,10 @@ public class ClickGuiScreen extends Screen {
 
         if ("Простая".equals(animMode)) {
             renderDirectWindow(context, gx, gy, guiWidth, guiHeight, smX, smY, p, p);
-            renderOpenDropdown(context, smX, smY, 1.0f);
-            updateAndRenderDeferredTooltip(context, smX, smY);
             this.lateMouseX = smX;
             this.lateMouseY = smY;
             context.getMatrices().popMatrix();
+            DrawBatcher.flushPending();
             return;
         }
 
@@ -644,14 +645,9 @@ public class ClickGuiScreen extends Screen {
             renderWindowContent(context, gx, curGy, guiWidth, guiHeight, smX, smY, alphaVal);
             disableGuiScissor(context);
 
-            renderOpenDropdown(context, smX, smY, 1.0f);
-            updateAndRenderDeferredTooltip(context, smX, smY);
             this.lateMouseX = smX;
             this.lateMouseY = smY;
             context.getMatrices().popMatrix();
-            if (openColorPickerSetting != null || colorPopupAnim > 0.01f) {
-                renderOpenColorPicker(null, lateMouseX, lateMouseY, 1.0f);
-            }
             DrawBatcher.flushPending();
             return;
         }
@@ -690,18 +686,34 @@ public class ClickGuiScreen extends Screen {
             renderDirectWindow(context, gx, gy, guiWidth, guiHeight, smX, smY, 1.0f, 1.0f);
         }
 
-        renderOpenDropdown(context, smX, smY, 1.0f);
-        updateAndRenderDeferredTooltip(context, smX, smY);
-
         this.lateMouseX = smX;
         this.lateMouseY = smY;
         context.getMatrices().popMatrix();
+        DrawBatcher.flushPending();
     }
 
+    private DrawContext lateContext;
     private double lateMouseX;
     private double lateMouseY;
 
     public void renderLate() {
+        if (lateContext != null) {
+            float scale = currentGuiScale;
+            float cx = getGuiCenterX();
+            float cy = getGuiCenterY();
+            lateContext.getMatrices().pushMatrix();
+            if (Math.abs(scale - 1.0f) > 0.001f) {
+                lateContext.getMatrices().translate(cx, cy);
+                lateContext.getMatrices().scale(scale, scale);
+                lateContext.getMatrices().translate(-cx, -cy);
+            }
+
+            renderOpenDropdown(lateContext, lateMouseX, lateMouseY, 1.0f);
+            updateAndRenderDeferredTooltip(lateContext, (float) lateMouseX, (float) lateMouseY);
+
+            lateContext.getMatrices().popMatrix();
+        }
+
         if (openColorPickerSetting != null || colorPopupAnim > 0.01f) {
             renderOpenColorPicker(null, lateMouseX, lateMouseY, 1.0f);
         }
