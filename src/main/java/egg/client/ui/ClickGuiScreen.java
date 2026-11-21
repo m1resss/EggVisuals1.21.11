@@ -231,6 +231,29 @@ public class ClickGuiScreen extends Screen {
     private SliderSetting draggingSlider = null;
     private float dragTrackX = 0.0f;
     private float dragTrackW = 100.0f;
+    private float dragStartClickX = 0.0f;
+    private float lastRawClickX = 0.0f;
+    private double dragStartValue = 0.0;
+    private float dragStartScale = 1.0f;
+    private float currentGuiScale = 1.0f;
+
+    private float getGuiBaseWidth() {
+        return Math.clamp(this.width * 0.58f, 540.0f, 600.0f);
+    }
+
+    private float getGuiBaseHeight() {
+        return Math.clamp(this.height * 0.62f, 280.0f, 320.0f);
+    }
+
+    private float getGuiCenterX() {
+        float w = getGuiBaseWidth();
+        return (float) Math.round((this.width - w) / 2.0f) + w * 0.5f;
+    }
+
+    private float getGuiCenterY() {
+        float h = getGuiBaseHeight();
+        return (float) Math.round((this.height - h) / 2.0f) + h * 0.5f;
+    }
     private Module listeningKeybindModule = null;
     private BindSetting listeningBindSetting = null;
 
@@ -294,22 +317,23 @@ public class ClickGuiScreen extends Screen {
         animStartTime = System.nanoTime();
         cascadeStarted = false;
 
-        float guiWidth = Math.clamp(width * 0.58f, 540.0f, 600.0f);
-        float guiHeight = Math.clamp(height * 0.62f, 280.0f, 320.0f);
+        currentGuiScale = ClientSettings.getGuiScale();
+        float guiWidth = getGuiBaseWidth();
+        float guiHeight = getGuiBaseHeight();
         float gx = (float) Math.round((width - guiWidth) / 2.0f);
         float gy = (float) Math.round((height - guiHeight) / 2.0f);
 
         if ("Курсор".equals(ClientSettings.getLensCenterMode()) && client != null && client.mouse != null && client.getWindow() != null) {
             double mx = client.mouse.getX() * (double) width / (double) client.getWindow().getWidth();
             double my = client.mouse.getY() * (double) height / (double) client.getWindow().getHeight();
-            float scale = ClientSettings.getGuiScale();
-            float screenCenterX = width * 0.5f;
-            float screenCenterY = height * 0.5f;
-            lensOriginX = (float) ((mx - screenCenterX) / scale + screenCenterX);
-            lensOriginY = (float) ((my - screenCenterY) / scale + screenCenterY);
+            float scale = currentGuiScale;
+            float cx = getGuiCenterX();
+            float cy = getGuiCenterY();
+            lensOriginX = (float) ((mx - cx) / scale + cx);
+            lensOriginY = (float) ((my - cy) / scale + cy);
         } else {
-            lensOriginX = gx + guiWidth / 2.0f;
-            lensOriginY = gy + guiHeight / 2.0f;
+            lensOriginX = getGuiCenterX();
+            lensOriginY = getGuiCenterY();
         }
 
         for (Module m : EggClient.getInstance().getModuleManager().getModules()) {
@@ -365,7 +389,7 @@ public class ClickGuiScreen extends Screen {
             curY += 25.0f;
         }
         if (catY >= 0.0f) {
-            float gh = Math.clamp(height * 0.62f, 280.0f, 320.0f);
+            float gh = getGuiBaseHeight();
             float viewportH = gh - startY - 4.0f;
             float topBound = startY;
             if (catY - sidebarTargetScroll < topBound) {
@@ -565,22 +589,32 @@ public class ClickGuiScreen extends Screen {
         }
         sidebarScrollOffset += (sidebarTargetScroll - sidebarScrollOffset) * 0.26f;
 
-        float guiWidth = Math.clamp(width * 0.58f, 540.0f, 600.0f);
-        float guiHeight = Math.clamp(height * 0.62f, 280.0f, 320.0f);
+        float guiWidth = getGuiBaseWidth();
+        float guiHeight = getGuiBaseHeight();
         float gx = (float) Math.round((width - guiWidth) / 2.0f);
         float gy = (float) Math.round((height - guiHeight) / 2.0f);
 
-        float scale = ClientSettings.getGuiScale();
-        float screenCenterX = width * 0.5f;
-        float screenCenterY = height * 0.5f;
-        float smX = (mouseX - screenCenterX) / scale + screenCenterX;
-        float smY = (mouseY - screenCenterY) / scale + screenCenterY;
+        float targetScale = ClientSettings.getGuiScale();
+        if (currentGuiScale <= 0.01f) {
+            currentGuiScale = targetScale;
+        } else if (Math.abs(currentGuiScale - targetScale) > 0.001f) {
+            currentGuiScale = MathHelper.lerp(0.24f, currentGuiScale, targetScale);
+            if (Math.abs(currentGuiScale - targetScale) < 0.002f) {
+                currentGuiScale = targetScale;
+            }
+        }
+        float scale = currentGuiScale;
+
+        float cx = getGuiCenterX();
+        float cy = getGuiCenterY();
+        float smX = (mouseX - cx) / scale + cx;
+        float smY = (mouseY - cy) / scale + cy;
 
         context.getMatrices().pushMatrix();
         if (Math.abs(scale - 1.0f) > 0.001f) {
-            context.getMatrices().translate(screenCenterX, screenCenterY);
+            context.getMatrices().translate(cx, cy);
             context.getMatrices().scale(scale, scale);
-            context.getMatrices().translate(-screenCenterX, -screenCenterY);
+            context.getMatrices().translate(-cx, -cy);
         }
 
         if ("Простая".equals(animMode)) {
@@ -2351,7 +2385,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             float badgeW = storedBadge[2];
             float badgeH = storedBadge[3];
 
-            float guiH = Math.clamp(height * 0.62f, 280.0f, 320.0f);
+            float guiH = getGuiBaseHeight();
             float gy = (float) Math.round((height - guiH) / 2.0f);
             float contentY = gy + 38.0f + 8.0f;
             float contentH = guiH - 38.0f - 14.0f;
@@ -2380,11 +2414,11 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         float popX = colorPopupX;
         float popY = colorPopupY;
 
-        float scale = ClientSettings.getGuiScale();
+        float scale = currentGuiScale;
         Matrix3x2f mat = null;
         if (Math.abs(scale - 1.0f) > 0.001f) {
-            float cx = this.width * 0.5f;
-            float cy = this.height * 0.5f;
+            float cx = getGuiCenterX();
+            float cy = getGuiCenterY();
             mat = new Matrix3x2f();
             mat.translate(cx, cy);
             mat.scale(scale, scale);
@@ -2752,11 +2786,12 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             return false;
         }
 
-        float scale = ClientSettings.getGuiScale();
-        float screenCenterX = this.width * 0.5f;
-        float screenCenterY = this.height * 0.5f;
-        float mouseX = (float) ((click.x() - screenCenterX) / scale + screenCenterX);
-        float mouseY = (float) ((click.y() - screenCenterY) / scale + screenCenterY);
+        this.lastRawClickX = (float) click.x();
+        float scale = currentGuiScale;
+        float cx = getGuiCenterX();
+        float cy = getGuiCenterY();
+        float mouseX = (float) ((click.x() - cx) / scale + cx);
+        float mouseY = (float) ((click.y() - cy) / scale + cy);
         int button = click.button();
 
         if (listeningBindSetting != null) {
@@ -2933,8 +2968,8 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             }
         }
 
-        float guiWidth = Math.clamp(width * 0.58f, 540.0f, 600.0f);
-        float guiHeight = Math.clamp(height * 0.62f, 280.0f, 320.0f);
+        float guiWidth = getGuiBaseWidth();
+        float guiHeight = getGuiBaseHeight();
         float gx = (float) Math.round((width - guiWidth) / 2.0f);
         float gy = (float) Math.round((height - guiHeight) / 2.0f);
 
@@ -3240,7 +3275,10 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                         draggingSlider = slider;
                         dragTrackX = settingsX;
                         dragTrackW = settingsW;
+                        dragStartClickX = this.lastRawClickX;
+                        dragStartScale = currentGuiScale;
                         updateSliderValue(slider, dragTrackX, dragTrackW, mouseX);
+                        dragStartValue = slider.get();
                         return true;
                     }
                     sY += itemH;
@@ -3391,7 +3429,10 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                     draggingSlider = slider;
                     dragTrackX = settingsX;
                     dragTrackW = settingsW;
+                    dragStartClickX = this.lastRawClickX;
+                    dragStartScale = currentGuiScale;
                     updateSliderValue(slider, dragTrackX, dragTrackW, mouseX);
+                    dragStartValue = slider.get();
                     return true;
                 }
                 sY += itemH;
@@ -3467,12 +3508,14 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         if (Math.abs(slider.get() - oldVal) > 1e-4) {
             GuiSoundManager.playSlider();
         }
-        egg.client.config.ConfigManager.save();
     }
 
     @Override
     public boolean mouseReleased(Click click) {
-        draggingSlider = null;
+        if (draggingSlider != null) {
+            egg.client.config.ConfigManager.save();
+            draggingSlider = null;
+        }
         WorldTweaksUI.mouseReleased();
         if (selectedCategory == Category.INVENTORY) {
             egg.client.ui.section.InventoryConfigPanel.mouseReleased();
@@ -3490,14 +3533,14 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
     @Override
     public boolean mouseDragged(Click click, double dx, double dy) {
-        float scale = ClientSettings.getGuiScale();
-        float screenCenterX = this.width * 0.5f;
-        float screenCenterY = this.height * 0.5f;
-        float mouseX = (float) ((click.x() - screenCenterX) / scale + screenCenterX);
-        float mouseY = (float) ((click.y() - screenCenterY) / scale + screenCenterY);
+        float scale = currentGuiScale;
+        float cx = getGuiCenterX();
+        float cy = getGuiCenterY();
+        float mouseX = (float) ((click.x() - cx) / scale + cx);
+        float mouseY = (float) ((click.y() - cy) / scale + cy);
 
         if (searchFocused && searchSelecting) {
-            float gWidth = Math.clamp(this.width * 0.58f, 540.0f, 600.0f);
+            float gWidth = getGuiBaseWidth();
             float gX = (float) Math.round((this.width - gWidth) / 2.0f);
             float sX = gX + 8.0f;
             searchCursor = getSearchCursorIndex(mouseX, sX);
@@ -3507,7 +3550,18 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             return false;
         }
         if (draggingSlider != null) {
-            updateSliderValue(draggingSlider, dragTrackX, dragTrackW, mouseX);
+            if ("Масштаб GUI".equals(draggingSlider.getName())) {
+                float physicalDeltaX = (float) click.x() - dragStartClickX;
+                float physicalTrackW = dragTrackW * Math.max(0.1f, dragStartScale);
+                double targetVal = dragStartValue + (physicalDeltaX / physicalTrackW) * (draggingSlider.getMax() - draggingSlider.getMin());
+                double oldVal = draggingSlider.get();
+                draggingSlider.set(targetVal);
+                if (Math.abs(draggingSlider.get() - oldVal) > 1e-4) {
+                    GuiSoundManager.playSlider();
+                }
+            } else {
+                updateSliderValue(draggingSlider, dragTrackX, dragTrackW, mouseX);
+            }
             return true;
         }
         WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
@@ -3550,13 +3604,13 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         if (closing || (!closing && currentAnimProgress < 0.70f)) {
             return false;
         }
-        float scale = ClientSettings.getGuiScale();
-        float screenCenterX = width * 0.5f;
-        float screenCenterY = height * 0.5f;
-        mouseX = (mouseX - screenCenterX) / scale + screenCenterX;
-        mouseY = (mouseY - screenCenterY) / scale + screenCenterY;
-        float guiW = Math.clamp(width * 0.58f, 540.0f, 600.0f);
-        float guiH = Math.clamp(height * 0.62f, 280.0f, 320.0f);
+        float scale = currentGuiScale;
+        float cx = getGuiCenterX();
+        float cy = getGuiCenterY();
+        mouseX = (mouseX - cx) / scale + cx;
+        mouseY = (mouseY - cy) / scale + cy;
+        float guiW = getGuiBaseWidth();
+        float guiH = getGuiBaseHeight();
         float guiX = (float) Math.round((width - guiW) / 2.0f);
         float guiY = (float) Math.round((height - guiH) / 2.0f);
         float collapseProgress = sidebarCollapseAnim.getValue();

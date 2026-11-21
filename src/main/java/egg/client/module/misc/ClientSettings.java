@@ -44,6 +44,10 @@ public class ClientSettings extends Module {
         return accentColor;
     }
 
+    public SliderSetting getGuiScaleSetting() {
+        return guiScale;
+    }
+
     public static int getOpenKey() {
         if (EggClient.getInstance() == null || EggClient.getInstance().getModuleManager() == null) {
             return GLFW.GLFW_KEY_RIGHT_SHIFT;
