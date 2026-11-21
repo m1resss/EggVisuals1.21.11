@@ -31,9 +31,7 @@ public class CosmeticMeshGuiRenderState implements SimpleGuiElementRenderState {
         this.quadVertices = quadVertices;
         this.color = color;
         this.scissorArea = scissorArea;
-        ScreenRect rect = new ScreenRect((int) Math.floor(x), (int) Math.floor(y), Math.max(1, (int) Math.ceil(w)), Math.max(1, (int) Math.ceil(h)));
-        ScreenRect transformed = rect.transformEachVertex(this.pose);
-        this.bounds = scissorArea != null ? scissorArea.intersection(transformed) : transformed;
+        this.bounds = new ScreenRect((int) Math.floor(x), (int) Math.floor(y), Math.max(1, (int) Math.ceil(w)), Math.max(1, (int) Math.ceil(h)));
 
         MinecraftClient mc = MinecraftClient.getInstance();
         AbstractTexture tex = mc.getTextureManager().getTexture(texture);

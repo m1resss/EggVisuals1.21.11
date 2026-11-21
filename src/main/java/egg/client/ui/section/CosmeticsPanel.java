@@ -200,7 +200,10 @@ public class CosmeticsPanel {
                     float pSize = cardW - 20.0f;
                     float pX = cardX + 10.0f;
                     float pY = cardY + 6.0f;
-                    mgr.renderGuiPreview(context, asset.id(), pX, pY, pSize, 1.0f);
+                    if (pY < y + h && pY + pSize > gridTop) {
+                        net.minecraft.client.gui.ScreenRect cardsScissor = new net.minecraft.client.gui.ScreenRect((int) x, (int) gridTop, Math.max(1, (int) mainW), Math.max(1, (int) (y + h - gridTop))).transform(context.getMatrices());
+                        mgr.renderGuiPreview(context, asset.id(), pX, pY, pSize, 1.0f, cardsScissor);
+                    }
                 }
 
                 float bottomH = 22.0f;

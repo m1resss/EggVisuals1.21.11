@@ -92,15 +92,11 @@ public class ChessScreen extends Screen {
         renderSidePanel(context, mouseX, mouseY);
 
         super.render(context, mouseX, mouseY, delta);
-        DrawBatcher.flushPending();
-        ScissorUtil.reset();
     }
 
     @Override
     public void removed() {
         super.removed();
-        DrawBatcher.flushPending();
-        ScissorUtil.reset();
     }
 
     private void renderMainPlate(DrawContext context, int mouseX, int mouseY) {

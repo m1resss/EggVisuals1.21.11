@@ -628,8 +628,6 @@ public class ClickGuiScreen extends Screen {
             this.lateMouseX = smX;
             this.lateMouseY = smY;
             context.getMatrices().popMatrix();
-            DrawBatcher.flushPending();
-            ScissorUtil.reset();
             return;
         }
 
@@ -654,8 +652,6 @@ public class ClickGuiScreen extends Screen {
             this.lateMouseX = smX;
             this.lateMouseY = smY;
             context.getMatrices().popMatrix();
-            DrawBatcher.flushPending();
-            ScissorUtil.reset();
             return;
         }
 
@@ -699,8 +695,6 @@ public class ClickGuiScreen extends Screen {
         this.lateMouseX = smX;
         this.lateMouseY = smY;
         context.getMatrices().popMatrix();
-        DrawBatcher.flushPending();
-        ScissorUtil.reset();
     }
 
     private DrawContext lateContext;
@@ -728,8 +722,6 @@ public class ClickGuiScreen extends Screen {
         if (openColorPickerSetting != null || colorPopupAnim > 0.01f) {
             renderOpenColorPicker(null, lateMouseX, lateMouseY, 1.0f);
         }
-        DrawBatcher.flushPending();
-        ScissorUtil.reset();
     }
 
     private void enableGuiScissor(DrawContext context, float x1, float y1, float x2, float y2) {

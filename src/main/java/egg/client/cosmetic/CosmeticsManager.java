@@ -1124,10 +1124,6 @@ public final class CosmeticsManager  {
 
         if (itemId == null || itemId.isBlank() || size <= 0.0f || alpha <= 0.0f) return;
 
-        if (scissorArea == null && context != null && context.scissorStack != null) {
-            scissorArea = context.scissorStack.peekLast();
-        }
-
         ensureIndex();
 
         Asset asset = this.assets.get(itemId.toLowerCase(Locale.ROOT));

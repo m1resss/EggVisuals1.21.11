@@ -77,9 +77,7 @@ public final class DrawBatcher {
         try (RenderPass pass = encoder.createRenderPass(
                 () -> "delta:2d_batch",
                 client.getFramebuffer().getColorAttachmentView(),
-                OptionalInt.empty(),
-                client.getFramebuffer().getDepthAttachmentView(),
-                OptionalDouble.empty())) {
+                OptionalInt.empty())) {
 
             if (ScissorUtil.hasActiveScissor()) {
                 ScissorUtil.a box = ScissorUtil.getActiveScissor();
@@ -120,9 +118,7 @@ public final class DrawBatcher {
         try (RenderPass pass = encoder.createRenderPass(
                 () -> "delta:2d_immediate",
                 client.getFramebuffer().getColorAttachmentView(),
-                OptionalInt.empty(),
-                client.getFramebuffer().getDepthAttachmentView(),
-                OptionalDouble.empty())) {
+                OptionalInt.empty())) {
 
             if (ScissorUtil.hasActiveScissor()) {
                 ScissorUtil.a box = ScissorUtil.getActiveScissor();

@@ -1,10 +1,10 @@
 package egg.client.render;
 
 import egg.client.module.Category;
-import egg.client.render.msdf.pipeline.DrawBatcher;
-import net.minecraft.client.gl.RenderPipelines;
+import egg.client.render.msdf.Draw2DProcessor;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.util.Identifier;
+import org.joml.Matrix3x2f;
 
 public final class IconRenderer {
     private static final Identifier CAT_MOVEMENT = Identifier.of("egg", "textures/icons/cat_movement.png");
@@ -90,11 +90,7 @@ public final class IconRenderer {
         if (context == null || texture == null || width <= 0.0f || height <= 0.0f) return;
         int alpha = (color >> 24) & 0xFF;
         if (alpha <= 0) return;
-        DrawBatcher.flushPending();
-        context.getMatrices().pushMatrix();
-        context.getMatrices().translate(x, y);
-        context.getMatrices().scale(width / (float) texW, height / (float) texH);
-        context.drawTexture(RenderPipelines.GUI_TEXTURED, texture, 0, 0, 0.0f, 0.0f, texW, texH, texW, texH, texW, texH, color);
-        context.getMatrices().popMatrix();
+        Matrix3x2f mat = Render2D.getMatrix(context);
+        Draw2DProcessor.INSTANCE.a(mat, texture, x, y, width, height, 0.0f, color);
     }
 }
