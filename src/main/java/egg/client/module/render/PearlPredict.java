@@ -5,7 +5,9 @@ import egg.client.EggClient;
 import egg.client.config.ConfigManager;
 import egg.client.module.Category;
 import egg.client.module.Module;
+import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.SliderSetting;
+import egg.client.render.hud.HudContextMenu;
 import egg.client.render.hud.HudSnapHelper;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Fonts;
@@ -13,6 +15,7 @@ import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.render.world.PearlCameraRenderer;
 import egg.client.render.world.PearlTrajectory;
 import egg.client.ui.theme.Theme;
+import egg.client.util.ColorUtil;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.render.RenderTickCounter;
@@ -22,35 +25,43 @@ import net.minecraft.entity.projectile.thrown.EnderPearlEntity;
 import net.minecraft.item.Items;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
 import org.joml.Vector2f;
 import org.joml.Vector4f;
 
-import java.util.Locale;
-
 public final class PearlPredict extends Module {
     private static final String ID = "pearl_predict";
     private static final Identifier PEARL_ICON = Identifier.ofVanilla("textures/item/ender_pearl.png");
-    private static final float RADIUS = 9.0f;
+    private static final float RADIUS = 7.0f;
+    private static final float WIDTH = 146.0f;
+    private static final float INSET = 4.0f;
+    private static final float HEADER_HEIGHT = 16.0f;
+    private static final float CAMERA_WIDTH = WIDTH - 2 * INSET;
+    private static final float CAMERA_HEIGHT = CAMERA_WIDTH * PearlCameraRenderer.HEIGHT / PearlCameraRenderer.WIDTH;
+    private static final float HEIGHT = HEADER_HEIGHT + CAMERA_HEIGHT + INSET;
+    private static final double SCALE_STEP = 0.05;
 
-    private final SliderSetting scale = new SliderSetting("Масштаб", 1.0, 0.65, 1.5, 0.05, "Размер окна камеры");
+    private final SliderSetting scale = new SliderSetting("Масштаб", 1.0, 0.65, 1.5, SCALE_STEP, "Размер окна камеры");
+    private final SliderSetting opacity = new SliderSetting("Непрозрачность", 65, 10, 100, 5, "Непрозрачность фона окна (%)");
+    private final BooleanSetting hudBlur = new BooleanSetting("Размытие фона", true, "Размывать фон окна при включённом размытии HUD");
+    private final BooleanSetting hudGradient = new BooleanSetting("Градиент HUD", true, "Использовать градиент темы HUD на фоне окна");
+    private final SliderSetting gradientStrength = new SliderSetting("Сила градиента", 60, 5, 100, 5, "Интенсивность градиента");
+    private final BooleanSetting showMarker = new BooleanSetting("Метка попадания", true, "Показывать предполагаемую точку попадания");
     private final SliderSetting posX = new SliderSetting("X", 0.97, 0.0, 1.0, 0.001, "Позиция X");
     private final SliderSetting posY = new SliderSetting("Y", 0.18, 0.0, 1.0, 0.001, "Позиция Y");
     private final PearlCameraRenderer camera = new PearlCameraRenderer();
+    private final HudContextMenu contextMenu = new HudContextMenu("PearlPredict");
 
     private ClientWorld world;
     private EnderPearlEntity pearl;
     private int lastTrackedTick = -1;
-    private Vec3d impact;
     private Vector2f pearlMarker;
     private Vector2f marker;
     private boolean flight;
     private boolean available;
     private boolean failed;
-    private double distance;
-    private int remainingTicks;
+    private boolean hasImpact;
     private HudSnapHelper.HudElementBounds bounds;
     private boolean dragging;
     private double dragX;
@@ -60,12 +71,17 @@ public final class PearlPredict extends Module {
         super("PearlPredict", "Показывает место попадания и полёт жемчуга края в окне камеры", Category.ESP);
         posX.setVisible(() -> false);
         posY.setVisible(() -> false);
-        addSettings(scale, posX, posY);
+        gradientStrength.setVisible(hudGradient::isEnabled);
+        contextMenu.addToggle("Размытие фона", hudBlur::isEnabled, hudBlur::toggle);
+        contextMenu.addToggle("Градиент HUD", hudGradient::isEnabled, hudGradient::toggle);
+        contextMenu.addToggle("Метка попадания", showMarker::isEnabled, showMarker::toggle);
+        addSettings(scale, opacity, hudBlur, hudGradient, gradientStrength, showMarker, posX, posY);
     }
 
     @Override
     public void onDisable() {
         camera.close();
+        contextMenu.close();
         world = null;
         pearl = null;
         lastTrackedTick = -1;
@@ -76,7 +92,7 @@ public final class PearlPredict extends Module {
 
     public void capture(RenderTickCounter ticks, GpuBufferSlice fog, Vector4f fogColor, PearlCameraRenderer.TerrainPass terrain) {
         available = false;
-        impact = null;
+        hasImpact = false;
         marker = null;
         pearlMarker = null;
         flight = false;
@@ -85,8 +101,13 @@ public final class PearlPredict extends Module {
             lastTrackedTick = -1;
             world = mc.world;
         }
+        boolean editing = mc.currentScreen instanceof ChatScreen;
+        if (!editing) {
+            if (contextMenu.isOpen()) contextMenu.close();
+            finishDrag(0);
+        }
         if (world == null || mc.player == null || mc.options.hudHidden || mc.getOverlay() != null
-                || (mc.currentScreen != null && !(mc.currentScreen instanceof ChatScreen))) {
+                || (mc.currentScreen != null && !editing)) {
             bounds = null;
             dragging = false;
             return;
@@ -107,7 +128,7 @@ public final class PearlPredict extends Module {
 
         flight = pearl != null;
         if (!flight && !holding) {
-            if (!(mc.currentScreen instanceof ChatScreen)) bounds = null;
+            if (!editing) bounds = null;
             return;
         }
 
@@ -120,9 +141,8 @@ public final class PearlPredict extends Module {
         }
         Vec3d simulationStart = flight ? pearl.getEntityPos() : start;
         PearlTrajectory trajectory = PearlTrajectory.predict(world, source, mc.player, simulationStart, velocity);
-        impact = trajectory.impact();
-        distance = impact == null ? 0.0 : mc.player.getEntityPos().distanceTo(impact);
-        remainingTicks = trajectory.points().size() - 1;
+        Vec3d impact = trajectory.impact();
+        hasImpact = impact != null;
         if (failed || (!flight && impact == null)) return;
 
         Vec3d target = flight ? start.add(0, 0.13, 0) : impact;
@@ -147,7 +167,7 @@ public final class PearlPredict extends Module {
 
         try {
             available = camera.render(new PearlCameraRenderer.View(cameraPosition, focus), ticks, fog, fogColor, terrain);
-            if (available && impact != null) marker = camera.project(impact);
+            if (available && hasImpact && showMarker.isEnabled()) marker = camera.project(impact);
             if (available && flight) pearlMarker = camera.project(target);
         } catch (RuntimeException exception) {
             EggClient.LOGGER.warn("PearlPredict camera capture failed", exception);
@@ -168,10 +188,9 @@ public final class PearlPredict extends Module {
 
         float screenWidth = mc.getWindow().getScaledWidth();
         float screenHeight = mc.getWindow().getScaledHeight();
-        float s = Math.min(scale.getValueFloat(), Math.min(screenWidth / 184.0f, screenHeight / 145.0f));
-        float width = 172 * s;
-        float viewHeight = 90 * s;
-        float height = 129 * s;
+        float s = Math.min(scale.getValueFloat(), Math.min(screenWidth / (WIDTH + 12), screenHeight / (HEIGHT + 12)));
+        float width = WIDTH * s;
+        float height = HEIGHT * s;
         float maxX = Math.max(1, screenWidth - width);
         float maxY = Math.max(1, screenHeight - height);
         HudSnapHelper.SnapResult snap = null;
@@ -187,23 +206,31 @@ public final class PearlPredict extends Module {
         Draw2DProcessor draw = Draw2DProcessor.INSTANCE;
         float radius = RADIUS * s;
         int accent = Theme.getAccent();
-        draw.drawGlow(null, x, y, width, height, radius, 0x6E000000, 8 * s);
-        if (Interface.isHudBlurEnabled()) draw.drawPanelBlur(null, x, y, width, height, radius, 1);
-        draw.drawRect(null, x, y, width, height, radius, (Theme.getCardBg() & 0xFFFFFF) | 0xDB000000);
-        draw.drawOutline(null, x, y, width, height, radius, 0.8f, 0x18FFFFFF);
-        draw.drawRect(null, x + 8 * s, y + 9 * s, 4 * s, 4 * s, 2 * s, accent);
-        Fonts.ROCKSTAR_SEMIBOLD.a(null, getName(), x + 17 * s, y + 7 * s, 8 * s, Theme.TEXT_TITLE);
-        String state = flight ? "В полёте" : "Прогноз";
-        float stateSize = 6.8f * s;
-        Fonts.sfRegular.a(null, state, x + width - 8 * s - Fonts.sfRegular.a(state, stateSize), y + 8 * s, stateSize, Theme.TEXT_SUB);
+        float alpha = opacity.getValueFloat() / 100;
+        draw.drawGlow(null, x, y, width, height, radius, ColorUtil.withAlpha(0xFF000000, Math.round(65 * alpha)), 6 * s);
+        if (hudBlur.isEnabled() && Interface.isHudBlurEnabled()) {
+            draw.drawPanelBlur(null, x, y, width, height, radius, alpha);
+        }
+        draw.drawRect(null, x, y, width, height, radius, ColorUtil.withAlpha(Theme.getCardBg(), Math.round(200 * alpha)));
+        if (hudGradient.isEnabled()) {
+            Interface iface = Interface.getInstance();
+            float strength = gradientStrength.getValueFloat();
+            int color = iface != null ? iface.computeHudGradientColor(strength, alpha)
+                    : ColorUtil.withAlpha(accent, Math.round(strength * 0.45f * alpha));
+            draw.drawGradient(null, x, y, width, height, radius, color, 0, 0, color);
+        }
+        draw.drawOutline(null, x, y, width, height, radius, 0.8f, ColorUtil.withAlpha(0xFFFFFFFF, Math.round(32 * alpha)));
+        Fonts.ROCKSTAR_SEMIBOLD.a(null, getName(), x + 7 * s, y + 4 * s, 7.5f * s, Theme.TEXT_TITLE);
 
-        float vx = x + 6 * s;
-        float vy = y + 20 * s;
-        float vw = width - 12 * s;
-        draw.drawRect(null, vx, vy, vw, viewHeight, 6 * s, 0xFF141519);
+        float vx = x + INSET * s;
+        float vy = y + HEADER_HEIGHT * s;
+        float vw = CAMERA_WIDTH * s;
+        float viewHeight = CAMERA_HEIGHT * s;
+        float viewRadius = 4 * s;
+        if (!available) draw.drawRect(null, vx, vy, vw, viewHeight, viewRadius, 0xFF141519);
         DrawBatcher.flushPending();
         if (available && camera.getTexture() != null) {
-            draw.getTexturePipeline().drawTexture(camera.getTexture(), vx, vy, vw, viewHeight, 6 * s);
+            draw.getTexturePipeline().drawTexture(camera.getTexture(), vx, vy, vw, viewHeight, viewRadius);
             DrawBatcher.flushPending();
             if (marker != null) {
                 float mx = vx + vw * marker.x;
@@ -216,22 +243,11 @@ public final class PearlPredict extends Module {
                         vy + viewHeight * pearlMarker.y - 4 * s, 8 * s, 8 * s, 0, 0, 1, 1, 0xFFFFFFFF, 0, 1);
             }
         } else {
-            String message = failed || impact != null || flight ? "Камера недоступна"
-                    : editing ? "Возьмите жемчуг края" : "Нет точки попадания";
+            String message = failed || hasImpact || flight ? "Нет изображения"
+                    : editing && !isHoldingPearl() ? "Возьмите жемчуг" : "Нет точки попадания";
             float size = 7.6f * s;
             Fonts.sfRegular.a(null, message, vx + (vw - Fonts.sfRegular.a(message, size)) / 2,
                     vy + viewHeight / 2 - 3 * s, size, Theme.TEXT_SUB);
-        }
-
-        if (impact != null) {
-            BlockPos block = BlockPos.ofFloored(impact);
-            String coords = block.getX() + " / " + block.getY() + " / " + block.getZ();
-            String time = String.format(Locale.ROOT, "%.1f м  ·  %.1f с", distance, remainingTicks / 20.0);
-            float size = 7.0f * s;
-            Fonts.sfRegular.a(null, coords, x + 8 * s, y + 116 * s, size, Theme.TEXT_TITLE);
-            Fonts.sfRegular.a(null, time, x + width - 8 * s - Fonts.sfRegular.a(time, size), y + 116 * s, size, Theme.TEXT_SUB);
-        } else {
-            Fonts.sfRegular.a(null, "Точка попадания неизвестна", x + 8 * s, y + 116 * s, 7 * s, Theme.TEXT_SUB);
         }
 
         if (snap != null) {
@@ -240,14 +256,28 @@ public final class PearlPredict extends Module {
         } else if (editing && contains(mouseX, mouseY)) {
             HudSnapHelper.renderHoverBadge(context, x, y, width, height, radius, Math.round(scale.getValueFloat() * 100) + "%");
         }
+        if (editing && contextMenu.isOpen()) contextMenu.render(context, mouseX, mouseY);
         DrawBatcher.flushPending();
     }
 
-    public boolean startDrag(double mouseX, double mouseY, int button) {
-        if (button != 0 || !contains(mouseX, mouseY)) return false;
+    public boolean onChatMouseClicked(double mouseX, double mouseY, int button) {
+        if (contextMenu.isOpen() && contextMenu.mouseClicked(mouseX, mouseY, button)) return true;
+        if (!contains(mouseX, mouseY)) return false;
+        if (button == 1) {
+            contextMenu.openSmart(ID, bounds.x(), bounds.y(), bounds.w(), bounds.h(), (float) mouseX, (float) mouseY, scale.getValueFloat());
+            return true;
+        }
+        if (button != 0) return false;
         dragging = true;
         dragX = mouseX - bounds.x();
         dragY = mouseY - bounds.y();
+        return true;
+    }
+
+    public boolean onMouseScrolled(double mouseX, double mouseY, double amount) {
+        if (dragging || contextMenu.isOpen() || amount == 0 || !contains(mouseX, mouseY)) return false;
+        scale.setValue(scale.getValue() + Math.copySign(SCALE_STEP, amount));
+        ConfigManager.save();
         return true;
     }
 

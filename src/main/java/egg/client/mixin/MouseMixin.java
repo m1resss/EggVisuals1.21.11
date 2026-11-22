@@ -164,6 +164,12 @@ public class MouseMixin {
             float mouseX = (float) client.mouse.getX() * (float) client.getWindow().getScaledWidth() / (float) client.getWindow().getWidth();
             float mouseY = (float) client.mouse.getY() * (float) client.getWindow().getScaledHeight() / (float) client.getWindow().getHeight();
 
+            egg.client.module.render.PearlPredict pearlPredict = ModuleManager.getInstance().getModule(egg.client.module.render.PearlPredict.class);
+            if (pearlPredict != null && pearlPredict.isEnabled() && pearlPredict.onMouseScrolled(mouseX, mouseY, vertical)) {
+                ci.cancel();
+                return;
+            }
+
             egg.client.module.render.Interface iface = ModuleManager.getInstance().getModule(egg.client.module.render.Interface.class);
             if (iface != null && iface.isEnabled()) {
                 if (iface.onMouseScrolled(mouseX, mouseY, vertical)) {

@@ -51,10 +51,6 @@ public class ChatScreenMixin {
 
     @Inject(method = "render", at = @At("TAIL"))
     private void onRenderChatScreenTail(DrawContext context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
-        PearlPredict pearlPredict = ModuleManager.getInstance().getModule(PearlPredict.class);
-        if (pearlPredict != null && pearlPredict.isEnabled()) {
-            pearlPredict.render(context, true, mouseX, mouseY);
-        }
         Interface iface = ModuleManager.getInstance().getModule(Interface.class);
         if (iface != null && iface.isEnabled()) {
             iface.renderChatOverlay(context, mouseX, mouseY);
@@ -83,12 +79,16 @@ public class ChatScreenMixin {
         if (tracker != null && tracker.isEnabled()) {
             tracker.renderChatOverlay(context, mouseX, mouseY);
         }
+        PearlPredict pearlPredict = ModuleManager.getInstance().getModule(PearlPredict.class);
+        if (pearlPredict != null && pearlPredict.isEnabled()) {
+            pearlPredict.render(context, true, mouseX, mouseY);
+        }
     }
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void onChatMouseClicked(Click click, boolean bl, CallbackInfoReturnable<Boolean> cir) {
         PearlPredict pearlPredict = ModuleManager.getInstance().getModule(PearlPredict.class);
-        if (pearlPredict != null && pearlPredict.isEnabled() && pearlPredict.startDrag(click.x(), click.y(), click.button())) {
+        if (pearlPredict != null && pearlPredict.isEnabled() && pearlPredict.onChatMouseClicked(click.x(), click.y(), click.button())) {
             cir.setReturnValue(true);
             return;
         }
