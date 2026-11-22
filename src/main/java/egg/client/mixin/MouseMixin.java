@@ -89,6 +89,11 @@ public class MouseMixin {
             float mouseY = (float) client.mouse.getY() * (float) client.getWindow().getScaledHeight() / (float) client.getWindow().getHeight();
 
             if (action == GLFW.GLFW_RELEASE) {
+                egg.client.module.render.PearlPredict pearlPredict = ModuleManager.getInstance().getModule(egg.client.module.render.PearlPredict.class);
+                if (pearlPredict != null && pearlPredict.isEnabled()) {
+                    pearlPredict.finishDrag(button);
+                }
+
                 egg.client.module.render.TargetHUD targetHUD = ModuleManager.getInstance().getModule(egg.client.module.render.TargetHUD.class);
                 if (targetHUD != null && targetHUD.isEnabled()) {
                     targetHUD.onChatMouseReleased(mouseX, mouseY, button);

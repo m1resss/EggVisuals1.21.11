@@ -36,6 +36,7 @@
     "WorldMixin",
     "WeatherRenderingMixin",
     "WorldRendererMixin",
+    "PearlSectionRenderMixin",
     "BlockColorsMixin",
     "PlayerEntityRendererMixin",
     "PlayerEntityModelMixin",

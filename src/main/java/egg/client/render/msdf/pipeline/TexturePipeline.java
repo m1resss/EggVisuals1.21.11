@@ -255,6 +255,10 @@ public class TexturePipeline implements DrawBatcher.Batched {
         }
     }
 
+    public void drawTexture(GpuTextureView view, float x, float y, float width, float height, float radius) {
+        queueDraw(view, x, y, width, height, 0.0f, 1.0f, 1.0f, 0.0f, 0xFFFFFFFF, radius, 1.0f, 0.0f, PIPELINE);
+    }
+
     public void drawBlurTexture(GpuTextureView blurView, float x, float y, float width, float height,
                                 float[] radii, float alpha) {
         MinecraftClient client = MinecraftClient.getInstance();

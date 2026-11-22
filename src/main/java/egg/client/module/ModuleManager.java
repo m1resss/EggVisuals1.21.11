@@ -85,6 +85,7 @@ public class ModuleManager {
         register(new TotemPop());
 
         register(new Trajectories());
+        register(new PearlPredict());
 
         register(new CustomHitbox());
 

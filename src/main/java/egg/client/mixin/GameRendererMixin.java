@@ -210,6 +210,11 @@ public abstract class GameRendererMixin {
             nameTags.render2D(context, tickCounter);
         }
 
+        PearlPredict pearlPredict = ModuleManager.getInstance().getModule(PearlPredict.class);
+        if (pearlPredict != null && pearlPredict.isEnabled()) {
+            pearlPredict.render(context, false, 0, 0);
+        }
+
         WaypointManager.getInstance().render(context);
 
         LethalZone lethalZone = ModuleManager.getInstance().getModule(LethalZone.class);

@@ -5,6 +5,7 @@ import egg.client.module.render.ArmorHUD;
 import egg.client.module.render.Cooldowns;
 import egg.client.module.render.Interface;
 import egg.client.module.render.PotionHUD;
+import egg.client.module.render.PearlPredict;
 import egg.client.module.render.TargetHUD;
 import egg.client.module.render.Keybinds;
 import egg.client.module.render.EventTracker;
@@ -85,6 +86,12 @@ public class HudSnapHelper {
         EventTracker tracker = ModuleManager.getInstance().getModule(EventTracker.class);
         if (tracker != null && tracker.isEnabled() && !"event_tracker".equals(currentId) && tracker.getLastW() > 10.0f) {
             list.add(new HudElementBounds("event_tracker", "Ивенты", tracker.getLastX(), tracker.getLastY(), tracker.getLastW(), tracker.getLastH()));
+        }
+
+        PearlPredict pearlPredict = ModuleManager.getInstance().getModule(PearlPredict.class);
+        if (pearlPredict != null && pearlPredict.isEnabled()) {
+            HudElementBounds pearl = pearlPredict.getBounds();
+            if (pearl != null && !pearl.id().equals(currentId)) list.add(pearl);
         }
 
         return list;
