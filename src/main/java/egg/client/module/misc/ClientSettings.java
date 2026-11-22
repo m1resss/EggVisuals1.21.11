@@ -31,12 +31,23 @@ public class ClientSettings extends Module {
     private final BooleanSetting guiShadow = new BooleanSetting("Window Shadow", true, "Мягкая тень вокруг окна GUI");
     private final BooleanSetting scrollMotionBlur = new BooleanSetting("Scroll Motion Blur", true, "Кинематографичный моушен блюр при скролле списка модулей");
 
+    private final BooleanSetting coolMenu = new BooleanSetting("Холодная тема", false, "Холодная палитра ClickGUI");
+
+    public boolean isCoolMenu() {
+        return coolMenu.isEnabled();
+    }
+
+    public void toggleCoolMenu() {
+        coolMenu.toggle();
+    }
+
     public ClientSettings() {
         super("ClientSettings", "Настройки интерфейса и визуальных эффектов", Category.SETTINGS);
+        coolMenu.setVisible(() -> false);
         addSettings(
                 openKey, accentColor, guiScale, cursorGlow, dotGrid,
                 openAnimMode, lensCenterMode, smoothAnimations, animSpeed, openSoundVolume,
-                guiBlur, blurStrength, guiBgOpacity, screenDimOpacity, guiShadow, scrollMotionBlur
+                guiBlur, blurStrength, guiBgOpacity, screenDimOpacity, guiShadow, scrollMotionBlur, coolMenu
         );
     }
 

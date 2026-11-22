@@ -184,17 +184,24 @@ public class ClickGuiScreen extends Screen {
     private static final float SIDEBAR_WIDTH = 128.0f;
     private static final float WINDOW_RADIUS = 10.0f;
     private static final float CARD_RADIUS = 7.0f;
-    private static final int CARD_SURFACE = 0xFF191C24;
-    private static final int CARD_HOVER = 0xFF222631;
+    private final Animation menuPalette = new Animation(0.0f, 380L, Easing.EASE_IN_OUT_QUART);
     private static final float NAV_ROW_HEIGHT = 22.0f;
     private static final float NAV_ROW_STEP = 28.0f;
 
-    private static int windowSurface() {
-        return ColorUtil.withAlpha(0xFF11141B, ColorUtil.getAlpha(Theme.getWindowBg()));
+    private int windowSurface() {
+        return ColorUtil.withAlpha(palette(0xFF17181C, 0xFF182334), ColorUtil.getAlpha(Theme.getWindowBg()));
     }
 
-    private static int sidebarSurface() {
-        return ColorUtil.withAlpha(0xFF0C0F16, ColorUtil.getAlpha(Theme.getSidebarBg()));
+    private int sidebarSurface() {
+        return ColorUtil.withAlpha(palette(0xFF101116, 0xFF101A2A), ColorUtil.getAlpha(Theme.getSidebarBg()));
+    }
+
+    private int palette(int graphite, int cool) {
+        return ColorUtil.interpolate(graphite, cool, menuPalette.getValue());
+    }
+
+    private int cardSurface() {
+        return palette(0xFF1E2026, 0xFF202E43);
     }
 
     private static float navigationStartY(float top, float collapseProgress) {
@@ -239,11 +246,11 @@ public class ClickGuiScreen extends Screen {
     private float currentGuiScale = 1.0f;
 
     private float getGuiBaseWidth() {
-        return Math.clamp(this.width * 0.64f, 500.0f, 630.0f);
+        return Math.clamp(this.width * 0.79f, Math.min(510.0f, this.width), 790.0f);
     }
 
     private float getGuiBaseHeight() {
-        return Math.clamp(this.height * 0.73f, 268.0f, 362.0f);
+        return Math.clamp(this.height * 0.82f, Math.min(280.0f, this.height), 442.0f);
     }
 
     private float getGuiCenterX() {
@@ -543,6 +550,8 @@ public class ClickGuiScreen extends Screen {
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         updateAnimationProgress();
         this.lateContext = context;
+        ClientSettings settings = ModuleManager.getInstance().getModule(ClientSettings.class);
+        menuPalette.setTarget(settings != null && settings.isCoolMenu() ? 1.0f : 0.0f);
         activeCandidateModule = null;
         activeCandidateSetting = null;
         WorldTweaks wtModule = ModuleManager.getInstance().getModule(WorldTweaks.class);
@@ -900,7 +909,7 @@ public class ClickGuiScreen extends Screen {
             float iconX = MathHelper.lerp(collapseProgress, x + 8.0f + 7.0f, x + (width - iconSize) / 2.0f);
             float iconY = curItemY + (itemH - iconSize) / 2.0f;
             int iconCol = isSelected ? ColorUtil.withAlphaFloat(Theme.getAccent(), listAlpha) : finalColor;
-            IconRenderer.drawCategoryIcon(context, cat, iconX, iconY, iconSize, iconCol);
+            drawNavigationIcon(context, cat, iconX, iconY, iconSize, iconCol);
 
             float textAlpha = Math.max(0.0f, 1.0f - collapseProgress * 2.0f) * listAlpha;
             if (textAlpha > 0.01f && !FpsBenchmark.overrideNoText) {
@@ -958,6 +967,58 @@ public class ClickGuiScreen extends Screen {
         }
 
         IconRenderer.drawCollapseIcon(context, glyphX + glyphW / 2.0f, glyphY + glyphH / 2.0f, collapseProgress > 0.5f, glyphCol);
+    }
+
+    private static void drawPaletteIcon(DrawContext context, float x, float y, float blend, float alpha) {
+        int moon = ColorUtil.withAlphaFloat(0xFFE3E6EF, (1 - blend) * alpha);
+        drawIconPath(context, x - 6, y - 6, 1, moon, 7, 1, 4, 2, 2, 5, 2, 8, 4, 11, 8, 11, 11, 8, 11, 6, 9, 7, 7, 6, 6, 4, 7, 1);
+        int sun = ColorUtil.withAlphaFloat(0xFFFFD196, blend * alpha);
+        Render2D.drawCircleOutline(context, x, y, 2.7f, 0.9f, sun);
+        for (int ray = 0; ray < 8; ray++) {
+            double angle = ray * Math.PI / 4 + (1 - blend) * Math.PI / 3;
+            float dx = (float) Math.cos(angle);
+            float dy = (float) Math.sin(angle);
+            Render2D.drawLineRotated(context, x + dx * 4, y + dy * 4, x + dx * 6, y + dy * 6, sun, 0.9f);
+        }
+    }
+
+    private static void drawNavigationIcon(DrawContext context, Category category, float x, float y, float size, int color) {
+        float unit = size / 12;
+        switch (category) {
+            case MOVEMENT -> {
+                drawIconPath(context, x, y, unit, color, 2, 5, 6, 1, 10, 5);
+                drawIconPath(context, x, y, unit, color, 2, 10, 6, 6, 10, 10);
+            }
+            case ESP -> {
+                drawIconPath(context, x, y, unit, color, 1, 6, 3, 4, 6, 3, 9, 4, 11, 6, 9, 8, 6, 9, 3, 8, 1, 6);
+                Render2D.drawCircle(context, x + 6 * unit, y + 6 * unit, 1.15f * unit, color);
+            }
+            case INVENTORY -> {
+                drawIconPath(context, x, y, unit, color, 1, 4, 11, 4, 10, 10, 2, 10, 1, 4);
+                drawIconPath(context, x, y, unit, color, 4, 4, 4, 2, 8, 2, 8, 4);
+            }
+            case MISC -> drawIconPath(context, x, y, unit, color, 6, 1, 10, 3, 10, 9, 6, 11, 2, 9, 2, 3, 6, 1);
+            case COSMETICS -> drawIconPath(context, x, y, unit, color, 6, 1, 10, 5, 6, 11, 2, 5, 6, 1, 6, 11);
+            case MINI_GAMES -> {
+                drawIconPath(context, x, y, unit, color, 3, 3, 9, 3, 11, 5, 11, 9, 9, 9, 7, 7, 5, 7, 3, 9, 1, 9, 1, 5, 3, 3);
+                drawIconPath(context, x, y, unit, color, 3, 5, 5, 5);
+            }
+            case SETTINGS -> {
+                drawIconPath(context, x, y, unit, color, 2, 3, 10, 3);
+                drawIconPath(context, x, y, unit, color, 2, 6, 10, 6);
+                drawIconPath(context, x, y, unit, color, 2, 9, 10, 9);
+                Render2D.drawCircle(context, x + 4 * unit, y + 3 * unit, 1.2f * unit, color);
+                Render2D.drawCircle(context, x + 8 * unit, y + 6 * unit, 1.2f * unit, color);
+                Render2D.drawCircle(context, x + 5 * unit, y + 9 * unit, 1.2f * unit, color);
+            }
+        }
+    }
+
+    private static void drawIconPath(DrawContext context, float x, float y, float unit, int color, int... points) {
+        for (int i = 2; i < points.length; i += 2) {
+            Render2D.drawLineRotated(context, x + points[i - 2] * unit, y + points[i - 1] * unit,
+                    x + points[i] * unit, y + points[i + 1] * unit, color, unit);
+        }
     }
 
     private void renderSidebarSearch(DrawContext context, float searchX, float searchY, float searchW, float searchH, float alpha, float mouseX, float mouseY) {
@@ -1025,14 +1086,24 @@ public class ClickGuiScreen extends Screen {
     }
 
     private void renderHeader(DrawContext context, float x, float y, float width, float height, float mouseX, float mouseY, float alpha) {
+        float centerX = x + width - 21.0f;
+        float centerY = y + 22.0f;
+        float blend = menuPalette.getValue();
+        boolean hovered = Math.abs(mouseX - centerX) <= 9 && Math.abs(mouseY - centerY) <= 9;
+        if (hovered) {
+            Render2D.drawRoundedRect(context, centerX - 9, centerY - 9, 18, 18, 5,
+                    ColorUtil.withAlphaFloat(0x18FFFFFF, alpha));
+        }
+        drawPaletteIcon(context, centerX, centerY, blend, alpha);
+
         float slide = (1.0f - headerFadeAnim.getValue()) * 4.0f;
         float tileX = x + 14.0f + slide;
         float tileY = y + 10.0f;
         int accent = Theme.getAccent();
-        int tint = ColorUtil.withAlphaFloat(accent, 0.11f * alpha);
+        int tint = ColorUtil.withAlphaFloat(accent, 0.045f * alpha);
         Render2D.drawGradientRect(context, x + 1, y + 2, width - 9, height - 3, 6, tint, 0, 0, 0);
         Render2D.drawRoundedRect(context, tileX, tileY, 24, 24, 6, ColorUtil.withAlphaFloat(accent, 0.16f * alpha));
-        IconRenderer.drawCategoryIcon(context, selectedCategory, tileX + 5, tileY + 5, 14,
+        drawNavigationIcon(context, selectedCategory, tileX + 5, tileY + 5, 14,
                 ColorUtil.withAlphaFloat(accent, alpha));
 
         if (!FpsBenchmark.overrideNoText) {
@@ -1184,7 +1255,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                 float iconX = itemX + 6.0f;
                 float iconY = itemY + (itemH - iconSize) / 2.0f;
                 int iconCol = isSelected ? ColorUtil.withAlphaFloat(Theme.getAccent(), alpha) : ColorUtil.rgba(140, 140, 150, (int) (200 * alpha));
-                IconRenderer.drawCategoryIcon(context, m.getCategory(), iconX, iconY, iconSize, iconCol);
+                drawNavigationIcon(context, m.getCategory(), iconX, iconY, iconSize, iconCol);
 
                 if (!FpsBenchmark.overrideNoText) {
                     float textX = itemX + 22.0f;
@@ -1263,7 +1334,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         if (blurFactor > 0.02f) {
             float wake0Y = col0Y + trailDist * 0.70f;
             float wake1Y = col1Y + trailDist * 0.70f;
-            int wakeBg = ColorUtil.withAlphaFloat(CARD_SURFACE, alpha * 0.50f * blurFactor);
+            int wakeBg = ColorUtil.withAlphaFloat(cardSurface(), alpha * 0.50f * blurFactor);
             int wakeBorder = ColorUtil.withAlphaFloat(Theme.CARD_BORDER, alpha * 0.60f * blurFactor);
             int accentGlow = ColorUtil.withAlphaFloat(Theme.getAccent(), alpha * 0.25f * blurFactor);
 
@@ -1323,7 +1394,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
     }
 
     private void renderSettingsCard(DrawContext context, String title, List<Setting> settings, float cardX, float cardY, float cardW, float cardH, float mouseX, float mouseY, float alpha) {
-        int cardBg = CARD_SURFACE;
+        int cardBg = cardSurface();
         int cardBorder = Theme.CARD_BORDER;
 
         Render2D.drawRoundedRect(context, cardX, cardY, cardW, cardH, CARD_RADIUS, ColorUtil.withAlphaFloat(cardBg, alpha));
@@ -1412,7 +1483,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             if (cardY + h >= y - 24.0f && cardY <= y + height + 24.0f) {
                 if (blurFactor > 0.02f) {
                     float wakeY = cardY + trailDist * 0.70f;
-                    int wakeBg = ColorUtil.withAlphaFloat(CARD_SURFACE, alphaM * 0.50f * blurFactor);
+                    int wakeBg = ColorUtil.withAlphaFloat(cardSurface(), alphaM * 0.50f * blurFactor);
                     Render2D.drawRoundedRect(context, cardX, wakeY, cardW, h, CARD_RADIUS, wakeBg);
                     int wakeBorder = ColorUtil.withAlphaFloat(Theme.CARD_BORDER, alphaM * 0.60f * blurFactor);
                     Render2D.drawRoundedOutline(context, cardX, wakeY, cardW, h, CARD_RADIUS, 1.0f, wakeBorder);
@@ -1483,7 +1554,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         }
         float hoverVal = (hoverAnim != null) ? hoverAnim.getValue() : 0.0f;
 
-        int cardBg = ColorUtil.interpolate(CARD_SURFACE, CARD_HOVER, hoverVal);
+        int cardBg = ColorUtil.interpolate(cardSurface(), palette(0xFF272A32, 0xFF293B54), hoverVal);
         int restBorder = module.isEnabled() ? ColorUtil.withAlphaFloat(Theme.getAccent(), 0.22f) : Theme.CARD_BORDER;
         int cardBorder = ColorUtil.interpolate(restBorder, Theme.CARD_BORDER_HOVER, hoverVal);
 
@@ -2488,7 +2559,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
         float fillW = trackW * curProgress;
 
-        float trackH = 3.0f;
+        float trackH = 2.5f;
         float trackY = trackCenterY - trackH / 2.0f;
         Render2D.drawCapsule(context, trackX, trackY, trackW, trackH, ColorUtil.rgba(255, 255, 255, (int) (20 * alpha)));
         if (fillW > 0.0f) {
@@ -2497,10 +2568,10 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             disableGuiScissor(context);
         }
 
-        float thumbR = 5.0f;
+        float thumbR = 4.0f;
         float thumbCenterX = trackX + fillW;
         float thumbCenterY = trackCenterY;
-        Render2D.drawCircleShadow(context, thumbCenterX, thumbCenterY, thumbR, 4.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), 0.45f * alpha));
+        Render2D.drawCircleShadow(context, thumbCenterX, thumbCenterY, thumbR, 3.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), 0.12f * alpha));
         Render2D.drawCircle(context, thumbCenterX, thumbCenterY, thumbR, ColorUtil.withAlphaFloat(0xFFFFFFFF, alpha));
         Render2D.drawCircleOutline(context, thumbCenterX, thumbCenterY, thumbR, 1.0f, ColorUtil.rgba(0, 0, 0, (int) (45 * alpha)));
     }
@@ -2906,6 +2977,18 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         float btnH = 10.0f;
         float btnX = MathHelper.lerp(collapseProgress, gx + sidebarWidth - btnW - 12.0f, gx + (sidebarWidth - btnW) / 2.0f);
         float btnY = gy + (34.0f - btnH) / 2.0f;
+
+        if (button == 0
+                && Math.abs(mouseX - (gx + guiWidth - 21.0f)) <= 9
+                && Math.abs(mouseY - (gy + 22.0f)) <= 9) {
+            ClientSettings settings = ModuleManager.getInstance().getModule(ClientSettings.class);
+            if (settings != null) {
+                settings.toggleCoolMenu();
+                egg.client.config.ConfigManager.save();
+                GuiSoundManager.playClick();
+                return true;
+            }
+        }
 
         boolean btnClicked = false;
         if (collapseProgress > 0.5f) {
