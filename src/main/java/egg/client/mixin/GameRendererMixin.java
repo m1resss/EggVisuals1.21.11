@@ -113,7 +113,7 @@ public abstract class GameRendererMixin {
     )
     private void onRenderHudBeforeOverlays(RenderTickCounter tickCounter, boolean tick, CallbackInfo ci, @Local DrawContext context) {
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc == null || mc.world == null || mc.options.hudHidden || mc.getOverlay() != null || mc.currentScreen != null) {
+        if (mc == null || mc.world == null || mc.options.hudHidden || mc.getOverlay() != null || (mc.currentScreen != null && !(mc.currentScreen instanceof net.minecraft.client.gui.screen.ChatScreen))) {
             return;
         }
         renderCustomHud(context, tickCounter);
@@ -211,7 +211,7 @@ public abstract class GameRendererMixin {
         }
 
         PearlPredict pearlPredict = ModuleManager.getInstance().getModule(PearlPredict.class);
-        if (pearlPredict != null && pearlPredict.isEnabled()) {
+        if (pearlPredict != null && pearlPredict.isEnabled() && MinecraftClient.getInstance().currentScreen == null) {
             pearlPredict.render(context, false, 0, 0);
         }
 

@@ -66,6 +66,7 @@ public class HudContextMenu {
     private final String title;
     private final List<MenuItem> items = new ArrayList<>();
 
+    private final egg.client.util.animation.Animation reveal = new egg.client.util.animation.Animation(1, 170, egg.client.util.animation.Easing.EASE_OUT_CUBIC);
     private boolean open = false;
     private float x = 0.0f;
     private float y = 0.0f;
@@ -115,6 +116,8 @@ public class HudContextMenu {
         }
         activeMenu = this;
         this.open = true;
+        reveal.setValue(egg.client.module.misc.ClientSettings.animationsEnabled() ? 0 : 1);
+        reveal.setTarget(1);
         setScale(scale);
 
         MinecraftClient mc = MinecraftClient.getInstance();
@@ -333,33 +336,18 @@ public class HudContextMenu {
         float mx = this.x;
         float my = this.y;
 
-        boolean customScale = Math.abs(this.scale - 1.0f) > 0.001f;
-        Matrix3x2f mat = null;
-        if (customScale) {
-            mat = new Matrix3x2f();
-            mat.translate(mx, my);
-            mat.scale(this.scale, this.scale);
-            mat.translate(-mx, -my);
-
-            context.getMatrices().pushMatrix();
-            context.getMatrices().translate(mx, my);
-            context.getMatrices().scale(this.scale, this.scale);
-            context.getMatrices().translate(-mx, -my);
-        }
-
-        float localMX = mx + (mouseX - mx) / this.scale;
-        float localMY = my + (mouseY - my) / this.scale;
+        float drawScale = scale * (0.94f + 0.06f * reveal.getValue());
+        Matrix3x2f mat = new Matrix3x2f().translate(mx, my).scale(drawScale).translate(-mx, -my);
+        float localMX = mx + (mouseX - mx) / drawScale;
+        float localMY = my + (mouseY - my) / drawScale;
 
         Draw2DProcessor.INSTANCE.drawGlow(mat, mx, my, mw, mh, 10.0f, ColorUtil.rgba(0, 0, 0, 190), 12.0f);
 
-        Draw2DProcessor.INSTANCE.drawRect(mat, mx, my, mw, mh, 10.0f, ColorUtil.rgba(14, 15, 22, 245));
+        Draw2DProcessor.INSTANCE.drawRect(mat, mx, my, mw, mh, 10.0f, 0xFF1B1D23);
 
         Draw2DProcessor.INSTANCE.drawOutline(mat, mx, my, mw, mh, 10.0f, 1.0f, ColorUtil.rgba(255, 255, 255, 24));
 
-        Draw2DProcessor.INSTANCE.drawRect(mat, mx + 16.0f, my, mw - 32.0f, 1.5f, 0.75f, ColorUtil.withAlphaFloat(Theme.getAccent(), 0.55f));
-
-        Draw2DProcessor.INSTANCE.drawRect(mat, mx + 10.0f, my + 9.5f, 3.0f, 9.0f, 1.5f, Theme.getAccent());
-        Fonts.b.a(mat, title, mx + 18.0f, my + 8.0f, 12.0f, 0xFFFFFFFF);
+        Fonts.ROCKSTAR_SEMIBOLD.a(mat, title, mx + 10.0f, my + 8.0f, 12.0f, 0xFFF2F3F6);
 
         Draw2DProcessor.INSTANCE.drawRect(mat, mx + 8.0f, my + 26.0f, mw - 16.0f, 1.0f, 0.0f, ColorUtil.rgba(255, 255, 255, 12));
 
@@ -382,8 +370,8 @@ public class HudContextMenu {
                 float badgeY = rowY + 1.5f;
 
                 Draw2DProcessor.INSTANCE.drawRect(mat, badgeX, badgeY, badgeW, badgeH, 4.0f, hov ? ColorUtil.rgba(255, 255, 255, 24) : ColorUtil.rgba(255, 255, 255, 12));
-                Draw2DProcessor.INSTANCE.drawOutline(mat, badgeX, badgeY, badgeW, badgeH, 4.0f, 1.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), hov ? 0.8f : 0.4f));
-                Fonts.b.a(mat, val, badgeX + 7.0f, badgeY + 2.0f, 10.5f, Theme.getAccentHover());
+                Draw2DProcessor.INSTANCE.drawOutline(mat, badgeX, badgeY, badgeW, badgeH, 4.0f, 1.0f, 0xFF333740);
+                Fonts.b.a(mat, val, badgeX + 7.0f, badgeY + 2.0f, 10.5f, 0xFFD7DAE3);
             } else {
 
                 boolean on = item.isChecked();
@@ -400,7 +388,7 @@ public class HudContextMenu {
                 float knobY = swY + (swH - knobSize) / 2.0f;
 
                 if (on) {
-                    Draw2DProcessor.INSTANCE.drawGlow(mat, knobX, knobY, knobSize, knobSize, knobSize / 2.0f, Theme.getAccent(), 4.0f);
+                    Draw2DProcessor.INSTANCE.drawGlow(mat, knobX, knobY, knobSize, knobSize, knobSize / 2.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), 0.2f), 3.0f);
                 }
                 Draw2DProcessor.INSTANCE.drawRect(mat, knobX, knobY, knobSize, knobSize, knobSize / 2.0f, 0xFFFFFFFF);
             }
@@ -410,9 +398,7 @@ public class HudContextMenu {
 
         DrawBatcher.flushPending();
 
-        if (customScale) {
-            context.getMatrices().popMatrix();
-        }
+
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
@@ -421,8 +407,9 @@ public class HudContextMenu {
         float mw = computeWidth();
         float mh = computeHeight();
 
-        float localMX = this.x + ((float) mouseX - this.x) / this.scale;
-        float localMY = this.y + ((float) mouseY - this.y) / this.scale;
+        float drawScale = scale * (0.94f + 0.06f * reveal.getValue());
+        float localMX = this.x + ((float) mouseX - this.x) / drawScale;
+        float localMY = this.y + ((float) mouseY - this.y) / drawScale;
 
         if (localMX >= this.x && localMX <= this.x + mw && localMY >= this.y && localMY <= this.y + mh) {
             float rowY = this.y + 30.0f;

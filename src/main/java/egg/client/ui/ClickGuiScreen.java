@@ -52,6 +52,9 @@ public final class ClickGuiScreen extends Screen {
     private final Animation opening = new Animation(0, 200, Easing.EASE_OUT_CUBIC);
     private final Animation theme = new Animation(0, 380, Easing.EASE_IN_OUT_QUART);
     private final List<Control> controls = new ArrayList<>();
+    private final Animation pageReveal = new Animation(1, 240, Easing.EASE_OUT_CUBIC);
+    private final java.util.Deque<Category> back = new java.util.ArrayDeque<>();
+    private final java.util.Deque<Category> forward = new java.util.ArrayDeque<>();
     private Category page = Category.ESP;
     private Box view;
     private float zoom = 1;
@@ -145,10 +148,14 @@ public final class ClickGuiScreen extends Screen {
     public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
         if (client.world != null && ClientSettings.isBlurEnabled() && !FpsBenchmark.overrideNoBlur) {
             int strength = ClientSettings.getBlurStrength();
-            if (client.options.getMenuBackgroundBlurrinessValue() != strength) {
-                client.options.getMenuBackgroundBlurriness().setValue(strength);
+            var blur = client.options.getMenuBackgroundBlurriness();
+            int previous = blur.getValue();
+            try {
+                if (previous != strength) blur.setValue(strength);
+                client.gameRenderer.renderBlur();
+            } finally {
+                if (previous != strength) blur.setValue(previous);
             }
-            client.gameRenderer.renderBlur();
         }
         float dim = ClientSettings.getScreenDimOpacity() * (animate() ? opening.getValue() : 1);
         Render2D.drawRoundedRect(context, 0, 0, width, height, 0, ColorUtil.withAlphaFloat(0xFF080A10, dim));
@@ -179,7 +186,7 @@ public final class ClickGuiScreen extends Screen {
         float h = Math.min(600, height * 0.82f / zoom);
         float rail = Math.clamp(w * 0.174f, 130, 176);
         Box frame = new Box(-w / 2, -h / 2, w, h);
-        view = new Box(frame.x + rail + 18, frame.y + 48, w - rail - 37, h - 66);
+        view = new Box(frame.x + rail + 18, frame.y + 48 + (1 - pageReveal.getValue()) * 10, w - rail - 37, h - 66);
         context.getMatrices().pushMatrix();
         try {
             context.getMatrices().translate(width / 2f, height / 2f).scale(zoom);
@@ -218,8 +225,14 @@ public final class ClickGuiScreen extends Screen {
 
     private void navigation(DrawContext context, Box frame, float rail) {
         float x = frame.x + 12;
-        IconRenderer.drawTextureScaled(context, LOGO, x + 5, frame.y + 13, 17, 17, 128, 128, faded(TEXT));
-        title(context, "Egg Visual", x + 30, frame.y + 15, 12);
+        Render2D.drawCircle(context, x + 9, frame.y + 21, 4.7f, faded(0xFFFF6058));
+        Render2D.drawCircle(context, x + 24, frame.y + 21, 4.7f, faded(0xFFFFBD30));
+        Render2D.drawCircle(context, x + 39, frame.y + 21, 4.7f, faded(0xFF2BC840));
+        Box profile = new Box(x, frame.bottom() - 48, rail - 24, 34);
+        rect(context, profile, 8, tone(0xFF1B1C21, 0xFF1A2638));
+        IconRenderer.drawTextureScaled(context, LOGO, x + 7, profile.y + 8, 18, 18, 128, 128, faded(TEXT));
+        title(context, fit(client.getSession().getUsername(), profile.w - 40), x + 32, profile.y + 6, 11);
+        text(context, "Egg Visual", x + 32, profile.y + 19, MUTED);
         float y = frame.y + 53;
         text(context, "Модули", x + 8, y, MUTED);
         y += 18;
@@ -237,10 +250,8 @@ public final class ClickGuiScreen extends Screen {
             text(context, category.getDisplayNameRu(), x + 29, y + 8, selected ? TEXT : MUTED);
             onClick(row, false, button -> {
                 if (button != 0) return false;
-                page = category;
-                searching = false;
-                query("");
-                CosmeticsPanel.setSearchQuery("");
+                if (category != page) { back.push(page); forward.clear(); }
+                selectPage(category);
                 GuiSoundManager.playSelect();
                 return true;
             });
@@ -248,9 +259,34 @@ public final class ClickGuiScreen extends Screen {
         }
     }
 
+    private void selectPage(Category category) {
+        page = category;
+        searching = false;
+        openMode = null;
+        editing = null;
+        query("");
+        CosmeticsPanel.setSearchQuery("");
+        pageReveal.setValue(ClientSettings.animationsEnabled() ? 0 : 1);
+        pageReveal.setTarget(1);
+    }
+
+    private void historyButton(DrawContext context, Box box, boolean next) {
+        var source = next ? forward : back;
+        IconRenderer.drawCollapseIcon(context, box.x + 7, box.y + 10, next,
+                faded(source.isEmpty() ? 0xFF505663 : TEXT));
+        onClick(box, false, button -> {
+            if (button != 0 || source.isEmpty()) return false;
+            (next ? back : forward).push(page);
+            selectPage(source.pop());
+            return true;
+        });
+    }
+
     private void toolbar(DrawContext context, Box frame) {
         float y = frame.y + 21;
-        title(context, query.isBlank() ? page.getDisplayNameRu() : "Поиск модулей", view.x, y - 8, 16);
+        historyButton(context, new Box(view.x, y - 10, 14, 20), false);
+        historyButton(context, new Box(view.x + 16, y - 10, 14, 20), true);
+        title(context, query.isBlank() ? page.getDisplayNameRu() : "Поиск модулей", view.x + 37, y - 8, 16);
 
         Box moon = new Box(view.x - 46, y - 11, 23, 22);
         int hoverBg = tone(0xFF252830, 0xFF27364C);
@@ -371,14 +407,19 @@ public final class ClickGuiScreen extends Screen {
         boolean open = preferences || module.isExpanded();
         List<String> description = wrap(module.getDescription(), w - 24);
         float header = 47 + (description.size() - 1) * 11;
-        List<Setting> settings = open ? module.getSettings().stream().filter(Setting::isVisible)
+        float expand = preferences ? 1 : ClientSettings.animationsEnabled() ? module.getExpandAnimation().getValue() : open ? 1 : 0;
+        List<Setting> settings = expand > 0 ? module.getSettings().stream().filter(Setting::isVisible)
                 .filter(setting -> !(module instanceof WorldTweaks) || !isWorldWidgetSetting(setting)).toList() : List.of();
-        float widgetHeight = open && module instanceof WorldTweaks ? WorldTweaksUI.getTotalHeight() : 0;
-        float h = open ? header + 8 + widgetHeight + settings.size() * ROW : header;
+        float widgetHeight = expand > 0 && module instanceof WorldTweaks ? WorldTweaksUI.getTotalHeight() : 0;
+        float h = header + expand * (8 + widgetHeight + settings.size() * ROW);
         Box card = new Box(x, y, w, h);
         if (card.bottom() <= view.y || y >= view.bottom()) return h;
 
-        int cardColor = hover(card) && hover(view) ? tone(0xFF212329, 0xFF243247) : tone(0xFF1B1D22, 0xFF1C283B);
+        boolean hovered = hover(card) && hover(view);
+        module.getHoverAnimation().setTarget(hovered ? 1 : 0);
+        float highlight = module.getHoverAnimation().getValue();
+        int cardColor = ColorUtil.interpolate(tone(0xFF1B1D23, 0xFF1C283B), tone(0xFF242730, 0xFF29384D), highlight);
+        Render2D.drawShadow(context, x, y + 2, w, h, 10, 4, faded(0x38000000));
         rect(context, card, 10, cardColor);
         Render2D.drawRoundedOutline(context, x, y, w, h, 10, 0.7f, faded(BORDER));
         IconRenderer.drawCategoryIcon(context, module.getCategory(), x + 12, y + 10, 11,
@@ -421,7 +462,8 @@ public final class ClickGuiScreen extends Screen {
             });
         }
 
-        if (open) {
+        if (expand > 0.001f) {
+            Render2D.enableScissor(context, x, y + header - 1, x + w, y + h);
             line(context, x + 12, y + header - 1, w - 24, 1, BORDER);
             float rowY = y + header + 3;
             if (widgetHeight > 0 && module instanceof WorldTweaks world) {
@@ -435,9 +477,10 @@ public final class ClickGuiScreen extends Screen {
             }
             for (Setting setting : settings) {
                 Box row = new Box(x + 12, rowY, w - 24, ROW);
-                if (row.bottom() > view.y && rowY < view.bottom()) setting(context, setting, row);
+                if (row.bottom() > view.y && rowY < view.bottom() && row.bottom() <= y + h) setting(context, setting, row);
                 rowY += ROW;
             }
+            Render2D.disableScissor(context);
         }
         return h;
     }
@@ -576,6 +619,7 @@ public final class ClickGuiScreen extends Screen {
 
     private void drawToggle(DrawContext context, Box box, float value) {
         value = Math.clamp(value, 0, 1);
+        if (value > 0.01f) Render2D.drawShadow(context, box.x, box.y, box.w, box.h, 7, 4, faded(ColorUtil.withAlphaFloat(Theme.getAccent(), 0.22f * value)));
         rect(context, box, 7, ColorUtil.interpolate(0xFF30343D, Theme.getAccent(), value));
         Render2D.drawCircle(context, box.x + 7 + (box.w - 14) * value, box.y + 7, 5, faded(TEXT));
     }
@@ -596,7 +640,7 @@ public final class ClickGuiScreen extends Screen {
         }
         if (binding == null && (tooltip == null || now - hoverSince < 400_000_000L)) return;
         String message = binding != null ? "Нажмите клавишу или кнопку мыши · Esc — отмена" : tooltip;
-        float w = Math.min(235, view.w);
+        float w = Math.min(Math.min(235, view.w), ClientFont.getWidth(message, ClientFont.SF_REGULAR) + 15);
         List<String> lines = wrap(message, w - 14);
         float h = lines.size() * 11 + 9;
         float halfWidth = width / (2f * zoom);

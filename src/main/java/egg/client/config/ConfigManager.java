@@ -10,7 +10,8 @@ import net.minecraft.util.Util;
 
 import java.io.File;
 import java.io.FileReader;
-import java.io.FileWriter;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -23,6 +24,7 @@ public class ConfigManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final File CONFIG_DIR;
     private static final File ACTIVE_CONFIG_FILE;
+    private static boolean loaded;
     private static String currentConfig = "test1";
 
     private static final ScheduledExecutorService AUTOSAVE_EXECUTOR = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -119,7 +121,7 @@ public class ConfigManager {
     }
 
     public static synchronized boolean save() {
-        return save(currentConfig);
+        return loaded && save(currentConfig);
     }
 
     public static synchronized boolean save(String name) {
@@ -130,6 +132,7 @@ public class ConfigManager {
         if (cleanName.isEmpty()) cleanName = "default";
 
         File file = getConfigFile(cleanName);
+        if (!loaded && file.exists()) return false;
         try {
             JsonObject root = new JsonObject();
             JsonObject modulesObj = new JsonObject();
@@ -166,10 +169,25 @@ public class ConfigManager {
                 file.getParentFile().mkdirs();
             }
 
-            try (FileWriter writer = new FileWriter(file)) {
-                GSON.toJson(root, writer);
+            Path target = file.toPath();
+            Path pending = Files.createTempFile(target.getParent(), cleanName + "-", ".tmp");
+            try {
+                Files.writeString(pending, GSON.toJson(root));
+                if (Files.exists(target) && Files.mismatch(target, pending) == -1) {
+                    currentConfig = cleanName;
+                    persistActiveConfig(cleanName);
+                    return true;
+                }
+                if (Files.exists(target)) Files.copy(target, target.resolveSibling(file.getName() + ".bak"), StandardCopyOption.REPLACE_EXISTING);
+                try {
+                    Files.move(pending, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                    Files.move(pending, target, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } finally {
+                Files.deleteIfExists(pending);
             }
-
+            loaded = true;
             currentConfig = cleanName;
             persistActiveConfig(cleanName);
             return true;
@@ -201,38 +219,38 @@ public class ConfigManager {
 
         try (FileReader reader = new FileReader(file)) {
             JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
-            if (root.has("modules")) {
-                JsonObject modulesObj = root.getAsJsonObject("modules");
-                for (Module m : ModuleManager.getInstance().getModules()) {
-                    if (modulesObj.has(m.getName())) {
-                        JsonObject mObj = modulesObj.getAsJsonObject(m.getName());
-                        if (mObj.has("favorite")) {
-                            m.setFavorite(mObj.get("favorite").getAsBoolean());
-                        }
-                        if (mObj.has("enabled")) {
-                            m.setEnabled(mObj.get("enabled").getAsBoolean());
-                        }
-                        if (mObj.has("key")) {
-                            m.setKey(mObj.get("key").getAsInt());
-                        }
-                        if (mObj.has("settings")) {
-                            JsonObject settingsObj = mObj.getAsJsonObject("settings");
-                            for (Setting s : m.getSettings()) {
-                                if (settingsObj.has(s.getName())) {
-                                    JsonElement el = settingsObj.get(s.getName());
-                                    if (s instanceof BooleanSetting b && el.isJsonPrimitive()) {
-                                        b.set(el.getAsBoolean());
-                                    } else if (s instanceof SliderSetting sl && el.isJsonPrimitive()) {
-                                        sl.set(el.getAsDouble());
-                                    } else if (s instanceof ModeSetting md && el.isJsonPrimitive()) {
-                                        md.set(el.getAsString());
-                                    } else if (s instanceof ColorSetting cs && el.isJsonPrimitive()) {
-                                        cs.set(el.getAsInt());
-                                    } else if (s instanceof StringSetting ss && el.isJsonPrimitive()) {
-                                        ss.set(el.getAsString());
-                                    } else if (s instanceof BindSetting bs && el.isJsonPrimitive()) {
-                                        bs.setKey(el.getAsInt());
-                                    }
+            if (!root.has("modules") || !root.get("modules").isJsonObject()) return false;
+            loaded = false;
+            JsonObject modulesObj = root.getAsJsonObject("modules");
+            for (Module m : ModuleManager.getInstance().getModules()) {
+                if (modulesObj.has(m.getName())) {
+                    JsonObject mObj = modulesObj.getAsJsonObject(m.getName());
+                    if (mObj.has("favorite")) {
+                        m.setFavorite(mObj.get("favorite").getAsBoolean());
+                    }
+                    if (mObj.has("enabled")) {
+                        m.setEnabled(mObj.get("enabled").getAsBoolean());
+                    }
+                    if (mObj.has("key")) {
+                        m.setKey(mObj.get("key").getAsInt());
+                    }
+                    if (mObj.has("settings")) {
+                        JsonObject settingsObj = mObj.getAsJsonObject("settings");
+                        for (Setting s : m.getSettings()) {
+                            if (settingsObj.has(s.getName())) {
+                                JsonElement el = settingsObj.get(s.getName());
+                                if (s instanceof BooleanSetting b && el.isJsonPrimitive()) {
+                                    b.set(el.getAsBoolean());
+                                } else if (s instanceof SliderSetting sl && el.isJsonPrimitive()) {
+                                    sl.set(el.getAsDouble());
+                                } else if (s instanceof ModeSetting md && el.isJsonPrimitive()) {
+                                    md.set(el.getAsString());
+                                } else if (s instanceof ColorSetting cs && el.isJsonPrimitive()) {
+                                    cs.set(el.getAsInt());
+                                } else if (s instanceof StringSetting ss && el.isJsonPrimitive()) {
+                                    ss.set(el.getAsString());
+                                } else if (s instanceof BindSetting bs && el.isJsonPrimitive()) {
+                                    bs.setKey(el.getAsInt());
                                 }
                             }
                         }
@@ -240,6 +258,7 @@ public class ConfigManager {
                 }
             }
 
+            loaded = true;
             currentConfig = cleanName;
             persistActiveConfig(cleanName);
             try {
