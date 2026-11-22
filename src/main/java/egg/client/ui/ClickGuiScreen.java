@@ -10,7 +10,6 @@ import egg.client.module.render.WorldTweaks;
 import egg.client.module.setting.*;
 import egg.client.render.IconRenderer;
 import egg.client.render.Render2D;
-import egg.client.render.font.ClientFont;
 import egg.client.render.msdf.Fonts;
 import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.ui.grid.GuiDotGrid;
@@ -46,7 +45,8 @@ public final class ClickGuiScreen extends Screen {
     private static final int TEXT = 0xFFF2F3F6;
     private static final int MUTED = 0xFF939DAE;
     private static final int BORDER = 0xFF2C3038;
-    private static final float ROW = 26;
+    private static final float ROW = 22;
+    private static final float BODY_SIZE = 10.5f;
     private static ClickGuiScreen instance;
 
     private final Animation opening = new Animation(0, 200, Easing.EASE_OUT_CUBIC);
@@ -74,7 +74,8 @@ public final class ClickGuiScreen extends Screen {
     private Setting editing;
     private String draft = "";
     private boolean invalidColor;
-    private IntConsumer binding;
+    private Binding binding;
+    private String bindHint;
     private SliderDrag sliderDrag;
     private boolean worldDrag;
     private String tooltip;
@@ -91,6 +92,7 @@ public final class ClickGuiScreen extends Screen {
     }
 
     private record Control(Box box, boolean clipped, IntPredicate handler) {}
+    private record Binding(Object owner, IntConsumer setter) {}
     private record SliderDrag(SliderSetting setting, float x, float w) {
         void update(float px) { setting.setPercent(Math.clamp((px - x) / w, 0, 1)); }
     }
@@ -170,10 +172,12 @@ public final class ClickGuiScreen extends Screen {
             return;
         }
         theme.setTarget(settings().isCoolMenu() ? 1 : 0);
-        zoom = Math.min(ClientSettings.getGuiScale(), Math.min(width / 820f, height / 470f));
-        String motion = ClientSettings.getOpenAnimationMode();
-        if ("Lens".equals(motion)) zoom *= 0.94f + 0.06f * alpha;
-        else if ("Волна".equals(motion)) zoom *= 0.978f + 0.022f * alpha;
+        if (sliderDrag == null) {
+            zoom = Math.min(ClientSettings.getGuiScale(), Math.min(width / 820f, height / 490f));
+            String motion = ClientSettings.getOpenAnimationMode();
+            if ("Lens".equals(motion)) zoom *= 0.94f + 0.06f * alpha;
+            else if ("Волна".equals(motion)) zoom *= 0.978f + 0.022f * alpha;
+        }
         mx = localX(mouseX);
         my = localY(mouseY);
         controls.clear();
@@ -182,9 +186,9 @@ public final class ClickGuiScreen extends Screen {
         modePopup = null;
         lateContext = context;
 
-        float w = Math.min(1050, width * 0.89f / zoom);
-        float h = Math.min(600, height * 0.82f / zoom);
-        float rail = Math.clamp(w * 0.174f, 130, 176);
+        float w = Math.min(960, width * 0.83f / zoom);
+        float h = Math.min(510, height * 0.75f / zoom);
+        float rail = Math.clamp(w * 0.175f, 122, 159);
         Box frame = new Box(-w / 2, -h / 2, w, h);
         view = new Box(frame.x + rail + 18, frame.y + 48 + (1 - pageReveal.getValue()) * 10, w - rail - 37, h - 66);
         context.getMatrices().pushMatrix();
@@ -233,7 +237,7 @@ public final class ClickGuiScreen extends Screen {
         IconRenderer.drawTextureScaled(context, LOGO, x + 7, profile.y + 8, 18, 18, 128, 128, faded(TEXT));
         title(context, fit(client.getSession().getUsername(), profile.w - 40), x + 32, profile.y + 6, 11);
         text(context, "Egg Visual", x + 32, profile.y + 19, MUTED);
-        float y = frame.y + 53;
+        float y = frame.y + 46;
         text(context, "Модули", x + 8, y, MUTED);
         y += 18;
         for (Category category : PAGES) {
@@ -241,7 +245,7 @@ public final class ClickGuiScreen extends Screen {
                 text(context, "Оформление", x + 8, y + 10, MUTED);
                 y += 28;
             }
-            Box row = new Box(x, y, rail - 24, 25);
+            Box row = new Box(x, y, rail - 24, 23);
             boolean selected = page == category && query.isBlank();
             if (selected || hover(row)) {
                 rect(context, row, 7, selected ? tone(0xFF252830, 0xFF26354C) : tone(0xFF1D2026, 0xFF202B40));
@@ -255,7 +259,7 @@ public final class ClickGuiScreen extends Screen {
                 GuiSoundManager.playSelect();
                 return true;
             });
-            y += 29;
+            y += 25;
         }
     }
 
@@ -299,12 +303,12 @@ public final class ClickGuiScreen extends Screen {
         Render2D.drawCircle(context, cx, y, 4.7f, faded(ColorUtil.withAlphaFloat(TEXT, 1 - phase)));
         Render2D.drawCircle(context, cx + 2.2f, y - 2.1f, 3.7f, faded(hover(moon) ? hoverBg : sidebarColor()));
         int sun = faded(ColorUtil.withAlphaFloat(0xFFFFD09B, phase));
-        Render2D.drawCircleOutline(context, cx, y, 2.5f, 0.9f, sun);
+        Render2D.drawCircleOutline(context, cx, y, 3.3f, 1.2f, sun);
         for (int i = 0; i < 8; i++) {
             double angle = i * Math.PI / 4 + (1 - phase) * 1.2;
             float dx = (float) Math.cos(angle);
             float dy = (float) Math.sin(angle);
-            Render2D.drawLineRotated(context, cx + dx * 4, y + dy * 4, cx + dx * 6, y + dy * 6, sun, 0.85f);
+            Render2D.drawCircle(context, cx + dx * 5.7f, y + dy * 5.7f, 0.9f, sun);
         }
         onClick(moon, false, button -> {
             if (button != 0) return false;
@@ -343,7 +347,7 @@ public final class ClickGuiScreen extends Screen {
                         : (module.getName() + " " + module.getDescription() + " " + module.getCategory().getDisplayNameRu())
                         .toLowerCase(Locale.ROOT).contains(filter))
                 .sorted(Comparator.comparing(Module::isFavorite).reversed()).toList();
-        float gap = 14;
+        float gap = 11;
         float w = (view.w - gap - 5) / 2;
         float[] y = {view.y - scroll, view.y - scroll};
         if (page == Category.SETTINGS && filter.isEmpty()) {
@@ -353,10 +357,10 @@ public final class ClickGuiScreen extends Screen {
         }
         for (int i = 0; i < cards.size(); i++) {
             int column = i % 2;
-            y[column] += moduleCard(context, cards.get(i), view.x + column * (w + gap), y[column], w) + 10;
+            y[column] += moduleCard(context, cards.get(i), view.x + column * (w + gap), y[column], w) + 8;
         }
         if (cards.isEmpty()) text(context, "Модули не найдены", view.x + 6, view.y + 12, MUTED);
-        updateScrollbar(context, Math.max(y[0], y[1]) - 10);
+        updateScrollbar(context, Math.max(y[0], y[1]) - 8);
     }
 
     private void updateScrollbar(DrawContext context, float bottom) {
@@ -406,7 +410,7 @@ public final class ClickGuiScreen extends Screen {
         boolean preferences = module instanceof ClientSettings;
         boolean open = preferences || module.isExpanded();
         List<String> description = wrap(module.getDescription(), w - 24);
-        float header = 47 + (description.size() - 1) * 11;
+        float header = 43 + (description.size() - 1) * 11;
         float expand = preferences ? 1 : ClientSettings.animationsEnabled() ? module.getExpandAnimation().getValue() : open ? 1 : 0;
         List<Setting> settings = expand > 0 ? module.getSettings().stream().filter(Setting::isVisible)
                 .filter(setting -> !(module instanceof WorldTweaks) || !isWorldWidgetSetting(setting)).toList() : List.of();
@@ -425,7 +429,10 @@ public final class ClickGuiScreen extends Screen {
         IconRenderer.drawCategoryIcon(context, module.getCategory(), x + 12, y + 10, 11,
                 faded(module.isEnabled() ? Theme.getAccent() : MUTED));
         String name = preferences ? "Интерфейс и управление" : module.getName();
-        title(context, fit(name, w - (preferences ? 43 : 130)), x + 29, y + 9, 11.5f);
+        String keyLabel = bindLabel(module, module.getKey());
+        float keyWidth = Math.max(25, textWidth(boundKeyName(module.getKey())) + 13);
+        float titleWidth = preferences ? w - 43 : w - 89 - keyWidth;
+        title(context, fit(name, titleWidth), x + 29, y + 8, 12);
         for (int i = 0; i < description.size(); i++) {
             text(context, description.get(i), x + 12, y + 26 + i * 11, MUTED);
         }
@@ -448,10 +455,10 @@ public final class ClickGuiScreen extends Screen {
                 GuiSoundManager.playToggle(module.isEnabled());
                 return true;
             });
-            Box bind = new Box(right - 61, y + 8, 28, 18);
-            chip(context, bind, module.getKey() == 0 ? "—" : Keybinds.formatKey(module.getKey()));
-            onClick(bind, true, button -> bind(button, module::setKey));
-            Box star = new Box(right - 82, y + 8, 16, 18);
+            Box bind = new Box(toggle.x - keyWidth - 5, y + 9, keyWidth, 16);
+            bindChip(context, bind, module, keyLabel);
+            onClick(bind, true, button -> bind(button, module, module::setKey));
+            Box star = new Box(bind.x - 17, y + 8, 15, 18);
             IconRenderer.drawStarIcon(context, star.x + 8, y + 17, module.isFavorite(),
                     faded(module.isFavorite() ? 0xFFFFC37C : MUTED));
             onClick(star, true, button -> {
@@ -494,7 +501,7 @@ public final class ClickGuiScreen extends Screen {
 
     private void setting(DrawContext context, Setting setting, Box row) {
         float center = row.y + ROW / 2;
-        float w = row.w * 0.48f;
+        float w = row.w * 0.49f;
         Box field = new Box(row.right() - w, center - 9, w, 18);
         text(context, fit(setting.getName(), row.w - w - 7), row.x, center - 4, 0xFFBEC6D2);
         if (hover(row) && hover(view) && setting.getDescription() != null && !setting.getDescription().isBlank()) {
@@ -547,8 +554,11 @@ public final class ClickGuiScreen extends Screen {
                 });
             }
             case BindSetting key -> {
-                chip(context, field, key.getKeyName());
-                onClick(field, true, button -> bind(button, key::setKey));
+                String label = bindLabel(key, key.getKey());
+                float keyWidth = Math.min(field.w, Math.max(29, textWidth(boundKeyName(key.getKey())) + 13));
+                Box keycap = new Box(field.right() - keyWidth, center - 8, keyWidth, 16);
+                bindChip(context, keycap, key, label);
+                onClick(keycap, true, button -> bind(button, key, key::setKey));
             }
             case ButtonSetting action -> {
                 chip(context, field, "Выполнить");
@@ -600,18 +610,26 @@ public final class ClickGuiScreen extends Screen {
     }
 
     private void slider(DrawContext context, SliderSetting slider, Box field, float center) {
-        float w = Math.max(18, field.w - 40);
-        float filled = Math.clamp(slider.getAnimation().getValue(), 0, 1) * w;
-        line(context, field.x, center - 1, w, 2, 0xFF343A45);
-        line(context, field.x, center - 1, filled, 2, Theme.getAccent());
-        float x = field.x + filled;
-        Render2D.drawCircleShadow(context, x, center, 3.4f, 2.5f, faded(ColorUtil.withAlphaFloat(Theme.getAccent(), 0.10f)));
-        Render2D.drawCircle(context, x, center, 3.4f, faded(TEXT));
-        String value = String.format(Locale.ROOT, "%.2f", slider.getValue()).replaceFirst("\\.?0+$", "");
-        text(context, value, field.right() - ClientFont.getWidth(value, ClientFont.SF_REGULAR), center - 4, MUTED);
-        onClick(new Box(field.x - 4, field.y, w + 8, field.h), true, button -> {
+        boolean dragging = sliderDrag != null && sliderDrag.setting == slider;
+        float start = field.x + 5;
+        float w = Math.max(12, field.w - 42);
+        float progress = dragging || !ClientSettings.animationsEnabled()
+                ? (float) slider.getPercent() : slider.getAnimation().getValue();
+        float filled = Math.clamp(progress, 0, 1) * w;
+        float x = start + filled;
+        boolean hovered = hover(field) && hover(view);
+        line(context, start, center - 1.65f, w, 3.3f, 0xFF30343E);
+        line(context, start, center - 1.65f, filled, 3.3f, Theme.getAccent());
+        if (hovered || dragging) {
+            Render2D.drawCircleShadow(context, x, center, 4.4f, 3, faded(ColorUtil.withAlphaFloat(Theme.getAccent(), 0.16f)));
+        }
+        Render2D.drawCircle(context, x, center, 4.5f, faded(0xFF0F1117));
+        Render2D.drawCircle(context, x, center, 3.8f, faded(0xFFFAFBFF));
+        String value = String.format(Locale.ROOT, "%.3f", slider.getValue()).replaceFirst("\\.?0+$", "");
+        text(context, value, field.right() - textWidth(value), center - 4, hovered || dragging ? TEXT : MUTED);
+        onClick(new Box(start - 6, field.y, w + 12, field.h), true, button -> {
             if (button != 0) return false;
-            sliderDrag = new SliderDrag(slider, field.x, w);
+            sliderDrag = new SliderDrag(slider, start, w);
             sliderDrag.update(mx);
             return true;
         });
@@ -639,8 +657,8 @@ public final class ClickGuiScreen extends Screen {
             hoverSince = now;
         }
         if (binding == null && (tooltip == null || now - hoverSince < 400_000_000L)) return;
-        String message = binding != null ? "Нажмите клавишу или кнопку мыши · Esc — отмена" : tooltip;
-        float w = Math.min(Math.min(235, view.w), ClientFont.getWidth(message, ClientFont.SF_REGULAR) + 15);
+        String message = binding != null ? bindHint : tooltip;
+        float w = Math.min(Math.min(235, view.w), textWidth(message) + 15);
         List<String> lines = wrap(message, w - 14);
         float h = lines.size() * 11 + 9;
         float halfWidth = width / (2f * zoom);
@@ -665,8 +683,7 @@ public final class ClickGuiScreen extends Screen {
         my = localY(click.y());
         int button = click.button();
         if (binding != null) {
-            if (button >= 2) applyBinding(1000 + button);
-            else binding = null;
+            finishBinding(1000 + button);
             return true;
         }
         if (editing != null && !commitEdit()) return true;
@@ -722,11 +739,7 @@ public final class ClickGuiScreen extends Screen {
     @Override
     public boolean keyPressed(KeyInput input) {
         int key = input.key();
-        if (binding != null) {
-            if (key == GLFW.GLFW_KEY_ESCAPE) binding = null;
-            else applyBinding(key == GLFW.GLFW_KEY_DELETE || key == GLFW.GLFW_KEY_BACKSPACE ? 0 : key);
-            return true;
-        }
+        if (captureKeyboardBind(key)) return true;
         if (key == GLFW.GLFW_KEY_ESCAPE) {
             if (openMode != null) openMode = null;
             else if (editing != null) editing = null;
@@ -796,17 +809,56 @@ public final class ClickGuiScreen extends Screen {
         return true;
     }
 
-    private boolean bind(int button, IntConsumer setter) {
-        if (button == 0) binding = setter;
-        else if (button == 1) {
-            setter.accept(0);
-            changed();
+    private String bindLabel(Object owner, int key) {
+        if (binding != null && binding.owner == owner) return "…";
+        return boundKeyName(key);
+    }
+
+    private static String boundKeyName(int key) {
+        return key > 0 ? Keybinds.formatKey(key) : "+";
+    }
+
+    private void bindChip(DrawContext context, Box box, Object owner, String label) {
+        boolean capturing = binding != null && binding.owner == owner;
+        boolean hovered = hover(box) && hover(view);
+        int accent = Theme.getAccent();
+        rect(context, box, 4, capturing ? ColorUtil.interpolate(0xFF20232C, accent, 0.2f) : hovered ? 0xFF30343E : 0xFF22252D);
+        Render2D.drawRoundedOutline(context, box.x, box.y, box.w, box.h, 4, 0.8f,
+                faded(capturing ? accent : 0xFF373C48));
+        label = fit(label, box.w - 8);
+        text(context, label, box.x + (box.w - textWidth(label)) / 2, box.y + 4, capturing || hovered ? TEXT : 0xFFBFC8D8);
+        if (hovered && binding == null) tooltip = "ЛКМ — назначить · ПКМ — сбросить";
+    }
+
+    private boolean bind(int button, Object owner, IntConsumer setter) {
+        if (button == 0) {
+            binding = new Binding(owner, setter);
+            bindHint = "Клавиша или кнопка мыши · Esc — отмена · Del — сброс";
+        } else if (button == 1) {
+            binding = new Binding(owner, setter);
+            finishBinding(0);
         } else return false;
         return true;
     }
 
-    private void applyBinding(int key) {
-        binding.accept(key);
+    public boolean isCapturingBind() {
+        return binding != null && !closing;
+    }
+
+    public boolean captureKeyboardBind(int key) {
+        if (!isCapturingBind()) return false;
+        if (key == GLFW.GLFW_KEY_ESCAPE) binding = null;
+        else if (key > 0) finishBinding(key == GLFW.GLFW_KEY_DELETE || key == GLFW.GLFW_KEY_BACKSPACE ? 0 : key);
+        return true;
+    }
+
+    private void finishBinding(int key) {
+        boolean openingKey = binding.owner == settings().getOpenKeySetting();
+        if (!openingKey && key > 0 && key == ClientSettings.getOpenKey()) {
+            bindHint = "Клавиша уже открывает ClickGUI · выберите другую";
+            return;
+        }
+        binding.setter.accept(openingKey && key == 0 ? GLFW.GLFW_KEY_RIGHT_SHIFT : key);
         binding = null;
         changed();
     }
@@ -859,21 +911,23 @@ public final class ClickGuiScreen extends Screen {
     }
 
     private void text(DrawContext context, String text, float x, float y, int color) {
-        if (!FpsBenchmark.overrideNoText) ClientFont.draw(context, text, x, y, ClientFont.SF_REGULAR, faded(color));
+        if (!FpsBenchmark.overrideNoText) Fonts.b.a(Render2D.getMatrix(context), text, x, y - 1.5f, BODY_SIZE, faded(color));
     }
 
+    private static float textWidth(String text) { return Fonts.b.a(text, BODY_SIZE); }
+
     private static String fit(String text, float w) {
-        if (ClientFont.getWidth(text, ClientFont.SF_REGULAR) <= w) return text;
-        while (!text.isEmpty() && ClientFont.getWidth(text + "…", ClientFont.SF_REGULAR) > w) {
+        if (textWidth(text) <= w) return text;
+        while (!text.isEmpty() && textWidth(text + "…") > w) {
             text = text.substring(0, text.offsetByCodePoints(text.length(), -1));
         }
         return text + "…";
     }
 
     private static List<String> wrap(String text, float w) {
-        if (ClientFont.getWidth(text, ClientFont.SF_REGULAR) <= w) return List.of(text);
+        if (textWidth(text) <= w) return List.of(text);
         int split = text.lastIndexOf(' ');
-        while (split > 0 && ClientFont.getWidth(text.substring(0, split), ClientFont.SF_REGULAR) > w) {
+        while (split > 0 && textWidth(text.substring(0, split)) > w) {
             split = text.lastIndexOf(' ', split - 1);
         }
         if (split <= 0) return List.of(fit(text, w));

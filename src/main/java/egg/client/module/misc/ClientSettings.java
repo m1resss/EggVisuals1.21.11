@@ -59,6 +59,10 @@ public class ClientSettings extends Module {
         return guiScale;
     }
 
+    public BindSetting getOpenKeySetting() {
+        return openKey;
+    }
+
     public static int getOpenKey() {
         if (EggClient.getInstance() == null || EggClient.getInstance().getModuleManager() == null) {
             return GLFW.GLFW_KEY_RIGHT_SHIFT;

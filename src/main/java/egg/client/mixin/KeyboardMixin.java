@@ -36,6 +36,10 @@ public class KeyboardMixin {
         }
 
         if (action == GLFW.GLFW_PRESS) {
+            if (client.currentScreen instanceof ClickGuiScreen gui && gui.captureKeyboardBind(keyInput.key())) {
+                ci.cancel();
+                return;
+            }
             int key = keyInput.key();
 
             int openGuiKey = egg.client.module.misc.ClientSettings.getOpenKey();
