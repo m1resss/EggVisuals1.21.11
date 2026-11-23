@@ -13,6 +13,12 @@ public interface HandledScreenAccessor {
     @Accessor("y")
     int getY();
 
+    @Accessor("backgroundWidth")
+    int getBackgroundWidth();
+
+    @Accessor("backgroundHeight")
+    int getBackgroundHeight();
+
     @Accessor("focusedSlot")
     Slot getFocusedSlot();
 }
