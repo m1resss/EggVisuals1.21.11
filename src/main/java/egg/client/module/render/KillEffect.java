@@ -13,6 +13,7 @@ import egg.client.ui.theme.Theme;
 import egg.client.util.EntityUtil;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.world.ClientWorld;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.BuiltBuffer;
@@ -35,12 +36,14 @@ import net.minecraft.entity.player.PlayerSkinType;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.Identifier;
+import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.RotationAxis;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.shape.VoxelShape;
+import net.minecraft.world.RaycastContext;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -70,7 +73,9 @@ public class KillEffect extends Module {
             0xFFE040FB
     };
 
-    private final ModeSetting mode = new ModeSetting("Эффект", "Бабочки", "Тип эффекта при смерти противника", "Бабочки", "Обелиск", "Стекло", "Распад", "Черная дыра");
+    private static final String FINAL_MARK = "Отметка";
+
+    private final ModeSetting mode = new ModeSetting("Эффект", "Бабочки", "Тип эффекта при смерти противника", "Бабочки", "Обелиск", "Стекло", "Распад", "Черная дыра", FINAL_MARK);
     private final BooleanSetting onlyTarget = new BooleanSetting("Только цель", true, "Создавать эффект только для атакованных вами врагов");
     private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", false, "Создавать эффект только при смерти игроков");
     private final BooleanSetting sound = new BooleanSetting("Звуки", true, "Звуковые эффекты при убийстве");
@@ -105,6 +110,7 @@ public class KillEffect extends Module {
     private final BooleanSetting singularityRift = new BooleanSetting("Разлом пространства", true, "Остаточный пространственный разлом и туманность после взрыва");
     private final BooleanSetting singularityDistortion = new BooleanSetting("Искажение пространства", true, "Гравитационные волны искажения и сотрясение камеры");
 
+    private final List<FinalMark> finalMarks = new ArrayList<>();
     private final List<ButterflySwarmInstance> butterflySwarms = new ArrayList<>();
     private final List<MonolithInstance> monolithInstances = new ArrayList<>();
     private final List<DeathGlassShard> particles = new ArrayList<>();
@@ -376,6 +382,8 @@ public class KillEffect extends Module {
                 spawnDissolveEffect(entity);
             } else if ("Черная дыра".equals(curMode)) {
                 spawnSingularityEffect(entity);
+            } else if (FINAL_MARK.equals(curMode)) {
+                spawnFinalMark(entity.getX(), entity.getY(), entity.getZ());
             } else {
                 spawnGlassBurst(entity);
             }
@@ -488,10 +496,76 @@ public class KillEffect extends Module {
             spawnDissolveEffectAt(bx, by, bz, yaw, pitch, headYaw, isSneaking, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
         } else if ("Черная дыра".equals(curMode)) {
             spawnSingularityEffectAt(bx, by, bz, yaw, pitch, headYaw, isSneaking, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, height);
+        } else if (FINAL_MARK.equals(curMode)) {
+            spawnFinalMark(bx, by, bz);
         } else {
             spawnGlassBurstAt(bx, by, bz, height);
         }
     }
+
+    private void spawnFinalMark(double x, double y, double z) {
+        if (mc.world == null) return;
+        if (finalMarks.size() >= 24) finalMarks.removeFirst();
+        Vec3d start = new Vec3d(x, y + 0.12, z);
+        var floor = mc.world.raycast(new RaycastContext(start, start.add(0, -0.9, 0),
+                RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player));
+        double markY = floor.getType() == HitResult.Type.BLOCK ? floor.getPos().y : y;
+        Vec3d position = new Vec3d(x, markY + 0.035, z);
+        finalMarks.add(new FinalMark(mc.world, position, System.nanoTime(),
+                syncColor.isEnabled() ? Theme.getAccent() : color.get()));
+        if (sound.isEnabled()) {
+            mc.world.playSoundClient(x, markY, z, SoundEvents.BLOCK_AMETHYST_BLOCK_HIT,
+                    SoundCategory.PLAYERS, 0.35f, 1.35f, false);
+        }
+    }
+
+    private void renderFinalMarks(VertexConsumerProvider consumers, Vec3d camera, long now) {
+        finalMarks.removeIf(mark -> mark.world() != mc.world || now - mark.started() >= 620_000_000L);
+        if (finalMarks.isEmpty()) return;
+        VertexConsumer buffer = consumers.getBuffer(RenderLayers.debugQuads());
+        for (FinalMark mark : finalMarks) {
+            float time = Math.clamp((now - mark.started()) / 620_000_000.0f, 0, 1);
+            float close = 1 - Math.min(1, time / 0.45f);
+            float radius = 0.21f + 0.49f * close * close;
+            float length = 0.15f + 0.08f * close;
+            float fade = Math.min(1, time / 0.055f) * Math.min(1, (1 - time) / 0.42f);
+            int tint = (mark.color() & 0xFFFFFF) | (Math.round(215 * fade) << 24);
+            Vec3d offset = mark.position().subtract(camera);
+            float x = (float) offset.x;
+            float y = (float) offset.y;
+            float z = (float) offset.z;
+            for (int sideX : new int[]{-1, 1}) {
+                for (int sideZ : new int[]{-1, 1}) {
+                    float cornerX = x + radius * sideX;
+                    float cornerZ = z + radius * sideZ;
+                    float innerX = cornerX - length * sideX;
+                    float innerZ = cornerZ - length * sideZ;
+                    emitFinalMarkQuad(buffer, cornerX, innerX, cornerZ, cornerZ - 0.027f * sideZ, y, tint);
+                    emitFinalMarkQuad(buffer, cornerX, cornerX - 0.027f * sideX, cornerZ - 0.027f * sideZ, innerZ, y, tint);
+                }
+            }
+            float stamp = Math.min(1, Math.max(0, (time - 0.22f) / 0.14f)) * 0.105f;
+            if (stamp > 0) {
+                buffer.vertex(x, y, z - stamp).color(tint);
+                buffer.vertex(x - stamp, y, z).color(tint);
+                buffer.vertex(x, y, z + stamp).color(tint);
+                buffer.vertex(x + stamp, y, z).color(tint);
+            }
+        }
+    }
+
+    private static void emitFinalMarkQuad(VertexConsumer buffer, float x1, float x2, float z1, float z2, float y, int color) {
+        float left = Math.min(x1, x2);
+        float right = Math.max(x1, x2);
+        float top = Math.min(z1, z2);
+        float bottom = Math.max(z1, z2);
+        buffer.vertex(left, y, top).color(color);
+        buffer.vertex(left, y, bottom).color(color);
+        buffer.vertex(right, y, bottom).color(color);
+        buffer.vertex(right, y, top).color(color);
+    }
+
+    private record FinalMark(ClientWorld world, Vec3d position, long started, int color) {}
 
     public void spawnButterflySwarm(Entity entity) {
         spawnButterflySwarmAt(entity.getX(), entity.getY(), entity.getZ(), entity.getHeight());
@@ -840,6 +914,7 @@ public class KillEffect extends Module {
 
     public void render(VertexConsumerProvider immediate, Vec3d camPos) {
         if (!isEnabled()) {
+            finalMarks.clear();
             if (!monolithInstances.isEmpty()) monolithInstances.clear();
             if (!particles.isEmpty()) particles.clear();
             if (!butterflySwarms.isEmpty()) butterflySwarms.clear();
@@ -913,6 +988,8 @@ public class KillEffect extends Module {
         if (dt > 0.05f) dt = 0.05f;
 
         Vector3f lightDir = new Vector3f(0.35f, 0.90f, 0.25f).normalize();
+
+        if (!finalMarks.isEmpty()) renderFinalMarks(immediate, camPos, now);
 
         if (!butterflySwarms.isEmpty()) {
             VertexConsumer quadBuffer = immediate.getBuffer(RenderLayers.debugQuads());
@@ -1906,6 +1983,7 @@ public class KillEffect extends Module {
 
     @Override
     public void onDisable() {
+        finalMarks.clear();
         particles.clear();
         butterflySwarms.clear();
         monolithInstances.clear();
