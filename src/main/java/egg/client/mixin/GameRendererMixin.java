@@ -10,6 +10,7 @@ import egg.client.module.combat.HitColor;
 
 import egg.client.module.render.*;
 
+import egg.client.render.GuiOverlays;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.ScissorUtil;
 import egg.client.render.msdf.pipeline.DrawBatcher;
@@ -258,6 +259,7 @@ public abstract class GameRendererMixin {
         if (mc != null && mc.currentScreen instanceof egg.client.ui.ClickGuiScreen gui) {
             gui.renderLate();
         }
+        GuiOverlays.renderPending();
         DrawBatcher.flushPending();
         ScissorUtil.reset();
     }

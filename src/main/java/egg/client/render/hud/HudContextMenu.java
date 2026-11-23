@@ -1,6 +1,7 @@
 package egg.client.render.hud;
 
 import egg.client.config.ConfigManager;
+import egg.client.render.GuiOverlays;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.render.msdf.Fonts;
@@ -80,6 +81,10 @@ public class HudContextMenu {
         if (activeMenu != null) {
             activeMenu.close();
         }
+    }
+
+    public static boolean clickActive(double mouseX, double mouseY, int button) {
+        return activeMenu != null && activeMenu.mouseClicked(mouseX, mouseY, button);
     }
 
     public void addMode(String label, Supplier<String> valueSupplier, Runnable onCycle) {
@@ -317,6 +322,10 @@ public class HudContextMenu {
     }
 
     public void render(DrawContext context, float mouseX, float mouseY) {
+        if (open) GuiOverlays.defer(() -> renderOverlay(mouseX, mouseY));
+    }
+
+    private void renderOverlay(float mouseX, float mouseY) {
         if (!open) return;
 
         MinecraftClient mc = MinecraftClient.getInstance();

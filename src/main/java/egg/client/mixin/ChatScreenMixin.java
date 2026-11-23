@@ -10,6 +10,7 @@ import egg.client.module.render.Cooldowns;
 import egg.client.module.render.EventTracker;
 import egg.client.module.render.TargetHUD;
 import egg.client.render.animation.HudAnimations;
+import egg.client.render.hud.HudContextMenu;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ChatScreen;
@@ -87,6 +88,11 @@ public class ChatScreenMixin {
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void onChatMouseClicked(Click click, boolean bl, CallbackInfoReturnable<Boolean> cir) {
+        if (HudContextMenu.clickActive(click.x(), click.y(), click.button())) {
+            cir.setReturnValue(true);
+            return;
+        }
+
         PearlPredict pearlPredict = ModuleManager.getInstance().getModule(PearlPredict.class);
         if (pearlPredict != null && pearlPredict.isEnabled() && pearlPredict.onChatMouseClicked(click.x(), click.y(), click.button())) {
             cir.setReturnValue(true);

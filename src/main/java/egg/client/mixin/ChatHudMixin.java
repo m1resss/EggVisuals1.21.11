@@ -24,19 +24,10 @@ public class ChatHudMixin {
         }
     }
 
-    @Inject(method = "addMessage(Lnet/minecraft/text/Text;)V", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "addMessage(Lnet/minecraft/text/Text;)V", at = @At("HEAD"))
     private void onAddMessage(Text message, CallbackInfo ci) {
         if (message == null) return;
         String text = message.getString();
-
-        egg.client.module.minigames.chess.Chess chess = egg.client.module.minigames.chess.Chess.getInstance();
-        if (chess != null && text.contains(egg.client.module.minigames.chess.ChessProtocol.PREFIX)) {
-            boolean handled = chess.handleIncomingPayload(text);
-            if (handled) {
-                ci.cancel();
-                return;
-            }
-        }
 
         HudAnimations.INSTANCE.onChatMessage();
 
@@ -56,18 +47,10 @@ public class ChatHudMixin {
         }
     }
 
-    @Inject(method = "addMessage(Lnet/minecraft/text/Text;Lnet/minecraft/network/message/MessageSignatureData;Lnet/minecraft/client/gui/hud/MessageIndicator;)V", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "addMessage(Lnet/minecraft/text/Text;Lnet/minecraft/network/message/MessageSignatureData;Lnet/minecraft/client/gui/hud/MessageIndicator;)V", at = @At("HEAD"))
     private void onAddSignedMessage(Text message, net.minecraft.network.message.MessageSignatureData signatureData, net.minecraft.client.gui.hud.MessageIndicator indicator, CallbackInfo ci) {
         if (message == null) return;
         String text = message.getString();
-
-        egg.client.module.minigames.chess.Chess chess = egg.client.module.minigames.chess.Chess.getInstance();
-        if (chess != null && text.contains(egg.client.module.minigames.chess.ChessProtocol.PREFIX)) {
-            boolean handled = chess.handleIncomingPayload(text);
-            if (handled) {
-                ci.cancel();
-            }
-        }
 
         egg.client.module.render.KillEffect killEffect = ModuleManager.getInstance().getModule(egg.client.module.render.KillEffect.class);
         if (killEffect != null && killEffect.isEnabled()) {

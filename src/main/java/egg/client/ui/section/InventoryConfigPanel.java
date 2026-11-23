@@ -5,6 +5,7 @@ import egg.client.inventory.InventoryPreset;
 import egg.client.inventory.InventorySlotRule;
 import egg.client.module.ModuleManager;
 import egg.client.module.player.InventorySorter;
+import egg.client.render.GuiOverlays;
 import egg.client.render.IconRenderer;
 import egg.client.render.Render2D;
 import egg.client.render.font.ClientFont;
@@ -199,7 +200,10 @@ public class InventoryConfigPanel {
         }
 
         if (hoveredSlot >= 0) {
-            renderTooltip(context, detailedPreset.getRule(hoveredSlot), hoveredSlot, hoveredAvailable, mouseX, mouseY, alpha);
+            int slotId = hoveredSlot;
+            boolean available = hoveredAvailable;
+            InventorySlotRule rule = detailedPreset.getRule(slotId);
+            GuiOverlays.defer(context, () -> renderTooltip(context, rule, slotId, available, mouseX, mouseY, alpha));
         }
     }
 
@@ -430,7 +434,7 @@ public class InventoryConfigPanel {
         if (tx + width > client.getWindow().getScaledWidth() - 4.0f) tx = mouseX - width - 8.0f;
         if (ty + height > client.getWindow().getScaledHeight() - 4.0f) ty = mouseY - height - 8.0f;
 
-        fill(context, new Bounds(tx, ty, width, height), 6.0f, 0xF516181E, alpha);
+        fill(context, new Bounds(tx, ty, width, height), 6.0f, 0xFF16181E, alpha);
         ClientFont.draw(context, title, tx + 8.0f, ty + 5.0f, ClientFont.SF_BOLD, ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, alpha));
         ClientFont.draw(context, category, tx + 8.0f, ty + 17.0f, ClientFont.SF_REGULAR, ColorUtil.withAlphaFloat(Theme.TEXT_SUB, alpha));
         ClientFont.draw(context, status, tx + 8.0f, ty + 29.0f, ClientFont.SF_REGULAR,

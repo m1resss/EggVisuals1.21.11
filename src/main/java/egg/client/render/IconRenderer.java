@@ -12,7 +12,6 @@ public final class IconRenderer {
     private static final Identifier CAT_INVENTORY = Identifier.of("egg", "textures/icons/cat_inventory.png");
     private static final Identifier CAT_MISC = Identifier.of("egg", "textures/icons/cat_misc.png");
     private static final Identifier CAT_COSMETICS = Identifier.of("egg", "textures/icons/cat_cosmetics.png");
-    private static final Identifier CAT_MINIGAMES = Identifier.of("egg", "textures/icons/cat_minigames.png");
     private static final Identifier CAT_SETTINGS = Identifier.of("egg", "textures/icons/cat_settings.png");
 
     private static final Identifier GUI_SEARCH = Identifier.of("egg", "textures/icons/gui_search.png");
@@ -34,7 +33,6 @@ public final class IconRenderer {
             case ESP -> CAT_VISUALS;
             case INVENTORY -> CAT_INVENTORY;
             case COSMETICS -> CAT_COSMETICS;
-            case MINI_GAMES -> CAT_MINIGAMES;
             case MISC -> CAT_MISC;
             case SETTINGS -> CAT_SETTINGS;
         };
