@@ -547,19 +547,13 @@ public class PotionHUD extends Module {
         int screenW = mc.getWindow().getScaledWidth();
         int screenH = mc.getWindow().getScaledHeight();
 
-        float rad = "Капсулы".equalsIgnoreCase(style.get()) ? Math.min(lastW / 2.0f, rounding.getValueFloat() * scale.getValueFloat()) : rounding.getValueFloat() * scale.getValueFloat();
-
+        var bounds = new HudSnapHelper.HudElementBounds("potion", lastX, lastY, lastW, lastH);
+        int scalePercent = Math.round(scale.getValueFloat() * 100.0f);
         if (dragging) {
             onChatMouseDragged(mouseX, mouseY, 0);
-            HudSnapHelper.renderGridAndGuides(context, currentSnap, screenW, screenH,
-                    new HudSnapHelper.HudElementBounds("potion", "Эффекты", lastX, lastY, lastW, lastH),
-                    "HUD — Эффекты", Math.round(scale.getValueFloat() * 100.0f), rad);
+            HudSnapHelper.renderDragOverlay(bounds, currentSnap, screenW, screenH, scalePercent);
         } else {
-            boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
-            if (inside) {
-                String scaleBadge = "Эффекты: " + Math.round(scale.getValueFloat() * 100.0f) + "%";
-                HudSnapHelper.renderHoverBadge(context, lastX, lastY, lastW, lastH, rad, scaleBadge);
-            }
+            HudSnapHelper.renderHoverOverlay(bounds, screenW, screenH, mouseX, mouseY, scalePercent);
         }
 
         if (contextMenu.isOpen()) {

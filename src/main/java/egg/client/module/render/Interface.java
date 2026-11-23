@@ -1382,34 +1382,19 @@ public class Interface extends Module {
         int screenW = mc.getWindow().getScaledWidth();
         int screenH = mc.getWindow().getScaledHeight();
 
-        float rad = rounding.getValueFloat() * hudScale.getValueFloat() + 2.0f;
-
+        var bounds = new HudSnapHelper.HudElementBounds("interface", lastX, lastY, lastW, lastH);
+        int scalePercent = Math.round(hudScale.getValueFloat() * 100.0f);
         if (dragging) {
             onChatMouseDragged(mouseX, mouseY, 0);
-            HudSnapHelper.renderGridAndGuides(context, currentSnap, screenW, screenH,
-                    new HudSnapHelper.HudElementBounds("interface", "Интерфейс", lastX, lastY, lastW, lastH),
-                    "HUD — Интерфейс", Math.round(hudScale.getValueFloat() * 100.0f), rad);
+            HudSnapHelper.renderDragOverlay(bounds, currentSnap, screenW, screenH, scalePercent);
         } else {
-            boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
-            if (inside) {
-                String scaleBadge = "HUD: " + Math.round(hudScale.getValueFloat() * 100.0f) + "%";
-                HudSnapHelper.renderHoverBadge(context, lastX, lastY, lastW, lastH, rad, scaleBadge);
-            }
+            HudSnapHelper.renderHoverOverlay(bounds, screenW, screenH, mouseX, mouseY, scalePercent);
         }
 
-        boolean insideIsland = showDynamicIsland.isEnabled() && hasActiveMedia
-                && mouseX >= lastIslandX - 2.0f && mouseX <= lastIslandX + lastIslandW + 2.0f
-                && mouseY >= lastIslandY - 2.0f && mouseY <= lastIslandY + lastIslandH + 2.0f;
-        if (insideIsland && !islandExpanded) {
-            float iRad = 15.0f * islandScale.getValueFloat() + 1.0f;
-            Draw2DProcessor.INSTANCE.drawOutline(null, lastIslandX - 2.0f, lastIslandY - 2.0f, lastIslandW + 4.0f, lastIslandH + 4.0f, iRad, 1.0f, Theme.getAccent());
-
-            String islandBadge = "Остров: " + Math.round(islandScale.getValueFloat() * 100.0f) + "%";
-            float ibw = Fonts.b.a(islandBadge, 9.5f) + 8.0f;
-            float ibx = lastIslandX + (lastIslandW - ibw) / 2.0f;
-            float iby = lastIslandY + lastIslandH + 5.0f;
-            Draw2DProcessor.INSTANCE.drawRect(null, ibx, iby, ibw, 13.0f, 3.0f, ColorUtil.rgba(14, 15, 20, 220));
-            Fonts.b.a(null, islandBadge, ibx + 4.0f, iby + 2.5f, 9.5f, Theme.getAccentHover());
+        if (showDynamicIsland.isEnabled() && hasActiveMedia && !islandExpanded) {
+            var island = new HudSnapHelper.HudElementBounds("island", lastIslandX, lastIslandY, lastIslandW, lastIslandH);
+            HudSnapHelper.renderHoverOverlay(island, screenW, screenH, mouseX, mouseY,
+                    Math.round(islandScale.getValueFloat() * 100.0f));
         }
 
         if (isSeeking) {

@@ -487,19 +487,13 @@ public class ArmorHUD extends Module {
         int screenW = mc.getWindow().getScaledWidth();
         int screenH = mc.getWindow().getScaledHeight();
 
+        var bounds = new HudSnapHelper.HudElementBounds("armor", lastX, lastY, lastW, lastH);
+        int scalePercent = Math.round(scale.getValueFloat() * 100.0f);
         if (dragging) {
             onChatMouseDragged(mouseX, mouseY, 0);
-            HudSnapHelper.renderGridAndGuides(context, currentSnap, screenW, screenH,
-                    new HudSnapHelper.HudElementBounds("armor", "Броня", lastX, lastY, lastW, lastH),
-                    "HUD — Броня", Math.round(scale.getValueFloat() * 100.0f),
-                    rounding.getValueFloat() * scale.getValueFloat());
+            HudSnapHelper.renderDragOverlay(bounds, currentSnap, screenW, screenH, scalePercent);
         } else {
-            boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
-            if (inside) {
-                float rad = rounding.getValueFloat() * scale.getValueFloat();
-                String scaleBadge = "Броня: " + Math.round(scale.getValueFloat() * 100.0f) + "%";
-                HudSnapHelper.renderHoverBadge(context, lastX, lastY, lastW, lastH, rad, scaleBadge);
-            }
+            HudSnapHelper.renderHoverOverlay(bounds, screenW, screenH, mouseX, mouseY, scalePercent);
         }
 
         if (contextMenu.isOpen()) {

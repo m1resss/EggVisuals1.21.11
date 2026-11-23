@@ -280,19 +280,13 @@ public class Cooldowns extends Module {
         int screenW = mc.getWindow().getScaledWidth();
         int screenH = mc.getWindow().getScaledHeight();
 
-        float rad = (lastH + 4.0f) / 2.0f;
-
+        var bounds = new HudSnapHelper.HudElementBounds("cooldowns", lastX, lastY, lastW, lastH);
+        int scalePercent = Math.round(scale.getValueFloat() * 100.0f);
         if (dragging) {
             onChatMouseDragged(mouseX, mouseY, 0);
-            HudSnapHelper.renderGridAndGuides(context, currentSnap, screenW, screenH,
-                    new HudSnapHelper.HudElementBounds("cooldowns", "Кулдауны", lastX, lastY, lastW, lastH),
-                    "HUD — Кулдауны", Math.round(scale.getValueFloat() * 100.0f), rad);
+            HudSnapHelper.renderDragOverlay(bounds, currentSnap, screenW, screenH, scalePercent);
         } else {
-            boolean inside = mouseX >= lastX - 2.0f && mouseX <= lastX + lastW + 2.0f && mouseY >= lastY - 2.0f && mouseY <= lastY + lastH + 2.0f;
-            if (inside) {
-                String scaleBadge = "КД: " + Math.round(scale.getValueFloat() * 100.0f) + "%";
-                HudSnapHelper.renderHoverBadge(context, lastX, lastY, lastW, lastH, rad, scaleBadge);
-            }
+            HudSnapHelper.renderHoverOverlay(bounds, screenW, screenH, mouseX, mouseY, scalePercent);
         }
         DrawBatcher.flushPending();
     }

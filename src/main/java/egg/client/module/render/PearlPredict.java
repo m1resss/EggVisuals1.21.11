@@ -201,7 +201,7 @@ public final class PearlPredict extends Module {
         }
         float x = maxX * posX.getValueFloat();
         float y = maxY * posY.getValueFloat();
-        bounds = new HudSnapHelper.HudElementBounds(ID, getName(), x, y, width, height);
+        bounds = new HudSnapHelper.HudElementBounds(ID, x, y, width, height);
 
         Draw2DProcessor draw = Draw2DProcessor.INSTANCE;
         float radius = RADIUS * s;
@@ -251,10 +251,10 @@ public final class PearlPredict extends Module {
         }
 
         if (snap != null) {
-            HudSnapHelper.renderGridAndGuides(context, snap, screenWidth, screenHeight, bounds,
-                    getName(), Math.round(scale.getValueFloat() * 100), radius);
+            HudSnapHelper.renderDragOverlay(bounds, snap, screenWidth, screenHeight, Math.round(scale.getValueFloat() * 100));
         } else if (editing && contains(mouseX, mouseY)) {
-            HudSnapHelper.renderHoverBadge(context, x, y, width, height, radius, Math.round(scale.getValueFloat() * 100) + "%");
+            HudSnapHelper.renderHoverOverlay(bounds, screenWidth, screenHeight, mouseX, mouseY,
+                    Math.round(scale.getValueFloat() * 100));
         }
         if (editing && contextMenu.isOpen()) contextMenu.render(context, mouseX, mouseY);
         DrawBatcher.flushPending();

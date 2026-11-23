@@ -955,25 +955,14 @@ public class TargetHUD extends Module {
         int screenW = mc.getWindow().getScaledWidth();
         int screenH = mc.getWindow().getScaledHeight();
 
-        float rad = 12.0f * hudScale.getValueFloat();
-        boolean isScreenMode = mode.is("Экран");
-
-        if (dragging && isScreenMode) {
+        var bounds = new HudSnapHelper.HudElementBounds("target", lastRenderX, lastRenderY, lastRenderW, lastRenderH);
+        int scalePercent = Math.round(hudScale.getValueFloat() * 100.0f);
+        if (dragging && !mode.is("Экран")) dragging = false;
+        if (dragging) {
             mouseDragged(mouseX, mouseY);
-            HudSnapHelper.renderGridAndGuides(context, currentSnap, screenW, screenH,
-                    new HudSnapHelper.HudElementBounds("target", "Target HUD", lastRenderX, lastRenderY, lastRenderW, lastRenderH),
-                    "Target HUD", Math.round(hudScale.getValueFloat() * 100.0f), rad);
+            HudSnapHelper.renderDragOverlay(bounds, currentSnap, screenW, screenH, scalePercent);
         } else {
-            if (dragging && !isScreenMode) {
-                dragging = false;
-            }
-            boolean inside = mouseX >= lastRenderX - 2.0f && mouseX <= lastRenderX + lastRenderW + 2.0f
-                    && mouseY >= lastRenderY - 2.0f && mouseY <= lastRenderY + lastRenderH + 2.0f;
-            if (inside) {
-                String modeTag = isScreenMode ? "" : " [В мире]";
-                String scaleBadge = "Target HUD" + modeTag + ": " + Math.round(hudScale.getValueFloat() * 100.0f) + "%";
-                HudSnapHelper.renderHoverBadge(context, lastRenderX, lastRenderY, lastRenderW, lastRenderH, rad, scaleBadge);
-            }
+            HudSnapHelper.renderHoverOverlay(bounds, screenW, screenH, mouseX, mouseY, scalePercent);
         }
 
         if (contextMenu.isOpen()) {

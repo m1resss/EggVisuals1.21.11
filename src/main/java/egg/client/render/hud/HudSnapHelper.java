@@ -14,21 +14,20 @@ import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.render.msdf.Fonts;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
-import net.minecraft.client.gui.DrawContext;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class HudSnapHelper {
 
-    public record HudElementBounds(String id, String displayName, float x, float y, float w, float h) {}
+    private static final int GRID_STEP = 25;
+    private static final float SELECTION_PAD = 3.0f;
+
+    public record HudElementBounds(String id, float x, float y, float w, float h) {}
 
     public static class SnapResult {
         public float snappedX;
         public float snappedY;
-
-        public boolean isCenterSnapX = false;
-        public boolean isCenterSnapY = false;
 
         public HudElementBounds snappedElemX = null;
         public HudElementBounds snappedElemY = null;
@@ -52,40 +51,40 @@ public class HudSnapHelper {
 
         Interface iface = ModuleManager.getInstance().getModule(Interface.class);
         if (iface != null && iface.isEnabled() && !"interface".equals(currentId) && iface.getLastW() > 10.0f) {
-            list.add(new HudElementBounds("interface", "Интерфейс", iface.getLastX(), iface.getLastY(), iface.getLastW(), iface.getLastH()));
+            list.add(new HudElementBounds("interface", iface.getLastX(), iface.getLastY(), iface.getLastW(), iface.getLastH()));
         }
         if (iface != null && iface.isIslandActive() && iface.getLastIslandW() > 10.0f) {
-            list.add(new HudElementBounds("island", "Dynamic Island", iface.getLastIslandX(), iface.getLastIslandY(), iface.getLastIslandW(), iface.getLastIslandH()));
+            list.add(new HudElementBounds("island", iface.getLastIslandX(), iface.getLastIslandY(), iface.getLastIslandW(), iface.getLastIslandH()));
         }
 
         ArmorHUD armor = ModuleManager.getInstance().getModule(ArmorHUD.class);
         if (armor != null && armor.isEnabled() && !"armor".equals(currentId) && armor.getLastW() > 10.0f) {
-            list.add(new HudElementBounds("armor", "Броня", armor.getLastX(), armor.getLastY(), armor.getLastW(), armor.getLastH()));
+            list.add(new HudElementBounds("armor", armor.getLastX(), armor.getLastY(), armor.getLastW(), armor.getLastH()));
         }
 
         PotionHUD potion = ModuleManager.getInstance().getModule(PotionHUD.class);
         if (potion != null && potion.isEnabled() && !"potion".equals(currentId) && potion.getLastW() > 10.0f) {
-            list.add(new HudElementBounds("potion", "Эффекты", potion.getLastX(), potion.getLastY(), potion.getLastW(), potion.getLastH()));
+            list.add(new HudElementBounds("potion", potion.getLastX(), potion.getLastY(), potion.getLastW(), potion.getLastH()));
         }
 
         TargetHUD target = ModuleManager.getInstance().getModule(TargetHUD.class);
         if (target != null && target.isEnabled() && !"target".equals(currentId) && target.getMode().is("Экран") && target.getLastW() > 10.0f) {
-            list.add(new HudElementBounds("target", "Target HUD", target.getLastX(), target.getLastY(), target.getLastW(), target.getLastH()));
+            list.add(new HudElementBounds("target", target.getLastX(), target.getLastY(), target.getLastW(), target.getLastH()));
         }
 
         Cooldowns cd = ModuleManager.getInstance().getModule(Cooldowns.class);
         if (cd != null && cd.isEnabled() && !"cooldowns".equals(currentId) && cd.getLastW() > 10.0f) {
-            list.add(new HudElementBounds("cooldowns", "Кулдауны", cd.getLastX(), cd.getLastY(), cd.getLastW(), cd.getLastH()));
+            list.add(new HudElementBounds("cooldowns", cd.getLastX(), cd.getLastY(), cd.getLastW(), cd.getLastH()));
         }
 
         Keybinds kb = ModuleManager.getInstance().getModule(Keybinds.class);
         if (kb != null && kb.isEnabled() && !"keybinds".equals(currentId) && kb.getLastW() > 10.0f) {
-            list.add(new HudElementBounds("keybinds", "Кейбинды", kb.getLastX(), kb.getLastY(), kb.getLastW(), kb.getLastH()));
+            list.add(new HudElementBounds("keybinds", kb.getLastX(), kb.getLastY(), kb.getLastW(), kb.getLastH()));
         }
 
         EventTracker tracker = ModuleManager.getInstance().getModule(EventTracker.class);
         if (tracker != null && tracker.isEnabled() && !"event_tracker".equals(currentId) && tracker.getLastW() > 10.0f) {
-            list.add(new HudElementBounds("event_tracker", "Ивенты", tracker.getLastX(), tracker.getLastY(), tracker.getLastW(), tracker.getLastH()));
+            list.add(new HudElementBounds("event_tracker", tracker.getLastX(), tracker.getLastY(), tracker.getLastW(), tracker.getLastH()));
         }
 
         PearlPredict pearlPredict = ModuleManager.getInstance().getModule(PearlPredict.class);
@@ -106,7 +105,6 @@ public class HudSnapHelper {
 
         float bestX = proposedX;
         float minDiffX = snapThreshold;
-        boolean centerSnapX = false;
         HudElementBounds snapTargetX = null;
         float bestGuideX = -1.0f;
         float bestGuideXMinY = 0.0f;
@@ -117,7 +115,6 @@ public class HudSnapHelper {
         if (diffCenterX < minDiffX) {
             minDiffX = diffCenterX;
             bestX = midX;
-            centerSnapX = true;
             bestGuideX = screenW / 2.0f;
             bestGuideXMinY = 0.0f;
             bestGuideXMaxY = screenH;
@@ -131,7 +128,6 @@ public class HudSnapHelper {
             if (dLeft < minDiffX) {
                 minDiffX = dLeft;
                 bestX = target.x();
-                centerSnapX = false;
                 snapTargetX = target;
                 bestGuideX = target.x();
                 bestGuideXMinY = tMinY;
@@ -142,7 +138,6 @@ public class HudSnapHelper {
             if (dRight < minDiffX) {
                 minDiffX = dRight;
                 bestX = target.x() + target.w() - w;
-                centerSnapX = false;
                 snapTargetX = target;
                 bestGuideX = target.x() + target.w();
                 bestGuideXMinY = tMinY;
@@ -153,7 +148,6 @@ public class HudSnapHelper {
             if (dCenter < minDiffX) {
                 minDiffX = dCenter;
                 bestX = target.x() + (target.w() - w) / 2.0f;
-                centerSnapX = false;
                 snapTargetX = target;
                 bestGuideX = target.x() + target.w() / 2.0f;
                 bestGuideXMinY = tMinY;
@@ -164,7 +158,6 @@ public class HudSnapHelper {
             if (dAdjRight < minDiffX) {
                 minDiffX = dAdjRight;
                 bestX = target.x() + target.w() + gap;
-                centerSnapX = false;
                 snapTargetX = target;
                 bestGuideX = target.x() + target.w();
                 bestGuideXMinY = tMinY;
@@ -175,7 +168,6 @@ public class HudSnapHelper {
             if (dAdjLeft < minDiffX) {
                 minDiffX = dAdjLeft;
                 bestX = target.x() - w - gap;
-                centerSnapX = false;
                 snapTargetX = target;
                 bestGuideX = target.x();
                 bestGuideXMinY = tMinY;
@@ -184,14 +176,13 @@ public class HudSnapHelper {
         }
 
         if (minDiffX >= snapThreshold) {
-            float nearestGridX = Math.round(proposedX / 25.0f) * 25.0f;
+            float nearestGridX = Math.round(proposedX / GRID_STEP) * GRID_STEP;
             if (Math.abs(proposedX - nearestGridX) < 5.0f) {
                 bestX = nearestGridX;
             }
         }
 
         res.snappedX = bestX;
-        res.isCenterSnapX = centerSnapX;
         res.snappedElemX = snapTargetX;
         res.guideX = bestGuideX;
         res.guideXMinY = bestGuideXMinY;
@@ -199,7 +190,6 @@ public class HudSnapHelper {
 
         float bestY = proposedY;
         float minDiffY = snapThreshold;
-        boolean centerSnapY = false;
         HudElementBounds snapTargetY = null;
         float bestGuideY = -1.0f;
         float bestGuideYMinX = 0.0f;
@@ -210,7 +200,6 @@ public class HudSnapHelper {
         if (diffCenterY < minDiffY) {
             minDiffY = diffCenterY;
             bestY = midY;
-            centerSnapY = true;
             bestGuideY = screenH / 2.0f;
             bestGuideYMinX = 0.0f;
             bestGuideYMaxX = screenW;
@@ -224,7 +213,6 @@ public class HudSnapHelper {
             if (dTop < minDiffY) {
                 minDiffY = dTop;
                 bestY = target.y();
-                centerSnapY = false;
                 snapTargetY = target;
                 bestGuideY = target.y();
                 bestGuideYMinX = tMinX;
@@ -235,7 +223,6 @@ public class HudSnapHelper {
             if (dBottom < minDiffY) {
                 minDiffY = dBottom;
                 bestY = target.y() + target.h() - h;
-                centerSnapY = false;
                 snapTargetY = target;
                 bestGuideY = target.y() + target.h();
                 bestGuideYMinX = tMinX;
@@ -246,7 +233,6 @@ public class HudSnapHelper {
             if (dCenter < minDiffY) {
                 minDiffY = dCenter;
                 bestY = target.y() + (target.h() - h) / 2.0f;
-                centerSnapY = false;
                 snapTargetY = target;
                 bestGuideY = target.y() + target.h() / 2.0f;
                 bestGuideYMinX = tMinX;
@@ -257,7 +243,6 @@ public class HudSnapHelper {
             if (dAdjBelow < minDiffY) {
                 minDiffY = dAdjBelow;
                 bestY = target.y() + target.h() + gap;
-                centerSnapY = false;
                 snapTargetY = target;
                 bestGuideY = target.y() + target.h();
                 bestGuideYMinX = tMinX;
@@ -268,7 +253,6 @@ public class HudSnapHelper {
             if (dAdjAbove < minDiffY) {
                 minDiffY = dAdjAbove;
                 bestY = target.y() - h - gap;
-                centerSnapY = false;
                 snapTargetY = target;
                 bestGuideY = target.y();
                 bestGuideYMinX = tMinX;
@@ -277,14 +261,13 @@ public class HudSnapHelper {
         }
 
         if (minDiffY >= snapThreshold) {
-            float nearestGridY = Math.round(proposedY / 25.0f) * 25.0f;
+            float nearestGridY = Math.round(proposedY / GRID_STEP) * GRID_STEP;
             if (Math.abs(proposedY - nearestGridY) < 5.0f) {
                 bestY = nearestGridY;
             }
         }
 
         res.snappedY = bestY;
-        res.isCenterSnapY = centerSnapY;
         res.snappedElemY = snapTargetY;
         res.guideY = bestGuideY;
         res.guideYMinX = bestGuideYMinX;
@@ -293,105 +276,120 @@ public class HudSnapHelper {
         return res;
     }
 
-    public static void renderGridAndGuides(DrawContext context, SnapResult snap, float screenW, float screenH,
-                                           HudElementBounds current, String label, int scalePercent, float radius) {
+    public static void renderHoverOverlay(HudElementBounds bounds, float screenW, float screenH,
+                                          double mouseX, double mouseY, int scalePercent) {
+        if (mouseX < bounds.x() - 2.0f || mouseX > bounds.x() + bounds.w() + 2.0f
+                || mouseY < bounds.y() - 2.0f || mouseY > bounds.y() + bounds.h() + 2.0f) return;
 
-        int gridStep = 25;
-        int gridColor = ColorUtil.rgba(255, 255, 255, 12);
-        for (int gx = gridStep; gx < screenW; gx += gridStep) {
-            Draw2DProcessor.INSTANCE.drawRect(null, gx, 0, 1.0f, screenH, 0.0f, gridColor);
-        }
-        for (int gy = gridStep; gy < screenH; gy += gridStep) {
-            Draw2DProcessor.INSTANCE.drawRect(null, 0, gy, screenW, 1.0f, 0.0f, gridColor);
-        }
-
-        float midX = screenW / 2.0f;
-        float midY = screenH / 2.0f;
-        int centerColor = (snap != null && snap.isCenterSnapX)
-                ? Theme.getAccentHover()
-                : ColorUtil.rgba(168, 85, 247, 50);
-        Draw2DProcessor.INSTANCE.drawRect(null, midX, 0, 1.0f, screenH, 0.0f, centerColor);
-        if (snap != null && snap.isCenterSnapX) {
-            Draw2DProcessor.INSTANCE.drawGlow(null, midX - 1.0f, 0, 2.0f, screenH, 0.0f, Theme.getAccent(), 4.0f);
-        }
-
-        int centerColorY = (snap != null && snap.isCenterSnapY)
-                ? Theme.getAccentHover()
-                : ColorUtil.rgba(168, 85, 247, 50);
-        Draw2DProcessor.INSTANCE.drawRect(null, 0, midY, screenW, 1.0f, 0.0f, centerColorY);
-        if (snap != null && snap.isCenterSnapY) {
-            Draw2DProcessor.INSTANCE.drawGlow(null, 0, midY - 1.0f, screenW, 2.0f, 0.0f, Theme.getAccent(), 4.0f);
-        }
-
-        if (snap != null) {
-            if (snap.snappedElemX != null) {
-                HudElementBounds target = snap.snappedElemX;
-                Draw2DProcessor.INSTANCE.drawOutline(null, target.x() - 2.0f, target.y() - 2.0f, target.w() + 4.0f, target.h() + 4.0f, 6.0f, 1.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), 0.7f));
-                Draw2DProcessor.INSTANCE.drawGlow(null, target.x() - 2.0f, target.y() - 2.0f, target.w() + 4.0f, target.h() + 4.0f, 6.0f, Theme.getAccent(), 6.0f);
-
-                float bw = Fonts.b.a(target.displayName(), 9.0f) + 8.0f;
-                float bx = target.x() + (target.w() - bw) / 2.0f;
-                float by = Math.max(4.0f, target.y() - 15.0f);
-                Draw2DProcessor.INSTANCE.drawRect(null, bx, by, bw, 12.0f, 3.0f, ColorUtil.rgba(14, 15, 22, 220));
-                Fonts.b.a(null, target.displayName(), bx + 4.0f, by + 2.0f, 9.0f, Theme.getAccentHover());
-            }
-
-            if (snap.snappedElemY != null && snap.snappedElemY != snap.snappedElemX) {
-                HudElementBounds target = snap.snappedElemY;
-                Draw2DProcessor.INSTANCE.drawOutline(null, target.x() - 2.0f, target.y() - 2.0f, target.w() + 4.0f, target.h() + 4.0f, 6.0f, 1.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), 0.7f));
-                Draw2DProcessor.INSTANCE.drawGlow(null, target.x() - 2.0f, target.y() - 2.0f, target.w() + 4.0f, target.h() + 4.0f, 6.0f, Theme.getAccent(), 6.0f);
-
-                float bw = Fonts.b.a(target.displayName(), 9.0f) + 8.0f;
-                float bx = target.x() + (target.w() - bw) / 2.0f;
-                float by = Math.max(4.0f, target.y() - 15.0f);
-                Draw2DProcessor.INSTANCE.drawRect(null, bx, by, bw, 12.0f, 3.0f, ColorUtil.rgba(14, 15, 22, 220));
-                Fonts.b.a(null, target.displayName(), bx + 4.0f, by + 2.0f, 9.0f, Theme.getAccentHover());
-            }
-
-            if (snap.guideX > 0.0f && !snap.isCenterSnapX) {
-                float gx = snap.guideX;
-                float gy1 = snap.guideXMinY;
-                float gy2 = snap.guideXMaxY;
-                Draw2DProcessor.INSTANCE.drawGlow(null, gx - 1.0f, gy1, 2.0f, gy2 - gy1, 0.0f, Theme.getAccent(), 5.0f);
-                Draw2DProcessor.INSTANCE.drawRect(null, gx, gy1, 1.0f, gy2 - gy1, 0.0f, Theme.getAccentHover());
-            }
-
-            if (snap.guideY > 0.0f && !snap.isCenterSnapY) {
-                float gy = snap.guideY;
-                float gx1 = snap.guideYMinX;
-                float gx2 = snap.guideYMaxX;
-                Draw2DProcessor.INSTANCE.drawGlow(null, gx1, gy - 1.0f, gx2 - gx1, 2.0f, 0.0f, Theme.getAccent(), 5.0f);
-                Draw2DProcessor.INSTANCE.drawRect(null, gx1, gy, gx2 - gx1, 1.0f, 0.0f, Theme.getAccentHover());
-            }
-        }
-
-        Draw2DProcessor.INSTANCE.drawOutline(null, current.x() - 2.0f, current.y() - 2.0f, current.w() + 4.0f, current.h() + 4.0f, radius, 1.2f, Theme.getAccent());
-        Draw2DProcessor.INSTANCE.drawGlow(null, current.x() - 2.0f, current.y() - 2.0f, current.w() + 4.0f, current.h() + 4.0f, radius, Theme.getAccent(), 8.0f);
-
-        String badgeText = label + " (" + scalePercent + "%)";
-        float bw = Fonts.b.a(badgeText, 9.5f) + 10.0f;
-        float bx = current.x() + (current.w() - bw) / 2.0f;
-        float by = current.y() + current.h() + 6.0f;
-        if (by + 16.0f > screenH) {
-            by = current.y() - 18.0f;
-        }
-        Draw2DProcessor.INSTANCE.drawGlow(null, bx, by, bw, 14.0f, 4.0f, ColorUtil.rgba(0, 0, 0, 160), 6.0f);
-        Draw2DProcessor.INSTANCE.drawRect(null, bx, by, bw, 14.0f, 4.0f, ColorUtil.rgba(14, 15, 22, 235));
-        Draw2DProcessor.INSTANCE.drawOutline(null, bx, by, bw, 14.0f, 4.0f, 1.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), 0.5f));
-        Fonts.b.a(null, badgeText, bx + 5.0f, by + 2.5f, 9.5f, Theme.getAccentHover());
-
+        renderSelection(bounds, screenW, screenH, scalePercent, 0xBFDDE2EB);
         DrawBatcher.flushPending();
     }
 
-    public static void renderHoverBadge(DrawContext context, float x, float y, float w, float h, float radius, String badgeText) {
-        Draw2DProcessor.INSTANCE.drawOutline(null, x - 2.0f, y - 2.0f, w + 4.0f, h + 4.0f, radius, 1.0f, Theme.getAccent());
+    public static void renderDragOverlay(HudElementBounds bounds, SnapResult snap, float screenW, float screenH, int scalePercent) {
+        Draw2DProcessor draw = Draw2DProcessor.INSTANCE;
+        for (int x = GRID_STEP; x < screenW; x += GRID_STEP) {
+            draw.drawRect(null, x, 0, 0.6f, screenH, 0, 0x0AFFFFFF);
+        }
+        for (int y = GRID_STEP; y < screenH; y += GRID_STEP) {
+            draw.drawRect(null, 0, y, screenW, 0.6f, 0, 0x0AFFFFFF);
+        }
 
-        float bw = Fonts.b.a(badgeText, 9.5f) + 10.0f;
-        float bx = x + (w - bw) / 2.0f;
-        float by = y + h + 5.0f;
-        Draw2DProcessor.INSTANCE.drawRect(null, bx, by, bw, 13.0f, 3.5f, ColorUtil.rgba(14, 15, 22, 230));
-        Draw2DProcessor.INSTANCE.drawOutline(null, bx, by, bw, 13.0f, 3.5f, 1.0f, ColorUtil.rgba(255, 255, 255, 20));
-        Fonts.b.a(null, badgeText, bx + 5.0f, by + 2.5f, 9.5f, Theme.getAccentHover());
+        if (snap != null) {
+            renderGuide(true, snap.guideX, snap.guideXMinY, Math.min(snap.guideXMaxY, screenH), bounds, snap.snappedElemX);
+            renderGuide(false, snap.guideY, snap.guideYMinX, Math.min(snap.guideYMaxX, screenW), bounds, snap.snappedElemY);
+            if (snap.snappedElemX != null) renderCorners(snap.snappedElemX, screenW, screenH, 0x8AB4BECE);
+            if (snap.snappedElemY != null && !snap.snappedElemY.equals(snap.snappedElemX)) {
+                renderCorners(snap.snappedElemY, screenW, screenH, 0x8AB4BECE);
+            }
+        }
+
+        int color = ColorUtil.interpolate(0xFFF3F5F9, Theme.getAccent(), 0.24f);
+        renderSelection(bounds, screenW, screenH, scalePercent, color);
         DrawBatcher.flushPending();
+    }
+
+    private static void renderSelection(HudElementBounds bounds, float screenW, float screenH, int scalePercent, int color) {
+        if (bounds.w() <= 0.0f || bounds.h() <= 0.0f) return;
+
+        renderCorners(bounds, screenW, screenH, color);
+
+        String label = scalePercent + "%";
+        float textSize = 8.0f;
+        float width = Math.round(Fonts.b.a(label, textSize)) + 10.0f;
+        float height = 12.0f;
+        float margin = 3.0f;
+        float maxX = screenW - width - margin;
+        float maxY = screenH - height - 15.0f;
+        if (maxX < margin || maxY < margin) return;
+
+        float x = Math.clamp(Math.round(bounds.x() + bounds.w() + SELECTION_PAD - width), margin, maxX);
+        float y = bounds.y() - SELECTION_PAD - 3.0f - height;
+        if (y < margin) y = bounds.y() + bounds.h() + SELECTION_PAD + 3.0f;
+        y = Math.clamp(Math.round(y), margin, maxY);
+
+        Draw2DProcessor.INSTANCE.drawRect(null, x, y, width, height, 3.0f, 0xEB1B1D23);
+        Fonts.b.drawCentered(null, label, x + width / 2.0f, y + height / 2.0f, textSize, 0xFFF0F2F6, 0);
+    }
+
+    private static void renderCorners(HudElementBounds bounds, float screenW, float screenH, int color) {
+        float left = Math.max(0.0f, Math.round(bounds.x() - SELECTION_PAD));
+        float top = Math.max(0.0f, Math.round(bounds.y() - SELECTION_PAD));
+        float right = Math.min(screenW, Math.round(bounds.x() + bounds.w() + SELECTION_PAD));
+        float bottom = Math.min(screenH, Math.round(bounds.y() + bounds.h() + SELECTION_PAD));
+        float leg = Math.min(6.0f, Math.min(right - left, bottom - top) / 2.0f);
+        if (leg < 2.0f) return;
+
+        drawCorner(left, top, leg, false, false, color);
+        drawCorner(right, top, leg, true, false, color);
+        drawCorner(left, bottom, leg, false, true, color);
+        drawCorner(right, bottom, leg, true, true, color);
+    }
+
+    private static void drawCorner(float x, float y, float leg, boolean right, boolean bottom, int color) {
+        Draw2DProcessor draw = Draw2DProcessor.INSTANCE;
+        draw.drawRect(null, right ? x - leg : x, bottom ? y - 1.0f : y, leg, 1.0f, 0, color);
+        draw.drawRect(null, right ? x - 1.0f : x, bottom ? y - leg : y + 1.0f, 1.0f, leg - 1.0f, 0, color);
+    }
+
+    private static void renderGuide(boolean vertical, float coordinate, float start, float end,
+                                    HudElementBounds current, HudElementBounds target) {
+        if (coordinate < 0.0f) return;
+
+        HudElementBounds first = current;
+        HudElementBounds second = target;
+        if (target != null && axisStart(target, vertical) < axisStart(current, vertical)) {
+            first = target;
+            second = current;
+        }
+
+        float line = Math.round(coordinate);
+        float cursor = Math.max(0.0f, Math.round(start));
+        cursor = drawToElement(vertical, line, cursor, end, first);
+        cursor = drawToElement(vertical, line, cursor, end, second);
+        drawGuideSegment(vertical, line, cursor, end);
+    }
+
+    private static float drawToElement(boolean vertical, float line, float cursor, float end, HudElementBounds bounds) {
+        if (bounds == null) return cursor;
+        float crossStart = axisStart(bounds, !vertical);
+        float crossSize = vertical ? bounds.w() : bounds.h();
+        if (line < crossStart - SELECTION_PAD || line > crossStart + crossSize + SELECTION_PAD) return cursor;
+
+        float start = axisStart(bounds, vertical);
+        float size = vertical ? bounds.h() : bounds.w();
+        drawGuideSegment(vertical, line, cursor, Math.min(end, start - SELECTION_PAD));
+        return Math.max(cursor, start + size + SELECTION_PAD);
+    }
+
+    private static float axisStart(HudElementBounds bounds, boolean vertical) {
+        return vertical ? bounds.y() : bounds.x();
+    }
+
+    private static void drawGuideSegment(boolean vertical, float line, float start, float end) {
+        for (float position = start; position + 2.0f <= end; position += 8.0f) {
+            float length = Math.min(4.0f, end - position);
+            Draw2DProcessor.INSTANCE.drawRect(null, vertical ? line : position, vertical ? position : line,
+                    vertical ? 1.0f : length, vertical ? length : 1.0f, 0, 0x97BCC9DC);
+        }
     }
 }
