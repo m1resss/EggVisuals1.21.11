@@ -22,8 +22,8 @@ import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Fonts;
 import egg.client.render.msdf.ScissorUtil;
 import egg.client.render.msdf.pipeline.DrawBatcher;
-import egg.client.ui.grid.GuiDotGrid;
 import egg.client.ui.lens.LensParams;
+import egg.client.ui.theme.FrostedSurface;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
 import egg.client.util.FpsBenchmark;
@@ -66,7 +66,7 @@ public class ClickGuiScreen extends Screen {
     private float lensOriginY = -1.0f;
     private boolean closing = false;
     private boolean cascadeStarted = false;
-    private int previousVanillaBlur = -1;
+    private boolean frostCaptured;
 
     private static Category savedCategory = Category.ESP;
     private static Module savedSearchModule = null;
@@ -143,8 +143,6 @@ public class ClickGuiScreen extends Screen {
     private float sidebarScrollOffset = savedSidebarScrollOffset;
     private float sidebarTargetScroll = savedSidebarTargetScroll;
     private float sidebarMaxScroll = 0.0f;
-    private Category deferredRailTooltipCat = null;
-    private float deferredRailTooltipY = 0.0f;
     private final Animation scrollbarAlphaAnim = new Animation(0.0f, 240L, Easing.EASE_OUT_CUBIC);
     private long lastScrollTime = 0;
 
@@ -179,30 +177,17 @@ public class ClickGuiScreen extends Screen {
 
     private float openDropdownMaxModeW = 0.0f;
 
-    private static final int[] CATEGORY_MODULE_COUNTS = new int[Category.values().length];
-    private static final String[] CATEGORY_COUNT_STRINGS = new String[Category.values().length];
-    private static final float[] CATEGORY_COUNT_WIDTHS = new float[Category.values().length];
     private static final String[] CATEGORY_BREADCRUMBS = new String[Category.values().length];
-    private static boolean categoryCountsInitialized = false;
+    private static boolean categoryDataInitialized = false;
 
     private static void initCategoryData() {
-        if (categoryCountsInitialized) return;
+        if (categoryDataInitialized) return;
         Category[] cats = Category.values();
         for (int i = 0; i < cats.length; i++) {
             Category cat = cats[i];
-            int count;
-            if (cat == Category.SETTINGS) count = 1;
-            else if (cat == Category.INVENTORY) count = 4;
-            else if (cat == Category.COSMETICS) count = 8;
-            else count = ModuleManager.getInstance().getModulesByCategory(cat).size();
-
-            CATEGORY_MODULE_COUNTS[i] = count;
-            String str = String.valueOf(count);
-            CATEGORY_COUNT_STRINGS[i] = str;
-            CATEGORY_COUNT_WIDTHS[i] = ClientFont.getWidth(str, ClientFont.SF_REGULAR);
             CATEGORY_BREADCRUMBS[i] = cat.getSection() + " / " + cat.getName();
         }
-        categoryCountsInitialized = true;
+        categoryDataInitialized = true;
     }
 
     private void ensureClientSettingsSplit(ClientSettings cs) {
@@ -211,7 +196,7 @@ public class ClickGuiScreen extends Screen {
         cachedClientSettingsRight = new ArrayList<>();
         for (Setting s : cs.getSettings()) {
             String name = s.getName();
-            if (name.contains("Пресет") || name.contains("Accent") || name.contains("курсор") || name.contains("сетка") || name.contains("Сетка") || name.contains("открытия")) {
+            if (name.contains("Пресет") || name.contains("Accent") || name.contains("открытия")) {
                 cachedClientSettingsLeft.add(s);
             } else {
                 cachedClientSettingsRight.add(s);
@@ -242,6 +227,12 @@ public class ClickGuiScreen extends Screen {
 
     private float getGuiBaseHeight() {
         return Math.clamp(this.height * 0.62f, 280.0f, 320.0f);
+    }
+
+    private float getTargetGuiScale() {
+        float fit = Math.min(Math.min(width - 24.0f, width * 0.90f) / getGuiBaseWidth(),
+                Math.min(height - 24.0f, height * 0.82f) / getGuiBaseHeight());
+        return Math.min(ClientSettings.getGuiScale(), Math.max(0.10f, fit));
     }
 
     private float getGuiCenterX() {
@@ -291,14 +282,6 @@ public class ClickGuiScreen extends Screen {
     protected void init() {
         super.init();
         ScissorUtil.reset();
-        if (client != null && client.options != null) {
-            if (previousVanillaBlur == -1) {
-                previousVanillaBlur = client.options.getMenuBackgroundBlurrinessValue();
-            }
-            if (ClientSettings.isBlurEnabled()) {
-                client.options.getMenuBackgroundBlurriness().setValue(ClientSettings.getBlurStrength());
-            }
-        }
         GuiSoundManager.playScreenOpen();
         if (closing) {
             closing = false;
@@ -311,7 +294,7 @@ public class ClickGuiScreen extends Screen {
         cascadeStarted = false;
         DynamicGuiTextures.clearCache();
 
-        currentGuiScale = ClientSettings.getGuiScale();
+        currentGuiScale = getTargetGuiScale();
         float guiWidth = getGuiBaseWidth();
         float guiHeight = getGuiBaseHeight();
         float gx = (float) Math.round((width - guiWidth) / 2.0f);
@@ -444,11 +427,8 @@ public class ClickGuiScreen extends Screen {
     public void removed() {
         saveState();
         super.removed();
+        frostCaptured = false;
         ScissorUtil.reset();
-        if (client != null && client.options != null && previousVanillaBlur != -1) {
-            client.options.getMenuBackgroundBlurriness().setValue(previousVanillaBlur);
-            previousVanillaBlur = -1;
-        }
         this.closing = false;
         this.cardHoverTimes.clear();
         this.activeCandidateModule = null;
@@ -518,19 +498,11 @@ public class ClickGuiScreen extends Screen {
     @Override
     public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
         updateAnimationProgress();
-        boolean blurEnabled = ClientSettings.isBlurEnabled() && !FpsBenchmark.overrideNoBlur;
-        if (blurEnabled && currentAnimProgress > 0.01f && client != null && client.world != null) {
-            if (client.options != null) {
-                int targetBlur = ClientSettings.getBlurStrength();
-                if (client.options.getMenuBackgroundBlurrinessValue() != targetBlur) {
-                    client.options.getMenuBackgroundBlurriness().setValue(targetBlur);
-                }
-            }
-            try {
-                client.gameRenderer.renderBlur();
-            } catch (Throwable ignored) {
-
-            }
+        frostCaptured = currentAnimProgress > 0.01f && client != null && client.world != null
+                && ClientSettings.isBlurEnabled() && !FpsBenchmark.overrideNoBlur;
+        if (frostCaptured) {
+            DrawBatcher.flushPending();
+            Draw2DProcessor.INSTANCE.getBlurPipeline().capture(8.0f + ClientSettings.getBlurStrength() * 5.0f, 2);
         }
         if (currentAnimProgress > 0.01f) {
             float dimFactor = ClientSettings.getScreenDimOpacity();
@@ -589,7 +561,7 @@ public class ClickGuiScreen extends Screen {
         float gx = (float) Math.round((width - guiWidth) / 2.0f);
         float gy = (float) Math.round((height - guiHeight) / 2.0f);
 
-        float targetScale = ClientSettings.getGuiScale();
+        float targetScale = getTargetGuiScale();
         if (currentGuiScale <= 0.01f) {
             currentGuiScale = targetScale;
         } else if (Math.abs(currentGuiScale - targetScale) > 0.001f) {
@@ -626,10 +598,7 @@ public class ClickGuiScreen extends Screen {
             float curGy = gy + waveOffsetY;
             float alphaVal = Math.clamp(waveP * 1.25f, 0.0f, 1.0f);
 
-            Render2D.drawShadow(context, gx, curGy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 28.0f, ColorUtil.rgba(0, 0, 0, (int) (135 * alphaVal)));
-            int mainBg = ColorUtil.withAlphaFloat(Theme.getWindowBg(), alphaVal);
-            Render2D.drawRoundedRect(context, gx, curGy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, mainBg);
-            Render2D.drawRoundedOutline(context, gx, curGy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (16 * alphaVal)));
+            renderWindowSurface(context, gx, curGy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, gx + sidebarWidth(), alphaVal);
 
             enableGuiScissor(context, gx, Math.max(0.0f, curGy), gx + guiWidth, curGy + guiHeight);
             try {
@@ -644,7 +613,6 @@ public class ClickGuiScreen extends Screen {
             return;
         }
 
-        float k = 1.0f - p;
         float lcx = lensOriginX;
         float lcy = lensOriginY;
         if (lcx < 0.0f || lcy < 0.0f) {
@@ -663,10 +631,7 @@ public class ClickGuiScreen extends Screen {
         float curRadius = MathHelper.lerp(morphToRect, curH / 2.0f, Theme.WINDOW_RADIUS);
 
         if (p < 0.999f) {
-            Render2D.drawShadow(context, curX, curY, curW, curH, curRadius, 28.0f, ColorUtil.rgba(0, 0, 0, (int) (135 * p)));
-            int mainBg = ColorUtil.withAlphaFloat(Theme.getWindowBg(), p);
-            Render2D.drawRoundedRect(context, curX, curY, curW, curH, curRadius, mainBg);
-            Render2D.drawRoundedOutline(context, curX, curY, curW, curH, curRadius, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (16 * p)));
+            renderWindowSurface(context, curX, curY, curW, curH, curRadius, gx + sidebarWidth(), p);
 
             float contentAlpha = LensParams.smoothstep(0.55f, 0.90f, p) * p;
             if (contentAlpha > 0.01f) {
@@ -733,10 +698,7 @@ public class ClickGuiScreen extends Screen {
     }
 
     private void renderDirectWindow(DrawContext context, float gx, float gy, float guiWidth, float guiHeight, float mouseX, float mouseY, float containerAlpha, float contentAlpha) {
-        Render2D.drawShadow(context, gx, gy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 28.0f, ColorUtil.rgba(0, 0, 0, (int) (135 * containerAlpha)));
-        int mainBg = ColorUtil.withAlphaFloat(Theme.getWindowBg(), containerAlpha);
-        Render2D.drawRoundedRect(context, gx, gy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, mainBg);
-        Render2D.drawRoundedOutline(context, gx, gy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (16 * containerAlpha)));
+        renderWindowSurface(context, gx, gy, guiWidth, guiHeight, Theme.WINDOW_RADIUS, gx + sidebarWidth(), containerAlpha);
 
         enableGuiScissor(context, gx, gy, gx + guiWidth, gy + guiHeight);
         try {
@@ -746,56 +708,32 @@ public class ClickGuiScreen extends Screen {
         }
     }
 
+    private float sidebarWidth() {
+        return MathHelper.lerp(sidebarCollapseAnim.getValue(), 132.0f, 36.0f);
+    }
+
+    private void renderWindowSurface(DrawContext context, float x, float y, float width, float height,
+                                     float radius, float sidebarRight, float alpha) {
+        if (ClientSettings.isShadowEnabled() && !FpsBenchmark.overrideNoShadow) {
+            Render2D.drawShadow(context, x, y, width, height, radius, 24.0f, ColorUtil.rgba(0, 0, 0, (int) (115 * alpha)));
+        }
+        FrostedSurface.draw(context, x, y, width, height, radius, Theme.getWindowBg(), alpha, 1.0f, frostCaptured);
+        float end = Math.min(x + width, sidebarRight);
+        if (end > x) {
+            enableGuiScissor(context, x, y, end, y + height);
+            try {
+                Render2D.drawRoundedRect(context, x, y, width, height, radius, ColorUtil.rgba(0, 0, 0, (int) (43 * alpha)));
+            } finally {
+                disableGuiScissor(context);
+            }
+        }
+        Render2D.drawRoundedOutline(context, x, y, width, height, radius, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (20 * alpha)));
+    }
+
     private void renderWindowContent(DrawContext context, float gx, float gy, float guiWidth, float guiHeight, float mouseX, float mouseY, float alpha) {
         float collapseProgress = sidebarCollapseAnim.getValue();
         float sidebarWidth = MathHelper.lerp(collapseProgress, 132.0f, 36.0f);
         float headerHeight = 44.0f;
-        deferredRailTooltipCat = null;
-
-        if (ClientSettings.isCursorGlow() && mouseX >= gx && mouseX <= gx + guiWidth && mouseY >= gy && mouseY <= gy + guiHeight) {
-            float distLeft = mouseX - gx;
-            float distRight = (gx + guiWidth) - mouseX;
-            float distTop = mouseY - gy;
-            float distBottom = (gy + guiHeight) - mouseY;
-            float edgeDist = Math.min(Math.min(distLeft, distRight), Math.min(distTop, distBottom));
-
-            float cornerRadius = 16.0f;
-            if (distLeft < cornerRadius && distTop < cornerRadius) {
-                float cx = gx + cornerRadius;
-                float cy = gy + cornerRadius;
-                edgeDist = Math.min(edgeDist, cornerRadius - (float) Math.hypot(cx - mouseX, cy - mouseY));
-            } else if (distRight < cornerRadius && distTop < cornerRadius) {
-                float cx = gx + guiWidth - cornerRadius;
-                float cy = gy + cornerRadius;
-                edgeDist = Math.min(edgeDist, cornerRadius - (float) Math.hypot(mouseX - cx, cy - mouseY));
-            } else if (distLeft < cornerRadius && distBottom < cornerRadius) {
-                float cx = gx + cornerRadius;
-                float cy = gy + guiHeight - cornerRadius;
-                edgeDist = Math.min(edgeDist, cornerRadius - (float) Math.hypot(cx - mouseX, mouseY - cy));
-            } else if (distRight < cornerRadius && distBottom < cornerRadius) {
-                float cx = gx + guiWidth - cornerRadius;
-                float cy = gy + guiHeight - cornerRadius;
-                edgeDist = Math.min(edgeDist, cornerRadius - (float) Math.hypot(mouseX - cx, mouseY - cy));
-            }
-
-            float fadeMargin = 40.0f;
-            float edgeFade = Math.clamp(edgeDist / fadeMargin, 0.0f, 1.0f);
-            edgeFade = edgeFade * edgeFade * (3.0f - 2.0f * edgeFade);
-
-            float glowSpread = 16.0f;
-            float glowSize = 36.0f;
-            float glowRadius = 18.0f;
-            float glowAlpha = 0.03f * edgeFade * alpha;
-            if (glowAlpha > 0.002f) {
-                Render2D.drawShadow(context, mouseX - glowRadius, mouseY - glowRadius, glowSize, glowSize, glowRadius, glowSpread, ColorUtil.withAlphaFloat(Theme.getAccent(), glowAlpha));
-            }
-        }
-
-        enableGuiScissor(context, gx, gy, gx + sidebarWidth, gy + guiHeight);
-        Render2D.drawRoundedRect(context, gx, gy, sidebarWidth + Theme.WINDOW_RADIUS, guiHeight, Theme.WINDOW_RADIUS, ColorUtil.withAlphaFloat(Theme.getSidebarBg(), alpha));
-        disableGuiScissor(context);
-
-        GuiDotGrid.render(context, gx + sidebarWidth, gy + headerHeight, guiWidth - sidebarWidth, guiHeight - headerHeight, mouseX, mouseY, alpha);
 
         int dividerColor = ColorUtil.withAlphaFloat(Theme.SIDEBAR_DIVIDER, alpha);
         Render2D.drawRect(context, gx + sidebarWidth, gy, 1.0f, guiHeight, dividerColor);
@@ -811,9 +749,9 @@ public class ClickGuiScreen extends Screen {
         float contentH = guiHeight - headerHeight - 16.0f;
 
         if (selectedCategory == Category.INVENTORY) {
-            egg.client.ui.section.InventoryConfigPanel.render(context, contentX, contentY, contentW, contentH, mouseX, mouseY, alpha);
+            egg.client.ui.section.InventoryConfigPanel.render(context, contentX, contentY, contentW, contentH, mouseX, mouseY, alpha, frostCaptured);
         } else if (selectedCategory == Category.COSMETICS) {
-            egg.client.ui.section.CosmeticsPanel.render(context, contentX, contentY, contentW, contentH, mouseX, mouseY, alpha);
+            egg.client.ui.section.CosmeticsPanel.render(context, contentX, contentY, contentW, contentH, mouseX, mouseY, alpha, frostCaptured);
         } else if (selectedCategory == Category.SETTINGS) {
             renderClientSettingsPanel(context, contentX, contentY, contentW, contentH, mouseX, mouseY, alpha);
         } else {
@@ -823,19 +761,6 @@ public class ClickGuiScreen extends Screen {
         if (collapseProgress < 0.2f) {
             float searchPopupW = sidebarWidth - 16.0f;
             renderSearchMatchesPopup(context, gx + 8.0f, gy + 60.0f, searchPopupW, mouseX, mouseY, alpha);
-        }
-
-        if (collapseProgress > 0.6f && deferredRailTooltipCat != null) {
-            float ttAlpha = Math.clamp((collapseProgress - 0.6f) / 0.4f, 0.0f, 1.0f) * alpha;
-            float ttX = gx + sidebarWidth + 8.0f;
-            float ttY = Math.clamp(deferredRailTooltipY + 1.0f, gy + 6.0f, gy + guiHeight - 24.0f);
-            String ttText = deferredRailTooltipCat.getName() + " (" + getCategoryModuleCount(deferredRailTooltipCat) + ")";
-            float ttW = ClientFont.getWidth(ttText, ClientFont.SF_MEDIUM) + 14.0f;
-            float ttH = 20.0f;
-            Render2D.drawShadow(context, ttX, ttY, ttW, ttH, 5.0f, 8.0f, ColorUtil.rgba(0, 0, 0, (int) (140 * ttAlpha)));
-            Render2D.drawRoundedRect(context, ttX, ttY, ttW, ttH, 5.0f, ColorUtil.rgba(24, 24, 27, (int) (250 * ttAlpha)));
-            Render2D.drawRoundedOutline(context, ttX, ttY, ttW, ttH, 5.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (20 * ttAlpha)));
-            ClientFont.draw(context, ttText, ttX + 7.0f, ttY + 5.5f, ClientFont.SF_MEDIUM, ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, ttAlpha));
         }
     }
 
@@ -901,10 +826,6 @@ public class ClickGuiScreen extends Screen {
                     mouseY >= listStartY && mouseY <= (y + height) &&
                     mouseY >= curItemY && mouseY <= (curItemY + itemH);
 
-            if (isHovered && collapseProgress > 0.6f) {
-                deferredRailTooltipCat = cat;
-                deferredRailTooltipY = curItemY;
-            }
 
             Animation hoverAnim = categoryHoverAnims.get(cat);
             if (hoverAnim != null) {
@@ -922,7 +843,7 @@ public class ClickGuiScreen extends Screen {
                 Render2D.drawRoundedRect(context, hovX, curItemY, hovW, itemH, 6.0f, hoverBg);
             }
 
-            int baseColor = isSelected ? Theme.TEXT_TITLE : Theme.TEXT_MUTED;
+            int baseColor = isSelected ? Theme.TEXT_TITLE : Theme.TEXT_SUB;
             int finalColor = ColorUtil.interpolate(baseColor, Theme.TEXT_TITLE, hoverProgress);
             finalColor = ColorUtil.withAlphaFloat(finalColor, listAlpha);
 
@@ -938,15 +859,6 @@ public class ClickGuiScreen extends Screen {
                 float textY = curItemY + (itemH - 9.0f) / 2.0f + 0.5f;
                 int labelCol = isSelected ? ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, textAlpha) : ColorUtil.withAlphaFloat(finalColor, textAlpha);
                 ClientFont.draw(context, cat.getName(), textX, textY, isSelected ? ClientFont.SF_MEDIUM : ClientFont.SF_REGULAR, labelCol);
-
-                initCategoryData();
-                String countStr = CATEGORY_COUNT_STRINGS[cat.ordinal()];
-                float countW = CATEGORY_COUNT_WIDTHS[cat.ordinal()];
-                float countAlpha = Math.max(0.0f, 1.0f - collapseProgress * 2.5f) * listAlpha;
-                if (countAlpha > 0.01f) {
-                    int countCol = isSelected ? ColorUtil.withAlphaFloat(Theme.TEXT_MUTED, countAlpha) : ColorUtil.withAlphaFloat(Theme.TEXT_DIM, countAlpha);
-                    ClientFont.draw(context, countStr, x + width - countW - 13.0f, textY, ClientFont.SF_REGULAR, countCol);
-                }
             }
 
             itemY += itemH + 3.0f;
@@ -1058,19 +970,10 @@ public class ClickGuiScreen extends Screen {
         searchFocusAnim.setTarget(searchFocused ? 1.0f : 0.0f);
         float focusVal = searchFocusAnim.getValue();
 
-        int searchBg = ColorUtil.rgba(20, 20, 27, (int) (255 * alpha));
-        int normalBorder = ColorUtil.rgba(255, 255, 255, (int) (18 * alpha));
-        int focusedBorder = ColorUtil.rgba(120, 130, 255, (int) (140 * alpha));
-        int searchBorder = ColorUtil.interpolate(normalBorder, focusedBorder, focusVal);
-
+        int searchBg = ColorUtil.rgba(6, 7, 9, (int) (MathHelper.lerp(focusVal, 76, 118) * alpha));
         Render2D.drawRoundedRect(context, searchX, searchY, searchW, searchH, 5.0f, searchBg);
-        Render2D.drawRoundedOutline(context, searchX, searchY, searchW, searchH, 5.0f, 1.0f, searchBorder);
 
-        int iconColor = ColorUtil.interpolate(
-                ColorUtil.rgba(255, 255, 255, (int) (90 * alpha)),
-                ColorUtil.withAlphaFloat(Theme.getAccent(), alpha),
-                focusVal
-        );
+        int iconColor = ColorUtil.withAlphaFloat(Theme.TEXT_SUB, alpha * MathHelper.lerp(focusVal, 0.64f, 1.0f));
         IconRenderer.drawSearchIcon(context, searchX + 6.0f, searchY + (searchH - 9.0f) / 2.0f, 9.0f, iconColor);
 
         float textX = searchX + 19.0f;
@@ -1116,11 +1019,6 @@ public class ClickGuiScreen extends Screen {
                 IconRenderer.drawCrossIcon(context, clearX + clearSize / 2.0f, clearY + clearSize / 2.0f, 8.0f, crossCol);
             }
         }
-    }
-
-    private int getCategoryModuleCount(Category cat) {
-        initCategoryData();
-        return CATEGORY_MODULE_COUNTS[cat.ordinal()];
     }
 
     private void renderHeader(DrawContext context, float x, float y, float width, float height, float mouseX, float mouseY, float alpha) {
@@ -1249,7 +1147,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         if (ClientSettings.isShadowEnabled() && !FpsBenchmark.overrideNoShadow) {
             Render2D.drawShadow(context, x, y + 6.0f, width, popH, 8.0f, 16.0f, ColorUtil.rgba(0, 0, 0, (int) (190 * alpha)));
         }
-        Render2D.drawRoundedRect(context, x, y, width, popH, 8.0f, ColorUtil.rgba(23, 23, 31, (int) (255 * alpha)));
+        FrostedSurface.draw(context, x, y, width, popH, 8.0f, 0xFA17171F, alpha, 0.57f, frostCaptured);
         Render2D.drawRoundedOutline(context, x, y, width, popH, 8.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (23 * alpha)));
 
         if (count == 0) {
@@ -1384,14 +1282,14 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             }
             if (scrollOffset > 1.0f) {
                 float topFadeH = 16.0f;
-                int fadeCol = ColorUtil.withAlphaFloat(Theme.getWindowBg(), 0.96f * alpha);
-                int clearCol = ColorUtil.withAlphaFloat(Theme.getWindowBg(), 0.0f);
+                int fadeCol = ColorUtil.rgba(10, 11, 14, (int) ((frostCaptured ? 50 : 190) * alpha));
+                int clearCol = 0x000A0B0E;
                 Render2D.drawGradientRect(context, x - 2.0f, y, width + 4.0f, topFadeH, 0.0f, fadeCol, fadeCol, clearCol, clearCol);
             }
             if (scrollOffset < maxScroll - 1.0f) {
                 float botFadeH = 22.0f;
-                int fadeCol = ColorUtil.withAlphaFloat(Theme.getWindowBg(), 0.96f * alpha);
-                int clearCol = ColorUtil.withAlphaFloat(Theme.getWindowBg(), 0.0f);
+                int fadeCol = ColorUtil.rgba(10, 11, 14, (int) ((frostCaptured ? 50 : 190) * alpha));
+                int clearCol = 0x000A0B0E;
                 Render2D.drawGradientRect(context, x - 2.0f, y + height - botFadeH, width + 4.0f, botFadeH, 0.0f, clearCol, clearCol, fadeCol, fadeCol);
             }
         } finally {
@@ -1423,7 +1321,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         int cardBg = Theme.getCardBg();
         int cardBorder = Theme.CARD_BORDER;
 
-        Render2D.drawRoundedRect(context, cardX, cardY, cardW, cardH, Theme.CARD_RADIUS, ColorUtil.withAlphaFloat(cardBg, alpha));
+        FrostedSurface.draw(context, cardX, cardY, cardW, cardH, Theme.CARD_RADIUS, cardBg, alpha, 0.70f, frostCaptured);
         Render2D.drawRoundedOutline(context, cardX, cardY, cardW, cardH, Theme.CARD_RADIUS, 1.0f, ColorUtil.withAlphaFloat(cardBorder, alpha));
 
         ClientFont.draw(context, title, cardX + 12.0f, cardY + 11.0f, ClientFont.SF_MEDIUM, ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, alpha));
@@ -1526,14 +1424,14 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             }
             if (scrollOffset > 1.0f) {
                 float topFadeH = 16.0f;
-                int fadeCol = ColorUtil.withAlphaFloat(Theme.getWindowBg(), 0.96f * alpha);
-                int clearCol = ColorUtil.withAlphaFloat(Theme.getWindowBg(), 0.0f);
+                int fadeCol = ColorUtil.rgba(10, 11, 14, (int) ((frostCaptured ? 50 : 190) * alpha));
+                int clearCol = 0x000A0B0E;
                 Render2D.drawGradientRect(context, x - 2.0f, y, width + 4.0f, topFadeH, 0.0f, fadeCol, fadeCol, clearCol, clearCol);
             }
             if (scrollOffset < maxScroll - 1.0f) {
                 float botFadeH = 22.0f;
-                int fadeCol = ColorUtil.withAlphaFloat(Theme.getWindowBg(), 0.96f * alpha);
-                int clearCol = ColorUtil.withAlphaFloat(Theme.getWindowBg(), 0.0f);
+                int fadeCol = ColorUtil.rgba(10, 11, 14, (int) ((frostCaptured ? 50 : 190) * alpha));
+                int clearCol = 0x000A0B0E;
                 Render2D.drawGradientRect(context, x - 2.0f, y + height - botFadeH, width + 4.0f, botFadeH, 0.0f, clearCol, clearCol, fadeCol, fadeCol);
             }
         } finally {
@@ -1572,10 +1470,10 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         float hoverVal = (hoverAnim != null) ? hoverAnim.getValue() : 0.0f;
 
         int cardBg = ColorUtil.interpolate(Theme.getCardBg(), Theme.getCardBgHover(), hoverVal);
-        int targetBorder = ColorUtil.interpolate(Theme.CARD_BORDER_HOVER, Theme.getAccentHover(), 0.35f);
-        int cardBorder = ColorUtil.interpolate(Theme.CARD_BORDER, targetBorder, hoverVal);
+        int cardBorder = ColorUtil.interpolate(Theme.CARD_BORDER, Theme.CARD_BORDER_HOVER, hoverVal);
 
-        Render2D.drawRoundedRect(context, x, y, width, height, Theme.CARD_RADIUS, ColorUtil.withAlphaFloat(cardBg, alpha));
+        FrostedSurface.draw(context, x, y, width, height, Theme.CARD_RADIUS, cardBg, alpha,
+                MathHelper.lerp(hoverVal, 0.70f, 0.78f), frostCaptured);
         Render2D.drawRoundedOutline(context, x, y, width, height, Theme.CARD_RADIUS, 1.0f, ColorUtil.withAlphaFloat(cardBorder, alpha));
 
         float switchProgress = module.getSwitchAnimation().getValue();
@@ -1651,7 +1549,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
                 ClientFont.draw(context, keyStr, badgeX + (bw - tw) / 2.0f, by + 1.5f, ClientFont.SF_REGULAR, kColor);
             }
 
-            int descColor = ColorUtil.withAlphaFloat(Theme.TEXT_MUTED, alpha);
+            int descColor = ColorUtil.withAlphaFloat(Theme.TEXT_SUB, alpha);
             float maxDescW = width - 24.0f;
             List<String> descLines = getWrappedDescriptionLines(module, maxDescW);
             if (descLines.size() <= 1) {
@@ -3091,7 +2989,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             }
         }
 
-        float listStartY = gy + 34.0f + 2.0f + searchH + MathHelper.lerp(collapseProgress, 4.0f, 4.0f);
+        float listStartY = gy + 38.0f + 2.0f * (1.0f - collapseProgress) + searchH;
         if (mouseX >= gx && mouseX <= gx + sidebarWidth && mouseY >= listStartY && mouseY <= gy + guiHeight) {
             float itemH = 22.0f;
             float startItemY = listStartY + 4.0f;
@@ -3131,32 +3029,6 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             }
         }
 
-        if (collapseProgress > 0.6f && deferredRailTooltipCat != null) {
-            float ttX = gx + sidebarWidth + 8.0f;
-            float ttY = Math.clamp(deferredRailTooltipY + 1.0f, gy + 6.0f, gy + guiHeight - 24.0f);
-            String ttText = deferredRailTooltipCat.getName() + " (" + getCategoryModuleCount(deferredRailTooltipCat) + ")";
-            float ttW = ClientFont.getWidth(ttText, ClientFont.SF_MEDIUM) + 14.0f;
-            float ttH = 20.0f;
-            if (mouseX >= ttX && mouseX <= (ttX + ttW) && mouseY >= ttY && mouseY <= (ttY + ttH)) {
-                if (selectedCategory != deferredRailTooltipCat || selectedSearchModule != null) {
-                    selectedCategory = deferredRailTooltipCat;
-                    ensureCategoryVisible(deferredRailTooltipCat);
-                    selectedSearchModule = null;
-                    searchQuery = "";
-                    searchFocused = false;
-                    headerTitle = deferredRailTooltipCat.getSection() + " - " + deferredRailTooltipCat.getName();
-                    headerFadeAnim.setValue(0.0f);
-                    headerFadeAnim.setTarget(1.0f);
-                    scrollOffset = 0.0f;
-                    targetScroll = 0.0f;
-                    scrollVelocity = 0.0f;
-                    smoothedScrollVelocity = 0.0f;
-                    markModulesDirty();
-                    resetCascade();
-                }
-                return true;
-            }
-        }
 
         float contentX = gx + sidebarWidth + 14.0f;
         float contentY = gy + headerHeight + 10.0f;

@@ -68,17 +68,21 @@ public final class BlurPipeline {
     }
 
     public void capture(float strength) {
+        capture(strength, 1);
+    }
+
+    public void capture(float strength, int downsample) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null || client.getFramebuffer() == null) return;
         int fbWidth = client.getWindow().getFramebufferWidth();
         int fbHeight = client.getWindow().getFramebufferHeight();
         if (fbWidth <= 0 || fbHeight <= 0) return;
-        ensureSize(fbWidth, fbHeight);
+        ensureSize(Math.max(1, fbWidth / downsample), Math.max(1, fbHeight / downsample));
 
         GpuTextureView screenView = client.getFramebuffer().getColorAttachmentView();
         CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
 
-        float maxOffset = Math.max(1.0f, strength);
+        float maxOffset = Math.max(1.0f, strength / downsample);
         int slot = 0;
         runPass(encoder, DOWN_PIPELINE, screenView, views[0], slot++, 0.0f);
         for (int i = 0; i < MIP_COUNT - 1; i++) {

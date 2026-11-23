@@ -7,6 +7,7 @@ import egg.client.module.ModuleManager;
 import egg.client.module.player.InventorySorter;
 import egg.client.render.Render2D;
 import egg.client.render.font.ClientFont;
+import egg.client.ui.theme.FrostedSurface;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
 import egg.client.util.GuiSoundManager;
@@ -41,7 +42,7 @@ public class InventoryConfigPanel {
         return detailedPreset;
     }
 
-    public static void render(DrawContext context, float x, float y, float w, float h, float mouseX, float mouseY, float alpha) {
+    public static void render(DrawContext context, float x, float y, float w, float h, float mouseX, float mouseY, float alpha, boolean blurred) {
         scrollOffset += (targetScroll - scrollOffset) * 0.25f;
 
         hoveredRule = null;
@@ -50,9 +51,9 @@ public class InventoryConfigPanel {
         Render2D.enableScissor(context, x, y, x + w, y + h);
 
         if (detailedPreset != null) {
-            renderDetailView(context, x, y, w, h, mouseX, mouseY, alpha);
+            renderDetailView(context, x, y, w, h, mouseX, mouseY, alpha, blurred);
         } else {
-            renderCardsView(context, x, y, w, h, mouseX, mouseY, alpha);
+            renderCardsView(context, x, y, w, h, mouseX, mouseY, alpha, blurred);
         }
 
         Render2D.disableScissor(context);
@@ -62,7 +63,7 @@ public class InventoryConfigPanel {
         }
     }
 
-    private static void renderCardsView(DrawContext context, float x, float y, float w, float h, float mouseX, float mouseY, float alpha) {
+    private static void renderCardsView(DrawContext context, float x, float y, float w, float h, float mouseX, float mouseY, float alpha, boolean blurred) {
         InventoryLayoutManager lm = InventoryLayoutManager.getInstance();
         List<InventoryPreset> presets = lm.getPresets();
         InventoryPreset activePreset = lm.getActivePreset();
@@ -112,7 +113,8 @@ public class InventoryConfigPanel {
             int cardBg = isHovered ? Theme.getCardBgHover() : Theme.getCardBg();
             int cardBorder = isActive ? Theme.getAccent() : (isHovered ? Theme.CARD_BORDER_HOVER : Theme.CARD_BORDER);
 
-            Render2D.drawRoundedRect(context, cx, cy, cardW, cardH, Theme.CARD_RADIUS, ColorUtil.withAlphaFloat(cardBg, alpha));
+            FrostedSurface.draw(context, cx, cy, cardW, cardH, Theme.CARD_RADIUS, cardBg,
+                    alpha, isHovered ? 0.78f : 0.70f, blurred);
             Render2D.drawRoundedOutline(context, cx, cy, cardW, cardH, Theme.CARD_RADIUS, isActive ? 1.5f : 1.0f, ColorUtil.withAlphaFloat(cardBorder, alpha));
 
             String name = p.getName();
@@ -187,7 +189,7 @@ public class InventoryConfigPanel {
         maxScroll = Math.max(0.0f, totalH - h);
     }
 
-    private static void renderDetailView(DrawContext context, float x, float y, float w, float h, float mouseX, float mouseY, float alpha) {
+    private static void renderDetailView(DrawContext context, float x, float y, float w, float h, float mouseX, float mouseY, float alpha, boolean blurred) {
         if (detailedPreset == null) return;
         MinecraftClient mc = MinecraftClient.getInstance();
         InventoryLayoutManager lm = InventoryLayoutManager.getInstance();
@@ -246,7 +248,8 @@ public class InventoryConfigPanel {
         float containerX = x + 4.0f;
         float containerY = curY;
 
-        Render2D.drawRoundedRect(context, containerX, containerY, containerW, containerH, Theme.CARD_RADIUS, ColorUtil.withAlphaFloat(Theme.getCardBg(), alpha));
+        FrostedSurface.draw(context, containerX, containerY, containerW, containerH, Theme.CARD_RADIUS,
+                Theme.getCardBg(), alpha, 0.70f, blurred);
         Render2D.drawRoundedOutline(context, containerX, containerY, containerW, containerH, Theme.CARD_RADIUS, 1.0f, ColorUtil.withAlphaFloat(Theme.CARD_BORDER, alpha));
 
         float slotSize = 21.0f;

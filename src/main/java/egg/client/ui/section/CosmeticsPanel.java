@@ -10,6 +10,7 @@ import egg.client.module.cosmetic.CosmeticsModule;
 import egg.client.render.IconRenderer;
 import egg.client.render.Render2D;
 import egg.client.render.font.ClientFont;
+import egg.client.ui.theme.FrostedSurface;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
 import egg.client.util.GuiSoundManager;
@@ -46,7 +47,7 @@ public class CosmeticsPanel {
         scrollOffset = 0.0f;
     }
 
-    public static void render(DrawContext context, float x, float y, float w, float h, float mouseX, float mouseY, float alpha) {
+    public static void render(DrawContext context, float x, float y, float w, float h, float mouseX, float mouseY, float alpha, boolean blurred) {
         MinecraftClient mc = MinecraftClient.getInstance();
         CosmeticsModule mod = ModuleManager.getInstance().getModule(CosmeticsModule.class);
         if (mod == null) return;
@@ -189,7 +190,8 @@ public class CosmeticsPanel {
                 int cBg = isSelected ? 0x264C8DFF : (isHovered ? 0x1AFFFFFF : Theme.CARD_BG);
                 int cBrd = isSelected ? Theme.ACCENT : (isHovered ? 0x55FFFFFF : Theme.CARD_BORDER);
 
-                Render2D.drawRoundedRect(context, cardX, cardY, cardW, cardH, 6.0f, cBg);
+                FrostedSurface.draw(context, cardX, cardY, cardW, cardH, 6.0f, cBg,
+                        alpha, isHovered ? 0.78f : 0.70f, blurred);
                 Render2D.drawRoundedOutline(context, cardX, cardY, cardW, cardH, 6.0f, 0.6f, cBrd);
 
                 if (isSwords && sword != null) {
@@ -243,7 +245,8 @@ public class CosmeticsPanel {
 
         Render2D.disableScissor(context);
 
-        Render2D.drawRoundedRect(context, rightPaneX, rightPaneY, rightPaneW, rightPaneH, 6.0f, Theme.CARD_BG);
+        FrostedSurface.draw(context, rightPaneX, rightPaneY, rightPaneW, rightPaneH, 6.0f,
+                Theme.CARD_BG, alpha, 0.70f, blurred);
         Render2D.drawRoundedOutline(context, rightPaneX, rightPaneY, rightPaneW, rightPaneH, 6.0f, 0.6f, Theme.CARD_BORDER);
 
         ClientFont.draw(context, "Предпросмотр", rightPaneX + 10.0f, rightPaneY + 10.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);

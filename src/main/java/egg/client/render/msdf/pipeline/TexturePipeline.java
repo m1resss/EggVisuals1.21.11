@@ -59,6 +59,20 @@ public class TexturePipeline implements DrawBatcher.Batched {
                     .withCull(false)
                     .build());
 
+    private static final RenderPipeline FROST_PIPELINE = RenderPipelines.register(
+            RenderPipeline.builder(RenderPipelines.TRANSFORMS_AND_PROJECTION_SNIPPET)
+                    .withLocation(Identifier.of("egg", "pipeline/gui_frost"))
+                    .withVertexShader(VERTEX_SHADER)
+                    .withFragmentShader(Identifier.of("egg", "core/gui_frost"))
+                    .withVertexFormat(VertexFormats.EMPTY, VertexFormat.DrawMode.TRIANGLES)
+                    .withUniform("TextureData", UniformType.UNIFORM_BUFFER)
+                    .withSampler("Sampler0")
+                    .withBlend(BlendFunction.TRANSLUCENT)
+                    .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+                    .withDepthWrite(false)
+                    .withCull(false)
+                    .build());
+
     private static final int BUFFER_SIZE = 256;
 
     private static final int UNIFORM_RING = 64;
@@ -261,6 +275,17 @@ public class TexturePipeline implements DrawBatcher.Batched {
 
     public void drawBlurTexture(GpuTextureView blurView, float x, float y, float width, float height,
                                 float[] radii, float alpha) {
+        drawBackdrop(blurView, x, y, width, height, radii, alpha, 1.0f, PIPELINE);
+    }
+
+    public void drawFrostTexture(GpuTextureView blurView, float x, float y, float width, float height,
+                                 float radius, float alpha, float transmission) {
+        drawBackdrop(blurView, x, y, width, height, new float[]{radius, radius, radius, radius},
+                alpha, transmission, FROST_PIPELINE);
+    }
+
+    private void drawBackdrop(GpuTextureView blurView, float x, float y, float width, float height,
+                              float[] radii, float alpha, float transmission, RenderPipeline pipeline) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.getFramebuffer() == null || blurView == null || alpha <= 0.0f) return;
 
@@ -269,14 +294,16 @@ public class TexturePipeline implements DrawBatcher.Batched {
         if (fbWidth <= 0 || fbHeight <= 0) return;
 
         float guiScale = (float) (client.getWindow() != null ? client.getWindow().getScaleFactor() : 2.0);
-        float u0 = Math.clamp((x * guiScale) / fbWidth, 0.0f, 1.0f);
-        float u1 = Math.clamp(((x + width) * guiScale) / fbWidth, 0.0f, 1.0f);
-        float v0 = Math.clamp(1.0f - (y * guiScale) / fbHeight, 0.0f, 1.0f);
-        float v1 = Math.clamp(1.0f - ((y + height) * guiScale) / fbHeight, 0.0f, 1.0f);
+        float minU = x * guiScale / fbWidth;
+        float maxU = (x + width) * guiScale / fbWidth;
+        float minV = 1.0f - y * guiScale / fbHeight;
+        float maxV = 1.0f - (y + height) * guiScale / fbHeight;
 
         int alphaByte = (int) (Math.min(1.0f, Math.max(0.0f, alpha)) * 255.0f);
-        queueDraw(blurView, x, y, width, height, u0, v0, u1, v1,
-                new int[]{(alphaByte << 24) | 0x00FFFFFF}, radii, 1.0f, 0f, PIPELINE);
+        int tone = Math.round(Math.clamp(transmission, 0.0f, 1.0f) * 255.0f);
+        int color = alphaByte << 24 | tone * 0x010101;
+        queueDraw(blurView, x, y, width, height, minU, minV, maxU, maxV,
+                new int[]{color}, radii, 1.0f, 0f, pipeline);
     }
 
     @Override

@@ -16,17 +16,15 @@ public class ClientSettings extends Module {
     private final BindSetting openKey = new BindSetting("Клавиша открытия", GLFW.GLFW_KEY_RIGHT_SHIFT, null, "Клавиша для открытия и закрытия меню ClickGUI");
     private final ColorSetting accentColor = new ColorSetting("Цвет интерфейса", ColorUtil.rgb(111, 95, 176), "Пользовательский цвет акцентов интерфейса");
     private final SliderSetting guiScale = new SliderSetting("Масштаб GUI", 1.0, 0.6, 1.4, 0.05, "Пропорциональное масштабирование всех элементов ClickGUI");
-    private final BooleanSetting cursorGlow = new BooleanSetting("Подсветка курсора", true, "Мягкий рассеянный луч освещения, следующий за курсором в меню");
-    private final BooleanSetting dotGrid = new BooleanSetting("Точечная сетка", true, "Едва заметная фактурная точечная сетка блокнота на фоне меню");
 
     private final ModeSetting openAnimMode = new ModeSetting("Анимация открытия", "Lens", "Стиль анимации открытия/закрытия ClickGUI", "Lens", "Волна", "Простая", "Выкл");
     private final ModeSetting lensCenterMode = new ModeSetting("Центр линзы", "Центр окна", "Точка раскрытия жидкой линзы", "Центр окна", "Курсор");
     private final BooleanSetting smoothAnimations = new BooleanSetting("Smooth Animations", true, "Плавные анимации интерфейса");
     private final SliderSetting animSpeed = new SliderSetting("Anim Speed", 1.0, 0.5, 2.5, 0.1, "Множитель скорости анимаций");
     private final SliderSetting openSoundVolume = new SliderSetting("Громкость звука меню", 1.0, 0.0, 1.0, 0.05, "Громкость звука открытия и закрытия меню ClickGUI (0 = без звука)");
-    private final BooleanSetting guiBlur = new BooleanSetting("Background Blur", true, "Размытие заднего плана ванильным шейдером");
-    private final SliderSetting blurStrength = new SliderSetting("Сила блюра", 6.0, 1.0, 10.0, 1.0, "Интенсивность размытия заднего плана");
-    private final SliderSetting guiBgOpacity = new SliderSetting("Прозрачность меню", 0.85, 0.30, 1.0, 0.05, "Слабая полупрозрачность фона меню в стиле Neverlose CS2");
+    private final BooleanSetting guiBlur = new BooleanSetting("Background Blur", true, "Матовое размытие мира под окном и карточками");
+    private final SliderSetting blurStrength = new SliderSetting("Сила блюра", 6.0, 1.0, 10.0, 1.0, "Интенсивность размытия под меню");
+    private final SliderSetting guiBgOpacity = new SliderSetting("Прозрачность меню", 0.85, 0.30, 1.0, 0.05, "Плотность затемнения матового стекла");
     private final SliderSetting screenDimOpacity = new SliderSetting("Затемнение фона", 0.35, 0.05, 0.80, 0.05, "Степень затемнения экрана за меню в стиле Neverlose CS2");
     private final BooleanSetting guiShadow = new BooleanSetting("Window Shadow", true, "Мягкая тень вокруг окна GUI");
     private final BooleanSetting scrollMotionBlur = new BooleanSetting("Scroll Motion Blur", true, "Кинематографичный моушен блюр при скролле списка модулей");
@@ -34,7 +32,7 @@ public class ClientSettings extends Module {
     public ClientSettings() {
         super("ClientSettings", "Настройки интерфейса и визуальных эффектов", Category.SETTINGS);
         addSettings(
-                openKey, accentColor, guiScale, cursorGlow, dotGrid,
+                openKey, accentColor, guiScale,
                 openAnimMode, lensCenterMode, smoothAnimations, animSpeed, openSoundVolume,
                 guiBlur, blurStrength, guiBgOpacity, screenDimOpacity, guiShadow, scrollMotionBlur
         );
@@ -73,18 +71,6 @@ public class ClientSettings extends Module {
         if (EggClient.getInstance() == null || EggClient.getInstance().getModuleManager() == null) return 1.0f;
         ClientSettings s = EggClient.getInstance().getModuleManager().getModule(ClientSettings.class);
         return s == null ? 1.0f : (float) s.guiScale.get();
-    }
-
-    public static boolean isCursorGlow() {
-        if (EggClient.getInstance() == null || EggClient.getInstance().getModuleManager() == null) return true;
-        ClientSettings s = EggClient.getInstance().getModuleManager().getModule(ClientSettings.class);
-        return s == null || s.cursorGlow.get();
-    }
-
-    public static boolean isDotGrid() {
-        if (EggClient.getInstance() == null || EggClient.getInstance().getModuleManager() == null) return true;
-        ClientSettings s = EggClient.getInstance().getModuleManager().getModule(ClientSettings.class);
-        return s == null || s.dotGrid.get();
     }
 
     public static String getOpenAnimationMode() {

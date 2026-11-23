@@ -210,6 +210,15 @@ public class Draw2DProcessor {
         this.rectPipeline.drawGlow(t[0], t[1], t[2], t[3], glowColor, new float[]{t[4], t[4], t[4], t[4]}, glowRadius * s, 0.5f);
     }
 
+    public boolean drawFrostedBackdrop(Matrix3x2f matrices, float x, float y, float width, float height,
+                                       float radius, float alpha, float transmission) {
+        GpuTextureView blurView = this.blurPipeline.view();
+        if (blurView == null || blurView.isClosed()) return false;
+        float[] rect = transformRect(matrices, x, y, width, height, radius);
+        this.panelBlurPipeline.drawFrostTexture(blurView, rect[0], rect[1], rect[2], rect[3], rect[4], alpha, transmission);
+        return true;
+    }
+
     public void drawPanelBlur(Matrix3x2f matrices, float x, float y, float width, float height, float radius, float alpha) {
         if (!egg.client.module.render.Interface.isHudBlurEnabled() || alpha <= 0.01f) return;
         float[] t = transformRect(matrices, x, y, width, height, radius);
