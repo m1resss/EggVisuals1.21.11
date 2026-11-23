@@ -5,10 +5,8 @@ import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.ModuleManager;
 import egg.client.module.misc.ClientSettings;
-import egg.client.module.render.WorldTweaks;
 import egg.client.module.render.Keybinds;
 
-import egg.client.ui.widget.WorldTweaksUI;
 import egg.client.module.setting.BindSetting;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ButtonSetting;
@@ -281,13 +279,6 @@ public class ClickGuiScreen extends Screen {
     private float openDropdownAnim = 0.0f;
     private float openDropdownScrollY = 0.0f;
     private float openDropdownMaxScroll = 0.0f;
-
-    private boolean isWorldTweaksCustomSetting(Module module, Setting s) {
-        if (!(module instanceof WorldTweaks) || s == null) return false;
-        String name = s.getName();
-        return "Режим времени".equals(name) || "Время суток".equals(name) || "Время (ч)".equals(name)
-                || "Сезон мира".equals(name) || "Погода".equals(name);
-    }
 
     public ClickGuiScreen() {
         super(Text.of("Egg Visual"));
@@ -566,8 +557,6 @@ public class ClickGuiScreen extends Screen {
         this.lateContext = context;
         activeCandidateModule = null;
         activeCandidateSetting = null;
-        WorldTweaks wtModule = ModuleManager.getInstance().getModule(WorldTweaks.class);
-        if (wtModule != null) wtModule.syncAudioState();
 
         if (closing && currentAnimProgress <= 0.005f) {
             closing = false;
@@ -2116,11 +2105,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
     private float getSettingsHeight(Module module) {
         float h = 10.0f;
-        if (module instanceof WorldTweaks) {
-            h += WorldTweaksUI.getTotalHeight();
-        }
         for (Setting s : module.getSettings()) {
-            if (isWorldTweaksCustomSetting(module, s)) continue;
             float progress = s.getVisibilityProgress();
             if (progress <= 0.001f) continue;
             float baseH = 0.0f;
@@ -2148,12 +2133,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         Render2D.drawRect(context, x, y - 2.0f, width, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (14 * alpha)));
 
         float currentY = y + 6.0f;
-        if (module instanceof WorldTweaks wt) {
-            WorldTweaksUI.render(context, wt, x, currentY, width, alpha, mouseX, mouseY);
-            currentY += WorldTweaksUI.getTotalHeight();
-        }
         for (Setting setting : module.getSettings()) {
-            if (isWorldTweaksCustomSetting(module, setting)) continue;
             float progress = setting.getVisibilityProgress();
             if (progress <= 0.001f) continue;
             float setAlpha = alpha * progress;
@@ -3279,7 +3259,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         }
 
         float headerH = getModuleHeaderHeight(module, cardW);
-        boolean hasSettings = !module.getSettings().isEmpty() || (module instanceof WorldTweaks);
+        boolean hasSettings = !module.getSettings().isEmpty();
         if (mouseY <= cardY + headerH) {
             float dotsX = hasSettings ? (starX - 11.0f) : starX;
             if (button == 1 || (hasSettings && mouseX >= dotsX - 4 && mouseX <= dotsX + 11 && mouseY >= toggleY - 2 && mouseY <= toggleY + 18)) {
@@ -3297,14 +3277,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             float settingsW = cardW - 24.0f;
             float settingsX = cardX + 12.0f;
 
-            if (module instanceof WorldTweaks wt) {
-                if (WorldTweaksUI.mouseClicked(wt, settingsX, sY, settingsW, mouseX, mouseY, button)) {
-                    return true;
-                }
-                sY += WorldTweaksUI.getTotalHeight();
-            }
             for (Setting s : module.getSettings()) {
-                if (isWorldTweaksCustomSetting(module, s)) continue;
                 float progress = s.getVisibilityProgress();
                 if (progress <= 0.05f) continue;
                 if (s instanceof BooleanSetting bool) {
@@ -3562,7 +3535,6 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             egg.client.config.ConfigManager.save();
             draggingSlider = null;
         }
-        WorldTweaksUI.mouseReleased();
         if (selectedCategory == Category.INVENTORY) {
             egg.client.ui.section.InventoryConfigPanel.mouseReleased();
         } else if (selectedCategory == Category.COSMETICS) {
@@ -3608,10 +3580,6 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             } else {
                 updateSliderValue(draggingSlider, dragTrackX, dragTrackW, mouseX);
             }
-            return true;
-        }
-        WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
-        if (wt != null && WorldTweaksUI.mouseDragged(wt, mouseX, mouseY)) {
             return true;
         }
         if (openColorPickerSetting != null && colorDragMode != ColorDragMode.NONE) {

@@ -66,10 +66,7 @@ public class EggClient implements ClientModInitializer {
         GlStateSnapshot snapshot = GlStateSnapshot.capture();
         try {
             WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
-            if (wt != null && wt.isEnabled()) {
-                wt.renderWorld3D(immediate, camPos);
-                wt.renderWeatherPass(immediate, camPos);
-            }
+            if (wt != null) wt.renderWeather(immediate, camera);
 
             TotemPop totemPop = ModuleManager.getInstance().getModule(TotemPop.class);
             if (totemPop != null && totemPop.isEnabled()) {

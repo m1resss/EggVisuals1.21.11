@@ -230,8 +230,7 @@ public abstract class GameRendererMixin {
             target = "Lnet/minecraft/client/render/RawProjectionMatrix;set(Lorg/joml/Matrix4f;)Lcom/mojang/blaze3d/buffers/GpuBufferSlice;"
         )
     )
-    private Matrix4f egg$ambienceCaptureProjection(Matrix4f matrix4f) {
-        egg.client.render.shader.AmbienceRenderer.setSkyParams(matrix4f.m00(), matrix4f.m11());
+    private Matrix4f egg$motionBlurProjection(Matrix4f matrix4f) {
         egg.client.render.MotionBlurRenderer.INSTANCE.setProjection(matrix4f);
         return matrix4f;
     }
@@ -244,8 +243,7 @@ public abstract class GameRendererMixin {
             ordinal = 1
         )
     )
-    private void egg$ambiencePostFx(RenderTickCounter renderTickCounter, CallbackInfo callbackInfo) {
-        egg.client.render.shader.AmbienceRenderer.INSTANCE.renderPostEffects((GameRenderer)(Object)this);
+    private void egg$motionBlurPass(RenderTickCounter renderTickCounter, CallbackInfo callbackInfo) {
         egg.client.render.MotionBlurRenderer.INSTANCE.render((GameRenderer)(Object)this);
     }
 

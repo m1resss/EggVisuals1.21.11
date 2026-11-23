@@ -1,6 +1,5 @@
 package egg.client.mixin;
 
-import egg.client.module.ModuleManager;
 import egg.client.module.render.WorldTweaks;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.VertexConsumerProvider;
@@ -15,21 +14,16 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(WeatherRendering.class)
-public class WeatherRenderingMixin {
-
+public abstract class WeatherRenderingMixin {
     @Inject(method = "renderPrecipitation", at = @At("HEAD"), cancellable = true)
-    private void onRenderPrecipitation(VertexConsumerProvider vertexConsumers, Vec3d cameraPos, WeatherRenderState state, CallbackInfo ci) {
-        WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
-        if (wt != null && wt.isEnabled() && (wt.isCustomWeather() || wt.isCustomSeason())) {
-            ci.cancel();
-        }
+    private void egg$precipitation(VertexConsumerProvider vertices, Vec3d pos, WeatherRenderState state, CallbackInfo ci) {
+        WorldTweaks tweaks = WorldTweaks.getInstance();
+        if (tweaks != null && tweaks.hasWeatherEffects()) ci.cancel();
     }
 
     @Inject(method = "addParticlesAndSound", at = @At("HEAD"), cancellable = true)
-    private void onAddParticlesAndSound(ClientWorld world, Camera camera, int ticks, ParticlesMode particlesMode, int i, CallbackInfo ci) {
-        WorldTweaks wt = ModuleManager.getInstance().getModule(WorldTweaks.class);
-        if (wt != null && wt.isEnabled() && wt.shouldOverrideVanillaSound()) {
-            ci.cancel();
-        }
+    private void egg$weatherEffects(ClientWorld world, Camera camera, int ticks, ParticlesMode mode, int distance, CallbackInfo ci) {
+        WorldTweaks tweaks = WorldTweaks.getInstance();
+        if (tweaks != null && tweaks.hasWeatherEffects()) ci.cancel();
     }
 }

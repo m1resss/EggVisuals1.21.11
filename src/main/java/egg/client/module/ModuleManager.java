@@ -204,6 +204,8 @@ public class ModuleManager {
     }
 
     public void onTick(MinecraftClient client) {
+        egg.client.module.render.WorldTweaks tweaks = egg.client.module.render.WorldTweaks.getInstance();
+        if (tweaks != null) tweaks.tick();
 
         for (Module m : modules) {
 
@@ -218,10 +220,6 @@ public class ModuleManager {
                 } else if (m instanceof TargetESP te) {
 
                     te.onTick();
-
-                } else if (m instanceof egg.client.module.render.WorldTweaks wt) {
-
-                    wt.onTick();
 
                 } else if (m instanceof egg.client.module.misc.Globals gl) {
 
