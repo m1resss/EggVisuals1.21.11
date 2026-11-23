@@ -93,7 +93,7 @@ public final class TotemSoulRenderer {
             for (Soul soul : souls) {
                 float progress = Math.clamp((now - soul.started()) / (float) DURATION, 0, 1);
                 float lift = 1 - (1 - progress) * (1 - progress) * (1 - progress);
-                float opacity = 0.72f * smoothstep(progress / 0.12f) * (1 - smoothstep((progress - 0.43f) / 0.57f));
+                float opacity = 0.84f * smoothstep(progress / 0.12f) * (1 - smoothstep((progress - 0.43f) / 0.57f));
                 if (opacity <= 0.004f) continue;
 
                 Vec3d offset = soul.origin().add(0, 0.08 + 2.15 * lift, 0).subtract(cameraPos);
@@ -114,7 +114,7 @@ public final class TotemSoulRenderer {
 
                 RenderSystem.outputColorTextureOverride = previousColor;
                 RenderSystem.outputDepthTextureOverride = previousDepth;
-                int tint = (Math.round(opacity * 255) << 24) | 0x80DAFF;
+                int tint = (Math.round(opacity * 255) << 24) | 0x62DCFF;
                 FullscreenPass.composite(Pipelines.TOTEM_SOUL, screen.getColorAttachmentView(),
                         target.getColorAttachmentView(), sampler, tint);
             }

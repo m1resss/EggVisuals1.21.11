@@ -9,8 +9,17 @@ out vec4 fragColor;
 void main() {
     vec4 snapshot = texture(Sampler0, texCoord0);
     if (snapshot.a <= 0.001) discard;
-    float luminance = dot(snapshot.rgb, vec3(0.2126, 0.7152, 0.0722));
-    vec3 blue = tint.rgb * (0.48 + 0.52 * sqrt(luminance));
-    vec3 highlights = mix(blue, vec3(0.89, 0.99, 1.0), smoothstep(0.45, 0.95, luminance) * 0.6);
-    fragColor = vec4(highlights, snapshot.a * tint.a);
+
+    float luminance = clamp(dot(snapshot.rgb, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
+    vec3 blue = mix(tint.rgb, vec3(0.93, 1.0, 1.0), 0.12 + 0.53 * sqrt(luminance));
+
+    vec2 pixel = 1.0 / vec2(textureSize(Sampler0, 0));
+    float neighbor = min(
+        min(texture(Sampler0, texCoord0 + vec2(pixel.x, 0.0)).a,
+            texture(Sampler0, texCoord0 - vec2(pixel.x, 0.0)).a),
+        min(texture(Sampler0, texCoord0 + vec2(0.0, pixel.y)).a,
+            texture(Sampler0, texCoord0 - vec2(0.0, pixel.y)).a)
+    );
+    float rim = max(0.0, snapshot.a - neighbor);
+    fragColor = vec4(mix(blue, vec3(0.88, 1.0, 1.0), 0.65 * rim), snapshot.a * tint.a);
 }
