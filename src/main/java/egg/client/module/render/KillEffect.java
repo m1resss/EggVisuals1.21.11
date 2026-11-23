@@ -19,6 +19,11 @@ import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.BuiltBuffer;
 import net.minecraft.client.render.RenderLayers;
 import net.minecraft.client.render.OverlayTexture;
+import net.minecraft.client.render.command.RenderDispatcher;
+import net.minecraft.client.render.entity.EntityRenderManager;
+import net.minecraft.client.render.entity.state.EntityRenderState;
+import net.minecraft.client.render.entity.state.LivingEntityRenderState;
+import net.minecraft.client.render.state.CameraRenderState;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
@@ -198,6 +203,7 @@ public class KillEffect extends Module {
         public volatile boolean hasChestplate;
         public volatile boolean hasLeggings;
         public volatile boolean hasBoots;
+        private EntityRenderState ascensionModel;
 
         public TrackedVictim(Entity e) {
             this.id = e.getId();
@@ -347,6 +353,7 @@ public class KillEffect extends Module {
         TrackedVictim v = victimsById.computeIfAbsent(target.getId(), id -> new TrackedVictim(target));
         v.lastAttackTime = now;
         v.update(target);
+        if (ASCENSION.equals(mode.get())) v.ascensionModel = captureAscensionModel(target);
         if (v.name != null && !v.name.isEmpty()) {
             victimsByName.put(v.name.toLowerCase(), v);
         }
@@ -382,7 +389,7 @@ public class KillEffect extends Module {
             } else if ("Черная дыра".equals(curMode)) {
                 spawnSingularityEffect(entity);
             } else if (ASCENSION.equals(curMode)) {
-                spawnAscension(entity.getX(), entity.getY(), entity.getZ(), entity.getHeight(), entity.getYaw());
+                spawnAscension(entity.getX(), entity.getY(), entity.getZ(), captureAscensionModel(entity));
             } else {
                 spawnGlassBurst(entity);
             }
@@ -435,7 +442,9 @@ public class KillEffect extends Module {
                 double distSq = deathPos.squaredDistanceTo(mc.player.getX(), mc.player.getY(), mc.player.getZ());
                 if (distSq <= 256.0) {
                     if (deadEntities.add(id)) {
-                        triggerEffectAt(deathPos.x, deathPos.y, deathPos.z, height, yaw, pitch, headYaw, sneaking);
+                        EntityRenderState model = ASCENSION.equals(mode.get()) && entity != null
+                                ? captureAscensionModel(entity) : v != null ? v.ascensionModel : null;
+                        triggerEffectAt(deathPos.x, deathPos.y, deathPos.z, height, yaw, pitch, headYaw, sneaking, model);
                         recentAttacks.remove(id);
                         victimsById.remove(id);
                     }
@@ -474,7 +483,7 @@ public class KillEffect extends Module {
                 if ((now - v.lastAttackTime) <= 8000L) {
                     if (deadEntities.add(v.id)) {
                         if (v.lastPos != null && v.lastPos.squaredDistanceTo(mc.player.getX(), mc.player.getY(), mc.player.getZ()) <= 576.0) {
-                            triggerEffectAt(v.lastPos.x, v.lastPos.y, v.lastPos.z, v.height, v.yaw, v.pitch, v.headYaw, v.isSneaking);
+                            triggerEffectAt(v.lastPos.x, v.lastPos.y, v.lastPos.z, v.height, v.yaw, v.pitch, v.headYaw, v.isSneaking, v.ascensionModel);
                         }
                         recentAttacks.remove(v.id);
                         victimsById.remove(v.id);
@@ -485,7 +494,8 @@ public class KillEffect extends Module {
         }
     }
 
-    public void triggerEffectAt(double bx, double by, double bz, double height, float yaw, float pitch, float headYaw, boolean isSneaking) {
+    private void triggerEffectAt(double bx, double by, double bz, double height, float yaw, float pitch, float headYaw,
+                                 boolean isSneaking, EntityRenderState model) {
         String curMode = mode.get();
         if ("Бабочки".equals(curMode)) {
             spawnButterflySwarmAt(bx, by, bz, height);
@@ -496,17 +506,33 @@ public class KillEffect extends Module {
         } else if ("Черная дыра".equals(curMode)) {
             spawnSingularityEffectAt(bx, by, bz, yaw, pitch, headYaw, isSneaking, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, height);
         } else if (ASCENSION.equals(curMode)) {
-            spawnAscension(bx, by, bz, height, yaw);
+            spawnAscension(bx, by, bz, model);
         } else {
             spawnGlassBurstAt(bx, by, bz, height);
         }
     }
 
-    private void spawnAscension(double x, double y, double z, double height, float yaw) {
-        if (mc.world == null) return;
+    private EntityRenderState captureAscensionModel(Entity entity) {
+        EntityRenderState state = mc.getEntityRenderDispatcher().getAndUpdateRenderState(entity, 1.0f);
+        state.displayName = null;
+        state.outlineColor = EntityRenderState.NO_OUTLINE;
+        state.shadowPieces.clear();
+        state.shadowRadius = 0;
+        state.leashDatas = null;
+        state.onFire = false;
+        if (state instanceof LivingEntityRenderState living) {
+            living.deathTime = 0;
+            living.hurt = false;
+            living.limbSwingAmplitude = 0;
+        }
+        return state;
+    }
+
+    private void spawnAscension(double x, double y, double z, EntityRenderState model) {
+        if (mc.world == null || model == null) return;
         if (ascensions.size() >= 8) ascensions.removeFirst();
         ascensions.add(new Ascension(mc.world, new Vec3d(x, y, z), System.nanoTime(),
-                Math.clamp((float) height / 1.8f, 0.4f, 1.5f), yaw,
+                model,
                 syncColor.isEnabled() ? Theme.getAccent() : color.get()));
         if (sound.isEnabled()) {
             mc.world.playSoundClient(x, y, z, SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME,
@@ -514,37 +540,38 @@ public class KillEffect extends Module {
         }
     }
 
-    private void renderAscensions(VertexConsumerProvider consumers, Vec3d camera, long now, Vector3f lightDir) {
+    private void renderAscensions(VertexConsumerProvider consumers, Vec3d camera, long now) {
         ascensions.removeIf(effect -> effect.world() != mc.world || now - effect.started() >= ASCENSION_DURATION);
         if (ascensions.isEmpty()) return;
-        VertexConsumer buffer = consumers.getBuffer(RenderLayers.debugQuads());
+        EntityRenderManager manager = mc.getEntityRenderDispatcher();
+        RenderDispatcher dispatcher = mc.gameRenderer.getEntityRenderDispatcher();
+        CameraRenderState cameraState = new CameraRenderState();
+        cameraState.orientation = mc.gameRenderer.getCamera().getRotation();
+        cameraState.pos = camera;
+        cameraState.blockPos = BlockPos.ofFloored(camera);
+        cameraState.entityPos = camera;
+        cameraState.initialized = true;
+        MatrixStack matrices = new MatrixStack();
         for (Ascension effect : ascensions) {
             float time = (now - effect.started()) / (float) ASCENSION_DURATION;
-            float fade = Math.clamp(time / 0.10f, 0, 1) * Math.clamp((1 - time) / 0.38f, 0, 1);
-            int alpha = Math.round(205 * fade);
-            Vec3d origin = effect.position().add(0, 0.12 + 6.5 * time * time, 0);
-            bodyMat.identity().rotateY((float) Math.toRadians(-effect.yaw() + time * 38)).scale(effect.scale());
-            emitStoneBox(buffer, camera, origin.x, origin.y, origin.z, bodyMat,
-                    -0.22f, 0.63f, -0.12f, 0.22f, 1.32f, 0.12f, lightDir, alpha);
-            emitStoneBox(buffer, camera, origin.x, origin.y, origin.z, bodyMat,
-                    -0.21f, 1.32f, -0.21f, 0.21f, 1.74f, 0.21f, lightDir, alpha);
-            float spread = Math.clamp(time / 0.23f, 0, 1) * 1.22f;
-            for (int side = -1; side <= 1; side += 2) {
-                rArmMat.set(bodyMat).translate(side * 0.31f, 1.22f, 0).rotateZ(side * spread);
-                emitStoneBox(buffer, camera, origin.x, origin.y, origin.z, rArmMat,
-                        -0.09f, -0.59f, -0.1f, 0.09f, 0.06f, 0.1f, lightDir, alpha);
-                float legX = side * 0.11f;
-                emitStoneBox(buffer, camera, origin.x, origin.y, origin.z, bodyMat,
-                        legX - 0.095f, 0, -0.1f, legX + 0.095f, 0.63f, 0.1f, lightDir, alpha);
-            }
+            Vec3d offset = effect.position().add(0, 0.12 + 6.5 * time * time, 0).subtract(camera);
+            float end = Math.clamp((time - 0.78f) / 0.22f, 0, 1);
+            float scale = 1 - end * end;
+            matrices.push();
+            matrices.translate(offset.x, offset.y, offset.z);
+            matrices.scale(scale, scale, scale);
+            manager.render(effect.model(), cameraState, 0, 0, 0, matrices, dispatcher.getQueue());
+            matrices.pop();
         }
+        dispatcher.render();
+        mc.getBufferBuilders().getEntityVertexConsumers().draw();
 
         VertexConsumer haloBuffer = consumers.getBuffer(RenderLayers.lightning());
         for (Ascension effect : ascensions) {
             float time = (now - effect.started()) / (float) ASCENSION_DURATION;
             float fade = Math.clamp(time / 0.18f, 0, 1) * Math.clamp((1 - time) / 0.42f, 0, 1);
-            Vec3d center = effect.position().add(0, 0.12 + 6.5 * time * time + 1.94 * effect.scale(), 0).subtract(camera);
-            float radius = 0.35f * effect.scale();
+            Vec3d center = effect.position().add(0, 0.12 + 6.5 * time * time + effect.model().height + 0.15, 0).subtract(camera);
+            float radius = Math.clamp(effect.model().width * 0.55f, 0.18f, 0.6f);
             int tint = effect.color();
             int red = (tint >> 16) & 255;
             int green = (tint >> 8) & 255;
@@ -556,7 +583,7 @@ public class KillEffect extends Module {
         }
     }
 
-    private record Ascension(ClientWorld world, Vec3d position, long started, float scale, float yaw, int color) {}
+    private record Ascension(ClientWorld world, Vec3d position, long started, EntityRenderState model, int color) {}
 
     public void spawnButterflySwarm(Entity entity) {
         spawnButterflySwarmAt(entity.getX(), entity.getY(), entity.getZ(), entity.getHeight());
@@ -953,7 +980,7 @@ public class KillEffect extends Module {
                         double distToPlayerSq = v.lastPos.squaredDistanceTo(mc.player.getX(), mc.player.getY(), mc.player.getZ());
                         if (distSq > 400.0 && timeSinceAttack <= 3500L && distToPlayerSq <= 144.0) {
                             if (deadEntities.add(id)) {
-                                triggerEffectAt(v.lastPos.x, v.lastPos.y, v.lastPos.z, v.height, v.yaw, v.pitch, v.headYaw, v.isSneaking);
+                                triggerEffectAt(v.lastPos.x, v.lastPos.y, v.lastPos.z, v.height, v.yaw, v.pitch, v.headYaw, v.isSneaking, v.ascensionModel);
                                 recentAttacks.remove(id);
                                 it.remove();
                                 continue;
@@ -980,7 +1007,7 @@ public class KillEffect extends Module {
 
         Vector3f lightDir = new Vector3f(0.35f, 0.90f, 0.25f).normalize();
 
-        if (!ascensions.isEmpty()) renderAscensions(immediate, camPos, now, lightDir);
+        if (!ascensions.isEmpty()) renderAscensions(immediate, camPos, now);
 
         if (!butterflySwarms.isEmpty()) {
             VertexConsumer quadBuffer = immediate.getBuffer(RenderLayers.debugQuads());
