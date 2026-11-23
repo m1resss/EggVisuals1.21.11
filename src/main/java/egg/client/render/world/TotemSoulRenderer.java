@@ -14,6 +14,7 @@ import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.LightmapTextureManager;
 import net.minecraft.client.render.command.RenderDispatcher;
 import net.minecraft.client.render.entity.EntityRenderManager;
+import net.minecraft.client.render.entity.EntityRenderer;
 import net.minecraft.client.render.entity.state.EntityRenderState;
 import net.minecraft.client.render.entity.state.LivingEntityRenderState;
 import net.minecraft.client.render.state.CameraRenderState;
@@ -40,7 +41,7 @@ public final class TotemSoulRenderer {
         if (client.world == null) return;
 
         float tickDelta = client.getRenderTickCounter().getTickProgress(false);
-        EntityRenderState model = client.getEntityRenderDispatcher().getAndUpdateRenderState(player, tickDelta);
+        EntityRenderState model = captureModel(client.getEntityRenderDispatcher().getRenderer(player), player, tickDelta);
         model.displayName = null;
         model.outlineColor = EntityRenderState.NO_OUTLINE;
         model.shadowPieces.clear();
@@ -52,6 +53,13 @@ public final class TotemSoulRenderer {
 
         if (souls.size() >= MAX_SOULS) souls.removeFirst();
         souls.add(new Soul(client.world, new Vec3d(model.x, model.y, model.z), model, System.nanoTime()));
+    }
+
+    private static <S extends EntityRenderState> S captureModel(EntityRenderer<? super PlayerEntity, S> renderer,
+                                                               PlayerEntity player, float tickDelta) {
+        S snapshot = renderer.createRenderState();
+        renderer.updateRenderState(player, snapshot, tickDelta);
+        return snapshot;
     }
 
     public void render(Camera camera, GpuBufferSlice fog) {
@@ -93,7 +101,7 @@ public final class TotemSoulRenderer {
             for (Soul soul : souls) {
                 float progress = Math.clamp((now - soul.started()) / (float) DURATION, 0, 1);
                 float lift = 1 - (1 - progress) * (1 - progress) * (1 - progress);
-                float opacity = 0.84f * smoothstep(progress / 0.12f) * (1 - smoothstep((progress - 0.43f) / 0.57f));
+                float opacity = 0.77f * smoothstep(progress / 0.12f) * (1 - smoothstep((progress - 0.43f) / 0.57f));
                 if (opacity <= 0.004f) continue;
 
                 Vec3d offset = soul.origin().add(0, 0.08 + 2.15 * lift, 0).subtract(cameraPos);
