@@ -2,6 +2,7 @@
   "required": true,
   "minVersion": "0.8",
   "package": "egg.client.mixin",
+  "plugin": "egg.client.mixin.EggMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "KeyboardMixin",
@@ -37,6 +38,7 @@
     "WorldMixin",
     "WeatherRenderingMixin",
     "WorldRendererMixin",
+    "PearlWorldRendererMixin",
     "PearlSectionRenderMixin",
     "BlockColorsMixin",
     "PlayerEntityRendererMixin",
