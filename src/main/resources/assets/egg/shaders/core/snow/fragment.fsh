@@ -177,7 +177,10 @@ void main() {
     float wrap = 0.38;
     float lambert = max(0.0, (dot(normal, sun) + wrap) / (1.0 + wrap));
 
-    float sky = 0.90 + 0.10 * max(0.0, normal.y);
+    float side = 1.0 - smoothstep(0.10, 0.70, abs(geometric.y));
+    float topLight = clamp((sun.y + wrap) / (1.0 + wrap), 0.0, 1.0);
+    lambert = mix(lambert, max(lambert, topLight * 0.78), side);
+    float sky = 0.90 + 0.10 * max(side * 0.65, normal.y);
 
     vec3 cool = mix(vec3(0.90, 0.94, 1.00), vec3(1.0), clamp(lambert, 0.0, 1.0));
     vec3 light = (SkyColor * sky + SunColor * lambert * 0.52) * cool;

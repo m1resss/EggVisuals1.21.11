@@ -60,6 +60,12 @@ final class WeatherSurface {
         return index >= 0 && (flags[index] & 1) != 0;
     }
 
+    boolean supportsSnow(double x, double z, int top) {
+        int cellX = MathHelper.floor(x);
+        int cellZ = MathHelper.floor(z);
+        return height(cellX, cellZ) == top && solid(cellX, cellZ);
+    }
+
     private int index(int x, int z) {
         x -= originX;
         z -= originZ;

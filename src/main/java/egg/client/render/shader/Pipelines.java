@@ -216,7 +216,7 @@ public final class Pipelines {
             .withBlend(BlendFunction.TRANSLUCENT)
             .withDepthTestFunction(DepthTestFunction.LEQUAL_DEPTH_TEST)
             .withDepthWrite(false)
-            .withCull(false)
+            .withCull(true)
             .withVertexFormat(VertexFormats.POSITION_COLOR, DrawMode.QUADS)
             .build()
     );

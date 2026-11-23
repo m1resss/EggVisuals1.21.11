@@ -172,9 +172,9 @@ public final class WorldTweaks extends Module {
             rebuildColors();
             scheduleFoliageRefresh();
         }
-        if (mc.world != null && mc.player != null && (frame.amount() > 0 || active || particles.hasSound())) {
-            updateLightning(now, frame.thunder());
-            particles.tickSounds(mc, frame);
+        if (mc.world != null && mc.player != null) {
+            if (active || frame.amount() > 0) updateLightning(now, frame.thunder());
+            particles.tickRainAudio(mc, active ? frame.rain() : 0, now);
         }
     }
 

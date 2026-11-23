@@ -15,7 +15,7 @@ import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.WorldRenderer;
 import net.minecraft.client.render.RenderLayers;
-import net.minecraft.client.sound.MovingSoundInstance;
+import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.client.sound.SoundInstance;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvent;
@@ -32,6 +32,8 @@ public final class WorldWeatherParticles {
     private static final Identifier FLAKE = texture("flake");
     private static final Identifier RIPPLE = texture("ripple");
     private static final Identifier PRINT = texture("print");
+    private static final SpriteUv FULL_SPRITE = new SpriteUv(0, 0, 1, 1);
+    private static final SpriteUv[] FLAKE_SPRITES = {flakeSprite(0, 0), flakeSprite(1, 0), flakeSprite(0, 1), flakeSprite(1, 1)};
     private final WeatherSurface surface = new WeatherSurface();
     private final WeatherSnowMesh snow = new WeatherSnowMesh();
 
@@ -48,9 +50,8 @@ public final class WorldWeatherParticles {
     private long lastFrame;
     private double animationTime;
     private final Map<Integer, Step> lastSteps = new HashMap<>();
-    private WeatherLoop rainSound;
-    private WeatherLoop indoorSound;
-    private WeatherLoop windSound;
+    private SoundInstance rainSound;
+    private long nextRainSound;
 
     public void reset() {
         snow.close();
@@ -60,42 +61,33 @@ public final class WorldWeatherParticles {
         prints.clear();
         lastFrame = 0;
         lastSteps.clear();
-        stopSound();
+        stopRain(MinecraftClient.getInstance());
     }
 
-    public boolean hasSound() { return rainSound != null || indoorSound != null || windSound != null; }
-
-    private void stopSound() {
-        MinecraftClient client = MinecraftClient.getInstance();
+    private void stopRain(MinecraftClient client) {
         if (rainSound != null) client.getSoundManager().stop(rainSound);
-        if (indoorSound != null) client.getSoundManager().stop(indoorSound);
-        if (windSound != null) client.getSoundManager().stop(windSound);
-        rainSound = indoorSound = windSound = null;
+        rainSound = null;
+        nextRainSound = 0;
     }
 
-    public void tickSounds(MinecraftClient client, Frame frame) {
+    public void tickRainAudio(MinecraftClient client, float rainfall, long now) {
         Camera camera = client.gameRenderer.getCamera();
-        BlockPos pos = BlockPos.ofFloored(camera.getCameraPos());
-        boolean outside = client.world.isSkyVisible(pos) && camera.getSubmersionType() == CameraSubmersionType.NONE;
-        float rainfall = Math.min(1, frame.rain());
-        rainSound = sound(client, rainSound, SoundEvents.WEATHER_RAIN, outside ? rainfall * 0.65f : 0);
-        indoorSound = sound(client, indoorSound, SoundEvents.WEATHER_RAIN_ABOVE, outside ? 0 : rainfall * 0.28f);
-        float intensity = frame.snow() * 0.45f;
-        windSound = sound(client, windSound, SoundEvents.ENTITY_BREEZE_IDLE_AIR, intensity * (outside ? 0.24f : 0.04f));
-    }
+        if (rainfall < 0.05f || camera.getSubmersionType() != CameraSubmersionType.NONE) {
+            stopRain(client);
+            return;
+        }
+        if (client.isPaused() || now < nextRainSound
+                || (rainSound != null && client.getSoundManager().isPlaying(rainSound))) return;
 
-    private static WeatherLoop sound(MinecraftClient client, WeatherLoop loop, SoundEvent event, float volume) {
-        if (volume > 0.005f && (loop == null || !client.getSoundManager().isPlaying(loop))) {
-            loop = new WeatherLoop(event, volume);
-            client.getSoundManager().play(loop);
-        }
-        if (loop == null) return null;
-        loop.target = volume;
-        if (volume == 0 && loop.getVolume() < 0.006f) {
-            client.getSoundManager().stop(loop);
-            return null;
-        }
-        return loop;
+        Vec3d eye = camera.getCameraPos();
+        boolean outside = client.world.isSkyVisible(BlockPos.ofFloored(eye));
+        SoundEvent event = outside ? SoundEvents.WEATHER_RAIN : SoundEvents.WEATHER_RAIN_ABOVE;
+        float volume = Math.min(1, rainfall) * (outside ? 0.58f : 0.27f);
+        float pitch = 0.9f + random.nextFloat() * 0.2f;
+        rainSound = new PositionedSoundInstance(event, SoundCategory.WEATHER, volume, pitch, SoundInstance.createRandom(),
+                eye.x + random.nextDouble(-2, 2), eye.y + 1, eye.z + random.nextDouble(-2, 2));
+        client.getSoundManager().play(rainSound);
+        nextRainSound = now + 850 + random.nextInt(901);
     }
 
     public void thunder(MinecraftClient client, float strength) {
@@ -128,8 +120,8 @@ public final class WorldWeatherParticles {
         drawParticles(client, buffers, eye, flakes, FLAKE, frame.snow(), 540, 28, 1.4f, windX, windZ, tint, dt, false, 0);
         if (groundSnow > 0.35f) addFootprints(client);
         else lastSteps.clear();
-        renderDecals(client, buffers, eye, ripples, RIPPLE, 0xD4E3F2, dt, 1);
-        renderDecals(client, buffers, eye, prints, PRINT, 0x8498AA, dt, groundSnow);
+        renderDecals(client, buffers, eye, ripples, RIPPLE, 0xD4E3F2, dt, 1, 0);
+        renderDecals(client, buffers, eye, prints, PRINT, 0x8498AA, dt, groundSnow, tweaks.snowDepth());
     }
 
     private void drawParticles(MinecraftClient client, VertexConsumerProvider buffers, Vec3d eye,
@@ -187,7 +179,8 @@ public final class WorldWeatherParticles {
                 vertical.set(facingUp).mul(cosine).fma(-sine, right);
             }
             int light = light(client, particle.x, particle.y, particle.z);
-            quad(vertices, x, y, z, horizontal, vertical, tint, opacity * (rainDrop ? 0.64f : 0.9f), light, false);
+            SpriteUv sprite = rainDrop ? FULL_SPRITE : FLAKE_SPRITES[particle.sprite];
+            quad(vertices, x, y, z, horizontal, vertical, tint, opacity * (rainDrop ? 0.64f : 0.9f), light, false, sprite);
         }
     }
 
@@ -198,7 +191,7 @@ public final class WorldWeatherParticles {
         double minY = Math.max(eye.y - radius * 0.45, top + 0.2);
         double maxY = Math.max(minY + 0.3, eye.y + radius * 0.68);
         double y = anywhere ? MathHelper.lerp(random.nextDouble(), minY, maxY) : maxY;
-        return new Particle(x, y, z, random.nextFloat());
+        return new Particle(x, y, z, random.nextFloat(), random.nextInt(FLAKE_SPRITES.length));
     }
 
     private void addFootprints(MinecraftClient client) {
@@ -214,7 +207,7 @@ public final class WorldWeatherParticles {
             if (!surface.solid(foot.getX(), foot.getZ()) || surface.height(foot.getX(), foot.getZ()) != foot.getY()) continue;
             float yaw = player.getYaw() * MathHelper.RADIANS_PER_DEGREE;
             float side = left ? -0.14f : 0.14f;
-            prints.add(new Decal(player.getX() + MathHelper.cos(yaw) * side, foot.getY() + 0.057,
+            prints.add(new Decal(player.getX() + MathHelper.cos(yaw) * side, foot.getY(),
                     player.getZ() + MathHelper.sin(yaw) * side, 0.13f, yaw, 14, left));
         }
         lastSteps.keySet().removeIf(id -> client.world.getEntityById(id) == null);
@@ -228,7 +221,7 @@ public final class WorldWeatherParticles {
     }
 
     private void renderDecals(MinecraftClient client, VertexConsumerProvider buffers, Vec3d eye, List<Decal> decals,
-                              Identifier texture, int tint, float dt, float amount) {
+                              Identifier texture, int tint, float dt, float amount, float snowDepth) {
         if (decals.isEmpty()) return;
         VertexConsumer vertices = buffers.getBuffer(RenderLayers.weather(texture, true));
         for (Iterator<Decal> it = decals.iterator(); it.hasNext();) {
@@ -243,8 +236,13 @@ public final class WorldWeatherParticles {
             float alpha = (1 - progress * progress) * amount * (print ? 0.52f : 0.7f);
             float size = decal.size * (print ? 1 : 0.3f + progress);
             floorAxes(decal.angle, size, print ? size * 1.5f : size);
-            quad(vertices, (float) (decal.x - eye.x), (float) (decal.y - eye.y), (float) (decal.z - eye.z),
-                    horizontal, vertical, tint, alpha, light(client, decal.x, decal.y, decal.z), decal.mirror);
+            int light = light(client, decal.x, decal.y, decal.z);
+            if (print) {
+                footprint(vertices, eye, decal, tint, alpha, light, WeatherSnowMesh.thickness(amount, snowDepth));
+            } else {
+                quad(vertices, (float) (decal.x - eye.x), (float) (decal.y - eye.y), (float) (decal.z - eye.z),
+                        horizontal, vertical, tint, alpha, light, decal.mirror, FULL_SPRITE);
+            }
         }
     }
 
@@ -259,15 +257,57 @@ public final class WorldWeatherParticles {
         return WorldRenderer.getLightmapCoordinates(client.world, lightPos.set(MathHelper.floor(x), MathHelper.floor(y), MathHelper.floor(z)));
     }
 
+    private void footprint(VertexConsumer vertices, Vec3d eye, Decal decal, int tint, float opacity, int light, float thickness) {
+        double x0 = decal.x - horizontal.x - vertical.x;
+        double z0 = decal.z - horizontal.z - vertical.z;
+        double x1 = decal.x + horizontal.x - vertical.x;
+        double z1 = decal.z + horizontal.z - vertical.z;
+        double x2 = decal.x + horizontal.x + vertical.x;
+        double z2 = decal.z + horizontal.z + vertical.z;
+        double x3 = decal.x - horizontal.x + vertical.x;
+        double z3 = decal.z - horizontal.z + vertical.z;
+        int baseY = (int) decal.y;
+        if (!surface.supportsSnow(x0, z0, baseY) || !surface.supportsSnow(x1, z1, baseY)
+                || !surface.supportsSnow(x2, z2, baseY) || !surface.supportsSnow(x3, z3, baseY)) return;
+
+        int color = withOpacity(tint, opacity);
+        float left = decal.mirror ? 1 : 0;
+        float right = 1 - left;
+        footprintVertex(vertices, eye, x0, baseY, z0, thickness, left, 1, color, light);
+        footprintVertex(vertices, eye, x1, baseY, z1, thickness, right, 1, color, light);
+        footprintVertex(vertices, eye, x2, baseY, z2, thickness, right, 0, color, light);
+        footprintVertex(vertices, eye, x3, baseY, z3, thickness, left, 0, color, light);
+    }
+
+    private static void footprintVertex(VertexConsumer vertices, Vec3d eye, double x, int y, double z, float thickness,
+                                        float u, float v, int color, int light) {
+        float relativeY = (float) (y - eye.y) + WeatherSnowMesh.surfaceOffset(x, z, thickness) + 0.006f;
+        vertices.vertex((float) (x - eye.x), relativeY, (float) (z - eye.z)).texture(u, v).color(color).light(light);
+    }
+
     private static void quad(VertexConsumer vertices, float x, float y, float z, Vector3f right, Vector3f up,
-                             int tint, float opacity, int light, boolean mirror) {
-        int color = MathHelper.clamp(Math.round(opacity * 255), 0, 255) << 24 | tint & 0xFFFFFF;
-        float left = mirror ? 1 : 0;
-        float end = 1 - left;
-        vertices.vertex(x - right.x - up.x, y - right.y - up.y, z - right.z - up.z).texture(left, 1).color(color).light(light);
-        vertices.vertex(x + right.x - up.x, y + right.y - up.y, z + right.z - up.z).texture(end, 1).color(color).light(light);
-        vertices.vertex(x + right.x + up.x, y + right.y + up.y, z + right.z + up.z).texture(end, 0).color(color).light(light);
-        vertices.vertex(x - right.x + up.x, y - right.y + up.y, z - right.z + up.z).texture(left, 0).color(color).light(light);
+                             int tint, float opacity, int light, boolean mirror, SpriteUv sprite) {
+        int color = withOpacity(tint, opacity);
+        float left = mirror ? sprite.maxU : sprite.minU;
+        float end = mirror ? sprite.minU : sprite.maxU;
+        vertices.vertex(x - right.x - up.x, y - right.y - up.y, z - right.z - up.z).texture(left, sprite.maxV).color(color).light(light);
+        vertices.vertex(x + right.x - up.x, y + right.y - up.y, z + right.z - up.z).texture(end, sprite.maxV).color(color).light(light);
+        vertices.vertex(x + right.x + up.x, y + right.y + up.y, z + right.z + up.z).texture(end, sprite.minV).color(color).light(light);
+        vertices.vertex(x - right.x + up.x, y - right.y + up.y, z - right.z + up.z).texture(left, sprite.minV).color(color).light(light);
+    }
+
+    private static int withOpacity(int tint, float opacity) {
+        return MathHelper.clamp(Math.round(opacity * 255), 0, 255) << 24 | tint & 0xFFFFFF;
+    }
+
+    private static SpriteUv flakeSprite(int column, int row) {
+        float halfTexel = 0.5f / 64;
+        float u = column * 0.5f;
+        float v = row * 0.5f;
+        return new SpriteUv(u + halfTexel, v + halfTexel, u + 0.5f - halfTexel, v + 0.5f - halfTexel);
+    }
+
+    private record SpriteUv(float minU, float minV, float maxU, float maxV) {
     }
 
     private static Identifier texture(String name) {
@@ -279,12 +319,14 @@ public final class WorldWeatherParticles {
         double y;
         double z;
         float phase;
+        int sprite;
 
-        Particle(double x, double y, double z, float phase) {
+        Particle(double x, double y, double z, float phase, int sprite) {
             this.x = x;
             this.y = y;
             this.z = z;
             this.phase = phase;
+            this.sprite = sprite;
         }
 
         void set(Particle particle) {
@@ -292,6 +334,7 @@ public final class WorldWeatherParticles {
             y = particle.y;
             z = particle.z;
             phase = particle.phase;
+            sprite = particle.sprite;
         }
     }
 
@@ -313,25 +356,6 @@ public final class WorldWeatherParticles {
             this.angle = angle;
             this.life = life;
             this.mirror = mirror;
-        }
-    }
-
-    private static final class WeatherLoop extends MovingSoundInstance {
-        float target;
-
-        WeatherLoop(SoundEvent event, float volume) {
-            super(event, SoundCategory.WEATHER, SoundInstance.createRandom());
-            target = volume;
-            this.volume = Math.max(0.01f, volume);
-            repeat = true;
-            repeatDelay = 0;
-            relative = true;
-            attenuationType = AttenuationType.NONE;
-        }
-
-        @Override
-        public void tick() {
-            volume = MathHelper.lerp(0.12f, volume, target);
         }
     }
 }
