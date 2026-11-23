@@ -1,9 +1,13 @@
 package egg.client.mixin;
 
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import egg.client.EggClient;
 import egg.client.module.ModuleManager;
+import egg.client.module.render.KillEffect;
 import egg.client.module.render.PearlPredict;
 import egg.client.render.NaturalMotionBlurRenderer;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -18,9 +22,11 @@ import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.WorldRenderer;
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
+import net.minecraft.client.render.entity.state.EntityRenderState;
 import net.minecraft.client.render.state.WorldRenderState;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.client.util.memory.ObjectAllocator;
+import net.minecraft.entity.Entity;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
@@ -91,6 +97,15 @@ public abstract class WorldRendererMixin {
             CallbackInfo ci
     ) {
         NaturalMotionBlurRenderer.INSTANCE.onWorldRenderHead(objectAllocator, camera, positionMatrix, projectionMatrix);
+    }
+
+    @WrapOperation(method = "fillEntityRenderStates", at = @At(value = "INVOKE",
+            target = "Ljava/util/List;add(Ljava/lang/Object;)Z"))
+    private boolean egg$hideAscensionOriginal(List<EntityRenderState> states, Object state, Operation<Boolean> original,
+                                               @Local Entity entity) {
+        KillEffect effect = ModuleManager.getInstance().getModule(KillEffect.class);
+        if (effect != null && effect.shouldHideAscensionOriginal(entity)) return false;
+        return original.call(states, state);
     }
 
     @Inject(method = "pushEntityRenders", at = @At("HEAD"))

@@ -21,7 +21,9 @@ import net.minecraft.client.render.RenderLayers;
 import net.minecraft.client.render.OverlayTexture;
 import net.minecraft.client.render.command.RenderDispatcher;
 import net.minecraft.client.render.entity.EntityRenderManager;
+import net.minecraft.client.render.entity.state.BipedEntityRenderState;
 import net.minecraft.client.render.entity.state.EntityRenderState;
+import net.minecraft.client.render.entity.state.PlayerEntityRenderState;
 import net.minecraft.client.render.entity.state.LivingEntityRenderState;
 import net.minecraft.client.render.state.CameraRenderState;
 import net.minecraft.entity.EquipmentSlot;
@@ -35,6 +37,7 @@ import net.minecraft.client.util.BufferAllocator;
 import net.minecraft.client.util.DefaultSkinHelper;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityPose;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerSkinType;
@@ -53,6 +56,7 @@ import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -115,6 +119,7 @@ public class KillEffect extends Module {
     private final BooleanSetting singularityDistortion = new BooleanSetting("Искажение пространства", true, "Гравитационные волны искажения и сотрясение камеры");
 
     private final List<Ascension> ascensions = new ArrayList<>();
+    private final Map<Entity, Long> ascensionOriginals = new IdentityHashMap<>();
     private final List<ButterflySwarmInstance> butterflySwarms = new ArrayList<>();
     private final List<MonolithInstance> monolithInstances = new ArrayList<>();
     private final List<DeathGlassShard> particles = new ArrayList<>();
@@ -389,7 +394,9 @@ public class KillEffect extends Module {
             } else if ("Черная дыра".equals(curMode)) {
                 spawnSingularityEffect(entity);
             } else if (ASCENSION.equals(curMode)) {
-                spawnAscension(entity.getX(), entity.getY(), entity.getZ(), captureAscensionModel(entity));
+                EntityRenderState model = captureAscensionModel(entity);
+                ascensionOriginals.put(entity, System.nanoTime());
+                spawnAscension(entity.getX(), entity.getY(), entity.getZ(), model);
             } else {
                 spawnGlassBurst(entity);
             }
@@ -512,6 +519,14 @@ public class KillEffect extends Module {
         }
     }
 
+    public boolean shouldHideAscensionOriginal(Entity entity) {
+        if (!isEnabled() || !ASCENSION.equals(mode.get())) return false;
+        if (entity instanceof LivingEntity living && living.isDead() && !ascensionOriginals.containsKey(entity)) {
+            onEntityDeath(entity);
+        }
+        return ascensionOriginals.containsKey(entity);
+    }
+
     private EntityRenderState captureAscensionModel(Entity entity) {
         EntityRenderState state = mc.getEntityRenderDispatcher().getAndUpdateRenderState(entity, 1.0f);
         state.displayName = null;
@@ -524,6 +539,22 @@ public class KillEffect extends Module {
             living.deathTime = 0;
             living.hurt = false;
             living.limbSwingAmplitude = 0;
+            living.flipUpsideDown = false;
+            living.usingRiptide = false;
+            living.pose = EntityPose.STANDING;
+            living.sleepingDirection = null;
+            living.pitch = 0;
+        }
+        if (state instanceof BipedEntityRenderState biped) {
+            biped.leaningPitch = 0;
+            biped.isGliding = false;
+            biped.isSwimming = false;
+            biped.isInSneakingPose = false;
+            biped.hasVehicle = false;
+        }
+        if (state instanceof PlayerEntityRenderState player) {
+            player.glidingTicks = 0;
+            player.applyFlyingRotation = false;
         }
         return state;
     }
@@ -933,6 +964,7 @@ public class KillEffect extends Module {
     public void render(VertexConsumerProvider immediate, Vec3d camPos) {
         if (!isEnabled()) {
             ascensions.clear();
+            ascensionOriginals.clear();
             if (!monolithInstances.isEmpty()) monolithInstances.clear();
             if (!particles.isEmpty()) particles.clear();
             if (!butterflySwarms.isEmpty()) butterflySwarms.clear();
@@ -1007,6 +1039,11 @@ public class KillEffect extends Module {
 
         Vector3f lightDir = new Vector3f(0.35f, 0.90f, 0.25f).normalize();
 
+        ascensionOriginals.entrySet().removeIf(entry -> {
+            Entity entity = entry.getKey();
+            return entity.isRemoved() || entity.getEntityWorld() != mc.world
+                    || (entity.isAlive() && now - entry.getValue() >= ASCENSION_DURATION);
+        });
         if (!ascensions.isEmpty()) renderAscensions(immediate, camPos, now);
 
         if (!butterflySwarms.isEmpty()) {
@@ -2002,6 +2039,7 @@ public class KillEffect extends Module {
     @Override
     public void onDisable() {
         ascensions.clear();
+        ascensionOriginals.clear();
         particles.clear();
         butterflySwarms.clear();
         monolithInstances.clear();
