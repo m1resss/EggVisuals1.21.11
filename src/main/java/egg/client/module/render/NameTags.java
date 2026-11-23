@@ -329,7 +329,7 @@ public class NameTags extends Module {
         DrawBatcher.flushPending();
 
         if (this.showItems.get()) {
-            renderItemTags(context, mc, tickDelta, dt, nowMs);
+            renderItemTags(context, mc, tickDelta);
         }
     }
 
@@ -394,10 +394,12 @@ public class NameTags extends Module {
 
         String hpText = null;
         float hpW = 0.0f;
+        float hpSuffixSize = fontSize * 6.5f / 9.5f;
+        float hpSuffixGap = 0.5f;
         int hpColor = 0xFF22C55E;
         if (this.showHealth.get()) {
             float totalHp = currentHp + absorption;
-            hpText = (int) Math.ceil(totalHp) + " HP";
+            hpText = Integer.toString((int) Math.ceil(totalHp));
             hpW = font.a(hpText, fontSize);
 
             float hpRatio = currentHp / maxHp;
@@ -417,7 +419,7 @@ public class NameTags extends Module {
         float contentW = nameW + eggW;
         if (pingText != null) contentW += pingW + gap;
         if (distText != null) contentW += distW + gap;
-        if (hpText != null) contentW += hpW + gap;
+        if (hpText != null) contentW += hpW + hpSuffixGap + Fonts.b.a("hp", hpSuffixSize) + gap;
 
         float cardW = Math.max(44.0f, contentW + padX * 2.0f);
         float cardH = this.showHealth.get() ? 19.0f : 15.0f;
@@ -515,16 +517,19 @@ public class NameTags extends Module {
 
         if (hpText != null) {
             font.a(tagMat, hpText, curX, textY, fontSize, hpColor);
+            Fonts.b.a(tagMat, "hp", curX + hpW + hpSuffixGap, textY + (fontSize - hpSuffixSize) * 0.83f,
+                    hpSuffixSize, ColorUtil.rgba(156, 163, 175, 210));
         }
     }
 
-    private void renderItemTags(DrawContext context, MinecraftClient mc, float tickDelta, float dt, long nowMs) {
+    private void renderItemTags(DrawContext context, MinecraftClient mc, float tickDelta) {
         Box searchBox = mc.player.getBoundingBox().expand(48.0);
         List<ItemEntity> items = mc.world.getEntitiesByClass(ItemEntity.class, searchBox, e -> e.isAlive() && !e.getStack().isEmpty());
         if (items.isEmpty()) return;
 
-        Font font = Fonts.ROCKSTAR_ROUND_BOLD;
-        float fontSize = 10.5f;
+        Font font = Fonts.b;
+        float fontSize = 10.0f;
+        float detailsSize = 8.5f;
         float alphaFactor = this.bgAlpha.getValueFloat() / 100.0f;
         int bgColor = ColorUtil.rgba(14, 16, 22, (int) (210 * alphaFactor));
 
@@ -548,45 +553,42 @@ public class NameTags extends Module {
 
             String name = stack.getName().getString();
             int count = stack.getCount();
-            if (count > 1) {
-                name = name + " x" + count;
-            }
-
-            int rarityColor = getLootColor(stack);
+            String countText = count > 1 ? "×" + count : "";
+            String distText = this.showDistance.get() ? Math.round(dist) + "m" : "";
 
             float distScale = (float) MathHelper.clamp(1.0 - (dist - 4.0) * 0.02, 0.65, 1.15);
             float tagScale = 0.70f * distScale;
 
             boolean drawIcon = this.itemIcons.get();
-            float iconSize = 11.0f;
-            float iconGap = 3.5f;
+            float iconSize = 10.0f;
+            float iconGap = 2.5f;
 
             float nameW = font.a(name, fontSize);
-            String distText = (int) Math.round(dist) + "m";
-            float distW = font.a(distText, fontSize);
+            float countW = countText.isEmpty() ? 0.0f : 3.0f + font.a(countText, detailsSize);
+            float distW = distText.isEmpty() ? 0.0f : 4.0f + font.a(distText, detailsSize);
 
-            float padX = 6.0f;
-            float contentW = nameW + 5.0f + distW + (drawIcon ? iconSize + iconGap : 0.0f);
-            float cardW = Math.max(36.0f, contentW + padX * 2.0f);
-            float cardH = 15.0f;
+            float padX = 4.5f;
+            float contentW = nameW + countW + distW + (drawIcon ? iconSize + iconGap : 0.0f);
+            float cardW = contentW + padX * 2.0f;
+            float cardH = 13.0f;
             float cardX = -cardW / 2.0f;
             float cardY = -cardH;
 
             Matrix3x2f tagMat = this.tagMat.identity().translate(scratchItemPos.x, scratchItemPos.y).scale(tagScale, tagScale);
 
-            Draw2DProcessor.INSTANCE.drawRect(tagMat, cardX, cardY, cardW, cardH, 3.5f, bgColor);
-            Draw2DProcessor.INSTANCE.drawRect(tagMat, cardX, cardY, 2.2f, cardH, 1.0f, rarityColor);
-
-            if (valuable) {
-                int sheenCol = ColorUtil.rgba((rarityColor >> 16) & 0xFF, (rarityColor >> 8) & 0xFF, rarityColor & 0xFF, 30);
-                Draw2DProcessor.INSTANCE.drawGradient(tagMat, cardX, cardY, cardW, cardH * 0.5f, 3.5f, sheenCol, sheenCol, 0, 0);
-            }
+            Draw2DProcessor.INSTANCE.drawRect(tagMat, cardX, cardY, cardW, cardH, 3.0f, bgColor);
 
             float curX = cardX + padX + (drawIcon ? iconSize + iconGap : 0.0f);
-            float textY = cardY + 2.0f;
-
-            font.a(tagMat, name, curX, textY, fontSize, rarityColor);
-            font.a(tagMat, distText, curX + nameW + 5.0f, textY, fontSize, 0xFF94A3B8);
+            float centerY = cardY + cardH / 2.0f;
+            font.drawCentered(tagMat, name, curX + nameW / 2.0f, centerY, fontSize, 0xFFF2F3F6, 0.0f);
+            if (!countText.isEmpty()) {
+                font.drawCentered(tagMat, countText, curX + nameW + (countW + 3.0f) / 2.0f, centerY,
+                        detailsSize, 0xFFB3BAC6, 0.0f);
+            }
+            if (!distText.isEmpty()) {
+                font.drawCentered(tagMat, distText, curX + nameW + countW + (distW + 4.0f) / 2.0f, centerY,
+                        detailsSize, 0xFF9CA3AF, 0.0f);
+            }
 
             if (drawIcon) {
                 DrawBatcher.flushPending();
