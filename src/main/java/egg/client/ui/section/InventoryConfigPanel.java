@@ -15,591 +15,438 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.ItemStack;
-import net.minecraft.text.Text;
 
 import java.util.List;
 
 public class InventoryConfigPanel {
+    private static final int[] PREVIEW_SLOTS = {0, 1, 2, 3, 39, 40};
+    private static final float SLOT_SIZE = 18.0f;
+    private static final float SLOT_STEP = 20.0f;
+    private static final float CARD_WIDTH = 128.0f;
+    private static final float CARD_HEIGHT = 78.0f;
+    private static final float CARD_GAP = 8.0f;
+    private static final float GRID_TOP = 28.0f;
+    private static final float BUTTON_HEIGHT = 16.0f;
+    private static final float BUTTON_TEXT_SCALE = 0.82f;
+    private static final int BUTTON_FILL = 0x1AFFFFFF;
+    private static final int BUTTON_HOVER = 0x32FFFFFF;
 
-    private static InventoryPreset detailedPreset = null;
-    private static float scrollOffset = 0.0f;
-    private static float targetScroll = 0.0f;
-    private static float maxScroll = 0.0f;
+    private static InventoryPreset detailedPreset;
+    private static float scrollOffset;
+    private static float targetScroll;
+    private static float maxScroll;
 
-    private static InventorySlotRule hoveredRule = null;
-    private static int hoveredSlotId = -1;
-    private static boolean hoveredSlotHasItem = false;
-    private static float tooltipX = 0;
-    private static float tooltipY = 0;
+    private record Bounds(float x, float y, float w, float h) {
+        float centerX() { return x + w / 2.0f; }
+        float centerY() { return y + h / 2.0f; }
+
+        boolean contains(double mouseX, double mouseY) {
+            return mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
+        }
+
+        void clip(DrawContext context) {
+            Render2D.enableScissor(context, x, y, x + w, y + h);
+        }
+    }
+
+    private record Card(Bounds body, Bounds status, Bounds sort, Bounds open, Bounds delete) {
+        Card(Bounds body) {
+            this(body, centered(body.centerX(), body.y + 16.0f, 54.0f),
+                    new Bounds(body.centerX() - 55.0f, body.y + 56.0f, 53.0f, BUTTON_HEIGHT),
+                    new Bounds(body.centerX() + 1.0f, body.y + 56.0f, 38.0f, BUTTON_HEIGHT),
+                    new Bounds(body.centerX() + 42.0f, body.y + 56.0f, 14.0f, BUTTON_HEIGHT));
+        }
+    }
+
+    private record Editor(Bounds body, Bounds back, Bounds status, Bounds snapshot, Bounds sort, Bounds[] slots) {
+        Editor(Bounds area) {
+            this(new Bounds(area.centerX() - 124.0f, area.y + 2.0f, 248.0f, 140.0f), area.centerX(), area.y + 2.0f);
+        }
+
+        private Editor(Bounds body, float centerX, float top) {
+            this(body, new Bounds(body.x + 8.0f, top + 5.0f, 44.0f, BUTTON_HEIGHT),
+                    new Bounds(centerX - 82.0f, top + 116.0f, 49.0f, BUTTON_HEIGHT),
+                    new Bounds(centerX - 29.0f, top + 116.0f, 48.0f, BUTTON_HEIGHT),
+                    new Bounds(centerX + 23.0f, top + 116.0f, 59.0f, BUTTON_HEIGHT),
+                    editorSlots(body.x + 12.0f, top + 26.0f));
+        }
+    }
 
     public static void setDetailedPreset(InventoryPreset preset) {
         detailedPreset = preset;
-        targetScroll = 0.0f;
-        scrollOffset = 0.0f;
     }
 
     public static InventoryPreset getDetailedPreset() {
         return detailedPreset;
     }
 
-    public static void render(DrawContext context, float x, float y, float w, float h, float mouseX, float mouseY, float alpha, boolean blurred) {
-        scrollOffset += (targetScroll - scrollOffset) * 0.25f;
-
-        hoveredRule = null;
-        hoveredSlotId = -1;
-
-        Render2D.enableScissor(context, x, y, x + w, y + h);
-
-        if (detailedPreset != null) {
-            renderDetailView(context, x, y, w, h, mouseX, mouseY, alpha, blurred);
-        } else {
-            renderCardsView(context, x, y, w, h, mouseX, mouseY, alpha, blurred);
+    public static void render(DrawContext context, float x, float y, float w, float h,
+                              float mouseX, float mouseY, float alpha, boolean blurred) {
+        Bounds area = new Bounds(x, y, w, h);
+        if (!area.contains(mouseX, mouseY)) {
+            mouseX = Float.NaN;
+            mouseY = Float.NaN;
         }
+        InventoryLayoutManager manager = InventoryLayoutManager.getInstance();
 
-        Render2D.disableScissor(context);
-
-        if (hoveredRule != null && !hoveredRule.getDisplayStack().isEmpty()) {
-            renderTooltip(context, hoveredRule, hoveredSlotId, hoveredSlotHasItem, mouseX, mouseY);
+        if (detailedPreset == null) {
+            renderCards(context, area, manager, mouseX, mouseY, alpha, blurred);
+        } else {
+            renderEditor(context, area, manager, mouseX, mouseY, alpha, blurred);
         }
     }
 
-    private static void renderCardsView(DrawContext context, float x, float y, float w, float h, float mouseX, float mouseY, float alpha, boolean blurred) {
-        InventoryLayoutManager lm = InventoryLayoutManager.getInstance();
-        List<InventoryPreset> presets = lm.getPresets();
-        InventoryPreset activePreset = lm.getActivePreset();
+    private static void renderCards(DrawContext context, Bounds area, InventoryLayoutManager manager,
+                                    float mouseX, float mouseY, float alpha, boolean blurred) {
+        drawButton(context, createButton(area), "+ Создать профиль", mouseX, mouseY, alpha,
+                Theme.TEXT_TITLE, BUTTON_FILL, BUTTON_HOVER);
 
-        float curY = y + 4.0f - scrollOffset;
-
-        ClientFont.draw(context, "Профили инвентаря", x + 4.0f, curY, ClientFont.SF_BOLD, ColorUtil.rgba(255, 255, 255, (int) (255 * alpha)));
-        ClientFont.draw(context, "Раскладки и авто-сортировка", x + 4.0f, curY + 14.0f, ClientFont.SF_REGULAR, ColorUtil.rgba(160, 168, 185, (int) (210 * alpha)));
-
-        float newBtnW = 124.0f;
-        float newBtnH = 22.0f;
-        float newBtnX = x + w - newBtnW - 4.0f;
-        float newBtnY = curY + 2.0f;
-
-        boolean hoverNew = mouseX >= newBtnX && mouseX <= newBtnX + newBtnW && mouseY >= newBtnY && mouseY <= newBtnY + newBtnH;
-        int newBg = hoverNew ? Theme.getAccentHover() : Theme.getAccent();
-        Render2D.drawRoundedRect(context, newBtnX, newBtnY, newBtnW, newBtnH, 5.0f, ColorUtil.withAlphaFloat(newBg, alpha));
-        ClientFont.drawCentered(context, "+ Создать профиль", newBtnX + newBtnW / 2.0f, newBtnY + newBtnH / 2.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
-
-        curY += 34.0f;
+        List<InventoryPreset> presets = manager.getPresets();
+        Bounds grid = cardGrid(area);
+        int columns = columns(grid);
+        int rows = (presets.size() + columns - 1) / columns;
+        maxScroll = Math.max(0.0f, rows * (CARD_HEIGHT + CARD_GAP) - CARD_GAP - grid.h);
+        targetScroll = Math.min(targetScroll, maxScroll);
+        scrollOffset += (targetScroll - scrollOffset) * 0.25f;
+        scrollOffset = Math.min(scrollOffset, maxScroll);
 
         if (presets.isEmpty()) {
-            float boxY = curY + 6.0f;
-            float boxH = 92.0f;
-            Render2D.drawRoundedRect(context, x + 4.0f, boxY, w - 8.0f, boxH, 8.0f, ColorUtil.rgba(20, 22, 30, (int) (200 * alpha)));
-            Render2D.drawRoundedOutline(context, x + 4.0f, boxY, w - 8.0f, boxH, 8.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (22 * alpha)));
-            ClientFont.drawCentered(context, "Нет сохраненных профилей", x + w / 2.0f, boxY + 34.0f, ClientFont.SF_BOLD, ColorUtil.rgba(255, 255, 255, (int) (230 * alpha)));
-            ClientFont.drawCentered(context, "Нажмите «+ Создать профиль» вверху, чтобы сохранить текущий инвентарь", x + w / 2.0f, boxY + 50.0f, ClientFont.SF_REGULAR, ColorUtil.rgba(160, 168, 185, (int) (190 * alpha)));
-            maxScroll = 0.0f;
+            drawLabel(context, "Нет сохранённых профилей", grid.centerX(), grid.y + 22.0f, 1.0f, Theme.TEXT_SUB, alpha);
             return;
         }
+        if (!grid.contains(mouseX, mouseY)) {
+            mouseX = Float.NaN;
+            mouseY = Float.NaN;
+        }
 
-        float colGap = 8.0f;
-        float rowGap = 8.0f;
-        float cardW = (w - colGap) / 2.0f;
-        float cardH = 102.0f;
-
-        for (int i = 0; i < presets.size(); i++) {
-            InventoryPreset p = presets.get(i);
-            boolean isLeft = (i % 2 == 0);
-            float cx = isLeft ? x : (x + cardW + colGap);
-            float cy = curY + (i / 2) * (cardH + rowGap);
-
-            boolean isHovered = mouseX >= cx && mouseX <= (cx + cardW) && mouseY >= cy && mouseY <= (cy + cardH);
-            boolean isActive = (p == activePreset);
-
-            int cardBg = isHovered ? Theme.getCardBgHover() : Theme.getCardBg();
-            int cardBorder = isActive ? Theme.getAccent() : (isHovered ? Theme.CARD_BORDER_HOVER : Theme.CARD_BORDER);
-
-            FrostedSurface.draw(context, cx, cy, cardW, cardH, Theme.CARD_RADIUS, cardBg,
-                    alpha, isHovered ? 0.78f : 0.70f, blurred);
-            Render2D.drawRoundedOutline(context, cx, cy, cardW, cardH, Theme.CARD_RADIUS, isActive ? 1.5f : 1.0f, ColorUtil.withAlphaFloat(cardBorder, alpha));
-
-            String name = p.getName();
-            if (name.startsWith("КФГ ")) name = name.substring(4);
-            if (name.startsWith("Профиль ")) name = name.substring(8);
-            ClientFont.draw(context, name, cx + 10.0f, cy + 9.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
-
-            if (isActive) {
-                float badgeW = 58.0f;
-                float badgeH = 16.0f;
-                float bx = cx + cardW - badgeW - 8.0f;
-                float by = cy + 7.0f;
-                Render2D.drawRoundedRect(context, bx, by, badgeW, badgeH, 4.0f, ColorUtil.withAlphaFloat(Theme.getAccent(), alpha));
-                ClientFont.drawCentered(context, "Активен", bx + badgeW / 2.0f, by + badgeH / 2.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
-            } else {
-                float pillW = 60.0f;
-                float pillH = 16.0f;
-                float px = cx + cardW - pillW - 8.0f;
-                float py = cy + 7.0f;
-                boolean hoverAct = mouseX >= px && mouseX <= px + pillW && mouseY >= py && mouseY <= py + pillH;
-                int actBg = hoverAct ? Theme.getAccent() : ColorUtil.rgba(255, 255, 255, 20);
-                Render2D.drawRoundedRect(context, px, py, pillW, pillH, 4.0f, ColorUtil.withAlphaFloat(actBg, alpha));
-                ClientFont.drawCentered(context, "Выбрать", px + pillW / 2.0f, py + pillH / 2.0f, ClientFont.SF_MEDIUM, hoverAct ? 0xFFFFFFFF : 0xFFB0B8C8);
+        InventoryPreset active = manager.getActivePreset();
+        grid.clip(context);
+        try {
+            for (int i = 0; i < presets.size(); i++) {
+                Bounds body = cardBounds(grid, i, presets.size(), columns);
+                if (body.y + body.h <= grid.y || body.y >= grid.y + grid.h) continue;
+                InventoryPreset preset = presets.get(i);
+                renderCard(context, new Card(body), preset, preset == active, mouseX, mouseY, alpha, blurred);
             }
+        } finally {
+            Render2D.disableScissor(context);
+        }
+    }
 
-            float slotY = cy + 30.0f;
-            int[] previewSlots = {0, 1, 2, 3, 39, 40};
-            for (int s = 0; s < previewSlots.length; s++) {
-                float sx = cx + 10.0f + s * 24.0f;
-                Render2D.drawRoundedRect(context, sx, slotY, 21.0f, 21.0f, 4.0f, ColorUtil.rgba(24, 26, 34, 220));
-                Render2D.drawRoundedOutline(context, sx, slotY, 21.0f, 21.0f, 4.0f, 1.0f, ColorUtil.rgba(255, 255, 255, 16));
+    private static void renderCard(DrawContext context, Card card, InventoryPreset preset, boolean active,
+                                   float mouseX, float mouseY, float alpha, boolean blurred) {
+        Bounds body = card.body;
+        boolean hovered = body.contains(mouseX, mouseY);
+        drawSurface(context, body, alpha, blurred, hovered);
+        drawName(context, preset, body.centerX(), body.y + 10.0f, body.w - 16.0f, alpha);
+        drawStatus(context, card.status, active, mouseX, mouseY, alpha);
 
-                InventorySlotRule rule = p.getRule(previewSlots[s]);
-                if (rule != null && !rule.getDisplayStack().isEmpty()) {
-                    context.drawItem(rule.getDisplayStack(), (int) sx + 2, (int) slotY + 2);
+        float startX = body.centerX() - (PREVIEW_SLOTS.length * SLOT_STEP - 2.0f) / 2.0f;
+        for (int i = 0; i < PREVIEW_SLOTS.length; i++) {
+            Bounds slot = slotAt(startX + i * SLOT_STEP, body.y + 33.0f);
+            fill(context, slot, 4.0f, 0x570A0B0E, alpha);
+            drawStack(context, slot, preset.getRule(PREVIEW_SLOTS[i]).getDisplayStack());
+        }
+
+        drawButton(context, card.sort, "Сортировка", mouseX, mouseY, alpha, Theme.TEXT_SUB, 0, BUTTON_HOVER);
+        drawButton(context, card.open, "Открыть", mouseX, mouseY, alpha, Theme.TEXT_TITLE, BUTTON_FILL, BUTTON_HOVER);
+        boolean deleteHover = card.delete.contains(mouseX, mouseY);
+        if (deleteHover) fill(context, card.delete, 4.0f, 0x38E87878, alpha);
+        float cx = card.delete.centerX();
+        float cy = card.delete.centerY();
+        int cross = ColorUtil.withAlphaFloat(deleteHover ? 0xFFF4A2A2 : Theme.TEXT_MUTED, alpha);
+        Render2D.drawLine(context, cx - 2.25f, cy - 2.25f, cx + 2.25f, cy + 2.25f, cross, 1.15f);
+        Render2D.drawLine(context, cx - 2.25f, cy + 2.25f, cx + 2.25f, cy - 2.25f, cross, 1.15f);
+    }
+
+    private static void renderEditor(DrawContext context, Bounds area, InventoryLayoutManager manager,
+                                     float mouseX, float mouseY, float alpha, boolean blurred) {
+        Editor editor = new Editor(area);
+        Bounds body = editor.body;
+        MinecraftClient client = MinecraftClient.getInstance();
+        PlayerInventory inventory = client.player == null ? null : client.player.getInventory();
+        int hoveredSlot = -1;
+        boolean hoveredAvailable = false;
+
+        area.clip(context);
+        try {
+            drawSurface(context, body, alpha, blurred, false);
+            drawButton(context, editor.back, "Назад", mouseX, mouseY, alpha, Theme.TEXT_SUB, 0, BUTTON_HOVER);
+            drawName(context, detailedPreset, body.centerX(), body.y + 13.0f, body.w - 116.0f, alpha);
+
+            for (int id = 0; id < editor.slots.length; id++) {
+                Bounds slot = editor.slots[id];
+                InventorySlotRule rule = detailedPreset.getRule(id);
+                ItemStack stack = rule.getDisplayStack();
+                boolean hovered = slot.contains(mouseX, mouseY);
+                boolean available = hasItem(inventory, rule);
+                int fill = hovered ? 0x38FFFFFF : available ? 0x3E50846B : 0x650A0B0E;
+                fill(context, slot, 4.0f, fill, alpha);
+                if (stack.isEmpty()) continue;
+                drawStack(context, slot, stack);
+                if (!available) fill(context, slot, 4.0f, 0x50000000, alpha);
+                context.drawStackOverlay(client.textRenderer, stack, itemX(slot), itemY(slot));
+
+                if (hovered) {
+                    hoveredSlot = id;
+                    hoveredAvailable = available;
                 }
             }
 
-            float btnH = 20.0f;
-            float btnY = cy + cardH - btnH - 8.0f;
-
-            float sortBtnW = 78.0f;
-            float sortBtnX = cx + 10.0f;
-            boolean hoverSort = mouseX >= sortBtnX && mouseX <= sortBtnX + sortBtnW && mouseY >= btnY && mouseY <= btnY + btnH;
-            int sBg = hoverSort ? Theme.getAccentHover() : ColorUtil.rgba(255, 255, 255, 22);
-            Render2D.drawRoundedRect(context, sortBtnX, btnY, sortBtnW, btnH, 4.0f, ColorUtil.withAlphaFloat(sBg, alpha));
-            ClientFont.drawCentered(context, "Сортировка", sortBtnX + sortBtnW / 2.0f, btnY + btnH / 2.0f, ClientFont.SF_MEDIUM, 0xFFFFFFFF);
-
-            float viewBtnW = 66.0f;
-            float viewBtnX = sortBtnX + sortBtnW + 6.0f;
-            boolean hoverView = mouseX >= viewBtnX && mouseX <= viewBtnX + viewBtnW && mouseY >= btnY && mouseY <= btnY + btnH;
-            int vBg = hoverView ? Theme.getAccent() : ColorUtil.rgba(255, 255, 255, 18);
-            Render2D.drawRoundedRect(context, viewBtnX, btnY, viewBtnW, btnH, 4.0f, ColorUtil.withAlphaFloat(vBg, alpha));
-            ClientFont.drawCentered(context, "Открыть", viewBtnX + viewBtnW / 2.0f, btnY + btnH / 2.0f, ClientFont.SF_MEDIUM, 0xFFFFFFFF);
-
-            float delBtnW = 20.0f;
-            float delBtnX = cx + cardW - delBtnW - 8.0f;
-            boolean hoverDel = mouseX >= delBtnX && mouseX <= delBtnX + delBtnW && mouseY >= btnY && mouseY <= btnY + btnH;
-            int dBg = hoverDel ? ColorUtil.rgba(235, 65, 65, 220) : ColorUtil.rgba(255, 255, 255, 12);
-            int dBorder = hoverDel ? ColorUtil.rgba(255, 90, 90, 240) : ColorUtil.rgba(255, 255, 255, 20);
-            Render2D.drawRoundedRect(context, delBtnX, btnY, delBtnW, btnH, 4.0f, ColorUtil.withAlphaFloat(dBg, alpha));
-            Render2D.drawRoundedOutline(context, delBtnX, btnY, delBtnW, btnH, 4.0f, 1.0f, ColorUtil.withAlphaFloat(dBorder, alpha));
-            float dcX = delBtnX + delBtnW / 2.0f;
-            float dcY = btnY + btnH / 2.0f;
-            int crossCol = ColorUtil.withAlphaFloat(hoverDel ? 0xFFFFFFFF : 0xFFE08585, alpha);
-            Render2D.drawLine(context, dcX - 3.5f, dcY - 3.5f, dcX + 3.5f, dcY + 3.5f, crossCol, 1.4f);
-            Render2D.drawLine(context, dcX + 3.5f, dcY - 3.5f, dcX - 3.5f, dcY + 3.5f, crossCol, 1.4f);
+            drawStatus(context, editor.status, detailedPreset == manager.getActivePreset(), mouseX, mouseY, alpha);
+            drawButton(context, editor.snapshot, "Снимок", mouseX, mouseY, alpha, Theme.TEXT_SUB, 0, BUTTON_HOVER);
+            drawButton(context, editor.sort, "Сортировка", mouseX, mouseY, alpha, Theme.TEXT_TITLE, BUTTON_FILL, BUTTON_HOVER);
+        } finally {
+            Render2D.disableScissor(context);
         }
 
-        int rowsCount = (presets.size() + 1) / 2;
-        float totalH = 38.0f + rowsCount * (cardH + rowGap);
-        maxScroll = Math.max(0.0f, totalH - h);
-    }
-
-    private static void renderDetailView(DrawContext context, float x, float y, float w, float h, float mouseX, float mouseY, float alpha, boolean blurred) {
-        if (detailedPreset == null) return;
-        MinecraftClient mc = MinecraftClient.getInstance();
-        InventoryLayoutManager lm = InventoryLayoutManager.getInstance();
-        boolean isActive = (detailedPreset == lm.getActivePreset());
-
-        float curY = y + 4.0f - scrollOffset;
-
-        float backBtnW = 68.0f;
-        float backBtnH = 22.0f;
-        boolean hoverBack = mouseX >= x + 4.0f && mouseX <= x + 4.0f + backBtnW && mouseY >= curY && mouseY <= curY + backBtnH;
-        int backBg = hoverBack ? ColorUtil.rgba(40, 46, 62, 240) : ColorUtil.rgba(24, 28, 38, 220);
-        int backBorder = hoverBack ? Theme.getAccent() : ColorUtil.rgba(255, 255, 255, 22);
-        Render2D.drawRoundedRect(context, x + 4.0f, curY, backBtnW, backBtnH, 5.0f, ColorUtil.withAlphaFloat(backBg, alpha));
-        Render2D.drawRoundedOutline(context, x + 4.0f, curY, backBtnW, backBtnH, 5.0f, 1.0f, ColorUtil.withAlphaFloat(backBorder, alpha));
-        float arrowX = x + 13.0f;
-        float arrowY = curY + backBtnH / 2.0f;
-        int arrCol = ColorUtil.withAlphaFloat(hoverBack ? Theme.getAccent() : 0xFFCBD5E1, alpha);
-        Render2D.drawLine(context, arrowX + 4.0f, arrowY - 3.5f, arrowX, arrowY, arrCol, 1.5f);
-        Render2D.drawLine(context, arrowX, arrowY, arrowX + 4.0f, arrowY + 3.5f, arrCol, 1.5f);
-        Render2D.drawLine(context, arrowX, arrowY, arrowX + 8.0f, arrowY, arrCol, 1.5f);
-        ClientFont.draw(context, "Назад", x + 27.0f, curY + (backBtnH - ClientFont.FONT_HEIGHT) / 2.0f + 0.5f, ClientFont.SF_MEDIUM, ColorUtil.withAlphaFloat(hoverBack ? 0xFFFFFFFF : 0xFFE2E8F0, alpha));
-
-        float titleX = x + 4.0f + backBtnW + 12.0f;
-        String dName = detailedPreset.getName();
-        if (dName.startsWith("КФГ ")) dName = dName.substring(4);
-        if (dName.startsWith("Профиль ")) dName = dName.substring(8);
-        ClientFont.draw(context, dName, titleX, curY + (backBtnH - ClientFont.FONT_HEIGHT) / 2.0f + 0.5f, ClientFont.SF_BOLD, 0xFFFFFFFF);
-
-        float actionBtnH = 22.0f;
-
-        float sortBtnW = 84.0f;
-        float sortBtnX = x + w - sortBtnW - 4.0f;
-        boolean hoverSort = mouseX >= sortBtnX && mouseX <= sortBtnX + sortBtnW && mouseY >= curY && mouseY <= curY + actionBtnH;
-        int sBg = hoverSort ? Theme.getAccentHover() : Theme.getAccent();
-        Render2D.drawRoundedRect(context, sortBtnX, curY, sortBtnW, actionBtnH, 5.0f, ColorUtil.withAlphaFloat(sBg, alpha));
-        ClientFont.drawCentered(context, "Сортировка", sortBtnX + sortBtnW / 2.0f, curY + actionBtnH / 2.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
-
-        float snapBtnW = 64.0f;
-        float snapBtnX = sortBtnX - snapBtnW - 6.0f;
-        boolean hoverSnap = mouseX >= snapBtnX && mouseX <= snapBtnX + snapBtnW && mouseY >= curY && mouseY <= curY + actionBtnH;
-        int snBg = hoverSnap ? ColorUtil.rgba(255, 255, 255, 45) : ColorUtil.rgba(255, 255, 255, 20);
-        Render2D.drawRoundedRect(context, snapBtnX, curY, snapBtnW, actionBtnH, 5.0f, ColorUtil.withAlphaFloat(snBg, alpha));
-        ClientFont.drawCentered(context, "Снимок", snapBtnX + snapBtnW / 2.0f, curY + actionBtnH / 2.0f, ClientFont.SF_MEDIUM, 0xFFFFFFFF);
-
-        float actBtnW = 66.0f;
-        float actBtnX = snapBtnX - actBtnW - 6.0f;
-        boolean hoverAct = mouseX >= actBtnX && mouseX <= actBtnX + actBtnW && mouseY >= curY && mouseY <= curY + actionBtnH;
-        int aBg = isActive ? ColorUtil.rgba(46, 204, 113, 220) : (hoverAct ? Theme.getAccent() : ColorUtil.rgba(255, 255, 255, 18));
-        Render2D.drawRoundedRect(context, actBtnX, curY, actBtnW, actionBtnH, 5.0f, ColorUtil.withAlphaFloat(aBg, alpha));
-        ClientFont.drawCentered(context, isActive ? "Активен" : "Выбрать", actBtnX + actBtnW / 2.0f, curY + actionBtnH / 2.0f, ClientFont.SF_MEDIUM, 0xFFFFFFFF);
-
-        curY += 32.0f;
-
-        float containerW = w - 8.0f;
-        float containerH = 176.0f;
-        float containerX = x + 4.0f;
-        float containerY = curY;
-
-        FrostedSurface.draw(context, containerX, containerY, containerW, containerH, Theme.CARD_RADIUS,
-                Theme.getCardBg(), alpha, 0.70f, blurred);
-        Render2D.drawRoundedOutline(context, containerX, containerY, containerW, containerH, Theme.CARD_RADIUS, 1.0f, ColorUtil.withAlphaFloat(Theme.CARD_BORDER, alpha));
-
-        float slotSize = 21.0f;
-        float slotStep = 23.0f;
-
-        float gridStartX = containerX + 16.0f;
-        float gridStartY = containerY + 14.0f;
-
-        int[] armorSlots = {39, 38, 37, 36};
-        for (int i = 0; i < 4; i++) {
-            float sx = gridStartX;
-            float sy = gridStartY + i * slotStep;
-            renderSlot(context, detailedPreset, armorSlots[i], sx, sy, slotSize, mouseX, mouseY, mc);
+        if (hoveredSlot >= 0) {
+            renderTooltip(context, detailedPreset.getRule(hoveredSlot), hoveredSlot, hoveredAvailable, mouseX, mouseY, alpha);
         }
-
-        float offhandX = gridStartX + 28.0f;
-        float offhandY = gridStartY + 3 * slotStep;
-        renderSlot(context, detailedPreset, 40, offhandX, offhandY, slotSize, mouseX, mouseY, mc);
-
-        float divX = offhandX + slotSize + 8.0f;
-        Render2D.drawRect(context, divX, gridStartY, 1.0f, 4 * slotStep - 2.0f, ColorUtil.rgba(255, 255, 255, 14));
-
-        float mainX = divX + 9.0f;
-        float mainY = gridStartY;
-        for (int row = 0; row < 3; row++) {
-            for (int col = 0; col < 9; col++) {
-                int slotId = 9 + row * 9 + col;
-                float sx = mainX + col * slotStep;
-                float sy = mainY + row * slotStep;
-                renderSlot(context, detailedPreset, slotId, sx, sy, slotSize, mouseX, mouseY, mc);
-            }
-        }
-
-        float hotbarDivY = mainY + 3 * slotStep + 3.0f;
-        Render2D.drawRect(context, mainX, hotbarDivY, 9 * slotStep - 2.0f, 1.0f, ColorUtil.rgba(255, 255, 255, 16));
-
-        float hotbarY = hotbarDivY + 5.0f;
-        for (int col = 0; col < 9; col++) {
-            float sx = mainX + col * slotStep;
-            renderSlot(context, detailedPreset, col, sx, hotbarY, slotSize, mouseX, mouseY, mc);
-        }
-
-        maxScroll = Math.max(0.0f, (containerH + 40.0f) - h);
-    }
-
-    private static void renderSlot(DrawContext context, InventoryPreset preset, int slotIndex,
-                                   float sx, float sy, float size, float mouseX, float mouseY, MinecraftClient mc) {
-        boolean isHovered = mouseX >= sx && mouseX <= sx + size && mouseY >= sy && mouseY <= sy + size;
-
-        InventorySlotRule rule = preset.getRule(slotIndex);
-        boolean hasItemInInv = false;
-        if (rule != null && mc.player != null) {
-            PlayerInventory inv = mc.player.getInventory();
-            for (int i = 0; i < inv.size(); i++) {
-                ItemStack stack = inv.getStack(i);
-                if (!stack.isEmpty() && rule.matches(stack)) {
-                    hasItemInInv = true;
-                    break;
-                }
-            }
-        }
-
-        int slotBg = isHovered ? ColorUtil.rgba(36, 40, 52, 240) : ColorUtil.rgba(20, 22, 30, 210);
-        int slotBorder = isHovered ? Theme.getAccent() : (hasItemInInv ? ColorUtil.rgba(46, 204, 113, 140) : ColorUtil.rgba(255, 255, 255, 20));
-
-        Render2D.drawRoundedRect(context, sx, sy, size, size, 4.0f, slotBg);
-        Render2D.drawRoundedOutline(context, sx, sy, size, size, 4.0f, isHovered ? 1.5f : 1.0f, slotBorder);
-
-        if (rule != null && !rule.getDisplayStack().isEmpty()) {
-            ItemStack stack = rule.getDisplayStack();
-
-            if (!hasItemInInv) {
-                context.drawItem(stack, (int) sx + 2, (int) sy + 2);
-                Render2D.drawRoundedRect(context, sx + 1.0f, sy + 1.0f, size - 2.0f, size - 2.0f, 3.0f, ColorUtil.rgba(0, 0, 0, 110));
-            } else {
-                context.drawItem(stack, (int) sx + 2, (int) sy + 2);
-
-                Render2D.drawCircle(context, sx + size - 3.5f, sy + 3.5f, 2.0f, ColorUtil.rgba(46, 204, 113, 240));
-            }
-            context.drawStackOverlay(mc.textRenderer, stack, (int) sx + 2, (int) sy + 2);
-
-            if (isHovered) {
-                hoveredRule = rule;
-                hoveredSlotId = slotIndex;
-                hoveredSlotHasItem = hasItemInInv;
-                tooltipX = mouseX + 10.0f;
-                tooltipY = mouseY + 10.0f;
-            }
-        }
-    }
-
-    private static void renderTooltip(DrawContext context, InventorySlotRule rule, int slotId, boolean hasItem, float mouseX, float mouseY) {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        ItemStack stack = rule.getDisplayStack();
-
-        String title = stack.getName().getString();
-        if (rule.getCustomName() != null && !rule.getCustomName().isEmpty()) {
-            title = rule.getCustomName();
-        }
-
-        String slotCategory = getSlotCategoryName(slotId);
-        String statusText = hasItem ? "[+] В наличии в инвентаре" : "[-] Отсутствует у игрока";
-        int statusCol = hasItem ? 0xFF2ECC71 : 0xFFE74C3C;
-
-        float titleW = ClientFont.getWidth(title, ClientFont.SF_BOLD);
-        float catW = ClientFont.getWidth(slotCategory, ClientFont.SF_REGULAR);
-        float statW = ClientFont.getWidth(statusText, ClientFont.SF_REGULAR);
-
-        float tipW = Math.max(titleW, Math.max(catW, statW)) + 18.0f;
-        float tipH = 46.0f;
-
-        float tx = mouseX + 12.0f;
-        float ty = mouseY + 12.0f;
-
-        if (tx + tipW > mc.getWindow().getScaledWidth() - 4.0f) {
-            tx = mouseX - tipW - 8.0f;
-        }
-        if (ty + tipH > mc.getWindow().getScaledHeight() - 4.0f) {
-            ty = mouseY - tipH - 8.0f;
-        }
-
-        Render2D.drawShadow(context, tx, ty, tipW, tipH, 6.0f, 10.0f, ColorUtil.rgba(0, 0, 0, 160));
-        Render2D.drawRoundedRect(context, tx, ty, tipW, tipH, 6.0f, ColorUtil.rgba(16, 18, 24, 245));
-        Render2D.drawRoundedOutline(context, tx, ty, tipW, tipH, 6.0f, 1.0f, ColorUtil.rgba(255, 255, 255, 30));
-
-        ClientFont.draw(context, title, tx + 8.0f, ty + 7.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
-        ClientFont.draw(context, slotCategory, tx + 8.0f, ty + 20.0f, ClientFont.SF_REGULAR, 0xFFA0A8B8);
-        ClientFont.draw(context, statusText, tx + 8.0f, ty + 32.0f, ClientFont.SF_REGULAR, statusCol);
-    }
-
-    private static String getSlotCategoryName(int slotId) {
-        if (slotId == 39) return "Броня · Шлем";
-        if (slotId == 38) return "Броня · Нагрудник";
-        if (slotId == 37) return "Броня · Поножи";
-        if (slotId == 36) return "Броня · Ботинки";
-        if (slotId == 40) return "Вторая рука (Оффхэнд)";
-        if (slotId >= 0 && slotId <= 8) return "Хотбар · Слот " + (slotId + 1);
-        return "Основной инвентарь · Слот " + (slotId - 8);
     }
 
     public static boolean mouseClicked(float x, float y, float w, float h, double mouseX, double mouseY, int button) {
-        if (button != 0 && button != 1) return false;
+        Bounds area = new Bounds(x, y, w, h);
+        if ((button != 0 && button != 1) || !area.contains(mouseX, mouseY)) return false;
 
-        InventoryLayoutManager lm = InventoryLayoutManager.getInstance();
-        MinecraftClient mc = MinecraftClient.getInstance();
-
+        InventoryLayoutManager manager = InventoryLayoutManager.getInstance();
+        MinecraftClient client = MinecraftClient.getInstance();
         if (detailedPreset != null) {
-            float curY = y + 4.0f - scrollOffset;
-
-            float backBtnW = 64.0f;
-            float backBtnH = 22.0f;
-            if (mouseX >= x + 4.0f && mouseX <= x + 4.0f + backBtnW && mouseY >= curY && mouseY <= curY + backBtnH) {
-                detailedPreset = null;
-                GuiSoundManager.playSelect();
-                return true;
-            }
-
-            float sortBtnW = 84.0f;
-            float sortBtnX = x + w - sortBtnW - 4.0f;
-            if (mouseX >= sortBtnX && mouseX <= sortBtnX + sortBtnW && mouseY >= curY && mouseY <= curY + 22.0f) {
-                lm.setActivePreset(detailedPreset.getName());
-                InventorySorter sorter = ModuleManager.getInstance().getModule(InventorySorter.class);
-                if (sorter != null) sorter.startSort();
-                GuiSoundManager.playSelect();
-                return true;
-            }
-
-            float snapBtnW = 64.0f;
-            float snapBtnX = sortBtnX - snapBtnW - 6.0f;
-            if (mouseX >= snapBtnX && mouseX <= snapBtnX + snapBtnW && mouseY >= curY && mouseY <= curY + 22.0f) {
-                if (mc.player != null) {
-                    lm.saveCurrentAsPreset(detailedPreset.getName(), mc.player.getInventory());
-                    GuiSoundManager.playSelect();
-                }
-                return true;
-            }
-
-            float actBtnW = 66.0f;
-            float actBtnX = snapBtnX - actBtnW - 6.0f;
-            if (mouseX >= actBtnX && mouseX <= actBtnX + actBtnW && mouseY >= curY && mouseY <= curY + 22.0f) {
-                lm.setActivePreset(detailedPreset.getName());
-                InventorySorter sorter = ModuleManager.getInstance().getModule(InventorySorter.class);
-                if (sorter != null) sorter.updatePresetModes();
-                GuiSoundManager.playSelect();
-                return true;
-            }
-
-            float containerX = x + 4.0f;
-            float containerY = curY + 32.0f;
-            float slotSize = 21.0f;
-            float slotStep = 23.0f;
-            float gridStartX = containerX + 16.0f;
-            float gridStartY = containerY + 14.0f;
-
-            int clickedSlot = -1;
-
-            int[] armorSlots = {39, 38, 37, 36};
-            for (int i = 0; i < 4; i++) {
-                float sx = gridStartX;
-                float sy = gridStartY + i * slotStep;
-                if (mouseX >= sx && mouseX <= sx + slotSize && mouseY >= sy && mouseY <= sy + slotSize) {
-                    clickedSlot = armorSlots[i];
-                    break;
-                }
-            }
-
-            float offhandX = gridStartX + 28.0f;
-            float offhandY = gridStartY + 3 * slotStep;
-            if (clickedSlot == -1 && mouseX >= offhandX && mouseX <= offhandX + slotSize && mouseY >= offhandY && mouseY <= offhandY + slotSize) {
-                clickedSlot = 40;
-            }
-
-            float divX = offhandX + slotSize + 8.0f;
-            float mainX = divX + 9.0f;
-            float mainY = gridStartY;
-            if (clickedSlot == -1) {
-                for (int row = 0; row < 3; row++) {
-                    for (int col = 0; col < 9; col++) {
-                        int slotId = 9 + row * 9 + col;
-                        float sx = mainX + col * slotStep;
-                        float sy = mainY + row * slotStep;
-                        if (mouseX >= sx && mouseX <= sx + slotSize && mouseY >= sy && mouseY <= sy + slotSize) {
-                            clickedSlot = slotId;
-                            break;
-                        }
-                    }
-                    if (clickedSlot != -1) break;
-                }
-            }
-
-            float hotbarDivY = mainY + 3 * slotStep + 3.0f;
-            float hotbarY = hotbarDivY + 5.0f;
-            if (clickedSlot == -1) {
-                for (int col = 0; col < 9; col++) {
-                    float sx = mainX + col * slotStep;
-                    if (mouseX >= sx && mouseX <= sx + slotSize && mouseY >= hotbarY && mouseY <= hotbarY + slotSize) {
-                        clickedSlot = col;
-                        break;
-                    }
-                }
-            }
-
-            if (clickedSlot != -1) {
-                if (button == 1) {
-                    detailedPreset.clearSlot(clickedSlot);
-                    lm.save();
-                    GuiSoundManager.playSelect();
-                    return true;
-                } else if (button == 0 && mc.player != null) {
-                    ItemStack cursor = mc.player.currentScreenHandler != null ? mc.player.currentScreenHandler.getCursorStack() : ItemStack.EMPTY;
-                    ItemStack toSet = !cursor.isEmpty() ? cursor : mc.player.getMainHandStack();
-                    if (!toSet.isEmpty()) {
-                        detailedPreset.setRule(clickedSlot, InventorySlotRule.fromStack(clickedSlot, toSet));
-                        lm.save();
-                        GuiSoundManager.playSelect();
-                        return true;
-                    }
-                }
-            }
-
-            return false;
+            if (!clickEditor(new Editor(area), manager, client, mouseX, mouseY, button)) return false;
+        } else {
+            if (button != 0 || !clickCards(area, manager, client, mouseX, mouseY)) return false;
         }
+        GuiSoundManager.playSelect();
+        return true;
+    }
 
-        if (button != 0) return false;
-
-        float curY = y + 4.0f - scrollOffset;
-
-        float newBtnW = 124.0f;
-        float newBtnH = 22.0f;
-        float newBtnX = x + w - newBtnW - 4.0f;
-        float newBtnY = curY + 2.0f;
-        if (mouseX >= newBtnX && mouseX <= newBtnX + newBtnW && mouseY >= newBtnY && mouseY <= newBtnY + newBtnH) {
-            int nextNum = lm.getPresets().size() + 1;
-            String newName = String.valueOf(nextNum);
-            InventoryPreset created = lm.createNewPreset(newName);
-            if (mc.player != null && created != null) {
-                lm.saveCurrentAsPreset(newName, mc.player.getInventory());
-            }
-            detailedPreset = created;
-            InventorySorter sorter = ModuleManager.getInstance().getModule(InventorySorter.class);
-            if (sorter != null) sorter.updatePresetModes();
-            GuiSoundManager.playSelect();
+    private static boolean clickCards(Bounds area, InventoryLayoutManager manager, MinecraftClient client,
+                                      double mouseX, double mouseY) {
+        if (createButton(area).contains(mouseX, mouseY)) {
+            List<String> names = manager.getPresetNames();
+            int number = names.size() + 1;
+            while (names.contains(Integer.toString(number))) number++;
+            InventoryPreset created = manager.createNewPreset(Integer.toString(number));
+            if (client.player != null) manager.saveCurrentAsPreset(created.getName(), client.player.getInventory());
+            setDetailedPreset(created);
+            updateSorter(false);
             return true;
         }
 
-        curY += 34.0f;
-        List<InventoryPreset> presets = lm.getPresets();
-        float colGap = 8.0f;
-        float rowGap = 8.0f;
-        float cardW = (w - colGap) / 2.0f;
-        float cardH = 102.0f;
-
+        Bounds grid = cardGrid(area);
+        if (!grid.contains(mouseX, mouseY)) return false;
+        List<InventoryPreset> presets = manager.getPresets();
+        int columns = columns(grid);
         for (int i = 0; i < presets.size(); i++) {
-            InventoryPreset p = presets.get(i);
-            boolean isLeft = (i % 2 == 0);
-            float cx = isLeft ? x : (x + cardW + colGap);
-            float cy = curY + (i / 2) * (cardH + rowGap);
+            Bounds body = cardBounds(grid, i, presets.size(), columns);
+            if (!body.contains(mouseX, mouseY)) continue;
 
-            if (mouseX >= cx && mouseX <= cx + cardW && mouseY >= cy && mouseY <= cy + cardH) {
-                float btnH = 20.0f;
-                float btnY = cy + cardH - btnH - 8.0f;
+            Card card = new Card(body);
+            InventoryPreset preset = presets.get(i);
+            if (card.delete.contains(mouseX, mouseY)) {
+                manager.setActivePreset(preset.getName());
+                manager.deleteCurrentPreset();
+                updateSorter(false);
+            } else if (card.sort.contains(mouseX, mouseY)) {
+                activate(manager, preset, true);
+            } else if (card.status.contains(mouseX, mouseY)) {
+                if (preset == manager.getActivePreset()) return false;
+                activate(manager, preset, false);
+            } else {
+                setDetailedPreset(preset);
+            }
+            return true;
+        }
+        return false;
+    }
 
-                float sortBtnW = 78.0f;
-                float sortBtnX = cx + 10.0f;
-                if (mouseX >= sortBtnX && mouseX <= sortBtnX + sortBtnW && mouseY >= btnY && mouseY <= btnY + btnH) {
-                    lm.setActivePreset(p.getName());
-                    InventorySorter sorter = ModuleManager.getInstance().getModule(InventorySorter.class);
-                    if (sorter != null) sorter.startSort();
-                    GuiSoundManager.playSelect();
-                    return true;
-                }
-
-                float viewBtnW = 66.0f;
-                float viewBtnX = sortBtnX + sortBtnW + 6.0f;
-                if (mouseX >= viewBtnX && mouseX <= viewBtnX + viewBtnW && mouseY >= btnY && mouseY <= btnY + btnH) {
-                    detailedPreset = p;
-                    GuiSoundManager.playSelect();
-                    return true;
-                }
-
-                float pillW = 60.0f;
-                float pillH = 16.0f;
-                float px = cx + cardW - pillW - 8.0f;
-                float py = cy + 7.0f;
-                if (mouseX >= px && mouseX <= px + pillW && mouseY >= py && mouseY <= py + pillH) {
-                    lm.setActivePreset(p.getName());
-                    InventorySorter sorter = ModuleManager.getInstance().getModule(InventorySorter.class);
-                    if (sorter != null) sorter.updatePresetModes();
-                    GuiSoundManager.playSelect();
-                    return true;
-                }
-
-                float delBtnW = 20.0f;
-                float delBtnX = cx + cardW - delBtnW - 8.0f;
-                if (mouseX >= delBtnX && mouseX <= delBtnX + delBtnW && mouseY >= btnY && mouseY <= btnY + btnH) {
-                    lm.setActivePreset(p.getName());
-                    lm.deleteCurrentPreset();
-                    InventorySorter sorter = ModuleManager.getInstance().getModule(InventorySorter.class);
-                    if (sorter != null) sorter.updatePresetModes();
-                    GuiSoundManager.playSelect();
-                    return true;
-                }
-
-                detailedPreset = p;
-                GuiSoundManager.playSelect();
+    private static boolean clickEditor(Editor editor, InventoryLayoutManager manager, MinecraftClient client,
+                                       double mouseX, double mouseY, int button) {
+        if (button == 0) {
+            if (editor.back.contains(mouseX, mouseY)) {
+                setDetailedPreset(null);
+                return true;
+            }
+            if (editor.sort.contains(mouseX, mouseY)) {
+                activate(manager, detailedPreset, true);
+                return true;
+            }
+            if (editor.snapshot.contains(mouseX, mouseY) && client.player != null) {
+                manager.saveCurrentAsPreset(detailedPreset.getName(), client.player.getInventory());
+                return true;
+            }
+            if (editor.status.contains(mouseX, mouseY) && detailedPreset != manager.getActivePreset()) {
+                activate(manager, detailedPreset, false);
                 return true;
             }
         }
 
+        for (int id = 0; id < editor.slots.length; id++) {
+            if (!editor.slots[id].contains(mouseX, mouseY)) continue;
+            if (button == 1) {
+                detailedPreset.clearSlot(id);
+            } else {
+                if (client.player == null) return false;
+                ItemStack cursor = client.player.currentScreenHandler != null
+                        ? client.player.currentScreenHandler.getCursorStack() : ItemStack.EMPTY;
+                ItemStack stack = cursor.isEmpty() ? client.player.getMainHandStack() : cursor;
+                if (stack.isEmpty()) return false;
+                detailedPreset.setRule(id, InventorySlotRule.fromStack(id, stack));
+            }
+            manager.save();
+            return true;
+        }
         return false;
+    }
+
+    private static void activate(InventoryLayoutManager manager, InventoryPreset preset, boolean sort) {
+        manager.setActivePreset(preset.getName());
+        updateSorter(sort);
+    }
+
+    private static void updateSorter(boolean sort) {
+        InventorySorter sorter = ModuleManager.getInstance().getModule(InventorySorter.class);
+        if (sorter == null) return;
+        sorter.updatePresetModes();
+        if (sort) sorter.startSort();
+    }
+
+    private static Bounds createButton(Bounds area) {
+        return centered(area.centerX(), area.y + 2.0f, 94.0f);
+    }
+
+    private static Bounds cardGrid(Bounds area) {
+        return new Bounds(area.x, area.y + GRID_TOP, area.w, area.h - GRID_TOP);
+    }
+
+    private static int columns(Bounds grid) {
+        return Math.clamp((int) ((grid.w + CARD_GAP) / (CARD_WIDTH + CARD_GAP)), 1, 3);
+    }
+
+    private static Bounds cardBounds(Bounds grid, int index, int count, int columns) {
+        int row = index / columns;
+        int cardsInRow = Math.min(columns, count - row * columns);
+        float rowWidth = cardsInRow * (CARD_WIDTH + CARD_GAP) - CARD_GAP;
+        return new Bounds(grid.centerX() - rowWidth / 2.0f + (index % columns) * (CARD_WIDTH + CARD_GAP),
+                grid.y + row * (CARD_HEIGHT + CARD_GAP) - scrollOffset, CARD_WIDTH, CARD_HEIGHT);
+    }
+
+    private static Bounds[] editorSlots(float x, float y) {
+        Bounds[] slots = new Bounds[41];
+        float mainX = x + 46.0f;
+        for (int col = 0; col < 9; col++) {
+            float sx = mainX + col * SLOT_STEP;
+            for (int row = 0; row < 3; row++) {
+                slots[9 + row * 9 + col] = slotAt(sx, y + row * SLOT_STEP);
+            }
+            slots[col] = slotAt(sx, y + 64.0f);
+        }
+        for (int row = 0; row < 4; row++) {
+            slots[39 - row] = slotAt(x, y + row * SLOT_STEP);
+        }
+        slots[40] = slotAt(x + SLOT_STEP, y + 3 * SLOT_STEP);
+        return slots;
+    }
+
+    private static Bounds slotAt(float x, float y) {
+        return new Bounds(x, y, SLOT_SIZE, SLOT_SIZE);
+    }
+
+    private static Bounds centered(float centerX, float top, float width) {
+        return new Bounds(centerX - width / 2.0f, top, width, BUTTON_HEIGHT);
+    }
+
+    private static int itemX(Bounds slot) { return Math.round(slot.centerX() - 8.0f); }
+    private static int itemY(Bounds slot) { return Math.round(slot.centerY() - 8.0f); }
+
+    private static void drawStack(DrawContext context, Bounds slot, ItemStack stack) {
+        if (!stack.isEmpty()) context.drawItem(stack, itemX(slot), itemY(slot));
+    }
+
+    private static boolean hasItem(PlayerInventory inventory, InventorySlotRule rule) {
+        if (inventory == null || rule.isEmpty()) return false;
+        for (int i = 0; i < inventory.size(); i++) {
+            ItemStack stack = inventory.getStack(i);
+            if (!stack.isEmpty() && rule.matches(stack)) return true;
+        }
+        return false;
+    }
+
+    private static void drawSurface(DrawContext context, Bounds bounds, float alpha, boolean blurred, boolean hovered) {
+        FrostedSurface.draw(context, bounds.x, bounds.y, bounds.w, bounds.h, 8.0f,
+                hovered ? Theme.getCardBgHover() : Theme.getCardBg(), alpha, hovered ? 0.68f : 0.61f, blurred);
+    }
+
+    private static void fill(DrawContext context, Bounds bounds, float radius, int color, float alpha) {
+        Render2D.drawRoundedRect(context, bounds.x, bounds.y, bounds.w, bounds.h, radius, ColorUtil.withAlphaFloat(color, alpha));
+    }
+
+    private static void drawButton(DrawContext context, Bounds bounds, String label, float mouseX, float mouseY,
+                                   float alpha, int textColor, int background, int hoverBackground) {
+        boolean hovered = bounds.contains(mouseX, mouseY);
+        int color = hovered ? hoverBackground : background;
+        if (color != 0) fill(context, bounds, 4.0f, color, alpha);
+        drawLabel(context, label, bounds.centerX(), bounds.centerY(), BUTTON_TEXT_SCALE, hovered ? Theme.TEXT_TITLE : textColor, alpha);
+    }
+
+    private static void drawStatus(DrawContext context, Bounds bounds, boolean active, float mouseX, float mouseY, float alpha) {
+        if (active) {
+            int tint = ColorUtil.interpolate(Theme.getAccent(), Theme.TEXT_TITLE, 0.48f);
+            drawLabel(context, "Активен", bounds.centerX(), bounds.centerY(), BUTTON_TEXT_SCALE, tint, alpha);
+        } else {
+            drawButton(context, bounds, "Выбрать", mouseX, mouseY, alpha, Theme.TEXT_SUB, 0, BUTTON_HOVER);
+        }
+    }
+
+    private static void drawLabel(DrawContext context, String label, float x, float y, float scale, int color, float alpha) {
+        ClientFont.drawCenteredScaled(context, label, x, y, scale, ClientFont.SF_MEDIUM, ColorUtil.withAlphaFloat(color, alpha));
+    }
+
+    private static void drawName(DrawContext context, InventoryPreset preset, float x, float y, float maxWidth, float alpha) {
+        String name = preset.getName();
+        if (name.startsWith("КФГ ")) name = name.substring(4);
+        if (name.startsWith("Профиль ")) name = name.substring(8);
+
+        if (ClientFont.getWidth(name, ClientFont.SF_BOLD) > maxWidth) {
+            int end = name.length();
+            do {
+                end = name.offsetByCodePoints(end, -1);
+            } while (end > 0 && ClientFont.getWidth(name.substring(0, end) + "…", ClientFont.SF_BOLD) > maxWidth);
+            name = name.substring(0, end) + "…";
+        }
+        ClientFont.drawCentered(context, name, x, y, ClientFont.SF_BOLD, ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, alpha));
+    }
+
+    private static void renderTooltip(DrawContext context, InventorySlotRule rule, int slotId, boolean available,
+                                      float mouseX, float mouseY, float alpha) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        String title = rule.getDisplayStack().getName().getString();
+        String category = getSlotCategoryName(slotId);
+        String status = available ? "В наличии" : "Нет в инвентаре";
+        float width = Math.max(ClientFont.getWidth(title, ClientFont.SF_BOLD),
+                Math.max(ClientFont.getWidth(category, ClientFont.SF_REGULAR), ClientFont.getWidth(status, ClientFont.SF_REGULAR))) + 16.0f;
+        float height = 42.0f;
+        float tx = mouseX + 10.0f;
+        float ty = mouseY + 10.0f;
+        if (tx + width > client.getWindow().getScaledWidth() - 4.0f) tx = mouseX - width - 8.0f;
+        if (ty + height > client.getWindow().getScaledHeight() - 4.0f) ty = mouseY - height - 8.0f;
+
+        fill(context, new Bounds(tx, ty, width, height), 6.0f, 0xF516181E, alpha);
+        ClientFont.draw(context, title, tx + 8.0f, ty + 5.0f, ClientFont.SF_BOLD, ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, alpha));
+        ClientFont.draw(context, category, tx + 8.0f, ty + 17.0f, ClientFont.SF_REGULAR, ColorUtil.withAlphaFloat(Theme.TEXT_SUB, alpha));
+        ClientFont.draw(context, status, tx + 8.0f, ty + 29.0f, ClientFont.SF_REGULAR,
+                ColorUtil.withAlphaFloat(available ? 0xFF8FCCA9 : 0xFFE1A09D, alpha));
+    }
+
+    private static String getSlotCategoryName(int slotId) {
+        return switch (slotId) {
+            case 39 -> "Броня · Шлем";
+            case 38 -> "Броня · Нагрудник";
+            case 37 -> "Броня · Поножи";
+            case 36 -> "Броня · Ботинки";
+            case 40 -> "Вторая рука";
+            default -> slotId <= 8 ? "Хотбар · Слот " + (slotId + 1) : "Инвентарь · Слот " + (slotId - 8);
+        };
     }
 
     public static void mouseScrolled(double amount) {
@@ -607,6 +454,5 @@ public class InventoryConfigPanel {
     }
 
     public static void mouseReleased() {
-
     }
 }
