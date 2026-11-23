@@ -90,6 +90,20 @@ public final class Pipelines {
             .build()
     );
 
+    public static final RenderPipeline TOTEM_SOUL = register(
+        RenderPipeline.builder()
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/totem_soul"))
+            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/glow/composite"))
+            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/fullscreen/totem_soul"))
+            .withSampler("Sampler0")
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .withVertexFormat(VertexFormats.POSITION_TEXTURE_COLOR, DrawMode.QUADS)
+            .build()
+    );
+
     public static final RenderPipeline AURA_TEXTURE = register(
         RenderPipeline.builder()
             .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/aura_texture"))

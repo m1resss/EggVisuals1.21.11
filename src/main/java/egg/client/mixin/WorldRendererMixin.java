@@ -7,6 +7,7 @@ import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import egg.client.EggClient;
 import egg.client.module.ModuleManager;
 import egg.client.module.render.KillEffect;
+import egg.client.module.render.TotemPop;
 import egg.client.render.NaturalMotionBlurRenderer;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.RenderTickCounter;
@@ -130,6 +131,8 @@ public abstract class WorldRendererMixin {
             boolean flag2,
             CallbackInfo callbackInfo
     ) {
+        TotemPop totemPop = ModuleManager.getInstance().getModule(TotemPop.class);
+        if (totemPop != null) totemPop.renderSouls(camera, gpuBufferSlice);
         EggClient.renderWorld3DPostClouds(renderTickCounter, camera);
     }
 }

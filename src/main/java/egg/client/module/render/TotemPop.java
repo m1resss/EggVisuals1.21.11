@@ -1,18 +1,22 @@
 package egg.client.module.render;
 
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ColorSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
+import egg.client.render.world.TotemSoulRenderer;
 import egg.client.ui.theme.Theme;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.RenderLayers;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
@@ -26,7 +30,9 @@ import java.util.Random;
 
 public class TotemPop extends Module {
 
-    private final ModeSetting mode = new ModeSetting("Режим", "Shockwave", "Выбор эффекта при срабатывании тотема", "Shockwave", "Конфетти");
+    private static final String SOUL = "Душа";
+    private final ModeSetting mode = new ModeSetting("Режим", "Shockwave", "Выбор эффекта при срабатывании тотема", "Shockwave", "Конфетти", SOUL);
+    private final TotemSoulRenderer soulRenderer = new TotemSoulRenderer();
 
     private final BooleanSetting groundWave = new BooleanSetting("Круглая волна", true, "Отображение расходящихся колец волны на земле");
     private final SliderSetting shockwaveRings = new SliderSetting("Кольца волны", 2.0, 1.0, 3.0, 1.0, "Количество расходящихся колец волны");
@@ -93,7 +99,7 @@ public class TotemPop extends Module {
     }
 
     public TotemPop() {
-        super("TotemPop", "Кастомные эффекты при срабатывании тотема (Shockwave и конфетти)", Category.ESP);
+        super("TotemPop", "Кастомные эффекты при срабатывании тотема", Category.ESP);
 
         this.groundWave.setVisible(() -> "Shockwave".equals(this.mode.get()));
         this.shockwaveRings.setVisible(() -> "Shockwave".equals(this.mode.get()) && this.groundWave.isEnabled());
@@ -135,13 +141,22 @@ public class TotemPop extends Module {
         synchronized (shockwaves) {
             shockwaves.clear();
         }
+        soulRenderer.clear();
         this.lastFrameNanos = 0L;
     }
 
     public void onTotemPop(Entity entity) {
         if (!isEnabled() || entity == null) return;
+        if (SOUL.equals(mode.get())) {
+            if (entity instanceof PlayerEntity player) soulRenderer.capture(player);
+            return;
+        }
         Vec3d origin = new Vec3d(entity.getX(), entity.getY(), entity.getZ());
         spawnBurst(origin);
+    }
+
+    public void renderSouls(Camera camera, GpuBufferSlice fog) {
+        if (isEnabled()) soulRenderer.render(camera, fog);
     }
 
     public void spawnBurst(Vec3d origin) {
