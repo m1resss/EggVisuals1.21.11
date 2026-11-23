@@ -118,6 +118,14 @@ public abstract class WorldRendererMixin {
         NaturalMotionBlurRenderer.INSTANCE.onBeforeEntities();
     }
 
+    @Inject(method = "pushEntityRenders", at = @At("RETURN"))
+    private void egg$queueAscensionModels(MatrixStack matrices, WorldRenderState state,
+                                           OrderedRenderCommandQueue queue, CallbackInfo ci) {
+        KillEffect effect = ModuleManager.getInstance().getModule(KillEffect.class);
+        if (effect != null) effect.queueAscensionModels(matrices, queue, state.cameraRenderState);
+    }
+
+
     @Inject(method = "render", at = @At("TAIL"))
     private void egg$naturalMotionBlurTail(
             ObjectAllocator objectAllocator,

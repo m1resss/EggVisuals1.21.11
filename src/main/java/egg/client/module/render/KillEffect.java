@@ -19,7 +19,7 @@ import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.BuiltBuffer;
 import net.minecraft.client.render.RenderLayers;
 import net.minecraft.client.render.OverlayTexture;
-import net.minecraft.client.render.command.RenderDispatcher;
+import net.minecraft.client.render.command.OrderedRenderCommandQueue;
 import net.minecraft.client.render.entity.EntityRenderManager;
 import net.minecraft.client.render.entity.state.BipedEntityRenderState;
 import net.minecraft.client.render.entity.state.EntityRenderState;
@@ -571,35 +571,34 @@ public class KillEffect extends Module {
         }
     }
 
-    private void renderAscensions(VertexConsumerProvider consumers, Vec3d camera, long now) {
+    public void queueAscensionModels(MatrixStack matrices, OrderedRenderCommandQueue queue, CameraRenderState camera) {
+        if (!isEnabled()) return;
+        long now = System.nanoTime();
         ascensions.removeIf(effect -> effect.world() != mc.world || now - effect.started() >= ASCENSION_DURATION);
         if (ascensions.isEmpty()) return;
+
         EntityRenderManager manager = mc.getEntityRenderDispatcher();
-        RenderDispatcher dispatcher = mc.gameRenderer.getEntityRenderDispatcher();
-        CameraRenderState cameraState = new CameraRenderState();
-        cameraState.orientation = mc.gameRenderer.getCamera().getRotation();
-        cameraState.pos = camera;
-        cameraState.blockPos = BlockPos.ofFloored(camera);
-        cameraState.entityPos = camera;
-        cameraState.initialized = true;
-        MatrixStack matrices = new MatrixStack();
         for (Ascension effect : ascensions) {
-            float time = (now - effect.started()) / (float) ASCENSION_DURATION;
-            Vec3d offset = effect.position().add(0, 0.12 + 6.5 * time * time, 0).subtract(camera);
+            float time = Math.clamp((now - effect.started()) / (float) ASCENSION_DURATION, 0, 1);
+            Vec3d offset = effect.position().add(0, 0.12 + 6.5 * time * time, 0).subtract(camera.pos);
             float end = Math.clamp((time - 0.78f) / 0.22f, 0, 1);
             float scale = 1 - end * end;
+            EntityRenderState model = effect.model();
             matrices.push();
-            matrices.translate(offset.x, offset.y, offset.z);
-            matrices.scale(scale, scale, scale);
-            manager.render(effect.model(), cameraState, 0, 0, 0, matrices, dispatcher.getQueue());
-            matrices.pop();
+            try {
+                matrices.translate(offset.x, offset.y, offset.z);
+                matrices.scale(scale, scale, scale);
+                manager.getRenderer(model).render(model, matrices, queue, camera);
+            } finally {
+                matrices.pop();
+            }
         }
-        dispatcher.render();
-        mc.getBufferBuilders().getEntityVertexConsumers().draw();
+    }
 
+    private void renderAscensionHalos(VertexConsumerProvider consumers, Vec3d camera, long now) {
         VertexConsumer haloBuffer = consumers.getBuffer(RenderLayers.lightning());
         for (Ascension effect : ascensions) {
-            float time = (now - effect.started()) / (float) ASCENSION_DURATION;
+            float time = Math.clamp((now - effect.started()) / (float) ASCENSION_DURATION, 0, 1);
             float fade = Math.clamp(time / 0.18f, 0, 1) * Math.clamp((1 - time) / 0.42f, 0, 1);
             Vec3d center = effect.position().add(0, 0.12 + 6.5 * time * time + effect.model().height + 0.15, 0).subtract(camera);
             float radius = Math.clamp(effect.model().width * 0.55f, 0.18f, 0.6f);
@@ -1044,7 +1043,7 @@ public class KillEffect extends Module {
             return entity.isRemoved() || entity.getEntityWorld() != mc.world
                     || (entity.isAlive() && now - entry.getValue() >= ASCENSION_DURATION);
         });
-        if (!ascensions.isEmpty()) renderAscensions(immediate, camPos, now);
+        if (!ascensions.isEmpty()) renderAscensionHalos(immediate, camPos, now);
 
         if (!butterflySwarms.isEmpty()) {
             VertexConsumer quadBuffer = immediate.getBuffer(RenderLayers.debugQuads());
