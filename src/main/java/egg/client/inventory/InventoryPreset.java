@@ -90,6 +90,10 @@ public class InventoryPreset {
                 if (r.getPotionId() != null) {
                     rObj.addProperty("potionId", r.getPotionId());
                 }
+                JsonElement head = r.encodeHead();
+                if (head != null) {
+                    rObj.add("head", head);
+                }
                 rObj.addProperty("count", r.getCount());
                 arr.add(rObj);
             }
@@ -112,6 +116,7 @@ public class InventoryPreset {
                         String potionId = sObj.has("potionId") ? sObj.get("potionId").getAsString() : null;
                         int count = sObj.has("count") ? sObj.get("count").getAsInt() : 1;
                         preset.setSlotItem(slot, itemId, customName, potionId, count);
+                        preset.getRule(slot).loadHead(sObj.get("head"));
                     }
                 }
             }

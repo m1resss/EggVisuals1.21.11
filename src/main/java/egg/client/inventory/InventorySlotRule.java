@@ -1,24 +1,41 @@
 package egg.client.inventory;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
+import com.mojang.authlib.properties.Property;
+import com.mojang.serialization.JsonOps;
+import net.minecraft.component.ComponentChanges;
+import net.minecraft.component.ComponentType;
 import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.LoreComponent;
 import net.minecraft.component.type.PotionContentsComponent;
+import net.minecraft.component.type.ProfileComponent;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.potion.Potion;
 import net.minecraft.registry.Registries;
-import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class InventorySlotRule {
     private final int slotIndex;
     private String itemId;
     private String customName;
     private String potionId;
+    private ComponentChanges headComponents;
     private int count = 1;
     private transient ItemStack cachedIcon;
 
@@ -39,12 +56,17 @@ public class InventorySlotRule {
             return new InventorySlotRule(slotIndex, "", null, null, 0);
         }
         String id = Registries.ITEM.getId(stack.getItem()).toString();
+        boolean playerHead = stack.isOf(Items.PLAYER_HEAD);
         String cName = null;
         if (stack.contains(DataComponentTypes.CUSTOM_NAME) || stack.contains(DataComponentTypes.ITEM_NAME)) {
-            cName = stack.getName().getString();
+            cName = playerHead ? headName(stack) : stack.getName().getString();
         }
         String pId = extractPotionId(stack);
-        return new InventorySlotRule(slotIndex, id, cName, pId, stack.getCount());
+        InventorySlotRule rule = new InventorySlotRule(slotIndex, id, cName, pId, stack.getCount());
+        if (playerHead) {
+            rule.headComponents = stack.getComponentChanges().withRemovedIf(InventorySlotRule::isOtherComponent);
+        }
+        return rule;
     }
 
     public static String extractPotionId(ItemStack stack) {
@@ -80,6 +102,10 @@ public class InventorySlotRule {
 
         Item ruleItem = getItem();
         Item currentItem = stack.getItem();
+
+        if (ruleItem == Items.PLAYER_HEAD || currentItem == Items.PLAYER_HEAD) {
+            return ruleItem == Items.PLAYER_HEAD && currentItem == Items.PLAYER_HEAD && matchesHead(stack);
+        }
 
         if ((ruleItem == Items.GOLDEN_APPLE && currentItem == Items.ENCHANTED_GOLDEN_APPLE) ||
             (ruleItem == Items.ENCHANTED_GOLDEN_APPLE && currentItem == Items.GOLDEN_APPLE)) {
@@ -123,6 +149,87 @@ public class InventorySlotRule {
         }
 
         return isCompatibleFallback(stack);
+    }
+
+    private boolean matchesHead(ItemStack stack) {
+        if (headComponents == null) {
+            if (customName != null) {
+                return cleanName(customName).equals(cleanName(headName(stack)));
+            }
+            return stack.getComponentChanges().withRemovedIf(InventorySlotRule::isOtherComponent).isEmpty();
+        }
+
+        ItemStack expected = getIconStack();
+        return headName(expected).equals(headName(stack))
+                && sameLore(expected, stack)
+                && sameHeadTexture(expected.get(DataComponentTypes.PROFILE), stack.get(DataComponentTypes.PROFILE));
+    }
+
+    private static String headName(ItemStack stack) {
+        Text text = stack.getCustomName();
+        if (text == null && stack.hasChangedComponent(DataComponentTypes.ITEM_NAME)) {
+            text = stack.get(DataComponentTypes.ITEM_NAME);
+        }
+        return (text == null ? stack.getName() : text).getString();
+    }
+
+    private static boolean sameLore(ItemStack expected, ItemStack actual) {
+        List<Text> expectedLines = expected.getOrDefault(DataComponentTypes.LORE, LoreComponent.DEFAULT).lines();
+        List<Text> actualLines = actual.getOrDefault(DataComponentTypes.LORE, LoreComponent.DEFAULT).lines();
+        if (expectedLines.size() != actualLines.size()) return false;
+        for (int i = 0; i < expectedLines.size(); i++) {
+            if (!expectedLines.get(i).getString().equals(actualLines.get(i).getString())) return false;
+        }
+        return true;
+    }
+
+    private static boolean sameHeadTexture(ProfileComponent expected, ProfileComponent actual) {
+        if (Objects.equals(expected, actual)) return true;
+        if (expected == null || actual == null) return false;
+        var expectedBody = expected.getOverride().body();
+        var actualBody = actual.getOverride().body();
+        if (expectedBody.isPresent() || actualBody.isPresent()) return expectedBody.equals(actualBody);
+
+        Set<String> expectedTextures = skinTextures(expected);
+        return !expectedTextures.isEmpty() && expectedTextures.equals(skinTextures(actual));
+    }
+
+    private static Set<String> skinTextures(ProfileComponent profile) {
+        return profile.getGameProfile().properties().get("textures").stream()
+                .map(InventorySlotRule::skinTexture)
+                .collect(Collectors.toSet());
+    }
+
+    private static String skinTexture(Property property) {
+        String value = property.value();
+        try {
+            String decoded = new String(Base64.getDecoder().decode(value), StandardCharsets.UTF_8);
+            if (JsonParser.parseString(decoded) instanceof JsonObject payload
+                    && payload.get("textures") instanceof JsonObject textures
+                    && textures.get("SKIN") instanceof JsonObject skin
+                    && skin.get("url") instanceof JsonPrimitive url && url.isString()) {
+                String path = url.getAsString();
+                return path.startsWith("http://textures.minecraft.net/") ? "https://" + path.substring(7) : path;
+            }
+        } catch (IllegalArgumentException | JsonParseException ignored) {}
+        return value;
+    }
+
+    private static boolean isOtherComponent(ComponentType<?> type) {
+        return type != DataComponentTypes.CUSTOM_NAME && type != DataComponentTypes.ITEM_NAME
+                && type != DataComponentTypes.LORE && type != DataComponentTypes.PROFILE;
+    }
+
+    JsonElement encodeHead() {
+        if (headComponents == null) return null;
+        return ComponentChanges.CODEC.encodeStart(JsonOps.INSTANCE, headComponents).result().orElse(null);
+    }
+
+    void loadHead(JsonElement data) {
+        if (data == null || !data.isJsonObject() || getItem() != Items.PLAYER_HEAD) return;
+        headComponents = ComponentChanges.CODEC.parse(JsonOps.INSTANCE, data).result()
+                .map(changes -> changes.withRemovedIf(InventorySlotRule::isOtherComponent)).orElse(null);
+        cachedIcon = null;
     }
 
     private boolean isCompatibleFallback(ItemStack stack) {
@@ -212,7 +319,9 @@ public class InventorySlotRule {
                 }
             } catch (Throwable ignored) {}
         }
-        if (customName != null && !customName.isEmpty()) {
+        if (headComponents != null) {
+            stack.applyChanges(headComponents);
+        } else if (customName != null && !customName.isEmpty()) {
             stack.set(DataComponentTypes.CUSTOM_NAME, Text.literal(customName));
         }
         cachedIcon = stack;
@@ -238,6 +347,7 @@ public class InventorySlotRule {
         this.customName = (customName != null && !customName.trim().isEmpty()) ? customName.trim() : null;
         this.potionId = (potionId != null && !potionId.trim().isEmpty()) ? potionId.trim() : null;
         this.count = Math.max(1, count);
+        this.headComponents = null;
         this.cachedIcon = null;
     }
 }

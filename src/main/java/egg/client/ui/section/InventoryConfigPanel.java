@@ -5,6 +5,7 @@ import egg.client.inventory.InventoryPreset;
 import egg.client.inventory.InventorySlotRule;
 import egg.client.module.ModuleManager;
 import egg.client.module.player.InventorySorter;
+import egg.client.render.IconRenderer;
 import egg.client.render.Render2D;
 import egg.client.render.font.ClientFont;
 import egg.client.ui.theme.FrostedSurface;
@@ -152,11 +153,8 @@ public class InventoryConfigPanel {
         drawButton(context, card.open, "Открыть", mouseX, mouseY, alpha, Theme.TEXT_TITLE, BUTTON_FILL, BUTTON_HOVER);
         boolean deleteHover = card.delete.contains(mouseX, mouseY);
         if (deleteHover) fill(context, card.delete, 4.0f, 0x38E87878, alpha);
-        float cx = card.delete.centerX();
-        float cy = card.delete.centerY();
         int cross = ColorUtil.withAlphaFloat(deleteHover ? 0xFFF4A2A2 : Theme.TEXT_MUTED, alpha);
-        Render2D.drawLine(context, cx - 2.25f, cy - 2.25f, cx + 2.25f, cy + 2.25f, cross, 1.15f);
-        Render2D.drawLine(context, cx - 2.25f, cy + 2.25f, cx + 2.25f, cy - 2.25f, cross, 1.15f);
+        IconRenderer.drawCrossIcon(context, card.delete.centerX(), card.delete.centerY(), 8.0f, cross);
     }
 
     private static void renderEditor(DrawContext context, Bounds area, InventoryLayoutManager manager,
@@ -420,7 +418,8 @@ public class InventoryConfigPanel {
     private static void renderTooltip(DrawContext context, InventorySlotRule rule, int slotId, boolean available,
                                       float mouseX, float mouseY, float alpha) {
         MinecraftClient client = MinecraftClient.getInstance();
-        String title = rule.getDisplayStack().getName().getString();
+        String title = rule.getCustomName();
+        if (title == null) title = rule.getDisplayStack().getName().getString();
         String category = getSlotCategoryName(slotId);
         String status = available ? "В наличии" : "Нет в инвентаре";
         float width = Math.max(ClientFont.getWidth(title, ClientFont.SF_BOLD),
