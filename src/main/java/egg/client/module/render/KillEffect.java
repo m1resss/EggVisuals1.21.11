@@ -68,6 +68,7 @@ import it.unimi.dsi.fastutil.ints.IntList;
 public class KillEffect extends Module {
 
     private static KillEffect instance;
+    private EntityRenderState renderingAscension;
 
     private static final int[] BUTTERFLY_PALETTE = {
             0xFF00E5FF,
@@ -571,6 +572,10 @@ public class KillEffect extends Module {
         }
     }
 
+    public static boolean isRenderingAscension(EntityRenderState state) {
+        return instance != null && instance.renderingAscension == state;
+    }
+
     public void queueAscensionModels(MatrixStack matrices, OrderedRenderCommandQueue queue, CameraRenderState camera) {
         if (!isEnabled()) return;
         long now = System.nanoTime();
@@ -585,11 +590,13 @@ public class KillEffect extends Module {
             float scale = 1 - end * end;
             EntityRenderState model = effect.model();
             matrices.push();
+            renderingAscension = model;
             try {
                 matrices.translate(offset.x, offset.y, offset.z);
                 matrices.scale(scale, scale, scale);
                 manager.getRenderer(model).render(model, matrices, queue, camera);
             } finally {
+                renderingAscension = null;
                 matrices.pop();
             }
         }

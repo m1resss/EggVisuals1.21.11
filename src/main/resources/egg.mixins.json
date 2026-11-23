@@ -18,6 +18,7 @@
     "MinecraftClientAccessor",
     "MinecraftClientInvoker",
     "LivingEntityMixin",
+    "AscensionLivingRendererMixin",
     "GameRendererInvoker",
     "ClientPlayerInteractionManagerAccessor",
     "ClientPlayNetworkHandlerMixin",
