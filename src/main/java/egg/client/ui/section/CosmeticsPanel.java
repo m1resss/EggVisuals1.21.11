@@ -197,13 +197,11 @@ public class CosmeticsPanel {
                 } else if (isWatches && watch != null) {
                     renderWatchCardPreview(context, watch, cardX, cardY, cardW, isSelected);
                 } else if (!isSwords && !isWatches && asset != null) {
-                    float pSize = Math.min(cardW - 20, cardH - 30);
-                    float pX = cardX + (cardW - pSize) * 0.5f;
+                    float pSize = cardW - 20.0f;
+                    float pX = cardX + 10.0f;
                     float pY = cardY + 6.0f;
-                    float clipTop = Math.max(gridTop, pY);
-                    float clipBottom = Math.min(y + h, pY + pSize);
-                    if (clipBottom > clipTop) {
-                        net.minecraft.client.gui.ScreenRect cardsScissor = new net.minecraft.client.gui.ScreenRect((int) pX, (int) clipTop, Math.max(1, (int) pSize), Math.max(1, (int) (clipBottom - clipTop))).transform(context.getMatrices());
+                    if (pY < y + h && pY + pSize > gridTop) {
+                        net.minecraft.client.gui.ScreenRect cardsScissor = new net.minecraft.client.gui.ScreenRect((int) x, (int) gridTop, Math.max(1, (int) mainW), Math.max(1, (int) (y + h - gridTop))).transform(context.getMatrices());
                         mgr.renderGuiPreview(context, asset.id(), pX, pY, pSize, 1.0f, cardsScissor);
                     }
                 }
@@ -270,9 +268,9 @@ public class CosmeticsPanel {
             Render2D.enableScissor(context, previewBoxX, previewBoxY, previewBoxX + previewBoxW, previewBoxY + previewBoxH);
 
             float centerX = previewBoxX + previewBoxW * 0.5f;
-            int baseSize = (int) Math.min(previewBoxH * 0.39f, previewBoxW * 0.50f);
+            float centerY = previewBoxY + previewBoxH * 0.82f;
+            int baseSize = (int) (previewBoxH * 0.44f);
 
-            float centerY = previewBoxY + previewBoxH * 0.5f + baseSize * 0.75f;
             Matrix3x2f mat = Render2D.getMatrix(context);
             float actualCenterX = centerX;
             float actualCenterY = centerY;

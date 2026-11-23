@@ -146,7 +146,6 @@ public class MouseMixin {
                     ci.cancel();
                     return;
                 } else if (client.currentScreen instanceof egg.client.ui.ClickGuiScreen gui) {
-                    if (gui.isCapturingBind()) return;
                     gui.closeWithAnimation();
                     ci.cancel();
                     return;
