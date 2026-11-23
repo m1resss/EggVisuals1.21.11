@@ -39,6 +39,7 @@
     "WeatherRenderingMixin",
     "WorldRendererMixin",
     "PearlWorldRendererMixin",
+    "SodiumPearlTargetMixin",
     "PearlSectionRenderMixin",
     "BlockColorsMixin",
     "PlayerEntityRendererMixin",

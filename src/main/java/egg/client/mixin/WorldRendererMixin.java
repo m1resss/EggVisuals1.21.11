@@ -9,6 +9,8 @@ import egg.client.module.ModuleManager;
 import egg.client.module.render.KillEffect;
 import egg.client.module.render.TotemPop;
 import egg.client.render.NaturalMotionBlurRenderer;
+import egg.client.module.render.PearlPredict;
+import egg.client.render.world.SodiumPearlTerrain;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.client.render.VertexConsumerProvider;
@@ -91,6 +93,12 @@ public abstract class WorldRendererMixin {
             CallbackInfo ci
     ) {
         NaturalMotionBlurRenderer.INSTANCE.onWorldRenderTail();
+        if (SodiumPearlTerrain.LOADED) {
+            PearlPredict effect = ModuleManager.getInstance().getModule(PearlPredict.class);
+            if (effect != null && effect.isEnabled()) {
+                effect.capture(renderTickCounter, fogBuffer, fogColor, SodiumPearlTerrain::render);
+            }
+        }
     }
 
     @Inject(

@@ -16,7 +16,6 @@ import egg.client.render.world.PearlCameraRenderer;
 import egg.client.render.world.PearlTrajectory;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.render.RenderTickCounter;
@@ -33,7 +32,6 @@ import org.joml.Vector4f;
 
 public final class PearlPredict extends Module {
     private static final String ID = "pearl_predict";
-    private static final boolean SODIUM_LOADED = FabricLoader.getInstance().isModLoaded("sodium");
     private static final Identifier PEARL_ICON = Identifier.ofVanilla("textures/item/ender_pearl.png");
     private static final float RADIUS = 7.0f;
     private static final float WIDTH = 146.0f;
@@ -245,8 +243,7 @@ public final class PearlPredict extends Module {
                         vy + viewHeight * pearlMarker.y - 4 * s, 8 * s, 8 * s, 0, 0, 1, 1, 0xFFFFFFFF, 0, 1);
             }
         } else {
-            String message = SODIUM_LOADED ? "Камера недоступна с Sodium"
-                    : failed || hasImpact || flight ? "Нет изображения"
+            String message = failed || hasImpact || flight ? "Нет изображения"
                     : editing && !isHoldingPearl() ? "Возьмите жемчуг" : "Нет точки попадания";
             float size = 7.6f * s;
             Fonts.sfRegular.a(null, message, vx + (vw - Fonts.sfRegular.a(message, size)) / 2,
