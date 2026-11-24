@@ -110,6 +110,7 @@ public class ModuleManager {
         register(new AutoAccept());
 
         register(new ItemScroller());
+        register(new ContainerSearch());
 
         register(new SoundReducer());
 

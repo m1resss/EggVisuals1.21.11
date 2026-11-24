@@ -1086,6 +1086,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         MODULE_KEYWORDS.put("FastEXP", new String[]{"опыт", "экспа", "пузырьки", "быстрый опыт", "fast exp"});
         MODULE_KEYWORDS.put("AutoAccept", new String[]{"автопринятие", "тп", "телепорт", "принять", "пати", "auto accept"});
         MODULE_KEYWORDS.put("ItemScroller", new String[]{"скроллер", "быстрое перемещение", "лут", "колесико", "инвентарь", "item scroller"});
+        MODULE_KEYWORDS.put("Container Search", new String[]{"поиск", "сундук", "шалкер", "сфера", "описание", "chest", "shulker"});
         MODULE_KEYWORDS.put("SoundReducer", new String[]{"звуки", "уменьшение звуков", "тишина", "громкость", "sound reducer"});
         MODULE_KEYWORDS.put("ThirdPerson", new String[]{"третье лицо", "вид сзади", "камера", "ф5", "f5", "third person"});
 
