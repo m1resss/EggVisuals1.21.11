@@ -23,14 +23,8 @@ import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.ItemEnchantmentsComponent;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.projectile.AbstractWindChargeEntity;
-import net.minecraft.entity.projectile.ArrowEntity;
 import net.minecraft.entity.projectile.ProjectileEntity;
-import net.minecraft.entity.projectile.TridentEntity;
-import net.minecraft.entity.projectile.thrown.EggEntity;
-import net.minecraft.entity.projectile.thrown.EnderPearlEntity;
 import net.minecraft.entity.projectile.thrown.PotionEntity;
-import net.minecraft.entity.projectile.thrown.SnowballEntity;
 import net.minecraft.entity.projectile.thrown.ThrownEntity;
 import net.minecraft.item.BowItem;
 import net.minecraft.item.CrossbowItem;
@@ -51,7 +45,9 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
 import org.joml.Vector3f;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
 public class Trajectories extends Module {
 
@@ -72,9 +68,8 @@ public class Trajectories extends Module {
     private final BooleanSetting handOffset = new BooleanSetting("От руки (1-е лицо)", true, "Начало траектории из руки игрока");
     private final SliderSetting smoothSpeed = new SliderSetting("Плавность", 22.0, 5.0, 40.0, 1.0, "Скорость плавного следования круга");
     private final SliderSetting pullThreshold = new SliderSetting("При натяжении", 0.0, 0.0, 1.0, 0.05, "Порог натяжения лука (0 - всегда)");
-    private final BooleanSetting projectileTrails = new BooleanSetting("Трейлы в полете", true, "Траектории и шлейфы для летящих снарядов");
+    private final BooleanSetting inFlightPrediction = new BooleanSetting("Линия летящих снарядов", true, "Прогноз полёта уже запущенных снарядов");
 
-    private final Map<Integer, ProjectileTrail> projectileTrailsMap = new HashMap<>();
     private BufferAllocator lineAllocator;
 
     public Trajectories() {
@@ -82,13 +77,12 @@ public class Trajectories extends Module {
         customColor.setVisible(() -> "Кастом".equals(colorMode.get()));
         rayHeight.setVisible(() -> verticalRay.get());
         pullThreshold.setVisible(() -> showLine.get());
-        addSettings(colorMode, customColor, circleRadius, lineWidth, showLine, verticalRay, rayHeight, glowEffect, handOffset, smoothSpeed, pullThreshold, projectileTrails);
+        addSettings(colorMode, customColor, circleRadius, lineWidth, showLine, verticalRay, rayHeight, glowEffect, handOffset, smoothSpeed, pullThreshold, inFlightPrediction);
     }
 
     @Override
     public void onDisable() {
         super.onDisable();
-        projectileTrailsMap.clear();
         if (lineAllocator != null) {
             lineAllocator.close();
             lineAllocator = null;
@@ -126,44 +120,13 @@ public class Trajectories extends Module {
 
         VertexConsumer quadBuffer = consumers.getBuffer(RenderLayers.debugQuads());
         VertexConsumer glowBuffer = glowEffect.isEnabled() ? consumers.getBuffer(RenderLayers.lightning()) : null;
-        Set<Integer> activeEntityIds = new HashSet<>();
-        long nowMs = System.currentTimeMillis();
-
-        if (projectileTrails.isEnabled()) {
+        if (showLine.isEnabled() && inFlightPrediction.isEnabled()) {
             Box viewRange = mc.player.getBoundingBox().expand(80.0);
             for (Entity entity : mc.world.getOtherEntities(mc.player, viewRange)) {
-                if (!(entity instanceof ProjectileEntity proj)) continue;
-                if (!proj.isAlive() || proj.getVelocity().lengthSquared() < 0.0001) continue;
-
-                activeEntityIds.add(proj.getId());
-                ProjectileType type = getProjectileType(proj);
-
-                double ix = MathHelper.lerp(tickDelta, proj.lastRenderX, proj.getX());
-                double iy = MathHelper.lerp(tickDelta, proj.lastRenderY, proj.getY()) + proj.getHeight() * 0.5;
-                double iz = MathHelper.lerp(tickDelta, proj.lastRenderZ, proj.getZ());
-                Vec3d currentPos = new Vec3d(ix, iy, iz);
-
-                ProjectileTrail trail = projectileTrailsMap.computeIfAbsent(proj.getId(), id -> new ProjectileTrail(id, type, col));
-                trail.color = col;
-                trail.addPoint(currentPos, nowMs);
-
-                renderInFlightPrediction(mc, proj, quadBuffer, glowBuffer, camPos, col, tickDelta, lines);
-            }
-
-            Iterator<Map.Entry<Integer, ProjectileTrail>> it = projectileTrailsMap.entrySet().iterator();
-            while (it.hasNext()) {
-                Map.Entry<Integer, ProjectileTrail> entry = it.next();
-                ProjectileTrail trail = entry.getValue();
-                trail.update(nowMs, 700L);
-                if (trail.isEmpty() && !activeEntityIds.contains(entry.getKey())) {
-                    it.remove();
-                } else {
-                    renderProjectileTrail(trail, quadBuffer, glowBuffer, camPos, nowMs);
+                if (entity instanceof ProjectileEntity projectile && projectile.isAlive()
+                        && projectile.getVelocity().lengthSquared() >= 0.0001) {
+                    lines.path(simulateInFlight(mc, projectile, tickDelta).path, Vec3d.ZERO, col);
                 }
-            }
-        } else {
-            if (!projectileTrailsMap.isEmpty()) {
-                projectileTrailsMap.clear();
             }
         }
 
@@ -293,23 +256,6 @@ public class Trajectories extends Module {
                     renderLandingCircle(quadBuffer, glowBuffer, res.impactPoint, camPos, res.impactSide, r, g, b, lines);
                 }
             }
-        }
-    }
-
-    private void renderInFlightPrediction(MinecraftClient mc, Entity entity,
-                                          VertexConsumer quadBuffer, VertexConsumer glowBuffer, Vec3d camPos,
-                                          int color, float tickDelta, TrajectoryLines lines) {
-        TrajectoryResult res = simulateInFlight(mc, entity, tickDelta);
-        if (res.path.size() >= 2) {
-            int pr = (color >> 16) & 0xFF;
-            int pg = (color >> 8) & 0xFF;
-            int pb = color & 0xFF;
-
-            if (showLine.isEnabled()) {
-                lines.path(res.path, Vec3d.ZERO, color);
-            }
-
-            renderLandingCircle(quadBuffer, glowBuffer, res.impactPoint, camPos, res.impactSide, pr, pg, pb, lines);
         }
     }
 
@@ -604,23 +550,6 @@ public class Trajectories extends Module {
         buf.vertex(x1, y1, z1).color(r, g, b, a);
     }
 
-    private static void drawRibbonQuad(VertexConsumer buf,
-                                       float x0l, float y0l, float z0l,
-                                       float x1l, float y1l, float z1l,
-                                       float x1r, float y1r, float z1r,
-                                       float x0r, float y0r, float z0r,
-                                       int r, int g, int b, int a0, int a1) {
-        buf.vertex(x0l, y0l, z0l).color(r, g, b, a0);
-        buf.vertex(x1l, y1l, z1l).color(r, g, b, a1);
-        buf.vertex(x1r, y1r, z1r).color(r, g, b, a1);
-        buf.vertex(x0r, y0r, z0r).color(r, g, b, a0);
-
-        buf.vertex(x0r, y0r, z0r).color(r, g, b, a0);
-        buf.vertex(x1r, y1r, z1r).color(r, g, b, a1);
-        buf.vertex(x1l, y1l, z1l).color(r, g, b, a1);
-        buf.vertex(x0l, y0l, z0l).color(r, g, b, a0);
-    }
-
     private static class TrajectoryResult {
         final List<Vec3d> path;
         final Vec3d impactPoint;
@@ -636,220 +565,6 @@ public class Trajectories extends Module {
 
         TrajectoryResult(List<Vec3d> path, Vec3d impactPoint, Direction impactSide) {
             this(path, impactPoint, impactSide, null);
-        }
-    }
-
-    private ProjectileType getProjectileType(ProjectileEntity proj) {
-        if (proj instanceof EnderPearlEntity) return ProjectileType.PEARL;
-        if (proj instanceof ArrowEntity) return ProjectileType.ARROW;
-        if (proj instanceof TridentEntity) return ProjectileType.TRIDENT;
-        if (proj instanceof PotionEntity) return ProjectileType.POTION;
-        if (proj instanceof SnowballEntity) return ProjectileType.SNOWBALL;
-        if (proj instanceof EggEntity) return ProjectileType.EGG;
-        if (proj instanceof AbstractWindChargeEntity) return ProjectileType.WIND_CHARGE;
-        return ProjectileType.OTHER;
-    }
-
-    private enum ProjectileType {
-        PEARL, ARROW, TRIDENT, POTION, SNOWBALL, EGG, WIND_CHARGE, OTHER
-    }
-
-    private void renderProjectileTrail(ProjectileTrail trail, VertexConsumer quadBuf, VertexConsumer glowBuf, Vec3d camPos, long nowMs) {
-        int count = trail.points.size();
-        if (count < 2) return;
-
-        float maxAgeMs = 700.0f;
-        int cr = (trail.color >> 16) & 0xFF;
-        int cg = (trail.color >> 8) & 0xFF;
-        int cb = trail.color & 0xFF;
-
-        float baseWidth = switch (trail.type) {
-            case PEARL, TRIDENT -> 0.055f;
-            case POTION -> 0.065f;
-            case SNOWBALL, WIND_CHARGE -> 0.045f;
-            default -> 0.038f;
-        };
-
-        Vec3d prevSide = null;
-
-        Vector3f[] leftQuad = new Vector3f[count];
-        Vector3f[] rightQuad = new Vector3f[count];
-        Vector3f[] leftGlow = glowBuf != null ? new Vector3f[count] : null;
-        Vector3f[] rightGlow = glowBuf != null ? new Vector3f[count] : null;
-        float[] lifes = new float[count];
-
-        for (int i = 0; i < count; i++) {
-            TrailPoint p = trail.points.get(i);
-            float age = (float) (nowMs - p.timeMs);
-            float life = MathHelper.clamp(1.0f - age / maxAgeMs, 0.0f, 1.0f);
-            lifes[i] = life;
-
-            Vec3d tangent;
-            if (i == 0) {
-                TrailPoint pNext = trail.points.get(1);
-                tangent = new Vec3d(pNext.x - p.x, pNext.y - p.y, pNext.z - p.z);
-            } else if (i == count - 1) {
-                TrailPoint pPrev = trail.points.get(count - 2);
-                tangent = new Vec3d(p.x - pPrev.x, p.y - pPrev.y, p.z - pPrev.z);
-            } else {
-                TrailPoint pPrev = trail.points.get(i - 1);
-                TrailPoint pNext = trail.points.get(i + 1);
-                tangent = new Vec3d(pNext.x - pPrev.x, pNext.y - pPrev.y, pNext.z - pPrev.z);
-            }
-
-            if (tangent.lengthSquared() < 1e-7) {
-                tangent = new Vec3d(0, 1, 0);
-            } else {
-                tangent = tangent.normalize();
-            }
-
-            Vec3d toCam = new Vec3d(camPos.x - p.x, camPos.y - p.y, camPos.z - p.z);
-            Vec3d camDir = toCam.lengthSquared() < 1e-6 ? new Vec3d(0, 0, 1) : toCam.normalize();
-
-            Vec3d side = tangent.crossProduct(camDir);
-            if (side.lengthSquared() < 1e-6) {
-                side = tangent.crossProduct(new Vec3d(0, 1, 0));
-            }
-            if (side.lengthSquared() < 1e-6) {
-                side = new Vec3d(1, 0, 0);
-            } else {
-                side = side.normalize();
-            }
-
-            if (prevSide != null && side.dotProduct(prevSide) < 0.0) {
-                side = side.multiply(-1.0);
-            }
-            prevSide = side;
-
-            float w = baseWidth * (0.15f + 0.85f * life);
-            float gw = w * 1.7f;
-
-            float px = (float) (p.x - camPos.x);
-            float py = (float) (p.y - camPos.y);
-            float pz = (float) (p.z - camPos.z);
-
-            float sx = (float) (side.x * w);
-            float sy = (float) (side.y * w);
-            float sz = (float) (side.z * w);
-
-            leftQuad[i] = new Vector3f(px - sx, py - sy, pz - sz);
-            rightQuad[i] = new Vector3f(px + sx, py + sy, pz + sz);
-
-            if (glowBuf != null) {
-                float gsx = (float) (side.x * gw);
-                float gsy = (float) (side.y * gw);
-                float gsz = (float) (side.z * gw);
-                leftGlow[i] = new Vector3f(px - gsx, py - gsy, pz - gsz);
-                rightGlow[i] = new Vector3f(px + gsx, py + gsy, pz + gsz);
-            }
-        }
-
-        for (int i = 0; i < count - 1; i++) {
-            float life0 = lifes[i];
-            float life1 = lifes[i + 1];
-            if (life0 <= 0.0f && life1 <= 0.0f) continue;
-
-            int a0 = MathHelper.clamp(Math.round(life0 * 180.0f), 0, 255);
-            int a1 = MathHelper.clamp(Math.round(life1 * 180.0f), 0, 255);
-
-            Vector3f l0 = leftQuad[i];
-            Vector3f r0 = rightQuad[i];
-            Vector3f l1 = leftQuad[i + 1];
-            Vector3f r1 = rightQuad[i + 1];
-
-            drawRibbonQuad(quadBuf, l0.x, l0.y, l0.z, l1.x, l1.y, l1.z, r1.x, r1.y, r1.z, r0.x, r0.y, r0.z, cr, cg, cb, a0, a1);
-
-            if (glowBuf != null) {
-                Vector3f gl0 = leftGlow[i];
-                Vector3f gr0 = rightGlow[i];
-                Vector3f gl1 = leftGlow[i + 1];
-                Vector3f gr1 = rightGlow[i + 1];
-                int ga0 = MathHelper.clamp(Math.round(life0 * 130.0f), 0, 255);
-                int ga1 = MathHelper.clamp(Math.round(life1 * 130.0f), 0, 255);
-                drawRibbonQuad(glowBuf, gl0.x, gl0.y, gl0.z, gl1.x, gl1.y, gl1.z, gr1.x, gr1.y, gr1.z, gr0.x, gr0.y, gr0.z, cr, cg, cb, ga0, ga1);
-            }
-
-            if (trail.type == ProjectileType.PEARL && glowBuf != null && (i % 2 == 0) && life0 > 0.12f) {
-                renderPearlSparkle(glowBuf, trail.points.get(i), camPos, life0, i, cr, cg, cb);
-            }
-        }
-    }
-
-    private void renderPearlSparkle(VertexConsumer glowBuf, TrailPoint p, Vec3d camPos, float life, int index, int cr, int cg, int cb) {
-        long h = (long) (p.x * 314159.0 + p.y * 653589.0 + p.z * 793238.0) + index * 1013L;
-        float ox = (((h & 0x7F) / 127.0f) - 0.5f) * 0.14f;
-        float oy = ((((h >> 7) & 0x7F) / 127.0f) - 0.5f) * 0.14f;
-        float oz = ((((h >> 14) & 0x7F) / 127.0f) - 0.5f) * 0.14f;
-
-        float sx = (float) (p.x + ox - camPos.x);
-        float sy = (float) (p.y + oy - camPos.y);
-        float sz = (float) (p.z + oz - camPos.z);
-
-        float sSize = 0.022f * (0.6f + life * 0.4f);
-        int sa = MathHelper.clamp(Math.round(life * 230.0f), 0, 255);
-        int sr = Math.min(255, cr + 45);
-        int sg = Math.min(255, cg + 45);
-        int sb = Math.min(255, cb + 45);
-
-        glowBuf.vertex(sx - sSize, sy, sz).color(sr, sg, sb, sa);
-        glowBuf.vertex(sx, sy + sSize, sz).color(sr, sg, sb, sa);
-        glowBuf.vertex(sx + sSize, sy, sz).color(sr, sg, sb, sa);
-        glowBuf.vertex(sx, sy - sSize, sz).color(sr, sg, sb, sa);
-
-        glowBuf.vertex(sx, sy - sSize, sz).color(sr, sg, sb, sa);
-        glowBuf.vertex(sx + sSize, sy, sz).color(sr, sg, sb, sa);
-        glowBuf.vertex(sx, sy + sSize, sz).color(sr, sg, sb, sa);
-        glowBuf.vertex(sx - sSize, sy, sz).color(sr, sg, sb, sa);
-    }
-
-    private static class TrailPoint {
-        final double x, y, z;
-        final long timeMs;
-
-        TrailPoint(double x, double y, double z, long timeMs) {
-            this.x = x;
-            this.y = y;
-            this.z = z;
-            this.timeMs = timeMs;
-        }
-    }
-
-    private static class ProjectileTrail {
-        final int entityId;
-        final ProjectileType type;
-        int color;
-        final List<TrailPoint> points = new ArrayList<>();
-        long lastSeenTime;
-
-        ProjectileTrail(int entityId, ProjectileType type, int color) {
-            this.entityId = entityId;
-            this.type = type;
-            this.color = color;
-        }
-
-        void addPoint(Vec3d pos, long nowMs) {
-            this.lastSeenTime = nowMs;
-            if (!points.isEmpty()) {
-                TrailPoint last = points.get(points.size() - 1);
-                double dx = pos.x - last.x;
-                double dy = pos.y - last.y;
-                double dz = pos.z - last.z;
-                if (dx * dx + dy * dy + dz * dz < 0.005) {
-                    return;
-                }
-            }
-            points.add(new TrailPoint(pos.x, pos.y, pos.z, nowMs));
-            if (points.size() > 40) {
-                points.remove(0);
-            }
-        }
-
-        void update(long nowMs, long maxAgeMs) {
-            points.removeIf(p -> (nowMs - p.timeMs) > maxAgeMs);
-        }
-
-        boolean isEmpty() {
-            return points.size() < 2;
         }
     }
 }

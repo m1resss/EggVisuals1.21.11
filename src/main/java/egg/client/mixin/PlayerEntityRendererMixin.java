@@ -24,6 +24,7 @@ import net.minecraft.entity.PlayerLikeEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -77,8 +78,8 @@ public abstract class PlayerEntityRendererMixin extends LivingEntityRenderer<Abs
     private void onUpdateRenderState(PlayerLikeEntity entity, PlayerEntityRenderState state, float tickDelta, CallbackInfo ci) {
         Fun fun = Fun.getInstance();
         ((BedrockRunState) state).egg$setBedrockRunning(fun != null && fun.isBedrockRun()
-                && entity.isSprinting() && entity.isOnGround() && !state.isInSneakingPose
-                && !state.isSwimming && !state.isGliding && !state.hasVehicle);
+                && !state.isInSneakingPose && !state.isSwimming && !state.isGliding && !state.hasVehicle
+                && egg$isRunning(entity, state));
 
         Globals globals = ModuleManager.getInstance().getModule(Globals.class);
         if (globals != null && globals.isEnabled() && globals.isInNametag() && ((entity instanceof Entity ent && Globals.isEggUser(ent)) || Globals.isEggUser(state))) {
@@ -118,5 +119,16 @@ public abstract class PlayerEntityRendererMixin extends LivingEntityRenderer<Abs
             state.rightHandItem = new ItemStack(Items.DIAMOND_SWORD);
         }
         CosmeticsManager.getInstance().applySwordRenderState(state.rightHandItemState, state.rightHandItem, entity instanceof LivingEntity le ? le : null, net.minecraft.item.ItemDisplayContext.THIRD_PERSON_RIGHT_HAND);
+    }
+
+    @Unique
+    private static boolean egg$isRunning(PlayerLikeEntity entity, PlayerEntityRenderState state) {
+        if (entity.isSprinting()) return true;
+        if (entity == MinecraftClient.getInstance().player) return false;
+        double dx = entity.getX() - entity.lastX;
+        double dz = entity.getZ() - entity.lastZ;
+        double speedSquared = dx * dx + dz * dz;
+        return (speedSquared >= 0.245 * 0.245 && speedSquared < 1.0)
+                || state.limbSwingAmplitude >= 0.96f;
     }
 }
