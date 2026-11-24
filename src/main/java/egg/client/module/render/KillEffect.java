@@ -6,6 +6,7 @@ import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ColorSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
+import egg.client.render.world.GroundFormRenderer;
 import egg.client.ui.theme.Theme;
 import egg.client.util.EntityUtil;
 import net.minecraft.block.BlockState;
@@ -63,9 +64,10 @@ public class KillEffect extends Module {
     };
 
     private static final String ASCENSION = "Вознесение";
+    private static final String GROUND_FORM = "Врос в мир";
     private static final long ASCENSION_DURATION = 1_650_000_000L;
 
-    private final ModeSetting mode = new ModeSetting("Эффект", "Бабочки", "Тип эффекта при смерти противника", "Бабочки", "Стекло", ASCENSION);
+    private final ModeSetting mode = new ModeSetting("Эффект", "Бабочки", "Тип эффекта при смерти противника", "Бабочки", "Стекло", ASCENSION, GROUND_FORM);
     private final BooleanSetting onlyTarget = new BooleanSetting("Только цель", true, "Создавать эффект только для атакованных вами врагов");
     private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", false, "Создавать эффект только при смерти игроков");
     private final BooleanSetting sound = new BooleanSetting("Звуки", true, "Звуковые эффекты при убийстве");
@@ -87,7 +89,8 @@ public class KillEffect extends Module {
     private final BooleanSetting sparkle = new BooleanSetting("Блики стекла", true, "Яркие вспышки и отблески на гранях стекла");
 
     private final List<Ascension> ascensions = new ArrayList<>();
-    private final Map<Entity, Long> ascensionOriginals = new IdentityHashMap<>();
+    private final Map<Entity, Long> hiddenOriginals = new IdentityHashMap<>();
+    private final GroundFormRenderer groundForm = new GroundFormRenderer();
     private final List<ButterflySwarmInstance> butterflySwarms = new ArrayList<>();
     private final List<DeathGlassShard> particles = new ArrayList<>();
     private final Map<Integer, Long> recentAttacks = new ConcurrentHashMap<>();
@@ -116,7 +119,8 @@ public class KillEffect extends Module {
         bounce.setVisible(() -> "Стекло".equals(mode.get()));
         sparkle.setVisible(() -> "Стекло".equals(mode.get()));
 
-        color.setVisible(() -> !syncColor.isEnabled());
+        syncColor.setVisible(() -> !mode.is(GROUND_FORM));
+        color.setVisible(() -> !mode.is(GROUND_FORM) && !syncColor.isEnabled());
 
         addSettings(mode, onlyTarget, onlyPlayers, sound, syncColor, color,
                 butterflyAmount, butterflySize, butterflySpeed, butterflyLifetime, butterflyTrails, butterflyRainbow,
@@ -134,6 +138,7 @@ public class KillEffect extends Module {
         private double height;
         private long lastAttackTime;
         private EntityRenderState ascensionModel;
+        private GroundFormRenderer.Shape groundShape;
 
         private TrackedVictim(Entity entity) {
             id = entity.getId();
@@ -156,6 +161,7 @@ public class KillEffect extends Module {
         v.lastAttackTime = now;
         v.update(target);
         if (ASCENSION.equals(mode.get())) v.ascensionModel = captureAscensionModel(target);
+        if (mode.is(GROUND_FORM)) v.groundShape = groundForm.capture(target);
         if (v.name != null && !v.name.isEmpty()) {
             victimsByName.put(v.name.toLowerCase(), v);
         }
@@ -186,8 +192,10 @@ public class KillEffect extends Module {
                 spawnButterflySwarm(entity);
             } else if (ASCENSION.equals(curMode)) {
                 EntityRenderState model = captureAscensionModel(entity);
-                ascensionOriginals.put(entity, System.nanoTime());
+                hiddenOriginals.put(entity, System.nanoTime());
                 spawnAscension(entity.getX(), entity.getY(), entity.getZ(), model);
+            } else if (GROUND_FORM.equals(curMode)) {
+                spawnGroundForm(entity, entity.getEntityPos(), groundForm.capture(entity));
             } else {
                 spawnGlassBurst(entity);
             }
@@ -232,7 +240,9 @@ public class KillEffect extends Module {
                     if (deadEntities.add(id)) {
                         EntityRenderState model = ASCENSION.equals(mode.get()) && entity != null
                                 ? captureAscensionModel(entity) : v != null ? v.ascensionModel : null;
-                        triggerEffectAt(deathPos.x, deathPos.y, deathPos.z, height, model);
+                        GroundFormRenderer.Shape shape = mode.is(GROUND_FORM) && entity != null
+                                ? groundForm.capture(entity) : v != null ? v.groundShape : null;
+                        triggerEffectAt(deathPos.x, deathPos.y, deathPos.z, height, model, shape);
                         recentAttacks.remove(id);
                         victimsById.remove(id);
                     }
@@ -271,7 +281,14 @@ public class KillEffect extends Module {
                 if ((now - v.lastAttackTime) <= 8000L) {
                     if (deadEntities.add(v.id)) {
                         if (v.lastPos != null && v.lastPos.squaredDistanceTo(mc.player.getX(), mc.player.getY(), mc.player.getZ()) <= 576.0) {
-                            triggerEffectAt(v.lastPos.x, v.lastPos.y, v.lastPos.z, v.height, v.ascensionModel);
+                            Entity victim = mc.world == null ? null : mc.world.getEntityById(v.id);
+                            if (mode.is(GROUND_FORM)) {
+                                GroundFormRenderer.Shape shape = v.groundShape;
+                                if (shape == null && victim != null) shape = groundForm.capture(victim);
+                                spawnGroundForm(victim, v.lastPos, shape);
+                            } else {
+                                triggerEffectAt(v.lastPos.x, v.lastPos.y, v.lastPos.z, v.height, v.ascensionModel, null);
+                            }
                         }
                         recentAttacks.remove(v.id);
                         victimsById.remove(v.id);
@@ -282,23 +299,33 @@ public class KillEffect extends Module {
         }
     }
 
-    private void triggerEffectAt(double bx, double by, double bz, double height, EntityRenderState model) {
+    private void triggerEffectAt(double bx, double by, double bz, double height, EntityRenderState model,
+                                 GroundFormRenderer.Shape shape) {
         String curMode = mode.get();
         if ("Бабочки".equals(curMode)) {
             spawnButterflySwarmAt(bx, by, bz, height);
         } else if (ASCENSION.equals(curMode)) {
             spawnAscension(bx, by, bz, model);
+        } else if (GROUND_FORM.equals(curMode)) {
+            spawnGroundForm(null, new Vec3d(bx, by, bz), shape);
         } else {
             spawnGlassBurstAt(bx, by, bz, height);
         }
     }
 
-    public boolean shouldHideAscensionOriginal(Entity entity) {
-        if (!isEnabled() || !ASCENSION.equals(mode.get())) return false;
-        if (entity instanceof LivingEntity living && living.isDead() && !ascensionOriginals.containsKey(entity)) {
+    private void spawnGroundForm(Entity entity, Vec3d position, GroundFormRenderer.Shape shape) {
+        if (groundForm.spawn(mc, position, shape, sound.isEnabled()) && entity != null) {
+            hiddenOriginals.put(entity, System.nanoTime());
+        }
+    }
+
+    public boolean shouldHideOriginal(Entity entity) {
+        if (!isEnabled() || (!mode.is(ASCENSION) && !mode.is(GROUND_FORM))) return false;
+        if (!(entity instanceof LivingEntity living) || !living.isDead()) return false;
+        if (!hiddenOriginals.containsKey(entity)) {
             onEntityDeath(entity);
         }
-        return ascensionOriginals.containsKey(entity);
+        return hiddenOriginals.containsKey(entity);
     }
 
     private EntityRenderState captureAscensionModel(Entity entity) {
@@ -349,8 +376,9 @@ public class KillEffect extends Module {
         return instance != null && instance.renderingAscension == state;
     }
 
-    public void queueAscensionModels(MatrixStack matrices, OrderedRenderCommandQueue queue, CameraRenderState camera) {
+    public void queueModels(MatrixStack matrices, OrderedRenderCommandQueue queue, CameraRenderState camera) {
         if (!isEnabled()) return;
+        groundForm.queue(mc, matrices, queue, camera);
         long now = System.nanoTime();
         ascensions.removeIf(effect -> effect.world() != mc.world || now - effect.started() >= ASCENSION_DURATION);
         if (ascensions.isEmpty()) return;
@@ -506,7 +534,8 @@ public class KillEffect extends Module {
     public void render(VertexConsumerProvider immediate, Vec3d camPos) {
         if (!isEnabled()) {
             ascensions.clear();
-            ascensionOriginals.clear();
+            hiddenOriginals.clear();
+            groundForm.clear();
             if (!particles.isEmpty()) particles.clear();
             if (!butterflySwarms.isEmpty()) butterflySwarms.clear();
             recentAttacks.clear();
@@ -548,9 +577,9 @@ public class KillEffect extends Module {
                         double distSq = currentPos.squaredDistanceTo(v.lastPos);
                         long timeSinceAttack = nowMs - v.lastAttackTime;
                         double distToPlayerSq = v.lastPos.squaredDistanceTo(mc.player.getX(), mc.player.getY(), mc.player.getZ());
-                        if (distSq > 400.0 && timeSinceAttack <= 3500L && distToPlayerSq <= 144.0) {
+                        if (!mode.is(GROUND_FORM) && distSq > 400.0 && timeSinceAttack <= 3500L && distToPlayerSq <= 144.0) {
                             if (deadEntities.add(id)) {
-                                triggerEffectAt(v.lastPos.x, v.lastPos.y, v.lastPos.z, v.height, v.ascensionModel);
+                                triggerEffectAt(v.lastPos.x, v.lastPos.y, v.lastPos.z, v.height, v.ascensionModel, null);
                                 recentAttacks.remove(id);
                                 it.remove();
                                 continue;
@@ -577,7 +606,7 @@ public class KillEffect extends Module {
 
         Vector3f lightDir = new Vector3f(0.35f, 0.90f, 0.25f).normalize();
 
-        ascensionOriginals.entrySet().removeIf(entry -> {
+        hiddenOriginals.entrySet().removeIf(entry -> {
             Entity entity = entry.getKey();
             return entity.isRemoved() || entity.getEntityWorld() != mc.world
                     || (entity.isAlive() && now - entry.getValue() >= ASCENSION_DURATION);
@@ -819,7 +848,8 @@ public class KillEffect extends Module {
     @Override
     public void onDisable() {
         ascensions.clear();
-        ascensionOriginals.clear();
+        hiddenOriginals.clear();
+        groundForm.clear();
         particles.clear();
         butterflySwarms.clear();
         recentAttacks.clear();

@@ -53,10 +53,10 @@ public abstract class WorldRendererMixin {
 
     @WrapOperation(method = "fillEntityRenderStates", at = @At(value = "INVOKE",
             target = "Ljava/util/List;add(Ljava/lang/Object;)Z"))
-    private boolean egg$hideAscensionOriginal(List<EntityRenderState> states, Object state, Operation<Boolean> original,
+    private boolean egg$hideKillEffectOriginal(List<EntityRenderState> states, Object state, Operation<Boolean> original,
                                                @Local Entity entity) {
         KillEffect effect = ModuleManager.getInstance().getModule(KillEffect.class);
-        if (effect != null && effect.shouldHideAscensionOriginal(entity)) return false;
+        if (effect != null && effect.shouldHideOriginal(entity)) return false;
         return original.call(states, state);
     }
 
@@ -71,10 +71,10 @@ public abstract class WorldRendererMixin {
     }
 
     @Inject(method = "pushEntityRenders", at = @At("RETURN"))
-    private void egg$queueAscensionModels(MatrixStack matrices, WorldRenderState state,
+    private void egg$queueKillEffectModels(MatrixStack matrices, WorldRenderState state,
                                            OrderedRenderCommandQueue queue, CallbackInfo ci) {
         KillEffect effect = ModuleManager.getInstance().getModule(KillEffect.class);
-        if (effect != null) effect.queueAscensionModels(matrices, queue, state.cameraRenderState);
+        if (effect != null) effect.queueModels(matrices, queue, state.cameraRenderState);
     }
 
 
