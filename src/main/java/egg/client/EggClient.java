@@ -105,6 +105,10 @@ public class EggClient implements ClientModInitializer {
 
             immediate.draw();
 
+            if (killEffect != null && killEffect.isEnabled()) {
+                killEffect.renderWorld3D(matrices, camera, tickDelta, immediate, camPos);
+            }
+
             TargetESP targetESP = ModuleManager.getInstance().getModule(TargetESP.class);
             if (targetESP != null && targetESP.isEnabled()) {
                 targetESP.renderWorld3D(matrices, camera, tickDelta, immediate, camPos);

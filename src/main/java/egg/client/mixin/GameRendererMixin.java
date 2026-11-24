@@ -262,6 +262,10 @@ public abstract class GameRendererMixin {
         GuiOverlays.renderPending();
         DrawBatcher.flushPending();
         ScissorUtil.reset();
+        com.mojang.blaze3d.opengl.GlStateManager._disableScissorTest();
+        com.mojang.blaze3d.systems.RenderSystem.disableScissorForRenderTypeDraws();
+        com.mojang.blaze3d.systems.RenderSystem.outputColorTextureOverride = null;
+        com.mojang.blaze3d.systems.RenderSystem.outputDepthTextureOverride = null;
     }
 
 }

@@ -39,7 +39,7 @@ public abstract class AscensionLivingRendererMixin {
     @Inject(method = "setupTransforms", at = @At("HEAD"), cancellable = true)
     private void egg$keepAscensionUpright(LivingEntityRenderState state, MatrixStack matrices,
                                           float bodyYaw, float baseScale, CallbackInfo ci) {
-        if (!KillEffect.isRenderingAscension(state)) return;
+        if (!KillEffect.isRenderingUpright(state)) return;
         matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(180.0f - bodyYaw));
         ci.cancel();
     }

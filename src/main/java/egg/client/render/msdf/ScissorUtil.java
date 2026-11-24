@@ -1,5 +1,7 @@
 package egg.client.render.msdf;
 
+import com.mojang.blaze3d.opengl.GlStateManager;
+import com.mojang.blaze3d.systems.RenderSystem;
 import egg.client.render.msdf.pipeline.DrawBatcher;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -8,7 +10,6 @@ import net.minecraft.client.util.math.MatrixStack;
 import org.joml.Matrix3x2f;
 import org.joml.Matrix3x2fStack;
 import org.joml.Matrix4f;
-import org.lwjgl.opengl.GL11;
 
 public class ScissorUtil {
     private static final Deque<a> b = new ArrayDeque<>();
@@ -29,7 +30,10 @@ public class ScissorUtil {
     public static void reset() {
         DrawBatcher.flushPending();
         b.clear();
-        GL11.glDisable(GL11.GL_SCISSOR_TEST);
+        GlStateManager._disableScissorTest();
+        RenderSystem.disableScissorForRenderTypeDraws();
+        RenderSystem.outputColorTextureOverride = null;
+        RenderSystem.outputDepthTextureOverride = null;
     }
 
     public static void a(Matrix3x2f matrixStack, float x, float y, float width, float height) {
@@ -78,7 +82,7 @@ public class ScissorUtil {
             b.pop();
         }
         if (b.isEmpty()) {
-            GL11.glDisable(GL11.GL_SCISSOR_TEST);
+            GlStateManager._disableScissorTest();
         } else {
             a(b.peek());
         }
@@ -119,7 +123,7 @@ public class ScissorUtil {
             b.pop();
         }
         if (b.isEmpty()) {
-            GL11.glDisable(GL11.GL_SCISSOR_TEST);
+            GlStateManager._disableScissorTest();
         } else {
             a(b.peek());
         }

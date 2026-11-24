@@ -16,6 +16,7 @@ public final class ProjectionUtil {
     private static final MinecraftClient MC = MinecraftClient.getInstance();
     private static final Matrix4f modelViewMatrix = new Matrix4f();
     private static final Matrix4f projectionMatrix = new Matrix4f();
+    private static final boolean ZERO_TO_ONE_DEPTH = new Matrix4f().perspective(1.0F, 1.0F, 1.0F, 2.0F).m22() > -2.5F;
     private static boolean matricesValid = false;
     private static Frustum frustum;
     private static final Vector4f workVec4 = new Vector4f();
@@ -72,6 +73,14 @@ public final class ProjectionUtil {
 
     public static float getScaledSize(float f, double d) {
         return MathHelper.clamp(f * getPixelsPerBlock(d), 1.0F, 36.0F);
+    }
+
+    public static Matrix4f getInverseViewProjection(Matrix4f out) {
+        return out.set(projectionMatrix).mul(modelViewMatrix).invert();
+    }
+
+    public static boolean isZeroToOneDepth() {
+        return ZERO_TO_ONE_DEPTH;
     }
 
     public static Vec3d getInterpolatedPos(Entity entity, float f) {
