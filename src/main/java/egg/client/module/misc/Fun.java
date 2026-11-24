@@ -8,7 +8,7 @@ public class Fun extends Module {
     private static Fun instance;
 
     private final BooleanSetting raisedArms = new BooleanSetting("Поднятые руки", true, "Противники бегают с поднятыми руками как в старом майнкрафте");
-    private final BooleanSetting bedrockRun = new BooleanSetting("Bedrock Бег", false, "Ноги игроков едва двигаются во время спринта");
+    private final BooleanSetting bedrockRun = new BooleanSetting("Bedrock Бег", false, "Руки и ноги игроков едва двигаются во время спринта");
 
     public Fun() {
         super("Fun", "Визуальные эффекты вращения и движения персонажа", Category.MISC);

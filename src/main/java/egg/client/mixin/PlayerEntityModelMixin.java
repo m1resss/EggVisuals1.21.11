@@ -2,6 +2,7 @@ package egg.client.mixin;
 
 import egg.client.module.ModuleManager;
 import egg.client.module.misc.Fun;
+import egg.client.render.BedrockRunState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.model.ModelPart;
 import net.minecraft.client.render.entity.model.BipedEntityModel;
@@ -37,8 +38,9 @@ public abstract class PlayerEntityModelMixin extends BipedEntityModel<PlayerEnti
             if (!isSelf || isAlone) {
                 float basePitch = -(float) Math.PI;
 
-                float armBob = MathHelper.cos(state.limbSwingAnimationProgress * 0.6662f) * 0.35f * state.limbSwingAmplitude;
-                float armSway = MathHelper.sin(state.limbSwingAnimationProgress * 0.6662f) * 0.15f * state.limbSwingAmplitude;
+                float stride = state.limbSwingAmplitude * BedrockRunState.strideScale(state);
+                float armBob = MathHelper.cos(state.limbSwingAnimationProgress * 0.6662f) * 0.35f * stride;
+                float armSway = MathHelper.sin(state.limbSwingAnimationProgress * 0.6662f) * 0.15f * stride;
 
                 float idlePitch = MathHelper.sin(state.age * 0.067f) * 0.04f;
                 float idleRoll = MathHelper.cos(state.age * 0.09f) * 0.03f;
