@@ -1,37 +1,37 @@
 package egg.client.ui.section;
 
 import egg.client.cosmetic.CosmeticsManager;
-import egg.client.cosmetic.CosmeticsRenderer;
 import egg.client.cosmetic.sword.SwordStyle;
 import egg.client.cosmetic.watch.WatchClockDriver;
 import egg.client.cosmetic.watch.WatchStyle;
-import egg.client.module.ModuleManager;
 import egg.client.module.cosmetic.CosmeticsModule;
 import egg.client.render.IconRenderer;
 import egg.client.render.Render2D;
 import egg.client.render.font.ClientFont;
 import egg.client.ui.theme.FrostedSurface;
 import egg.client.ui.theme.Theme;
-import egg.client.util.ColorUtil;
 import egg.client.util.GuiSoundManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.ScreenRect;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import org.joml.Matrix3x2f;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class CosmeticsPanel {
-    private static String searchQuery = "";
-
-    private static final String[] CAT_NAMES = new String[] { "Все", "Шляпы", "Крылья", "Рюкзаки", "Маски", "Питомцы", "Часы", "Мечи" };
-    private static final String[] CAT_KEYS  = new String[] { "all", "hats", "wings", "backpacks", "masks", "pets", "watches", "swords" };
-
-    private static int activeFilter = 0;
-    private static float scrollOffset = 0.0f;
-    private static float targetScroll = 0.0f;
-    private static float maxScroll = 0.0f;
+    private static final String[] CAT_NAMES = {"Все", "Шляпы", "Крылья", "Рюкзаки", "Маски", "Питомцы", "Часы", "Мечи"};
+    private static final String[] CAT_KEYS = {"all", "hats", "wings", "backpacks", "masks", "pets", "watches", "swords"};
+    private static final float TAB_H = 16;
+    private static final float GAP = 5;
+    private static final float CARD_H = 52;
+    private static final float SECTION_H = 20;
+    private static int activeFilter;
+    private static float scrollOffset;
+    private static float targetScroll;
+    private static float maxScroll;
 
     private static float playerYaw = 0.0f;
     private static float playerPitch = 0.0f;
@@ -39,23 +39,18 @@ public class CosmeticsPanel {
     private static float lastDragMouseX = 0.0f;
     private static float lastDragMouseY = 0.0f;
 
-    private static final Map<String, Float> toggleAnims = new HashMap<>();
-
-    public static void setSearchQuery(String q) {
-        searchQuery = q == null ? "" : q.trim();
-        targetScroll = 0.0f;
-        scrollOffset = 0.0f;
+    private record Card(String id, String title, Object preview) {}
+    private record Section(String key, String name, List<Card> cards) {}
+    private record Area(float x, float y, float w, float h) {
+        boolean contains(double mx, double my) {
+            return mx >= x && mx < x + w && my >= y && my < y + h;
+        }
     }
 
     public static void render(DrawContext context, float x, float y, float w, float h, float mouseX, float mouseY, float alpha, boolean blurred) {
         MinecraftClient mc = MinecraftClient.getInstance();
-        CosmeticsModule mod = ModuleManager.getInstance().getModule(CosmeticsModule.class);
+        CosmeticsModule mod = CosmeticsModule.getInstance();
         if (mod == null) return;
-
-        CosmeticsManager mgr = CosmeticsManager.getInstance();
-        mgr.ensureIndex();
-
-        scrollOffset += (targetScroll - scrollOffset) * 0.25f;
 
         float rightPaneW = 158.0f;
         float mainW = w - rightPaneW - 10.0f;
@@ -63,187 +58,67 @@ public class CosmeticsPanel {
         float rightPaneY = y;
         float rightPaneH = h;
 
-        float navY = y + 2.0f;
-        float navH = 17.0f;
-        float pillGap = 3.5f;
-        float navRowGap = 3.5f;
-        int totalPills = CAT_NAMES.length + 1;
-        int row0Count = 5;
-        int row1Count = totalPills - row0Count;
+        Area catalog = new Area(x, y, mainW, h);
+        List<Section> sections = sections();
+        float gridTop = gridTop(y);
+        float gridBottom = gridBottom(catalog);
+        float gridHeight = gridBottom - gridTop;
+        float contentHeight = 0;
+        for (Section section : sections) contentHeight += sectionHeight(section);
+        maxScroll = Math.max(0, contentHeight - gridHeight);
+        targetScroll = Math.clamp(targetScroll, 0, maxScroll);
+        scrollOffset = Math.clamp(scrollOffset + (targetScroll - scrollOffset) * 0.27f, 0, maxScroll);
 
-        for (int i = 0; i < totalPills; i++) {
-            int row = (i < row0Count) ? 0 : 1;
-            int col = (row == 0) ? i : (i - row0Count);
-            int rowCols = (row == 0) ? row0Count : row1Count;
-            float pillW = (mainW - (rowCols - 1) * pillGap) / (float) rowCols;
-            float pX = x + col * (pillW + pillGap);
-            float pY = navY + row * (navH + navRowGap);
-
-            String label = (i < CAT_NAMES.length) ? CAT_NAMES[i] : "Снять все";
-            boolean isAction = (i == CAT_NAMES.length);
-            boolean isSel = !isAction && (activeFilter == i);
-            boolean hov = mouseX >= pX && mouseX <= pX + pillW && mouseY >= pY && mouseY <= pY + navH;
-
-            int pBg;
-            if (isAction) {
-                pBg = hov ? 0xDDFF4444 : 0x18FFFFFF;
-            } else {
-                pBg = isSel ? Theme.ACCENT : (hov ? 0x28FFFFFF : 0x16FFFFFF);
+        for (int i = 0; i < CAT_NAMES.length; i++) {
+            Area tab = tab(catalog, i);
+            boolean chosen = activeFilter == i;
+            boolean hovered = tab.contains(mouseX, mouseY);
+            if (chosen || hovered) {
+                Render2D.drawRoundedRect(context, tab.x, tab.y, tab.w, tab.h, 4, chosen ? 0x35000000 | (Theme.ACCENT & 0x00FFFFFF) : 0x15FFFFFF);
             }
-
-            Render2D.drawRoundedRect(context, pX, pY, pillW, navH, 4.0f, pBg);
-            if (isSel) {
-                Render2D.drawRoundedOutline(context, pX, pY, pillW, navH, 4.0f, 0.6f, Theme.ACCENT);
-            } else if (isAction && hov) {
-                Render2D.drawRoundedOutline(context, pX, pY, pillW, navH, 4.0f, 0.6f, 0xFFFF6B6B);
-            }
-
-            int txtCol = isSel ? 0xFFFFFFFF : (hov ? 0xFFFFFFFF : (isAction ? 0xFFC0C8D8 : 0xFFA0A8B8));
-            ClientFont.drawCentered(context, label, pX + pillW * 0.5f, pY + navH * 0.5f, ClientFont.SF_MEDIUM, txtCol);
+            ClientFont.drawCenteredScaled(context, CAT_NAMES[i], tab.x + tab.w / 2, tab.y + tab.h / 2, 0.87f,
+                    ClientFont.SF_MEDIUM, chosen || hovered ? Theme.TEXT_TITLE : Theme.TEXT_SUB);
         }
 
-        float gridTop = navY + navH * 2.0f + navRowGap + 5.0f;
-        Render2D.drawRect(context, x, gridTop - 2.0f, mainW, 1.0f, 0x12FFFFFF);
+        Render2D.drawRect(context, x, gridTop - 3, mainW, 1, 0x14FFFFFF);
+        Render2D.enableScissor(context, x, gridTop, x + mainW, gridBottom);
+        ScreenRect clip = new ScreenRect((int) x, (int) gridTop, (int) mainW, (int) gridHeight).transform(context.getMatrices());
+        float sectionY = gridTop - scrollOffset;
+        for (Section section : sections) {
+            float sectionBottom = sectionY + sectionHeight(section);
+            if (sectionBottom > gridTop && sectionY < gridBottom) {
+                ClientFont.draw(context, section.name, x + 4, sectionY + 6, ClientFont.SF_BOLD, Theme.TEXT_TITLE);
+                String selected = mod.selected(section.key);
+                if (equipped(selected)) {
+                    Area remove = remove(catalog, sectionY);
+                    var color = remove.contains(mouseX, mouseY) && mouseY >= gridTop && mouseY < gridBottom ? Theme.TEXT_TITLE : Theme.TEXT_SUB;
+                    ClientFont.drawCenteredScaled(context, "Снять", remove.x + remove.w / 2, remove.y + remove.h / 2, 0.85f, ClientFont.SF_MEDIUM, color);
+                }
 
-        Render2D.enableScissor(context, x, gridTop, x + mainW, y + h);
-
-        float currentCatY = gridTop + 4.0f - scrollOffset;
-        List<String> activeCats = new ArrayList<>();
-        if (activeFilter == 0) {
-            activeCats.add("hats");
-            activeCats.add("wings");
-            activeCats.add("backpacks");
-            activeCats.add("masks");
-            activeCats.add("pets");
-            activeCats.add("watches");
-            activeCats.add("swords");
-        } else {
-            activeCats.add(CAT_KEYS[activeFilter]);
-        }
-
-        int cols = 3;
-        float colGap = 6.0f;
-        float rowGap = 7.0f;
-        float cardW = (mainW - (cols - 1) * colGap) / cols;
-        float cardH = 108.0f;
-
-        for (String catKey : activeCats) {
-            boolean isSwords = "swords".equals(catKey);
-            boolean isWatches = "watches".equals(catKey);
-            String catTitle = switch (catKey) {
-                case "hats" -> "Шляпы (Hats)";
-                case "wings" -> "Крылья (Wings)";
-                case "backpacks" -> "Рюкзаки (Backpacks)";
-                case "masks" -> "Маски (Masks)";
-                case "pets" -> "Питомцы (Pets)";
-                case "swords" -> "Мечи (Swords)";
-                case "watches" -> "Часы (Watches)";
-                default -> catKey;
-            };
-
-            List<CosmeticsManager.Asset> assetsList = (isSwords || isWatches) ? Collections.emptyList() : mgr.getCategoryAssets(catKey, searchQuery);
-            List<SwordStyle> swordsList = isSwords ? getFilteredSwords() : Collections.emptyList();
-            List<WatchStyle> watchesList = isWatches ? getFilteredWatches() : Collections.emptyList();
-            int itemCount = isSwords ? swordsList.size() : (isWatches ? watchesList.size() : assetsList.size());
-
-            float catHeaderH = 20.0f;
-            ClientFont.draw(context, catTitle, x + 2.0f, currentCatY + 4.0f, ClientFont.SF_BOLD, 0xFFFFFFFF);
-
-            String selectedId = isSwords ? mod.selectedSword() : mod.selected(catKey);
-            boolean hasEquipped = selectedId != null && !selectedId.isEmpty() && !"None".equalsIgnoreCase(selectedId);
-            if (hasEquipped) {
-                float badgeW = 46.0f;
-                float badgeH = 14.0f;
-                float badgeX = x + mainW - badgeW;
-                float badgeY = currentCatY + 2.0f;
-                boolean hovRst = mouseX >= badgeX && mouseX <= badgeX + badgeW && mouseY >= badgeY && mouseY <= badgeY + badgeH;
-                Render2D.drawRoundedRect(context, badgeX, badgeY, badgeW, badgeH, 3.5f, hovRst ? 0xDDFF4444 : 0x22FFFFFF);
-                Render2D.drawRoundedOutline(context, badgeX, badgeY, badgeW, badgeH, 3.5f, 0.5f, hovRst ? 0xFFFF6B6B : Theme.CARD_BORDER);
-                ClientFont.drawCentered(context, "Снять", badgeX + badgeW * 0.5f, badgeY + badgeH * 0.5f, ClientFont.SF_REGULAR, hovRst ? 0xFFFFFFFF : 0xFFA0A8B8);
+                for (int i = 0; i < section.cards.size(); i++) {
+                    Area bounds = card(catalog, sectionY, i);
+                    if (bounds.y + bounds.h < gridTop || bounds.y > gridBottom) continue;
+                    Card item = section.cards.get(i);
+                    drawCard(context, item, bounds, clip, item.id.equalsIgnoreCase(selected),
+                            mouseY >= gridTop && mouseY < gridBottom && bounds.contains(mouseX, mouseY), alpha, blurred);
+                }
             }
-
-            currentCatY += catHeaderH;
-
-            int rows = Math.max(1, (itemCount + cols - 1) / cols);
-
-            for (int i = 0; i < itemCount; i++) {
-                int row = i / cols;
-                int col = i % cols;
-                float cardX = x + col * (cardW + colGap);
-                float cardY = currentCatY + row * (cardH + rowGap);
-
-                if (cardY + cardH < gridTop || cardY > y + h) {
-                    continue;
-                }
-
-                CosmeticsManager.Asset asset = (isSwords || isWatches) ? null : assetsList.get(i);
-                SwordStyle sword = isSwords ? swordsList.get(i) : null;
-                WatchStyle watch = isWatches ? watchesList.get(i) : null;
-                String displayName = isSwords ? sword.getName() : (isWatches ? watch.getName() : asset.displayName());
-
-                boolean isSelected = isSwords
-                        ? (sword == mod.getSelectedSwordStyle())
-                        : (isWatches ? (watch == mod.getSelectedWatchStyle()) : (asset.id().equalsIgnoreCase(mod.selected(catKey))));
-
-                boolean isHovered = mouseX >= cardX && mouseX <= cardX + cardW && mouseY >= cardY && mouseY <= cardY + cardH;
-
-                int cBg = isSelected ? 0x264C8DFF : (isHovered ? 0x1AFFFFFF : Theme.CARD_BG);
-                int cBrd = isSelected ? Theme.ACCENT : (isHovered ? 0x55FFFFFF : Theme.CARD_BORDER);
-
-                FrostedSurface.draw(context, cardX, cardY, cardW, cardH, 6.0f, cBg,
-                        alpha, isHovered ? 0.78f : 0.70f, blurred);
-                Render2D.drawRoundedOutline(context, cardX, cardY, cardW, cardH, 6.0f, 0.6f, cBrd);
-
-                if (isSwords && sword != null) {
-                    renderSwordCardPreview(context, sword, cardX, cardY, cardW);
-                } else if (isWatches && watch != null) {
-                    renderWatchCardPreview(context, watch, cardX, cardY, cardW, isSelected);
-                } else if (!isSwords && !isWatches && asset != null) {
-                    float pSize = cardW - 20.0f;
-                    float pX = cardX + 10.0f;
-                    float pY = cardY + 6.0f;
-                    if (pY < y + h && pY + pSize > gridTop) {
-                        net.minecraft.client.gui.ScreenRect cardsScissor = new net.minecraft.client.gui.ScreenRect((int) x, (int) gridTop, Math.max(1, (int) mainW), Math.max(1, (int) (y + h - gridTop))).transform(context.getMatrices());
-                        mgr.renderGuiPreview(context, asset.id(), pX, pY, pSize, 1.0f, cardsScissor);
-                    }
-                }
-
-                float bottomH = 22.0f;
-                float bottomY = cardY + cardH - bottomH;
-
-                float swW = 20.0f, swH = 11.0f;
-                float swX = cardX + cardW - swW - 8.0f;
-                float swY = bottomY + (bottomH - swH) * 0.5f;
-
-                String animKey = isSwords ? "sw_" + sword.getName() : (isWatches ? "wt_" + watch.getName() : "cs_" + asset.id());
-                float swAnim = getAnim(animKey, isSelected);
-                int swBg = ColorUtil.lerp(0xFF232838, 0xFF4CD137, swAnim);
-                Render2D.drawRoundedRect(context, swX, swY, swW, swH, 5.5f, swBg);
-
-                float swDotSz = 7.0f;
-                float swDotX = swX + 2.0f + swAnim * 9.0f;
-                float swDotY = swY + 2.0f;
-                Render2D.drawRoundedRect(context, swDotX, swDotY, swDotSz, swDotSz, 3.5f, 0xFFFFFFFF);
-
-                String title = displayName;
-                float maxTitleW = cardW - swW - 16.0f;
-                if (ClientFont.getWidth(title, ClientFont.SF_MEDIUM) > maxTitleW) {
-                    while (title.length() > 3 && ClientFont.getWidth(title + "..", ClientFont.SF_MEDIUM) > maxTitleW) {
-                        title = title.substring(0, title.length() - 1);
-                    }
-                    title += "..";
-                }
-                float titleY = bottomY + (bottomH - 8.0f) * 0.5f;
-                ClientFont.draw(context, title, cardX + 7.0f, titleY, ClientFont.SF_MEDIUM, isSelected ? Theme.ACCENT : 0xFFFFFFFF);
-            }
-
-            currentCatY += rows * (cardH + rowGap) + 12.0f;
+            sectionY = sectionBottom;
         }
-
-        float measuredTotalH = currentCatY - (gridTop - scrollOffset);
-        maxScroll = Math.max(0.0f, measuredTotalH - (h - (gridTop - y)));
-
         Render2D.disableScissor(context);
+
+        if (maxScroll > 0) {
+            float thumb = Math.max(13, gridHeight * gridHeight / contentHeight);
+            float thumbY = gridTop + (gridHeight - thumb) * scrollOffset / maxScroll;
+            Render2D.drawRoundedRect(context, x + mainW - 1.5f, thumbY, 1.5f, thumb, 0.75f, 0x38FFFFFF);
+        }
+
+        Render2D.drawRect(context, x, gridBottom + 3, mainW, 1, 0x14FFFFFF);
+        Area resetAll = resetAll(catalog);
+        if (hasEquipped(mod)) {
+            ClientFont.drawCenteredScaled(context, "Снять всё", resetAll.x + resetAll.w / 2, resetAll.y + resetAll.h / 2, 0.85f,
+                    ClientFont.SF_MEDIUM, resetAll.contains(mouseX, mouseY) ? Theme.TEXT_TITLE : Theme.TEXT_SUB);
+        }
 
         FrostedSurface.draw(context, rightPaneX, rightPaneY, rightPaneW, rightPaneH, 6.0f,
                 Theme.CARD_BG, alpha, 0.70f, blurred);
@@ -304,11 +179,8 @@ public class CosmeticsPanel {
     public static boolean mouseClicked(float x, float y, float w, float h, double mouseX, double mouseY, int button) {
         if (button != 0) return false;
 
-        CosmeticsModule mod = ModuleManager.getInstance().getModule(CosmeticsModule.class);
+        CosmeticsModule mod = CosmeticsModule.getInstance();
         if (mod == null) return false;
-
-        CosmeticsManager mgr = CosmeticsManager.getInstance();
-        mgr.ensureIndex();
 
         float rightPaneW = 158.0f;
         float mainW = w - rightPaneW - 10.0f;
@@ -333,129 +205,165 @@ public class CosmeticsPanel {
             return true;
         }
 
-        if (mouseX < x || mouseX > x + mainW || mouseY < y || mouseY > y + h) {
-            return false;
-        }
 
-        float navY = y + 2.0f;
-        float navH = 17.0f;
-        float pillGap = 3.5f;
-        float navRowGap = 3.5f;
-        int totalPills = CAT_NAMES.length + 1;
-        int row0Count = 5;
-        int row1Count = totalPills - row0Count;
+        Area catalog = new Area(x, y, mainW, h);
+        if (!catalog.contains(mouseX, mouseY)) return false;
 
-        for (int i = 0; i < totalPills; i++) {
-            int row = (i < row0Count) ? 0 : 1;
-            int col = (row == 0) ? i : (i - row0Count);
-            int rowCols = (row == 0) ? row0Count : row1Count;
-            float pillW = (mainW - (rowCols - 1) * pillGap) / (float) rowCols;
-            float pX = x + col * (pillW + pillGap);
-            float pY = navY + row * (navH + navRowGap);
-
-            if (mouseX >= pX && mouseX <= pX + pillW && mouseY >= pY && mouseY <= pY + navH) {
-                if (i == CAT_NAMES.length) {
-                    mod.clearAll();
-                    GuiSoundManager.playClick();
-                    return true;
-                }
-                if (i < CAT_NAMES.length) {
-                    activeFilter = i;
-                    targetScroll = 0.0f;
-                    scrollOffset = 0.0f;
-                    GuiSoundManager.playClick();
-                    return true;
-                }
+        for (int i = 0; i < CAT_NAMES.length; i++) {
+            if (tab(catalog, i).contains(mouseX, mouseY)) {
+                activeFilter = i;
+                scrollOffset = targetScroll = 0;
+                GuiSoundManager.playClick();
+                return true;
             }
         }
 
-        float gridTop = navY + navH * 2.0f + navRowGap + 5.0f;
-        if (mouseY < gridTop) return false;
-
-        float currentCatY = gridTop + 4.0f - scrollOffset;
-        List<String> activeCats = new ArrayList<>();
-        if (activeFilter == 0) {
-            activeCats.add("hats");
-            activeCats.add("wings");
-            activeCats.add("backpacks");
-            activeCats.add("masks");
-            activeCats.add("pets");
-            activeCats.add("watches");
-            activeCats.add("swords");
-        } else {
-            activeCats.add(CAT_KEYS[activeFilter]);
+        if (resetAll(catalog).contains(mouseX, mouseY) && hasEquipped(mod)) {
+            mod.clearAll();
+            GuiSoundManager.playClick();
+            return true;
         }
 
-        int cols = 3;
-        float colGap = 6.0f;
-        float rowGap = 7.0f;
-        float cardW = (mainW - (cols - 1) * colGap) / cols;
-        float cardH = 108.0f;
-
-        for (String catKey : activeCats) {
-            boolean isSwords = "swords".equals(catKey);
-            boolean isWatches = "watches".equals(catKey);
-            List<CosmeticsManager.Asset> assetsList = (isSwords || isWatches) ? Collections.emptyList() : mgr.getCategoryAssets(catKey, searchQuery);
-            List<SwordStyle> swordsList = isSwords ? getFilteredSwords() : Collections.emptyList();
-            List<WatchStyle> watchesList = isWatches ? getFilteredWatches() : Collections.emptyList();
-            int itemCount = isSwords ? swordsList.size() : (isWatches ? watchesList.size() : assetsList.size());
-
-            float catHeaderH = 20.0f;
-
-            String selectedId = isSwords ? mod.selectedSword() : mod.selected(catKey);
-            boolean hasEquipped = selectedId != null && !selectedId.isEmpty() && !"None".equalsIgnoreCase(selectedId);
-            if (hasEquipped) {
-                float badgeW = 46.0f;
-                float badgeH = 14.0f;
-                float badgeX = x + mainW - badgeW;
-                float badgeY = currentCatY + 2.0f;
-                if (mouseX >= badgeX && mouseX <= badgeX + badgeW && mouseY >= badgeY && mouseY <= badgeY + badgeH) {
-                    mod.clearSlot(catKey);
-                    GuiSoundManager.playClick();
-                    return true;
-                }
+        float gridTop = gridTop(y);
+        if (mouseY < gridTop || mouseY >= gridBottom(catalog)) return false;
+        float sectionY = gridTop - scrollOffset;
+        for (Section section : sections()) {
+            String selected = mod.selected(section.key);
+            if (equipped(selected) && remove(catalog, sectionY).contains(mouseX, mouseY)) {
+                mod.clearSlot(section.key);
+                GuiSoundManager.playClick();
+                return true;
             }
 
-            currentCatY += catHeaderH;
+            for (int i = 0; i < section.cards.size(); i++) {
+                if (!card(catalog, sectionY, i).contains(mouseX, mouseY)) continue;
+                Card item = section.cards.get(i);
+                if (item.id.equalsIgnoreCase(selected)) {
+                    mod.clearSlot(section.key);
+                } else {
+                    mod.select(section.key, item.id);
+                }
+                GuiSoundManager.playClick();
+                return true;
+            }
+            sectionY += sectionHeight(section);
+        }
 
-            for (int i = 0; i < itemCount; i++) {
-                int row = i / cols;
-                int col = i % cols;
-                float cardX = x + col * (cardW + colGap);
-                float cardY = currentCatY + row * (cardH + rowGap);
+        return false;
+    }
 
-                if (mouseX >= cardX && mouseX <= cardX + cardW && mouseY >= cardY && mouseY <= cardY + cardH) {
-                    if (isSwords) {
-                        SwordStyle sword = swordsList.get(i);
-                        if (sword == mod.getSelectedSwordStyle()) {
-                            mod.clearSlot("swords");
-                        } else {
-                            mod.selectSword(sword.getName(), sword.getName());
-                        }
-                    } else if (isWatches) {
-                        WatchStyle watch = watchesList.get(i);
-                        if (watch == mod.getSelectedWatchStyle()) {
-                            mod.clearSlot("watches");
-                        } else {
-                            mod.select("watches", watch.getName());
-                        }
-                    } else {
-                        CosmeticsManager.Asset asset = assetsList.get(i);
-                        if (asset.id().equalsIgnoreCase(mod.selected(catKey))) {
-                            mod.clearSlot(catKey);
-                        } else {
-                            mod.select(catKey, asset.id());
-                        }
+    private static List<Section> sections() {
+        CosmeticsManager manager = CosmeticsManager.getInstance();
+        manager.ensureIndex();
+        List<Section> result = new ArrayList<>();
+        int start = activeFilter == 0 ? 1 : activeFilter;
+        int end = activeFilter == 0 ? CAT_KEYS.length : activeFilter + 1;
+        for (int i = start; i < end; i++) {
+            String key = CAT_KEYS[i];
+            List<Card> cards = new ArrayList<>();
+            switch (key) {
+                case "swords" -> {
+                    for (SwordStyle style : SwordStyle.values()) {
+                        if (style != SwordStyle.NONE) cards.add(new Card(style.getName(), style.getName(), style));
                     }
-                    GuiSoundManager.playClick();
-                    return true;
+                }
+                case "watches" -> {
+                    for (WatchStyle style : WatchStyle.values()) {
+                        if (style != WatchStyle.NONE) cards.add(new Card(style.getName(), style.getName(), style));
+                    }
+                }
+                default -> {
+                    for (CosmeticsManager.Asset asset : manager.getCategoryAssets(key, "")) {
+                        cards.add(new Card(asset.id(), asset.displayName(), asset));
+                    }
                 }
             }
+            if (!cards.isEmpty()) result.add(new Section(key, CAT_NAMES[i], cards));
+        }
+        return result;
+    }
 
-            int rows = Math.max(1, (itemCount + cols - 1) / cols);
-            currentCatY += rows * (cardH + rowGap) + 12.0f;
+    private static void drawCard(DrawContext context, Card item, Area bounds, ScreenRect clip, boolean selected,
+                                 boolean hovered, float alpha, boolean blurred) {
+        float x = bounds.x;
+        float y = bounds.y;
+        float w = bounds.w;
+        float cy = y + bounds.h / 2;
+        int bg = selected ? 0x28000000 | (Theme.ACCENT & 0xFFFFFF) : hovered ? 0x20FFFFFF : Theme.CARD_BG;
+        FrostedSurface.draw(context, x, y, w, bounds.h, 5, bg, alpha, hovered ? 0.77f : 0.70f, blurred);
+        if (selected) Render2D.drawRoundedRect(context, x + 2, y + 14, 1.5f, 24, 0.75f, Theme.ACCENT);
+
+        float iconX = x + 6;
+        float iconY = cy - 20;
+        switch (item.preview) {
+            case SwordStyle sword -> {
+                if (sword.getIcon() != null) {
+                    IconRenderer.drawTextureScaled(context, sword.getIcon(), iconX, iconY, 40, 40, 64, 64, 0xFFFFFFFF);
+                }
+            }
+            case WatchStyle watch -> renderWatchCardPreview(context, watch, iconX + 20, cy, selected);
+            case CosmeticsManager.Asset asset -> CosmeticsManager.getInstance()
+                    .renderGuiPreview(context, asset.id(), iconX, iconY, 40, 1, clip);
+            default -> throw new IllegalStateException("Unknown cosmetic preview");
         }
 
+        float textX = x + 49;
+        float textWidth = w - 55;
+        if (ClientFont.getWidth(item.title, ClientFont.SF_MEDIUM) * 0.91f > textWidth && item.title.contains(" ")) {
+            int split = item.title.indexOf(' ', item.title.length() / 2);
+            if (split < 0) split = item.title.lastIndexOf(' ');
+            drawName(context, item.title.substring(0, split), textX, cy - 8, textWidth, selected);
+            drawName(context, item.title.substring(split + 1), textX, cy + 3, textWidth, selected);
+        } else {
+            drawName(context, item.title, textX, cy - 3, textWidth, selected);
+        }
+    }
+
+    private static void drawName(DrawContext context, String name, float x, float y, float width, boolean selected) {
+        float naturalWidth = ClientFont.getWidth(name, ClientFont.SF_MEDIUM);
+        float scale = Math.min(0.91f, width / Math.max(1, naturalWidth));
+        ClientFont.drawScaled(context, name, x, y, scale, ClientFont.SF_MEDIUM, selected ? Theme.ACCENT : Theme.TEXT_TITLE);
+    }
+
+    private static Area tab(Area catalog, int index) {
+        int col = index % 5;
+        float w = (catalog.w - 4 * GAP) / 5;
+        return new Area(catalog.x + col * (w + GAP), catalog.y + 2 + index / 5 * (TAB_H + 2), w, TAB_H);
+    }
+
+    private static float gridTop(float y) {
+        return y + 2 * TAB_H + 10;
+    }
+
+    private static float gridBottom(Area catalog) {
+        return catalog.y + catalog.h - 20;
+    }
+
+    private static Area resetAll(Area catalog) {
+        return new Area(catalog.x + catalog.w - 56, gridBottom(catalog) + 5, 55, 15);
+    }
+
+    private static Area remove(Area catalog, float sectionY) {
+        return new Area(catalog.x + catalog.w - 43, sectionY, 41, SECTION_H);
+    }
+
+    private static Area card(Area catalog, float sectionY, int index) {
+        float width = (catalog.w - 4 - GAP) / 2;
+        return new Area(catalog.x + index % 2 * (width + GAP), sectionY + SECTION_H + index / 2 * (CARD_H + GAP), width, CARD_H);
+    }
+
+    private static float sectionHeight(Section section) {
+        return SECTION_H + ((section.cards.size() + 1) / 2) * (CARD_H + GAP) + 4;
+    }
+
+    private static boolean equipped(String id) {
+        return !id.isEmpty() && !"None".equalsIgnoreCase(id);
+    }
+
+    private static boolean hasEquipped(CosmeticsModule mod) {
+        for (int i = 1; i < CAT_KEYS.length; i++) {
+            if (equipped(mod.selected(CAT_KEYS[i]))) return true;
+        }
         return false;
     }
 
@@ -489,35 +397,16 @@ public class CosmeticsPanel {
     }
 
     public static boolean mouseScrolled(double mouseX, double mouseY, double amount, float contentX, float contentY, float contentW, float contentH) {
+        if (mouseX < contentX || mouseX >= contentX + contentW - 168 || mouseY < gridTop(contentY)
+                || mouseY >= contentY + contentH - 20) return false;
         targetScroll -= (float) (amount * 34.0f);
         targetScroll = Math.clamp(targetScroll, 0.0f, maxScroll);
         return true;
     }
 
-    private static float getAnim(String key, boolean state) {
-        float current = toggleAnims.getOrDefault(key, state ? 1.0f : 0.0f);
-        float target = state ? 1.0f : 0.0f;
-        current += (target - current) * 0.22f;
-        toggleAnims.put(key, current);
-        return current;
-    }
-
-    private static List<WatchStyle> getFilteredWatches() {
-        List<WatchStyle> list = new ArrayList<>();
-        for (WatchStyle style : WatchStyle.values()) {
-            if (style == WatchStyle.NONE) continue;
-            if (searchQuery.isEmpty() || style.getName().toLowerCase(Locale.ROOT).contains(searchQuery.toLowerCase(Locale.ROOT))) {
-                list.add(style);
-            }
-        }
-        return list;
-    }
-
-    private static void renderWatchCardPreview(DrawContext context, WatchStyle watch, float cardX, float cardY, float cardW, boolean isSelected) {
-        float cx = cardX + cardW * 0.5f;
-        float cy = cardY + 44.0f;
-        float strapW = 16.0f;
-        float strapH = 58.0f;
+    private static void renderWatchCardPreview(DrawContext context, WatchStyle watch, float cx, float cy, boolean isSelected) {
+        float strapW = 10.0f;
+        float strapH = 38.0f;
         float strapX = cx - strapW * 0.5f;
         float strapY = cy - strapH * 0.5f;
 
@@ -531,7 +420,7 @@ public class CosmeticsPanel {
         }
         Render2D.drawRoundedOutline(context, strapX, strapY, strapW, strapH, 3.5f, 0.6f, isSelected ? Theme.ACCENT : 0x33FFFFFF);
 
-        float dialSize = 42.0f;
+        float dialSize = 26.0f;
         float dialX = cx - dialSize * 0.5f;
         float dialY = cy - dialSize * 0.5f;
 
@@ -545,36 +434,12 @@ public class CosmeticsPanel {
         float secAngle = (float) Math.toRadians(WatchClockDriver.getSecondAngle() - 90.0f);
 
         Render2D.drawCircle(context, cx, cy, 1.8f, 0xFFE0E0E0);
-        float hrLen = 8.5f;
-        float minLen = 12.0f;
+        float hrLen = 5.4f;
+        float minLen = 7.2f;
         float secLen = 14.0f;
         Render2D.drawLine(context, cx, cy, cx + (float) Math.cos(hrAngle) * hrLen, cy + (float) Math.sin(hrAngle) * hrLen, 0xFFFFFFFF, 1.4f);
         Render2D.drawLine(context, cx, cy, cx + (float) Math.cos(minAngle) * minLen, cy + (float) Math.sin(minAngle) * minLen, 0xFFFFFFFF, 1.0f);
         Render2D.drawLine(context, cx, cy, cx + (float) Math.cos(secAngle) * secLen, cy + (float) Math.sin(secAngle) * secLen, 0xFFFF4444, 0.8f);
     }
 
-    private static List<SwordStyle> getFilteredSwords() {
-        List<SwordStyle> list = new ArrayList<>();
-        for (SwordStyle style : SwordStyle.values()) {
-            if (style == SwordStyle.NONE) continue;
-            if (searchQuery.isEmpty() || style.getName().toLowerCase(Locale.ROOT).contains(searchQuery.toLowerCase(Locale.ROOT))) {
-                list.add(style);
-            }
-        }
-        return list;
-    }
-
-    private static void renderSwordCardPreview(DrawContext context, SwordStyle sword, float cardX, float cardY, float cardW) {
-        float cx = cardX + cardW * 0.5f;
-        float cy = cardY + 44.0f;
-        int glowRgb = sword.getGlowColor() != 0 ? sword.getGlowColor() : sword.getBladeColor();
-        int glowArgb = 0x38000000 | (glowRgb & 0x00FFFFFF);
-        Render2D.drawCircleShadow(context, cx, cy, 14.0f, 16.0f, glowArgb);
-        if (sword.getIcon() != null) {
-            float iconSize = 54.0f;
-            float iconX = cx - iconSize * 0.5f;
-            float iconY = cy - iconSize * 0.5f;
-            IconRenderer.drawTextureScaled(context, sword.getIcon(), iconX, iconY, iconSize, iconSize, 64, 64, 0xFFFFFFFF);
-        }
-    }
 }
