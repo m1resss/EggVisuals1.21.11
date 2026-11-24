@@ -1,19 +1,25 @@
 #version 330
 
 uniform sampler2D Sampler0;
+uniform sampler2D Sampler1;
+uniform sampler2D Sampler2;
+uniform sampler2D Sampler3;
 
-in vec2 local;
-in float strength;
+flat in float strength;
 out vec4 fragColor;
 
 void main() {
-    vec4 scene = texelFetch(Sampler0, ivec2(gl_FragCoord.xy), 0);
-    float edge = 1.0 - smoothstep(0.26, 1.0, length(local * 2.0 - 1.0));
-    vec3 rgb = scene.rgb;
-    float luma = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
-    float chroma = max(rgb.r, max(rgb.g, rgb.b)) - min(rgb.r, min(rgb.g, rgb.b));
-    float detail = clamp(fwidth(luma) * 2.7 + fwidth(chroma) * 1.4, 0.0, 1.0);
-    float activity = 0.21 + 0.45 * smoothstep(0.03, 0.50, chroma) + 0.34 * detail;
-    if (edge <= 0.0) discard;
-    fragColor = vec4(mix(rgb, vec3(luma), strength * activity * edge), scene.a);
+    ivec2 pixel = ivec2(gl_FragCoord.xy);
+    vec4 scene = texelFetch(Sampler0, pixel, 0);
+    float sceneDepth = texelFetch(Sampler1, pixel, 0).r;
+    float targetMask = texelFetch(Sampler2, pixel, 0).a;
+    float targetDepth = texelFetch(Sampler3, pixel, 0).r;
+    float tolerance = max(0.000008, min(0.00028, (1.0 - targetDepth) * 0.014));
+    float depthMatch = 1.0 - smoothstep(tolerance * 0.4, tolerance, abs(sceneDepth - targetDepth));
+    float selected = targetDepth < 1.0 ? targetMask * depthMatch : 0.0;
+
+    float luma = dot(scene.rgb, vec3(0.2126, 0.7152, 0.0722));
+    vec3 muted = mix(vec3(luma), scene.rgb, 0.15) * 0.65;
+    vec3 vivid = clamp((vec3(luma) + (scene.rgb - luma) * 1.58) * 1.06, 0.0, 1.0);
+    fragColor = vec4(mix(scene.rgb, mix(muted, vivid, selected), strength), scene.a);
 }

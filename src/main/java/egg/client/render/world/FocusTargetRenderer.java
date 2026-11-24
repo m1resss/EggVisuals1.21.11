@@ -3,9 +3,10 @@ package egg.client.render.world;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.vertex.VertexFormat.DrawMode;
+import egg.client.render.shader.EntityMaskRenderer;
+import egg.client.render.shader.FrameBufferPool;
 import egg.client.render.shader.FullscreenPass;
 import egg.client.render.shader.GlStateSnapshot;
-import egg.client.render.shader.MeshDrawUtil;
 import egg.client.render.shader.Pipelines;
 import egg.client.render.shader.ProjectionUtil;
 import egg.client.util.EntityUtil;
@@ -13,23 +14,25 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.Framebuffer;
 import net.minecraft.client.gl.SimpleFramebuffer;
 import net.minecraft.client.render.BufferBuilder;
+import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.VertexFormats;
 import net.minecraft.client.util.BufferAllocator;
+import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
-import org.joml.Vector4f;
+
+import java.util.List;
+import java.util.OptionalInt;
 
 public final class FocusTargetRenderer {
     private static final long ENTER_TIME = 220_000_000L;
     private static final long EXIT_TIME = 170_000_000L;
-    private final Vector4f clip = new Vector4f();
     private LivingEntity current;
-    private SimpleFramebuffer copy;
+    private SimpleFramebuffer sceneCopy;
+    private SimpleFramebuffer targetMask;
     private long entered;
     private long seen;
 
-    public void render(LivingEntity target, Vec3d camera, float tickDelta) {
+    public void render(LivingEntity target, MatrixStack matrices, Camera camera, float tickDelta) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (!GlStateSnapshot.isOpenGl() || client.player == null) return;
         long now = System.nanoTime();
@@ -44,85 +47,79 @@ public final class FocusTargetRenderer {
             clear();
             return;
         }
-        if (target == current && client.player.canSee(current)) seen = now;
+
+        boolean visible = ProjectionUtil.isVisible(current.getBoundingBox()) && client.player.canSee(current);
+        if (target == current && visible) {
+            if (now - seen >= EXIT_TIME) entered = now;
+            seen = now;
+        }
         if (now - seen >= EXIT_TIME) {
             if (target == null) clear();
             return;
         }
-
-        Vec3d feet = current.getLerpedPos(tickDelta);
-        double distance = feet.add(0, current.getHeight() * 0.55, 0).distanceTo(camera);
-        float alpha = 0.77f * smooth((now - entered) / (float) ENTER_TIME) * (1f - smooth((now - seen) / (float) EXIT_TIME));
-        alpha *= smooth((float) (distance - 0.9) / 0.8f);
+        float alpha = smooth((now - entered) / (float) ENTER_TIME) * (1f - smooth((now - seen) / (float) EXIT_TIME));
         if (alpha < 0.008f) return;
 
         Framebuffer frame = client.getFramebuffer();
-        if (frame.getDepthAttachmentView() == null || frame.getColorAttachment() == null
+        if (frame.getDepthAttachmentView() == null || frame.getColorAttachmentView() == null
                 || (RenderSystem.outputColorTextureOverride != null && RenderSystem.outputColorTextureOverride != frame.getColorAttachmentView())
                 || (RenderSystem.outputDepthTextureOverride != null && RenderSystem.outputDepthTextureOverride != frame.getDepthAttachmentView())) return;
 
-        Box box = current.getBoundingBox().offset(feet.subtract(current.getEntityPos())).expand(0.11);
-        Bounds bounds = project(box, frame.textureWidth, frame.textureHeight);
-        if (bounds == null) return;
-        compose(frame, bounds, Math.round(255f * alpha));
-    }
-
-    private Bounds project(Box box, int width, int height) {
-        float minX = Float.POSITIVE_INFINITY;
-        float minY = Float.POSITIVE_INFINITY;
-        float maxX = Float.NEGATIVE_INFINITY;
-        float maxY = Float.NEGATIVE_INFINITY;
-        float farDepth = Float.NEGATIVE_INFINITY;
-        for (int corner = 0; corner < 8; corner++) {
-            if (!ProjectionUtil.worldToClip((corner & 1) == 0 ? box.minX : box.maxX,
-                    (corner & 2) == 0 ? box.minY : box.maxY,
-                    (corner & 4) == 0 ? box.minZ : box.maxZ, clip)) return null;
-            float x = clip.x / clip.w;
-            float y = clip.y / clip.w;
-            minX = Math.min(minX, x);
-            minY = Math.min(minY, y);
-            maxX = Math.max(maxX, x);
-            maxY = Math.max(maxY, y);
-            farDepth = Math.max(farDepth, clip.z / clip.w);
-        }
-        if (farDepth >= 1f) return null;
-        float centerX = (minX + maxX) * 0.5f;
-        float centerY = (minY + maxY) * 0.5f;
-        float rx = Math.min(0.57f, Math.max((maxX - minX) * 0.9f, (maxY - minY) * height / width * 0.48f));
-        float ry = Math.min(0.82f, (maxY - minY) * 0.72f);
-        float left = centerX - rx;
-        float right = centerX + rx;
-        float bottom = centerY - ry;
-        float top = centerY + ry;
-        if (left >= 1 || right <= -1 || bottom >= 1 || top <= -1 || rx * width < 3 || ry * height < 3) return null;
-        return new Bounds(left, right, bottom, top, farDepth);
-    }
-
-    private void compose(Framebuffer frame, Bounds bounds, int alpha) {
-        if (copy == null) {
-            copy = new SimpleFramebuffer("Egg focus copy", frame.textureWidth, frame.textureHeight, false);
-        } else if (copy.textureWidth != frame.textureWidth || copy.textureHeight != frame.textureHeight) {
-            copy.resize(frame.textureWidth, frame.textureHeight);
-        }
-        try (var state = FullscreenPass.guardState(); var allocator = new BufferAllocator(128)) {
+        sceneCopy = resize(sceneCopy, "Egg focus scene", frame, false);
+        targetMask = resize(targetMask, "Egg focus target", frame, true);
+        try (var ignored = FullscreenPass.guardState()) {
             var sampler = RenderSystem.getSamplerCache().get(FilterMode.NEAREST);
-            FullscreenPass.blitUnflipped(Pipelines.COLOR_COPY, copy, frame.getColorAttachmentView(), sampler, 0);
+            FullscreenPass.blitUnflipped(Pipelines.COLOR_COPY, sceneCopy, frame.getColorAttachmentView(), sampler, 0);
+            EntityMaskRenderer.renderEntities(targetMask, matrices, camera, tickDelta, List.of(current));
+            compose(frame, Math.round(255f * alpha));
+        }
+    }
 
+    private void compose(Framebuffer frame, int alpha) {
+        try (var allocator = new BufferAllocator(128)) {
             var mesh = new BufferBuilder(allocator, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
             int color = alpha << 24 | 0xFFFFFF;
-            mesh.vertex(bounds.left, bounds.top, bounds.depth).texture(0, 1).color(color);
-            mesh.vertex(bounds.left, bounds.bottom, bounds.depth).texture(0, 0).color(color);
-            mesh.vertex(bounds.right, bounds.bottom, bounds.depth).texture(1, 0).color(color);
-            mesh.vertex(bounds.right, bounds.top, bounds.depth).texture(1, 1).color(color);
-            MeshDrawUtil.drawWithTexture(Pipelines.TARGET_FOCUS, mesh.end(), copy.getColorAttachmentView(), sampler);
+            mesh.vertex(-1, 1, 0).texture(0, 1).color(color);
+            mesh.vertex(-1, -1, 0).texture(0, 0).color(color);
+            mesh.vertex(1, -1, 0).texture(1, 0).color(color);
+            mesh.vertex(1, 1, 0).texture(1, 1).color(color);
+            try (var built = mesh.end()) {
+                var vertices = FrameBufferPool.createBuffer(() -> "Egg focus vertices", built.getBuffer());
+                var indices = RenderSystem.getSequentialBuffer(DrawMode.QUADS);
+                var indexBuffer = indices.getIndexBuffer(built.getDrawParameters().indexCount());
+                var sampler = RenderSystem.getSamplerCache().get(FilterMode.NEAREST);
+                try (var pass = RenderSystem.getDevice().createCommandEncoder()
+                        .createRenderPass(() -> "Egg focus composite", frame.getColorAttachmentView(), OptionalInt.empty())) {
+                    pass.setPipeline(Pipelines.TARGET_FOCUS);
+                    pass.bindTexture("Sampler0", sceneCopy.getColorAttachmentView(), sampler);
+                    pass.bindTexture("Sampler1", frame.getDepthAttachmentView(), sampler);
+                    pass.bindTexture("Sampler2", targetMask.getColorAttachmentView(), sampler);
+                    pass.bindTexture("Sampler3", targetMask.getDepthAttachmentView(), sampler);
+                    pass.setVertexBuffer(0, vertices);
+                    pass.setIndexBuffer(indexBuffer, indices.getIndexType());
+                    pass.drawIndexed(0, 0, built.getDrawParameters().indexCount(), 1);
+                }
+            }
         }
+    }
+
+    private static SimpleFramebuffer resize(SimpleFramebuffer target, String name, Framebuffer source, boolean depth) {
+        if (target == null) return new SimpleFramebuffer(name, source.textureWidth, source.textureHeight, depth);
+        if (target.textureWidth != source.textureWidth || target.textureHeight != source.textureHeight) {
+            target.resize(source.textureWidth, source.textureHeight);
+        }
+        return target;
     }
 
     public void clear() {
         current = null;
-        if (copy != null) {
-            copy.delete();
-            copy = null;
+        if (sceneCopy != null) {
+            sceneCopy.delete();
+            sceneCopy = null;
+        }
+        if (targetMask != null) {
+            targetMask.delete();
+            targetMask = null;
         }
     }
 
@@ -130,6 +127,4 @@ public final class FocusTargetRenderer {
         float t = Math.clamp(value, 0f, 1f);
         return t * t * (3f - 2f * t);
     }
-
-    private record Bounds(float left, float right, float bottom, float top, float depth) {}
 }

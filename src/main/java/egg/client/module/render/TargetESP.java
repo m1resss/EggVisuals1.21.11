@@ -816,7 +816,7 @@ public class TargetESP extends Module {
         if (!IRON_DUST.equals(curMode)) ironDustRenderer.clear();
         if (!FOCUS.equals(curMode)) focusRenderer.clear();
         if (FOCUS.equals(curMode)) {
-            focusRenderer.render(this.target, camPos, tickDelta);
+            focusRenderer.render(this.target, matrices, camera, tickDelta);
             return;
         }
         if (WATER.equals(curMode)) {
