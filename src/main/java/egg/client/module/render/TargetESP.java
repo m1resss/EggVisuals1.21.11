@@ -7,7 +7,7 @@ import egg.client.render.shader.MeshDrawUtil;
 import egg.client.render.shader.ParticleBlurRenderer;
 import egg.client.render.shader.Pipelines;
 import egg.client.render.shader.ProjectionUtil;
-import egg.client.render.world.SilkTargetRenderer;
+import egg.client.render.world.WaterTargetRenderer;
 import egg.client.module.ModuleManager;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.BuiltBuffer;
@@ -80,11 +80,16 @@ public class TargetESP extends Module {
     private static final float GROUND_LIFE = 0.8F;
     private static final float FREE_LIFE = 1.1F;
 
-    private static final String SILK = "Шёлк";
+    private static final String WATER = "Прибой";
     private final ModeSetting mode = new ModeSetting("Стиль", "Разряд", "Стиль Target ESP",
-            "Разряд", "Молнии", "Снежинки", "Души", "Ромб", "Кубы", SILK);
-    private final SliderSetting silkOpacity = new SliderSetting("Непрозрачность лент", 44, 15, 65, 1, "Прозрачность шёлка вокруг цели в процентах");
-    private final SilkTargetRenderer silkRenderer = new SilkTargetRenderer();
+            "Разряд", "Молнии", "Снежинки", "Души", "Ромб", "Кубы", WATER) {
+        @Override
+        public void set(String value) {
+            super.set("Шёлк".equals(value) ? WATER : value);
+        }
+    };
+    private final SliderSetting waterOpacity = new SliderSetting("Непрозрачность воды", 58, 20, 85, 1, "Прозрачность водяного кольца в процентах");
+    private final WaterTargetRenderer waterRenderer = new WaterTargetRenderer();
 
     private final SliderSetting rhombusHeight = new SliderSetting("Высота ромба", 0.0, -0.8, 1.5, 0.05, "Смещение ромба по высоте");
     private final SliderSetting rhombusSize = new SliderSetting("Размер ромба", 1.25, 0.3, 2.5, 0.05, "Размер ромба");
@@ -157,10 +162,10 @@ public class TargetESP extends Module {
         rhombusSize.setVisible(() -> "Ромб".equals(mode.get()));
         tailLength.setVisible(() -> "Души".equals(mode.get()));
         coreGlow.setVisible(() -> "Души".equals(mode.get()));
-        radius.setVisible(() -> !"Ромб".equals(mode.get()) && !mode.is(SILK));
-        speed.setVisible(() -> !"Разряд".equals(mode.get()) && !"Ромб".equals(mode.get()) && !mode.is(SILK));
-        silkOpacity.setVisible(() -> mode.is(SILK));
-        hurtColor.setVisible(() -> !mode.is(SILK));
+        radius.setVisible(() -> !"Ромб".equals(mode.get()) && !mode.is(WATER));
+        speed.setVisible(() -> !"Разряд".equals(mode.get()) && !"Ромб".equals(mode.get()) && !mode.is(WATER));
+        waterOpacity.setVisible(() -> mode.is(WATER));
+        hurtColor.setVisible(() -> !mode.is(WATER));
         particleSize.setVisible(() -> "Снежинки".equals(mode.get()) || "Души".equals(mode.get()) || "Кубы".equals(mode.get()));
 
         dischargeColorMode.setVisible(() -> "Разряд".equals(mode.get()));
@@ -169,7 +174,7 @@ public class TargetESP extends Module {
         dischargeColorStatic.setVisible(() -> "Разряд".equals(mode.get()) && "Статичный".equals(dischargeColorMode.get()));
         dischargeSpeed.setVisible(() -> "Разряд".equals(mode.get()));
 
-        addSettings(mode, silkOpacity, rhombusHeight, rhombusSize, radius, speed, particleSize, tailLength, coreGlow,
+        addSettings(mode, waterOpacity, rhombusHeight, rhombusSize, radius, speed, particleSize, tailLength, coreGlow,
                 dischargeColorMode, dischargeColor1, dischargeColor2, dischargeColorStatic, dischargeSpeed,
                 hurtColor, maxDistance, onlyPlayers, retainTime, focusSystem);
     }
@@ -202,7 +207,7 @@ public class TargetESP extends Module {
         this.targetRetainTimer = 0.0f;
         this.newTargetHoverTicks = 0;
         this.dischargeEffect.reset();
-        this.silkRenderer.clear();
+        this.waterRenderer.clear();
         this.animProgress = 0.0f;
         this.snowflakeParticles.clear();
         this.lightningTime = 0.0f;
@@ -348,7 +353,7 @@ public class TargetESP extends Module {
 
         float delta = tickCounter != null ? tickCounter.getTickProgress(true) : 0.0f;
         String curMode = this.mode.get();
-        if (SILK.equals(curMode)) return;
+        if (WATER.equals(curMode)) return;
 
         int themeColor = Theme.getAccent();
         int hurtCol = 0xFFFF2525;
@@ -799,11 +804,11 @@ public class TargetESP extends Module {
     public void renderWorld3D(MatrixStack matrices, Camera camera, float tickDelta, VertexConsumerProvider.Immediate immediate, Vec3d camPos) {
         if (!isEnabled()) return;
         String curMode = this.mode.get();
-        if (SILK.equals(curMode)) {
-            silkRenderer.render(this.target, immediate, camPos, tickDelta, Theme.getAccent(), silkOpacity.getValueFloat() / 100);
+        if (WATER.equals(curMode)) {
+            waterRenderer.render(this.target, camPos, tickDelta, waterOpacity.getValueFloat() / 100);
             return;
         }
-        silkRenderer.clear();
+        waterRenderer.clear();
         LivingEntity curTarget = (this.target != null && this.target.isAlive()) ? this.target : null;
         if (curTarget == null && this.attachedTarget != null && this.attachedTarget.isAlive()) {
             curTarget = this.attachedTarget;
