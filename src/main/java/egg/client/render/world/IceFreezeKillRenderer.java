@@ -51,8 +51,19 @@ import java.util.OptionalInt;
 import java.util.Random;
 
 public final class IceFreezeKillRenderer {
-    private static final float FREEZE_RISE_SEC = 0.44f;
-    private static final float SHATTER_AT_SEC = 0.72f;
+    public enum Style {
+        FROST(0.44f, 0.72f),
+        FRACTURE(0.51f, 0.86f);
+
+        private final float rise;
+        private final float shatter;
+
+        Style(float rise, float shatter) {
+            this.rise = rise;
+            this.shatter = shatter;
+        }
+    }
+
     private static final int MAX_EFFECTS = 6;
     private static final int MAX_SHARDS = 260;
     private static final int MAX_SPARKLES = 160;
@@ -79,6 +90,7 @@ public final class IceFreezeKillRenderer {
     private BufferAllocator meshAllocator;
     private BufferAllocator quadAllocator;
     private EntityRenderState renderingModel;
+    private boolean renderingFracture;
     private ClientWorld lastWorld;
     private long lastFrameNanos;
 
@@ -86,19 +98,27 @@ public final class IceFreezeKillRenderer {
         return state != null && state == renderingModel;
     }
 
+    public boolean isRenderingFracture(EntityRenderState state) {
+        return renderingFracture && isRendering(state);
+    }
+
     public boolean spawn(MinecraftClient client, Vec3d position, double height, double width,
-                         EntityRenderState model, boolean playSound) {
+                         EntityRenderState model, Style style, boolean playSound) {
         if (client == null || client.world == null || client.player == null) return false;
         ClientWorld world = client.world;
+        if (lastWorld != world) {
+            clear();
+            lastWorld = world;
+        }
         Vec3d origin = snapToCloseFloor(client, world, position);
         double h = MathHelper.clamp(height, 0.8, 2.6);
         double w = MathHelper.clamp(width, 0.45, 1.4);
 
-        List<CrystalSpike> spikes = createCluster(w, h);
+        List<CrystalSpike> spikes = createCluster(w, h, style);
         if (effects.size() >= MAX_EFFECTS) {
             effects.removeFirst();
         }
-        FreezeEffect effect = new FreezeEffect(world, origin, (float) h, (float) w, model, spikes, System.nanoTime());
+        FreezeEffect effect = new FreezeEffect(world, origin, (float) h, (float) w, model, spikes, style, System.nanoTime());
         effects.add(effect);
 
         for (int i = 0; i < 12; i++) {
@@ -124,7 +144,7 @@ public final class IceFreezeKillRenderer {
         return position;
     }
 
-    private List<CrystalSpike> createCluster(double entityWidth, double entityHeight) {
+    private List<CrystalSpike> createCluster(double entityWidth, double entityHeight, Style style) {
         List<CrystalSpike> list = new ArrayList<>(9);
         float baseR = (float) (entityWidth * 0.46 + 0.14);
         float yawOffset = random.nextFloat() * MathHelper.TAU;
@@ -142,6 +162,12 @@ public final class IceFreezeKillRenderer {
             float rad = radii[i] * (0.90f + random.nextFloat() * 0.22f);
             float tilt = tilts[i] + (random.nextFloat() - 0.5f) * 0.12f;
             float delay = (i % 4) * 0.028f + random.nextFloat() * 0.02f;
+            if (style == Style.FRACTURE) {
+                h *= i % 3 == 0 ? 1.28f : 0.69f;
+                rad *= i % 3 == 0 ? 0.86f : 1.25f;
+                tilt *= i % 3 == 0 ? 0.67f : 1.28f;
+                delay += i % 3 * 0.037f;
+            }
             float spin = random.nextFloat() * MathHelper.TAU;
             float[] shapeJitter = new float[6];
             for (int v = 0; v < 6; v++) {
@@ -176,7 +202,7 @@ public final class IceFreezeKillRenderer {
                 continue;
             }
             float age = (now - effect.startedNanos) / 1_000_000_000.0f;
-            if (!effect.shattered && age >= SHATTER_AT_SEC) {
+            if (!effect.shattered && age >= effect.style.shatter) {
                 effect.shattered = true;
                 shatter(client, effect, playSound);
                 effectIt.remove();
@@ -219,9 +245,9 @@ public final class IceFreezeKillRenderer {
         sceneCopy = resize(sceneCopy, "Egg ice scene", frame, false);
         targetMask = resize(targetMask, "Egg ice mask", frame, true);
 
-        float freezeLinear = MathHelper.clamp(age / FREEZE_RISE_SEC, 0.0f, 1.0f);
+        float freezeLinear = MathHelper.clamp(age / effect.style.rise, 0.0f, 1.0f);
         float freezeFront = MathHelper.lerp(smooth(freezeLinear), -0.08f, 1.24f);
-        float shatterPulse = MathHelper.clamp((age - FREEZE_RISE_SEC) / (SHATTER_AT_SEC - FREEZE_RISE_SEC), 0.0f, 1.0f);
+        float shatterPulse = MathHelper.clamp((age - effect.style.rise) / (effect.style.shatter - effect.style.rise), 0.0f, 1.0f);
         float pulseGlow = shatterPulse * shatterPulse;
         float opacity = MathHelper.clamp(age / 0.05f, 0.0f, 1.0f);
 
@@ -248,6 +274,7 @@ public final class IceFreezeKillRenderer {
         RenderSystem.outputColorTextureOverride = targetMask.getColorAttachmentView();
         RenderSystem.outputDepthTextureOverride = targetMask.getDepthAttachmentView();
         renderingModel = effect.model;
+        renderingFracture = effect.style == Style.FRACTURE;
         try {
             Vec3d offset = effect.position.subtract(camPos);
             manager.render(effect.model, camState, offset.x, offset.y, offset.z, matrices, dispatcher.getQueue());
@@ -255,6 +282,7 @@ public final class IceFreezeKillRenderer {
             client.getBufferBuilders().getEntityVertexConsumers().draw();
         } finally {
             renderingModel = null;
+            renderingFracture = false;
             RenderSystem.outputColorTextureOverride = prevColor;
             RenderSystem.outputDepthTextureOverride = prevDepth;
             snapshot.restore();
@@ -271,7 +299,8 @@ public final class IceFreezeKillRenderer {
                 invViewProj,
                 (float) rel.x, (float) rel.y, (float) rel.z, effect.height,
                 freezeFront, pulseGlow, age, opacity,
-                ProjectionUtil.isZeroToOneDepth() ? 1.0f : 0.0f
+                ProjectionUtil.isZeroToOneDepth() ? 1.0f : 0.0f,
+                effect.style == Style.FRACTURE ? 1.0f : 0.0f
         ));
 
         if (quadAllocator == null) quadAllocator = new BufferAllocator(256);
@@ -316,7 +345,7 @@ public final class IceFreezeKillRenderer {
                 for (CrystalSpike spike : effect.spikes) {
                     float localT = MathHelper.clamp((age - spike.delay) / 0.28f, 0.0f, 1.0f);
                     if (localT <= 0.005f) continue;
-                    float grow = easeOutBack(localT);
+                    float grow = effect.style == Style.FRACTURE ? 1 - (1 - localT) * (1 - localT) : easeOutBack(localT);
                     emitCrystalSpike(mesh, effect.position, spike, grow, camPos);
                 }
             }
@@ -443,11 +472,12 @@ public final class IceFreezeKillRenderer {
             emitFacetedQuad(mesh, base[3], base[0], tip, tip, alpha, true);
             emitFacetedQuad(mesh, base[3], base[2], base[1], base[0], alpha, false);
         } else {
-            float t = s * 0.17f;
+            boolean plate = shard.shape == 3;
+            float t = s * (plate ? 0.095f : 0.17f);
             float x0 = -0.45f * s, y0 = -0.35f * s;
             float x1 = 0.50f * s, y1 = -0.25f * s;
-            float x2 = 0.20f * s, y2 = 0.58f * s;
-            float x3 = -0.42f * s, y3 = 0.38f * s;
+            float x2 = 0.20f * s, y2 = (plate ? 0.78f : 0.58f) * s;
+            float x3 = (plate ? -0.22f : -0.42f) * s, y3 = 0.38f * s;
             Vector3f f0 = transformShardPoint(x0, y0, t, rot, cx, cy, cz);
             Vector3f f1 = transformShardPoint(x1, y1, t, rot, cx, cy, cz);
             Vector3f f2 = transformShardPoint(x2, y2, t, rot, cx, cy, cz);
@@ -514,7 +544,9 @@ public final class IceFreezeKillRenderer {
         double h = effect.height;
         double w = effect.width;
 
-        for (int i = 0; i < 42; i++) {
+        boolean fractured = effect.style == Style.FRACTURE;
+        int fragments = fractured ? 34 : 42;
+        for (int i = 0; i < fragments; i++) {
             if (shards.size() >= MAX_SHARDS) shards.removeFirst();
             double angle = random.nextDouble() * Math.PI * 2.0;
             double r = random.nextDouble() * w * 0.42;
@@ -530,6 +562,17 @@ public final class IceFreezeKillRenderer {
             int shape = i % 3 == 0 ? 0 : 2;
             float size = 0.14f + random.nextFloat() * 0.18f;
             float life = 0.85f + random.nextFloat() * 0.55f;
+            if (fractured) {
+                boolean plate = i < 16;
+                sy = origin.y + (i % 8 + 0.45 + random.nextDouble() * 0.45) * h / 8.0;
+                vx *= plate ? 0.66 : 1.04;
+                vz *= plate ? 0.66 : 1.04;
+                vy = (plate ? 0.7 : 1.3) + random.nextDouble() * (plate ? 1.7 : 2.2);
+                shape = plate ? (i % 3 == 0 ? 0 : 3) : i % 2 + 1;
+                size = plate ? 0.23f + random.nextFloat() * 0.22f : 0.05f + random.nextFloat() * 0.13f;
+                size *= MathHelper.clamp(effect.height / 1.8f, 0.65f, 1.4f);
+                life = 0.68f + random.nextFloat() * 0.48f;
+            }
             shards.add(new IceShard(sx, sy, sz, vx, vy, vz,
                     random.nextFloat() * 360.0f, random.nextFloat() * 360.0f, random.nextFloat() * 360.0f,
                     (random.nextFloat() - 0.5f) * 520.0f, (random.nextFloat() - 0.5f) * 520.0f, (random.nextFloat() - 0.5f) * 520.0f,
@@ -544,7 +587,7 @@ public final class IceFreezeKillRenderer {
                 double sz = origin.z + spike.offsetZ + MathHelper.sin(spike.angle) * (0.12 * (k + 1));
                 double speed = 2.4 + random.nextDouble() * 2.6;
                 double vx = MathHelper.cos(spike.angle) * speed + (random.nextDouble() - 0.5) * 1.1;
-                double vy = 1.6 + random.nextDouble() * 2.6;
+                double vy = fractured ? 0.7 + random.nextDouble() * 1.7 : 1.6 + random.nextDouble() * 2.6;
                 double vz = MathHelper.sin(spike.angle) * speed + (random.nextDouble() - 0.5) * 1.1;
                 shards.add(new IceShard(sx, sy, sz, vx, vy, vz,
                         random.nextFloat() * 360.0f, random.nextFloat() * 360.0f, random.nextFloat() * 360.0f,
@@ -564,10 +607,11 @@ public final class IceFreezeKillRenderer {
             double vx = Math.cos(angle) * speed;
             double vy = 0.6 + random.nextDouble() * 2.3;
             double vz = Math.sin(angle) * speed;
-            boolean star = (i % 5) != 0;
+            boolean star = fractured ? i % 3 == 0 : i % 5 != 0;
             sparkles.add(new IceSparkle(sx, sy, sz, vx, vy, vz,
-                    star ? 0.13f + random.nextFloat() * 0.12f : 0.11f + random.nextFloat() * 0.08f,
-                    0.55f + random.nextFloat() * 0.50f, star, random.nextInt(SNOWFLAKES.length), random.nextFloat() * 6.28f));
+                    star ? (fractured ? 0.07f + random.nextFloat() * 0.065f : 0.13f + random.nextFloat() * 0.12f)
+                            : 0.085f + random.nextFloat() * 0.08f,
+                    0.55f + random.nextFloat() * 0.50f, star, random.nextInt(SNOWFLAKES.length), random.nextFloat() * 6.28f, fractured));
         }
 
         if (playSound && client.world != null) {
@@ -590,7 +634,7 @@ public final class IceFreezeKillRenderer {
         double vz = Math.sin(angle) * (0.15 + random.nextDouble() * 0.25);
         sparkles.add(new IceSparkle(sx, sy, sz, vx, vy, vz,
                 0.085f + random.nextFloat() * 0.065f, initial ? 0.55f + random.nextFloat() * 0.25f : 0.42f + random.nextFloat() * 0.25f,
-                false, random.nextInt(SNOWFLAKES.length), random.nextFloat() * 6.28f));
+                false, random.nextInt(SNOWFLAKES.length), random.nextFloat() * 6.28f, false));
     }
 
     private void updateShards(MinecraftClient client, float dt) {
@@ -680,11 +724,15 @@ public final class IceFreezeKillRenderer {
                     float r = sp.size * (0.85f + 0.30f * pulse);
                     float w = r * 0.24f;
                     int coreA = MathHelper.clamp(Math.round(255.0f * alpha), 0, 255);
-                    emitDiamondArm(starBuf, px, py, pz, camRight, camUp, r, w, coreA);
-                    emitDiamondArm(starBuf, px, py, pz, camUp, camRight, r, w, coreA);
+                    if (sp.fractured) {
+                        emitStar(starBuf, px, py, pz, r, coreA);
+                    } else {
+                        emitDiamondArm(starBuf, px, py, pz, camRight, camUp, r, w, coreA);
+                        emitDiamondArm(starBuf, px, py, pz, camUp, camRight, r, w, coreA);
+                    }
 
                     float hr = r * 1.45f;
-                    int haloA = MathHelper.clamp(Math.round(135.0f * alpha), 0, 255);
+                    int haloA = MathHelper.clamp(Math.round((sp.fractured ? 80.0f : 135.0f) * alpha), 0, 255);
                     emitBillboardTex(bloomMesh, px, py, pz, camRight, camUp, hr, 210, 245, 255, haloA);
                     hasBloom = true;
                 }
@@ -722,6 +770,25 @@ public final class IceFreezeKillRenderer {
                 meshAllocator.reset();
             }
         }
+    }
+
+    private void emitStar(VertexConsumer buf, float x, float y, float z, float radius, int alpha) {
+        for (int i = 0; i < 4; i++) {
+            float angle = i * MathHelper.HALF_PI;
+            float dx = MathHelper.cos(angle) * radius;
+            float dy = MathHelper.sin(angle) * radius;
+            float ix = 0.25f * (dx + dy);
+            float iy = 0.25f * (dy - dx);
+            starVertex(buf, x, y, z, 0, 0, alpha);
+            starVertex(buf, x, y, z, ix, iy, alpha);
+            starVertex(buf, x, y, z, dx, dy, alpha);
+            starVertex(buf, x, y, z, iy * -1, ix, alpha);
+        }
+    }
+
+    private void starVertex(VertexConsumer buf, float x, float y, float z, float dx, float dy, int alpha) {
+        buf.vertex(x + camRight.x * dx + camUp.x * dy, y + camRight.y * dx + camUp.y * dy,
+                z + camRight.z * dx + camUp.z * dy).color(231, 251, 255, alpha);
     }
 
     private static void emitDiamondArm(VertexConsumer buf, float px, float py, float pz,
@@ -802,17 +869,19 @@ public final class IceFreezeKillRenderer {
         final float width;
         final EntityRenderState model;
         final List<CrystalSpike> spikes;
+        final Style style;
         final long startedNanos;
         boolean shattered;
 
         FreezeEffect(ClientWorld world, Vec3d position, float height, float width,
-                     EntityRenderState model, List<CrystalSpike> spikes, long startedNanos) {
+                     EntityRenderState model, List<CrystalSpike> spikes, Style style, long startedNanos) {
             this.world = world;
             this.position = position;
             this.height = height;
             this.width = width;
             this.model = model;
             this.spikes = spikes;
+            this.style = style;
             this.startedNanos = startedNanos;
         }
     }
@@ -854,12 +923,13 @@ public final class IceFreezeKillRenderer {
         final float size;
         final float life;
         final boolean isStar;
+        final boolean fractured;
         final int texIndex;
         final float phase;
         float age;
 
         IceSparkle(double x, double y, double z, double vx, double vy, double vz,
-                   float size, float life, boolean isStar, int texIndex, float phase) {
+                   float size, float life, boolean isStar, int texIndex, float phase, boolean fractured) {
             this.x = x;
             this.y = y;
             this.z = z;
@@ -869,6 +939,7 @@ public final class IceFreezeKillRenderer {
             this.size = size;
             this.life = life;
             this.isStar = isStar;
+            this.fractured = fractured;
             this.texIndex = texIndex;
             this.phase = phase;
         }
@@ -876,7 +947,7 @@ public final class IceFreezeKillRenderer {
 
     private record FreezeUniform(Matrix4fc invViewProj, float relX, float relY, float relZ, float height,
                                  float freezeFront, float pulseGlow, float age, float opacity,
-                                 float zeroToOneDepth) implements DynamicUniformStorage.Uploadable {
+                                 float zeroToOneDepth, float fracture) implements DynamicUniformStorage.Uploadable {
         @Override
         public void write(ByteBuffer buffer) {
             for (float v : invViewProj.get(new float[16])) {
@@ -884,7 +955,7 @@ public final class IceFreezeKillRenderer {
             }
             buffer.putFloat(relX).putFloat(relY).putFloat(relZ).putFloat(height);
             buffer.putFloat(freezeFront).putFloat(pulseGlow).putFloat(age).putFloat(opacity);
-            buffer.putFloat(zeroToOneDepth).putFloat(0.0f).putFloat(0.0f).putFloat(0.0f);
+            buffer.putFloat(zeroToOneDepth).putFloat(fracture).putFloat(0.0f).putFloat(0.0f);
         }
     }
 }

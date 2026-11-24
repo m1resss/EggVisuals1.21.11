@@ -68,9 +68,10 @@ public class KillEffect extends Module {
     private static final String ASCENSION = "Вознесение";
     private static final String GROUND_FORM = "Врос в мир";
     private static final String ICE1 = "Лед1";
+    private static final String ICE2 = "Лед2";
     private static final long ASCENSION_DURATION = 1_650_000_000L;
 
-    private final ModeSetting mode = new ModeSetting("Эффект", "Бабочки", "Тип эффекта при смерти противника", "Бабочки", "Стекло", ASCENSION, GROUND_FORM, ICE1);
+    private final ModeSetting mode = new ModeSetting("Эффект", "Бабочки", "Тип эффекта при смерти противника", "Бабочки", "Стекло", ASCENSION, GROUND_FORM, ICE1, ICE2);
     private final BooleanSetting onlyTarget = new BooleanSetting("Только цель", true, "Создавать эффект только для атакованных вами врагов");
     private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", false, "Создавать эффект только при смерти игроков");
     private final BooleanSetting sound = new BooleanSetting("Звуки", true, "Звуковые эффекты при убийстве");
@@ -123,8 +124,8 @@ public class KillEffect extends Module {
         bounce.setVisible(() -> "Стекло".equals(mode.get()));
         sparkle.setVisible(() -> "Стекло".equals(mode.get()));
 
-        syncColor.setVisible(() -> !mode.is(GROUND_FORM) && !mode.is(ICE1));
-        color.setVisible(() -> !mode.is(GROUND_FORM) && !mode.is(ICE1) && !syncColor.isEnabled());
+        syncColor.setVisible(() -> !mode.is(GROUND_FORM) && !isIceMode());
+        color.setVisible(() -> !mode.is(GROUND_FORM) && !isIceMode() && !syncColor.isEnabled());
 
         addSettings(mode, onlyTarget, onlyPlayers, sound, syncColor, color,
                 butterflyAmount, butterflySize, butterflySpeed, butterflyLifetime, butterflyTrails, butterflyRainbow,
@@ -166,7 +167,7 @@ public class KillEffect extends Module {
         TrackedVictim v = victimsById.computeIfAbsent(target.getId(), id -> new TrackedVictim(target));
         v.lastAttackTime = now;
         v.update(target);
-        if (ASCENSION.equals(mode.get()) || mode.is(ICE1)) v.ascensionModel = captureAscensionModel(target);
+        if (ASCENSION.equals(mode.get()) || isIceMode()) v.ascensionModel = captureAscensionModel(target);
         if (mode.is(GROUND_FORM)) v.groundShape = groundForm.capture(target);
         if (v.name != null && !v.name.isEmpty()) {
             victimsByName.put(v.name.toLowerCase(), v);
@@ -202,9 +203,9 @@ public class KillEffect extends Module {
                 spawnAscension(entity.getX(), entity.getY(), entity.getZ(), model);
             } else if (GROUND_FORM.equals(curMode)) {
                 spawnGroundForm(entity, entity.getEntityPos(), groundForm.capture(entity));
-            } else if (ICE1.equals(curMode)) {
+            } else if (isIceMode()) {
                 EntityRenderState model = captureAscensionModel(entity);
-                spawnIce1(entity, entity.getEntityPos(), entity.getHeight(), entity.getWidth(), model);
+                spawnIce(entity, entity.getEntityPos(), entity.getHeight(), entity.getWidth(), model);
             } else {
                 spawnGlassBurst(entity);
             }
@@ -250,7 +251,7 @@ public class KillEffect extends Module {
                 double distSq = deathPos.squaredDistanceTo(mc.player.getX(), mc.player.getY(), mc.player.getZ());
                 if (distSq <= 256.0) {
                     if (deadEntities.add(id)) {
-                        EntityRenderState model = (ASCENSION.equals(mode.get()) || mode.is(ICE1)) && entity != null
+                        EntityRenderState model = (ASCENSION.equals(mode.get()) || isIceMode()) && entity != null
                                 ? captureAscensionModel(entity) : v != null ? v.ascensionModel : null;
                         GroundFormRenderer.Shape shape = mode.is(GROUND_FORM) && entity != null
                                 ? groundForm.capture(entity) : v != null ? v.groundShape : null;
@@ -298,10 +299,10 @@ public class KillEffect extends Module {
                                 GroundFormRenderer.Shape shape = v.groundShape;
                                 if (shape == null && victim != null) shape = groundForm.capture(victim);
                                 spawnGroundForm(victim, v.lastPos, shape);
-                            } else if (mode.is(ICE1)) {
+                            } else if (isIceMode()) {
                                 EntityRenderState model = v.ascensionModel;
                                 if (model == null && victim != null) model = captureAscensionModel(victim);
-                                spawnIce1(victim, v.lastPos, v.height, v.width, model);
+                                spawnIce(victim, v.lastPos, v.height, v.width, model);
                             } else {
                                 triggerEffectAt(v.lastPos.x, v.lastPos.y, v.lastPos.z, v.height, v.width, v.ascensionModel, null);
                             }
@@ -324,8 +325,8 @@ public class KillEffect extends Module {
             spawnAscension(bx, by, bz, model);
         } else if (GROUND_FORM.equals(curMode)) {
             spawnGroundForm(null, new Vec3d(bx, by, bz), shape);
-        } else if (ICE1.equals(curMode)) {
-            spawnIce1(null, new Vec3d(bx, by, bz), height, width, model);
+        } else if (isIceMode()) {
+            spawnIce(null, new Vec3d(bx, by, bz), height, width, model);
         } else {
             spawnGlassBurstAt(bx, by, bz, height);
         }
@@ -337,14 +338,19 @@ public class KillEffect extends Module {
         }
     }
 
-    private void spawnIce1(Entity entity, Vec3d position, double height, double width, EntityRenderState model) {
-        if (iceFreeze.spawn(mc, position, height, width, model, sound.isEnabled()) && entity != null) {
+    private boolean isIceMode() {
+        return mode.is(ICE1) || mode.is(ICE2);
+    }
+
+    private void spawnIce(Entity entity, Vec3d position, double height, double width, EntityRenderState model) {
+        IceFreezeKillRenderer.Style style = mode.is(ICE2) ? IceFreezeKillRenderer.Style.FRACTURE : IceFreezeKillRenderer.Style.FROST;
+        if (iceFreeze.spawn(mc, position, height, width, model, style, sound.isEnabled()) && entity != null) {
             hiddenOriginals.put(entity, System.nanoTime());
         }
     }
 
     public boolean shouldHideOriginal(Entity entity) {
-        if (!isEnabled() || (!mode.is(ASCENSION) && !mode.is(GROUND_FORM) && !mode.is(ICE1))) return false;
+        if (!isEnabled() || (!mode.is(ASCENSION) && !mode.is(GROUND_FORM) && !isIceMode())) return false;
         if (!(entity instanceof LivingEntity living) || !living.isDead()) return false;
         if (!hiddenOriginals.containsKey(entity)) {
             onEntityDeath(entity);
@@ -398,6 +404,10 @@ public class KillEffect extends Module {
 
     public static boolean isRenderingAscension(EntityRenderState state) {
         return instance != null && instance.renderingAscension == state;
+    }
+
+    public static boolean isRenderingIceFracture(EntityRenderState state) {
+        return instance != null && instance.iceFreeze.isRenderingFracture(state);
     }
 
     public static boolean isRenderingUpright(EntityRenderState state) {
@@ -606,7 +616,7 @@ public class KillEffect extends Module {
                         double distSq = currentPos.squaredDistanceTo(v.lastPos);
                         long timeSinceAttack = nowMs - v.lastAttackTime;
                         double distToPlayerSq = v.lastPos.squaredDistanceTo(mc.player.getX(), mc.player.getY(), mc.player.getZ());
-                        if (!mode.is(GROUND_FORM) && !mode.is(ICE1) && distSq > 400.0 && timeSinceAttack <= 3500L && distToPlayerSq <= 144.0) {
+                        if (!mode.is(GROUND_FORM) && !isIceMode() && distSq > 400.0 && timeSinceAttack <= 3500L && distToPlayerSq <= 144.0) {
                             if (deadEntities.add(id)) {
                                 triggerEffectAt(v.lastPos.x, v.lastPos.y, v.lastPos.z, v.height, v.width, v.ascensionModel, null);
                                 recentAttacks.remove(id);

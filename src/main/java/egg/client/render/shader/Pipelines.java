@@ -221,6 +221,15 @@ public final class Pipelines {
             .build()
     );
 
+    public static final RenderPipeline ICE_FRACTURE_MODEL = register(
+        RenderPipeline.builder(RenderPipelines.ENTITY_SNIPPET)
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/ice_fracture_model"))
+            .withShaderDefine("ALPHA_CUTOUT", 0.1f)
+            .withShaderDefine("NO_OVERLAY")
+            .withCull(false)
+            .build()
+    );
+
     public static final RenderPipeline ICE_FREEZE = register(
         RenderPipeline.builder()
             .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/ice_freeze"))
