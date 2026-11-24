@@ -30,7 +30,7 @@ public final class LyricsFetcher {
     private static final Pattern SPLIT_FEAT = Pattern.compile("(?iu)\\s*(?:[,;/&×+]|\\bfeat\\.?\\b|\\bft\\.?\\b|\\bvs\\.?\\b|\\bwith\\b|\\bx\\b|\\bи\\b)\\s*");
 
     private final Map<String, List<LyricLine>> cache = new ConcurrentHashMap<>();
-    private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
+    private final Map<String, CompletableFuture<List<LyricLine>>> inFlight = new ConcurrentHashMap<>();
     private final ExecutorService executor = Executors.newFixedThreadPool(2, r -> {
         Thread t = new Thread(r, "Egg-LyricsFetcher");
         t.setDaemon(true);
@@ -68,11 +68,10 @@ public final class LyricsFetcher {
             return CompletableFuture.completedFuture(cached);
         }
 
-        if (!inFlight.add(key)) {
-            return CompletableFuture.completedFuture(Collections.emptyList());
-        }
-
         CompletableFuture<List<LyricLine>> future = new CompletableFuture<>();
+        CompletableFuture<List<LyricLine>> existing = inFlight.putIfAbsent(key, future);
+        if (existing != null) return existing;
+
         executor.submit(() -> {
             try {
                 safeSendClientMessage("§7[Lyrics] Поиск текста: §f" + (finalArtist.isEmpty() ? "" : finalArtist + " - ") + finalTitle + "...");
@@ -89,7 +88,7 @@ public final class LyricsFetcher {
             } catch (Throwable t) {
                 future.complete(Collections.emptyList());
             } finally {
-                inFlight.remove(key);
+                inFlight.remove(key, future);
             }
         });
         return future;
