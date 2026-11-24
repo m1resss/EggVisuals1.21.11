@@ -1,18 +1,24 @@
 package egg.client.module.render;
 
+import com.mojang.blaze3d.vertex.VertexFormat.DrawMode;
 import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ColorSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
+import egg.client.render.shader.MeshDrawUtil;
+import egg.client.render.shader.Pipelines;
+import egg.client.render.world.TrajectoryLines;
 import egg.client.ui.theme.Theme;
-import egg.client.util.ColorUtil;
 import egg.client.util.EntityUtil;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.RenderLayers;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.render.VertexFormats;
+import net.minecraft.client.util.BufferAllocator;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.ItemEnchantmentsComponent;
 import net.minecraft.entity.Entity;
@@ -33,6 +39,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.item.TridentItem;
 import net.minecraft.registry.tag.FluidTags;
+import net.minecraft.util.Arm;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
@@ -51,7 +58,13 @@ public class Trajectories extends Module {
     private final ModeSetting colorMode = new ModeSetting("Режим цвета", "Кастом", "Выбор источника цвета", "Кастом", "Акцент", "Радуга");
     private final ColorSetting customColor = new ColorSetting("Цвет", 0xFFFF6B81, "Цвет траектории и круга");
     private final SliderSetting circleRadius = new SliderSetting("Радиус круга", 0.45, 0.20, 1.20, 0.05, "Радиус светящегося круга приземления");
-    private final SliderSetting lineWidth = new SliderSetting("Толщина линии", 0.022, 0.010, 0.060, 0.002, "Толщина луча траектории полета");
+    private final SliderSetting lineWidth = new SliderSetting("Толщина линии", 1.55, 0.75, 2.50, 0.05, "Толщина линии в пикселях при 1080p") {
+        @Override
+        public void set(double value) {
+            super.set(value > 0.0 && value <= 0.060
+                    ? MathHelper.clampedMap(value, 0.010, 0.060, 1.10, 2.20) : value);
+        }
+    };
     private final BooleanSetting showLine = new BooleanSetting("Линия полета", true, "Отображать траекторию полета снаряда");
     private final BooleanSetting verticalRay = new BooleanSetting("Вертикальный луч", true, "Световой луч вверх от точки приземления");
     private final SliderSetting rayHeight = new SliderSetting("Высота луча", 1.0, 0.3, 3.0, 0.1, "Высота вертикального светового луча");
@@ -62,6 +75,7 @@ public class Trajectories extends Module {
     private final BooleanSetting projectileTrails = new BooleanSetting("Трейлы в полете", true, "Траектории и шлейфы для летящих снарядов");
 
     private final Map<Integer, ProjectileTrail> projectileTrailsMap = new HashMap<>();
+    private BufferAllocator lineAllocator;
 
     public Trajectories() {
         super("Trajectories", "Показывает линию полета стрел, зелий и жемчуга края", Category.ESP);
@@ -75,6 +89,10 @@ public class Trajectories extends Module {
     public void onDisable() {
         super.onDisable();
         projectileTrailsMap.clear();
+        if (lineAllocator != null) {
+            lineAllocator.close();
+            lineAllocator = null;
+        }
     }
 
     public void render(VertexConsumerProvider consumers, Vec3d camPos) {
@@ -88,10 +106,23 @@ public class Trajectories extends Module {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null || mc.world == null) return;
 
+        if (lineAllocator == null) lineAllocator = new BufferAllocator(48 * 1024);
+        try {
+            BufferBuilder mesh = new BufferBuilder(lineAllocator, DrawMode.LINES, VertexFormats.POSITION_COLOR_NORMAL_LINE_WIDTH);
+            Vector3f forward = new Vector3f(0, 0, -1).rotate(mc.gameRenderer.getCamera().getRotation());
+            float pixelScale = MathHelper.clamp(mc.getFramebuffer().textureHeight / 1080.0f, 0.78f, 1.75f);
+            var lines = new TrajectoryLines(mesh, camPos, new Vec3d(forward.x, forward.y, forward.z),
+                    lineWidth.getValueFloat(), pixelScale, glowEffect.isEnabled());
+            renderEffects(mc, consumers, camPos, tickDelta, lines);
+            var built = mesh.endNullable();
+            if (built != null) MeshDrawUtil.drawLabeled(Pipelines.TRAJECTORY_LINE, built, "Egg trajectory line");
+        } finally {
+            lineAllocator.reset();
+        }
+    }
+
+    private void renderEffects(MinecraftClient mc, VertexConsumerProvider consumers, Vec3d camPos, float tickDelta, TrajectoryLines lines) {
         int col = resolveColor();
-        int r = (col >> 16) & 0xFF;
-        int g = (col >> 8) & 0xFF;
-        int b = col & 0xFF;
 
         VertexConsumer quadBuffer = consumers.getBuffer(RenderLayers.debugQuads());
         VertexConsumer glowBuffer = glowEffect.isEnabled() ? consumers.getBuffer(RenderLayers.lightning()) : null;
@@ -116,7 +147,7 @@ public class Trajectories extends Module {
                 trail.color = col;
                 trail.addPoint(currentPos, nowMs);
 
-                renderInFlightPrediction(mc, proj, quadBuffer, glowBuffer, camPos, col, tickDelta);
+                renderInFlightPrediction(mc, proj, quadBuffer, glowBuffer, camPos, col, tickDelta, lines);
             }
 
             Iterator<Map.Entry<Integer, ProjectileTrail>> it = projectileTrailsMap.entrySet().iterator();
@@ -139,9 +170,9 @@ public class Trajectories extends Module {
         ItemStack main = mc.player.getMainHandStack();
         ItemStack off = mc.player.getOffHandStack();
         if (isThrowableOrWeapon(main.getItem())) {
-            renderItemPrediction(mc, main, Hand.MAIN_HAND, quadBuffer, glowBuffer, camPos, r, g, b, tickDelta);
+            renderItemPrediction(mc, main, Hand.MAIN_HAND, quadBuffer, glowBuffer, camPos, col, tickDelta, lines);
         } else if (isThrowableOrWeapon(off.getItem())) {
-            renderItemPrediction(mc, off, Hand.OFF_HAND, quadBuffer, glowBuffer, camPos, r, g, b, tickDelta);
+            renderItemPrediction(mc, off, Hand.OFF_HAND, quadBuffer, glowBuffer, camPos, col, tickDelta, lines);
         }
     }
 
@@ -165,7 +196,7 @@ public class Trajectories extends Module {
 
     private void renderItemPrediction(MinecraftClient mc, ItemStack stack, Hand hand,
                                       VertexConsumer quadBuffer, VertexConsumer glowBuffer, Vec3d camPos,
-                                      int r, int g, int b, float tickDelta) {
+                                      int color, float tickDelta, TrajectoryLines lines) {
         if (stack == null || stack.isEmpty()) return;
         Item item = stack.getItem();
 
@@ -233,35 +264,23 @@ public class Trajectories extends Module {
             eyePos = new Vec3d(px, py, pz);
         }
 
-        Vec3d lookVec = mc.player.getRotationVec(tickDelta);
-        Vec3d forward = lookVec.normalize();
-        Vec3d right = forward.crossProduct(new Vec3d(0, 1, 0));
-        if (right.lengthSquared() < 1e-6) {
-            right = new Vec3d(1, 0, 0);
-        } else {
-            right = right.normalize();
+        Vec3d offset = Vec3d.ZERO;
+        if (handOffset.isEnabled() && mc.options.getPerspective().isFirstPerson()) {
+            Arm arm = hand == Hand.MAIN_HAND ? mc.player.getMainArm() : mc.player.getMainArm().getOpposite();
+            float side = arm == Arm.RIGHT ? 1.0f : -1.0f;
+            Vector3f local = new Vector3f(side * 0.25f, -0.19f, -0.34f).rotate(mc.gameRenderer.getCamera().getRotation());
+            offset = new Vec3d(local.x, local.y, local.z);
         }
-        Vec3d up = right.crossProduct(forward).normalize();
 
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
         for (int i = 0; i < yawSpreads.length; i++) {
             float yawSpread = yawSpreads[i];
-
-            Vec3d startPos;
-            if (handOffset.isEnabled() && mc.options.getPerspective().isFirstPerson()) {
-                double sideOffset = (hand == Hand.MAIN_HAND) ? 0.20 : -0.20;
-                startPos = eyePos.add(right.multiply(sideOffset)).add(up.multiply(-0.14)).add(forward.multiply(0.26));
-            } else {
-                startPos = eyePos;
-            }
-
             TrajectoryResult res = simulateTrajectory(mc, eyePos, speed, isThrowable, pitchOffset, gravity, yawSpread, tickDelta);
             if (res.path.size() >= 2) {
-                if (handOffset.isEnabled() && mc.options.getPerspective().isFirstPerson()) {
-                    res.path.set(0, startPos);
-                }
-
                 if (showLine.isEnabled()) {
-                    renderTrajectoryLine(quadBuffer, glowBuffer, res.path, camPos, r, g, b, forward, right);
+                    lines.path(res.path, offset, color);
                 }
 
                 if (res.hitEntity instanceof LivingEntity target && target.isAlive() && target != mc.player) {
@@ -271,7 +290,7 @@ public class Trajectories extends Module {
                             true, r, g, b, 240,
                             1.2f);
                 } else {
-                    renderLandingCircle(quadBuffer, glowBuffer, res.impactPoint, camPos, res.impactSide, r, g, b);
+                    renderLandingCircle(quadBuffer, glowBuffer, res.impactPoint, camPos, res.impactSide, r, g, b, lines);
                 }
             }
         }
@@ -279,23 +298,18 @@ public class Trajectories extends Module {
 
     private void renderInFlightPrediction(MinecraftClient mc, Entity entity,
                                           VertexConsumer quadBuffer, VertexConsumer glowBuffer, Vec3d camPos,
-                                          int color, float tickDelta) {
+                                          int color, float tickDelta, TrajectoryLines lines) {
         TrajectoryResult res = simulateInFlight(mc, entity, tickDelta);
         if (res.path.size() >= 2) {
             int pr = (color >> 16) & 0xFF;
             int pg = (color >> 8) & 0xFF;
             int pb = color & 0xFF;
 
-            Vec3d forward = entity.getVelocity().normalize();
-            Vec3d right = forward.crossProduct(new Vec3d(0, 1, 0));
-            if (right.lengthSquared() < 1e-6) right = new Vec3d(1, 0, 0);
-            else right = right.normalize();
-
             if (showLine.isEnabled()) {
-                renderTrajectoryLine(quadBuffer, glowBuffer, res.path, camPos, pr, pg, pb, forward, right);
+                lines.path(res.path, Vec3d.ZERO, color);
             }
 
-            renderLandingCircle(quadBuffer, glowBuffer, res.impactPoint, camPos, res.impactSide, pr, pg, pb);
+            renderLandingCircle(quadBuffer, glowBuffer, res.impactPoint, camPos, res.impactSide, pr, pg, pb, lines);
         }
     }
 
@@ -446,7 +460,8 @@ public class Trajectories extends Module {
         return closest;
     }
 
-    private void renderLandingCircle(VertexConsumer quadBuf, VertexConsumer glowBuf, Vec3d center, Vec3d camPos, Direction side, int cr, int cg, int cb) {
+    private void renderLandingCircle(VertexConsumer quadBuf, VertexConsumer glowBuf, Vec3d center, Vec3d camPos,
+                                     Direction side, int cr, int cg, int cb, TrajectoryLines lines) {
         if (side == null) side = Direction.UP;
 
         Vec3d normOffset = new Vec3d(side.getOffsetX() * 0.012, side.getOffsetY() * 0.012, side.getOffsetZ() * 0.012);
@@ -566,152 +581,9 @@ public class Trajectories extends Module {
         }
 
         if (verticalRay.isEnabled()) {
-            float rayH = (float) rayHeight.get();
-            Vector3f rayTop = new Vector3f(cx, cy, cz).add(new Vector3f(normal).mul(rayH));
-
-            Vector3f toCam = new Vector3f(-cx, -cy, -cz);
-            if (toCam.lengthSquared() < 1e-6f) toCam = new Vector3f(0, 0, 1);
-            else toCam.normalize();
-
-            Vector3f raySide = new Vector3f(normal).cross(toCam);
-            if (raySide.lengthSquared() < 1e-6f) raySide = new Vector3f(1, 0, 0);
-            else raySide.normalize();
-
-            float coreW = 0.016f;
-            Vector3f sC = new Vector3f(raySide).mul(coreW);
-            quadBuf.vertex(cx - sC.x, cy - sC.y, cz - sC.z).color(dotWr, dotWg, dotWb, 240);
-            quadBuf.vertex(cx + sC.x, cy + sC.y, cz + sC.z).color(dotWr, dotWg, dotWb, 240);
-            quadBuf.vertex(rayTop.x + sC.x, rayTop.y + sC.y, rayTop.z + sC.z).color(cr, cg, cb, 20);
-            quadBuf.vertex(rayTop.x - sC.x, rayTop.y - sC.y, rayTop.z - sC.z).color(cr, cg, cb, 20);
-
-            quadBuf.vertex(rayTop.x - sC.x, rayTop.y - sC.y, rayTop.z - sC.z).color(cr, cg, cb, 20);
-            quadBuf.vertex(rayTop.x + sC.x, rayTop.y + sC.y, rayTop.z + sC.z).color(cr, cg, cb, 20);
-            quadBuf.vertex(cx + sC.x, cy + sC.y, cz + sC.z).color(dotWr, dotWg, dotWb, 240);
-            quadBuf.vertex(cx - sC.x, cy - sC.y, cz - sC.z).color(dotWr, dotWg, dotWb, 240);
-
-            if (glowBuf != null) {
-                float glowW = 0.052f;
-                Vector3f sG = new Vector3f(raySide).mul(glowW);
-                glowBuf.vertex(cx - sG.x, cy - sG.y, cz - sG.z).color(cr, cg, cb, 140);
-                glowBuf.vertex(cx + sG.x, cy + sG.y, cz + sG.z).color(cr, cg, cb, 140);
-                glowBuf.vertex(rayTop.x + sG.x, rayTop.y + sG.y, rayTop.z + sG.z).color(cr, cg, cb, 0);
-                glowBuf.vertex(rayTop.x - sG.x, rayTop.y - sG.y, rayTop.z - sG.z).color(cr, cg, cb, 0);
-
-                glowBuf.vertex(rayTop.x - sG.x, rayTop.y - sG.y, rayTop.z - sG.z).color(cr, cg, cb, 0);
-                glowBuf.vertex(rayTop.x + sG.x, rayTop.y + sG.y, rayTop.z + sG.z).color(cr, cg, cb, 0);
-                glowBuf.vertex(cx + sG.x, cy + sG.y, cz + sG.z).color(cr, cg, cb, 140);
-                glowBuf.vertex(cx - sG.x, cy - sG.y, cz - sG.z).color(cr, cg, cb, 140);
-            }
-        }
-    }
-
-    private void renderTrajectoryLine(VertexConsumer quadBuf, VertexConsumer glowBuf, List<Vec3d> path, Vec3d camPos,
-                                      int r, int g, int b, Vec3d camForward, Vec3d camRight) {
-        int count = path.size();
-        if (count < 2) return;
-
-        float coreW = (float) lineWidth.get();
-        float glowW = coreW * 2.85f;
-
-        long now = System.currentTimeMillis();
-        float wave = ((now % 1000L) / 1000.0f);
-
-        Vector3f[] leftCore = new Vector3f[count];
-        Vector3f[] rightCore = new Vector3f[count];
-        Vector3f[] leftGlow = glowBuf != null ? new Vector3f[count] : null;
-        Vector3f[] rightGlow = glowBuf != null ? new Vector3f[count] : null;
-
-        Vec3d prevSide = null;
-
-        for (int i = 0; i < count; i++) {
-            Vec3d p = path.get(i);
-
-            Vec3d tangent;
-            if (i == 0) {
-                tangent = path.get(1).subtract(p);
-            } else if (i == count - 1) {
-                tangent = p.subtract(path.get(count - 2));
-            } else {
-                tangent = path.get(i + 1).subtract(path.get(i - 1));
-            }
-
-            if (tangent.lengthSquared() < 1e-7) {
-                tangent = camForward;
-            } else {
-                tangent = tangent.normalize();
-            }
-
-            Vec3d toCam = camPos.subtract(p);
-            Vec3d camDir;
-            if (toCam.lengthSquared() < 0.25) {
-                camDir = camForward.multiply(-1.0);
-            } else {
-                camDir = toCam.normalize();
-            }
-
-            Vec3d side = tangent.crossProduct(camDir);
-            if (side.lengthSquared() < 1e-5) {
-                side = camRight;
-            } else {
-                side = side.normalize();
-            }
-
-            if (prevSide != null && side.dotProduct(prevSide) < 0.0) {
-                side = side.multiply(-1.0);
-            }
-            prevSide = side;
-
-            float px = (float) (p.x - camPos.x);
-            float py = (float) (p.y - camPos.y);
-            float pz = (float) (p.z - camPos.z);
-
-            float scx = (float) (side.x * coreW);
-            float scy = (float) (side.y * coreW);
-            float scz = (float) (side.z * coreW);
-
-            leftCore[i] = new Vector3f(px - scx, py - scy, pz - scz);
-            rightCore[i] = new Vector3f(px + scx, py + scy, pz + scz);
-
-            if (glowBuf != null) {
-                float sgx = (float) (side.x * glowW);
-                float sgy = (float) (side.y * glowW);
-                float sgz = (float) (side.z * glowW);
-                leftGlow[i] = new Vector3f(px - sgx, py - sgy, pz - sgz);
-                rightGlow[i] = new Vector3f(px + sgx, py + sgy, pz + sgz);
-            }
-        }
-
-        for (int i = 0; i < count - 1; i++) {
-            float prog0 = (float) i / (float) count;
-            float prog1 = (float) (i + 1) / (float) count;
-
-            int a0 = (int) MathHelper.lerp(prog0, 180.0f, 255.0f);
-            int a1 = (int) MathHelper.lerp(prog1, 180.0f, 255.0f);
-
-            float waveDist = Math.abs(prog0 - wave);
-            if (waveDist > 0.5f) waveDist = 1.0f - waveDist;
-            float pulse = Math.max(0.0f, 1.0f - waveDist / 0.16f);
-
-            int cr0 = Math.min(255, (int) (r + pulse * 45));
-            int cg0 = Math.min(255, (int) (g + pulse * 45));
-            int cb0 = Math.min(255, (int) (b + pulse * 45));
-
-            Vector3f l0 = leftCore[i];
-            Vector3f r0 = rightCore[i];
-            Vector3f l1 = leftCore[i + 1];
-            Vector3f r1 = rightCore[i + 1];
-
-            drawRibbonQuad(quadBuf, l0.x, l0.y, l0.z, l1.x, l1.y, l1.z, r1.x, r1.y, r1.z, r0.x, r0.y, r0.z, cr0, cg0, cb0, a0, a1);
-
-            if (glowBuf != null) {
-                Vector3f gl0 = leftGlow[i];
-                Vector3f gr0 = rightGlow[i];
-                Vector3f gl1 = leftGlow[i + 1];
-                Vector3f gr1 = rightGlow[i + 1];
-                int ga0 = (int) (110 * (0.8f + pulse * 0.4f));
-                int ga1 = (int) (110 * (0.8f + pulse * 0.4f));
-                drawRibbonQuad(glowBuf, gl0.x, gl0.y, gl0.z, gl1.x, gl1.y, gl1.z, gr1.x, gr1.y, gr1.z, gr0.x, gr0.y, gr0.z, cr0, cg0, cb0, ga0, ga1);
-            }
+            Vec3d tip = drawPos.add(side.getOffsetX() * rayHeight.get(), side.getOffsetY() * rayHeight.get(),
+                    side.getOffsetZ() * rayHeight.get());
+            lines.impactRay(drawPos, tip, (cr << 16) | (cg << 8) | cb);
         }
     }
 

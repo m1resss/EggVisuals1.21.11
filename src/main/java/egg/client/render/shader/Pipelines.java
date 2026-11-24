@@ -42,6 +42,18 @@ public final class Pipelines {
             .build()
     );
 
+    public static final RenderPipeline TRAJECTORY_LINE = register(
+        RenderPipeline.builder(RenderPipelines.RENDERTYPE_LINES_SNIPPET)
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/trajectory_line"))
+            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/world/line"))
+            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/world/line"))
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withDepthTestFunction(DepthTestFunction.LEQUAL_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .build()
+    );
+
     public static final RenderPipeline JUMP_CAUSTIC = register(
         RenderPipeline.builder()
             .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/jump_caustic"))
