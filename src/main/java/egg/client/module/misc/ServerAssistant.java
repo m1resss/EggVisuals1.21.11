@@ -43,7 +43,10 @@ public class ServerAssistant extends Module {
     private final BooleanSetting auctionAssist = new BooleanSetting("Аукционный ассистент", true, "Подсветка самого дешевого товара в аукционе");
     private final BooleanSetting slotPrices = new BooleanSetting("Цены на слотах", true, "Отображение цены прямо над слотами в аукционе");
     private final BooleanSetting unitPriceTooltip = new BooleanSetting("Цена за штуку", true, "Отображение цены за одну штуку в описании товара");
+    private final BooleanSetting compareItems = new BooleanSetting("Сравнение предметов", false,
+            "Alt показывает отличия. Alt + средняя кнопка закрепляет предмет, а над пустым слотом сбрасывает выбор");
     private final BooleanSetting storageTotal = new BooleanSetting("Сумма хранилища", true, "Отображение общей стоимости в заголовке хранилища");
+    private final ItemComparison itemComparison = new ItemComparison();
 
     private int prevSlot = -1;
     private BindSetting activeHoldBind = null;
@@ -99,6 +102,7 @@ public class ServerAssistant extends Module {
                 auctionAssist,
                 slotPrices,
                 unitPriceTooltip,
+                compareItems,
                 storageTotal,
                 bindTrap,
                 bindSnowball,
@@ -125,6 +129,7 @@ public class ServerAssistant extends Module {
         super.onDisable();
         prevSlot = -1;
         activeHoldBind = null;
+        itemComparison.clear();
     }
 
     public void triggerItem(String name, Item item, BindSetting bind) {
@@ -361,7 +366,26 @@ public class ServerAssistant extends Module {
         return result;
     }
 
+    public boolean pinComparisonItem(HandledScreen<?> screen) {
+        if (!isEnabled() || !compareItems.get() || !ItemComparison.isAltHeld()) return false;
+        Slot slot = ((HandledScreenAccessor) screen).getFocusedSlot();
+        if (slot == null) return false;
+        itemComparison.pin(MinecraftClient.getInstance(), slot.getStack());
+        return true;
+    }
+
     public void modifyTooltip(ItemStack stack, List<Text> lines) {
+        addUnitPrice(stack, lines);
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (!isEnabled() || !compareItems.get() || !ItemComparison.isAltHeld()
+                || !(client.currentScreen instanceof HandledScreen<?> screen)) return;
+        Slot focused = ((HandledScreenAccessor) screen).getFocusedSlot();
+        if (focused != null && focused.getStack() == stack) {
+            itemComparison.append(client, stack, lines);
+        }
+    }
+
+    private void addUnitPrice(ItemStack stack, List<Text> lines) {
         if (!isEnabled() || !unitPriceTooltip.get()) return;
         if (stack == null || stack.isEmpty() || stack.getCount() <= 1) return;
         long unit = getAuctionItemPrice(stack);

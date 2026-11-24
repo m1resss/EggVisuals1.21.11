@@ -4,6 +4,7 @@ import egg.client.module.ModuleManager;
 import egg.client.module.misc.ServerAssistant;
 import egg.client.module.player.ItemScroller;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.screen.slot.Slot;
 import net.minecraft.screen.slot.SlotActionType;
@@ -25,6 +26,14 @@ public abstract class HandledScreenMixin {
 
     @Unique
     private Slot egg$lastScrolledSlot = null;
+
+    @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
+    private void egg$pinComparisonItem(Click click, boolean doubleClick, CallbackInfoReturnable<Boolean> cir) {
+        ServerAssistant assistant = ServerAssistant.getInstance();
+        if (click.button() == 2 && assistant != null && assistant.pinComparisonItem((HandledScreen<?>) (Object) this)) {
+            cir.setReturnValue(true);
+        }
+    }
 
     @Inject(method = "render", at = @At("TAIL"))
     private void egg$renderAuctionOverlay(DrawContext context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
