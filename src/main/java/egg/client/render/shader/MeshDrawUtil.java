@@ -44,6 +44,11 @@ public final class MeshDrawUtil {
         drawInternal(renderPipeline, builtBuffer, null, gpuTextureView, gpuSampler);
     }
 
+    public static void drawWithTextureAndUniform(RenderPipeline pipeline, BuiltBuffer mesh, String label, GpuTextureView texture,
+                                                 GpuSampler sampler, String uniformName, GpuBufferSlice uniform) {
+        drawFull(pipeline, mesh, label, texture, sampler, uniformName, uniform);
+    }
+
     public static void drawLabeled(RenderPipeline renderPipeline, BuiltBuffer builtBuffer, String string) {
         drawInternal(renderPipeline, builtBuffer, string, null, null);
     }

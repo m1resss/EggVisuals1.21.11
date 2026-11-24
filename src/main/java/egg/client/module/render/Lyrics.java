@@ -6,22 +6,19 @@ import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
-import egg.client.render.hud.LyricCaption;
+import egg.client.render.world.WorldLyricsRenderer;
 import egg.client.ui.theme.Theme;
-import egg.client.util.ColorUtil;
 import egg.client.util.LyricLine;
 import egg.client.util.LyricsFetcher;
 import egg.client.util.MediaTracker;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.render.RenderTickCounter;
+import net.minecraft.client.render.Camera;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 public class Lyrics extends Module {
-    private static final String WORLD = "В мире";
     private static final long DEMO_LENGTH_MS = 24_000L;
     private static final List<LyricLine> DEMO = List.of(
             new LyricLine(0L, "whats wrong im sick"),
@@ -33,15 +30,14 @@ public class Lyrics extends Module {
             new LyricLine(19000L, "whats wrong im sick")
     );
 
-    private final ModeSetting placement = new ModeSetting("Расположение", "Над хотбаром", "Положение субтитров", "Над хотбаром", WORLD);
-    private final SliderSetting size = new SliderSetting("Масштаб", 1.0, 0.4, 2.5, 0.1, "Размер субтитров");
-    private final SliderSetting opacity = new SliderSetting("Непрозрачность фона", 78, 0, 100, 1, "Непрозрачность подложки в процентах");
-    private final SliderSetting distance = new SliderSetting("Дистанция", 4.0, 2.0, 12.0, 0.5, "Расстояние до новой строки в блоках");
+    private final SliderSetting words = new SliderSetting("Слов во фразе", 2.0, 1.0, 4.0, 1.0, "Длина фраз в мире");
+    private final SliderSetting size = new SliderSetting("Масштаб", 1.0, 0.4, 2.5, 0.1, "Размер текста в мире");
+    private final SliderSetting distance = new SliderSetting("Дистанция", 4.0, 2.0, 12.0, 0.5, "Дальность появления фраз в блоках");
     private final SliderSetting lifetime = new SliderSetting("Время жизни", 6.0, 2.0, 14.0, 0.5, "Сколько секунд держать строку во время паузы в тексте");
-    private final ModeSetting colorStyle = new ModeSetting("Цвет текста", "Белый", "Цвет субтитров", "Белый", "Лавандовый", "Коралловый", "Тема");
-    private final BooleanSetting showProgress = new BooleanSetting("Прогресс строки", true, "Полоска времени показа строки");
+    private final ModeSetting colorStyle = new ModeSetting("Цвет текста", "Лавандовый", "Оттенок букв и свечения", "Белый", "Лавандовый", "Коралловый", "Тема");
+    private final SliderSetting glow = new SliderSetting("Свечение", 75.0, 0.0, 100.0, 1.0, "Яркость свечения букв в процентах");
     private final BooleanSetting demoMode = new BooleanSetting("Демо режим", false, "Показать тестовые строки");
-    private final LyricCaption caption = new LyricCaption();
+    private final WorldLyricsRenderer renderer = new WorldLyricsRenderer();
 
     private List<LyricLine> activeLyrics = List.of();
     private String trackKey = "";
@@ -52,9 +48,8 @@ public class Lyrics extends Module {
     private long playbackOffset;
 
     public Lyrics() {
-        super("Lyrics", "Показывает синхронизированный текст песни", Category.ESP);
-        distance.setVisible(() -> placement.is(WORLD));
-        addSettings(placement, size, opacity, distance, colorStyle, showProgress, lifetime, demoMode);
+        super("Lyrics", "Показывает фразы из песни в мире", Category.ESP);
+        addSettings(words, size, distance, colorStyle, glow, lifetime, demoMode);
     }
 
     @Override
@@ -62,10 +57,9 @@ public class Lyrics extends Module {
         clearTrack();
         manualPlayback = false;
         demoPlaying = false;
-        caption.reset();
     }
 
-    public void render(DrawContext context, RenderTickCounter tickCounter) {
+    public void renderWorld(Camera camera) {
         if (demoMode.isEnabled() && !demoPlaying) {
             startDemo();
         } else if (!demoMode.isEnabled() && demoPlaying) {
@@ -75,28 +69,28 @@ public class Lyrics extends Module {
         long position = currentPosition();
         int index = findLine(position);
         LyricLine line = null;
-        float progress = 0f;
+        long duration = 0L;
+        long elapsed = 0L;
         if (index >= 0) {
             LyricLine current = activeLyrics.get(index);
-            long duration = (long) (lifetime.get() * 1000);
+            duration = (long) (lifetime.get() * 1000);
             if (index + 1 < activeLyrics.size()) {
                 duration = Math.min(duration, activeLyrics.get(index + 1).timeMs() - current.timeMs());
             }
-            long elapsed = position - current.timeMs();
+            elapsed = position - current.timeMs();
             if (elapsed < duration && !current.text().isBlank()) {
                 line = current;
-                progress = (float) elapsed / duration;
             }
         }
 
         int textColor = switch (colorStyle.get()) {
-            case "Лавандовый" -> 0xFFDDD7FF;
-            case "Коралловый" -> 0xFFFFD5CF;
-            case "Тема" -> ColorUtil.interpolate(0xFFF5F6FA, Theme.getAccent() | 0xFF000000, 0.45f);
-            default -> 0xFFF5F6FA;
+            case "Коралловый" -> 0xFFFF736F;
+            case "Тема" -> Theme.getAccent() | 0xFF000000;
+            case "Белый" -> 0xFFCAD6E7;
+            default -> 0xFFB178FF;
         };
-        caption.render(context, tickCounter, line, progress, placement.is(WORLD), distance.getValueFloat(),
-                size.getValueFloat(), opacity.getValueFloat() / 100f, textColor, showProgress.isEnabled());
+        renderer.render(camera, line, elapsed, duration, new WorldLyricsRenderer.Style(
+                (int) words.get(), distance.getValueFloat(), size.getValueFloat(), textColor, glow.getValueFloat() / 100f));
     }
 
     private long currentPosition() {
@@ -135,6 +129,7 @@ public class Lyrics extends Module {
     }
 
     private void loadTrack(String artist, String title) {
+        renderer.reset();
         long generation = ++loadGeneration;
         trackKey = LyricsFetcher.makeKey(artist, title);
         LyricsFetcher fetcher = LyricsFetcher.getInstance();
@@ -150,6 +145,7 @@ public class Lyrics extends Module {
     }
 
     private void clearTrack() {
+        renderer.reset();
         loadGeneration++;
         trackKey = "";
         activeLyrics = List.of();
@@ -196,6 +192,7 @@ public class Lyrics extends Module {
     }
 
     public void seekManual(long seconds) {
+        renderer.reset();
         playbackOffset = Math.clamp(TimeUnit.SECONDS.toMillis(seconds), 0L, Long.MAX_VALUE / 2);
         playbackStart = System.nanoTime();
         CommandManager.sendClientMessage("§d[Lyrics] §7Перемотка на §f" + seconds + " §7сек", false);

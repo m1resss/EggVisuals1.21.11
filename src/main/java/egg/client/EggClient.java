@@ -8,6 +8,7 @@ import egg.client.module.render.LethalZone;
 import egg.client.module.render.TargetESP;
 import egg.client.module.render.Trail;
 import egg.client.module.render.JumpCircles;
+import egg.client.module.render.Lyrics;
 import egg.client.module.render.TotemPop;
 import egg.client.module.render.CustomHitbox;
 import egg.client.module.render.Trajectories;
@@ -117,6 +118,11 @@ public class EggClient implements ClientModInitializer {
             JumpCircles jumpCircles = ModuleManager.getInstance().getModule(JumpCircles.class);
             if (jumpCircles != null && jumpCircles.isEnabled()) {
                 jumpCircles.renderWorld3D(matrices, camera, tickDelta, immediate, camPos);
+            }
+
+            Lyrics lyrics = ModuleManager.getInstance().getModule(Lyrics.class);
+            if (lyrics != null && lyrics.isEnabled() && !mc.options.hudHidden) {
+                lyrics.renderWorld(camera);
             }
 
             egg.client.module.render.BlockOverlay blockOverlay = ModuleManager.getInstance().getModule(egg.client.module.render.BlockOverlay.class);

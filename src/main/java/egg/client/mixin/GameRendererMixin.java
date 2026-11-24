@@ -201,11 +201,6 @@ public abstract class GameRendererMixin {
 
         }
 
-        Lyrics lyrics = ModuleManager.getInstance().getModule(Lyrics.class);
-        if (lyrics != null && lyrics.isEnabled()) {
-            lyrics.render(context, tickCounter);
-        }
-
         NameTags nameTags = ModuleManager.getInstance().getModule(NameTags.class);
         if (nameTags != null && nameTags.isEnabled()) {
             nameTags.render2D(context, tickCounter);
