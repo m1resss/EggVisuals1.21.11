@@ -5,6 +5,8 @@ import egg.client.cosmetic.CosmeticsRenderer;
 import egg.client.module.ModuleManager;
 import egg.client.module.cosmetic.CosmeticsModule;
 import egg.client.module.misc.Globals;
+import egg.client.module.misc.Fun;
+import egg.client.render.BedrockRunState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
@@ -73,6 +75,11 @@ public abstract class PlayerEntityRendererMixin extends LivingEntityRenderer<Abs
             at = @At("RETURN")
     )
     private void onUpdateRenderState(PlayerLikeEntity entity, PlayerEntityRenderState state, float tickDelta, CallbackInfo ci) {
+        Fun fun = Fun.getInstance();
+        ((BedrockRunState) state).egg$setBedrockRunning(fun != null && fun.isBedrockRun()
+                && entity.isSprinting() && entity.isOnGround() && !state.isInSneakingPose
+                && !state.isSwimming && !state.isGliding && !state.hasVehicle);
+
         Globals globals = ModuleManager.getInstance().getModule(Globals.class);
         if (globals != null && globals.isEnabled() && globals.isInNametag() && ((entity instanceof Entity ent && Globals.isEggUser(ent)) || Globals.isEggUser(state))) {
             String cleanName = (entity != null) ? entity.getNameForScoreboard() : Globals.extractCleanName(state);

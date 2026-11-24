@@ -20,6 +20,20 @@ public final class Pipelines {
         return RenderPipelines.register(pipeline);
     }
 
+    public static final RenderPipeline ARMOR_HURT = armorHurt("armor_hurt", DepthTestFunction.LEQUAL_DEPTH_TEST);
+    public static final RenderPipeline ARMOR_HURT_DECAL = armorHurt("armor_hurt_decal", DepthTestFunction.EQUAL_DEPTH_TEST);
+
+    private static RenderPipeline armorHurt(String name, DepthTestFunction depthTest) {
+        return register(RenderPipeline.builder(RenderPipelines.ENTITY_SNIPPET)
+                .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/" + name))
+                .withShaderDefine("ALPHA_CUTOUT", 0.1f)
+                .withShaderDefine("PER_FACE_LIGHTING")
+                .withSampler("Sampler1")
+                .withCull(false)
+                .withDepthTestFunction(depthTest)
+                .build());
+    }
+
     public static final RenderPipeline LIGHTNING = register(
         RenderPipeline.builder(RenderPipelines.RENDERTYPE_LINES_SNIPPET)
             .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/lightning"))

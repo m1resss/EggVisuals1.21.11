@@ -8,11 +8,12 @@ public class Fun extends Module {
     private static Fun instance;
 
     private final BooleanSetting raisedArms = new BooleanSetting("Поднятые руки", true, "Противники бегают с поднятыми руками как в старом майнкрафте");
+    private final BooleanSetting bedrockRun = new BooleanSetting("Bedrock Бег", false, "Ноги игроков едва двигаются во время спринта");
 
     public Fun() {
         super("Fun", "Визуальные эффекты вращения и движения персонажа", Category.MISC);
         instance = this;
-        addSettings(this.raisedArms);
+        addSettings(raisedArms, bedrockRun);
     }
 
     public static Fun getInstance() {
@@ -21,5 +22,9 @@ public class Fun extends Module {
 
     public boolean isRaisedArms() {
         return this.raisedArms.isEnabled();
+    }
+
+    public boolean isBedrockRun() {
+        return isEnabled() && bedrockRun.isEnabled();
     }
 }

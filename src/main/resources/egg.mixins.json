@@ -47,6 +47,8 @@
     "PearlSectionRenderMixin",
     "BlockColorsMixin",
     "PlayerEntityRendererMixin",
+    "PlayerEntityRenderStateMixin",
+    "BipedEntityModelMixin",
     "PlayerEntityModelMixin",
     "FogRendererMixin",
     "ItemModelManagerMixin",
