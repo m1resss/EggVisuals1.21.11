@@ -43,29 +43,22 @@ public final class ProjectionUtil {
     }
 
     public static boolean worldToScreen(double d, double d2, double d3, Vector2f out) {
-        if (matricesValid) {
-            Camera camera = MC.gameRenderer.getCamera();
-            if (camera == null) return false;
-            Vec3d vec3d = camera.getCameraPos();
-            float f = (float)(d - vec3d.x);
-            float f2 = (float)(d2 - vec3d.y);
-            float f3 = (float)(d3 - vec3d.z);
-            workVec4.set(f, f2, f3, 1.0F);
-            workVec4.mul(modelViewMatrix).mul(projectionMatrix);
-            if (workVec4.w <= 0.0F) {
-                return false;
-            }
+        if (!worldToClip(d, d2, d3, workVec4)) return false;
+        float invW = 1.0F / workVec4.w;
+        int sw = MC.getWindow().getScaledWidth();
+        int sh = MC.getWindow().getScaledHeight();
+        out.set((workVec4.x * invW + 1.0F) * 0.5F * sw, (1.0F - workVec4.y * invW) * 0.5F * sh);
+        return true;
+    }
 
-            float invW = 1.0F / workVec4.w;
-            int sw = MC.getWindow().getScaledWidth();
-            int sh = MC.getWindow().getScaledHeight();
-            float f4 = (workVec4.x * invW + 1.0F) * 0.5F * sw;
-            float f5 = (1.0F - workVec4.y * invW) * 0.5F * sh;
-            out.set(f4, f5);
-            return true;
-        } else {
-            return false;
-        }
+    public static boolean worldToClip(double x, double y, double z, Vector4f out) {
+        if (!matricesValid) return false;
+        Camera camera = MC.gameRenderer.getCamera();
+        if (camera == null) return false;
+        Vec3d cameraPos = camera.getCameraPos();
+        out.set((float) (x - cameraPos.x), (float) (y - cameraPos.y), (float) (z - cameraPos.z), 1f)
+                .mul(modelViewMatrix).mul(projectionMatrix);
+        return out.w > 0f;
     }
 
     public static Vector2f worldToScreen(double d, double d2, double d3) {

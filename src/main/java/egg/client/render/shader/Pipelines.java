@@ -192,15 +192,25 @@ public final class Pipelines {
             .build()
     );
 
-    public static final RenderPipeline TARGET_MOIRE = register(
+    public static final RenderPipeline COLOR_COPY = register(
         RenderPipeline.builder()
-            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/target_moire"))
-            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/world/jump_caustic"))
-            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/world/target_moire"))
-            .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
-            .withUniform("Projection", UniformType.UNIFORM_BUFFER)
-            .withUniform("MoireView", UniformType.UNIFORM_BUFFER)
-            .withBlend(BlendFunction.TRANSLUCENT)
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/color_copy"))
+            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/fullscreen/pass"))
+            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/fullscreen/copy"))
+            .withSampler("Sampler0")
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .withVertexFormat(CustomVertexFormats.POSITION_TEX_LINE_WIDTH, DrawMode.QUADS)
+            .build()
+    );
+
+    public static final RenderPipeline TARGET_FOCUS = register(
+        RenderPipeline.builder()
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/target_focus"))
+            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/world/target_focus"))
+            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/world/target_focus"))
+            .withSampler("Sampler0")
             .withDepthTestFunction(DepthTestFunction.LEQUAL_DEPTH_TEST)
             .withDepthWrite(false)
             .withCull(false)

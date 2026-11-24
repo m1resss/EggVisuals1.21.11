@@ -8,7 +8,7 @@ import egg.client.render.shader.ParticleBlurRenderer;
 import egg.client.render.shader.Pipelines;
 import egg.client.render.shader.ProjectionUtil;
 import egg.client.render.world.IronDustTargetRenderer;
-import egg.client.render.world.MoireTargetRenderer;
+import egg.client.render.world.FocusTargetRenderer;
 import egg.client.render.world.WaterTargetRenderer;
 import egg.client.module.ModuleManager;
 import net.minecraft.client.render.BufferBuilder;
@@ -84,18 +84,18 @@ public class TargetESP extends Module {
 
     private static final String WATER = "Прибой";
     private static final String IRON_DUST = "Железная пыль";
-    private static final String MOIRE = "Муар";
+    private static final String FOCUS = "Фокус";
     private final ModeSetting mode = new ModeSetting("Стиль", "Разряд", "Стиль Target ESP",
-            "Разряд", "Молнии", "Снежинки", "Души", "Ромб", "Кубы", WATER, IRON_DUST, MOIRE) {
+            "Разряд", "Молнии", "Снежинки", "Души", "Ромб", "Кубы", WATER, IRON_DUST, FOCUS) {
         @Override
         public void set(String value) {
-            super.set("Шёлк".equals(value) ? WATER : value);
+            super.set("Шёлк".equals(value) ? WATER : "Муар".equals(value) ? FOCUS : value);
         }
     };
     private final SliderSetting waterOpacity = new SliderSetting("Непрозрачность воды", 58, 20, 85, 1, "Прозрачность водяного кольца в процентах");
     private final WaterTargetRenderer waterRenderer = new WaterTargetRenderer();
     private final IronDustTargetRenderer ironDustRenderer = new IronDustTargetRenderer();
-    private final MoireTargetRenderer moireRenderer = new MoireTargetRenderer();
+    private final FocusTargetRenderer focusRenderer = new FocusTargetRenderer();
 
     private final SliderSetting rhombusHeight = new SliderSetting("Высота ромба", 0.0, -0.8, 1.5, 0.05, "Смещение ромба по высоте");
     private final SliderSetting rhombusSize = new SliderSetting("Размер ромба", 1.25, 0.3, 2.5, 0.05, "Размер ромба");
@@ -168,10 +168,10 @@ public class TargetESP extends Module {
         rhombusSize.setVisible(() -> "Ромб".equals(mode.get()));
         tailLength.setVisible(() -> "Души".equals(mode.get()));
         coreGlow.setVisible(() -> "Души".equals(mode.get()));
-        radius.setVisible(() -> !mode.is("Ромб") && !mode.is(WATER) && !mode.is(IRON_DUST) && !mode.is(MOIRE));
+        radius.setVisible(() -> !mode.is("Ромб") && !mode.is(WATER) && !mode.is(IRON_DUST) && !mode.is(FOCUS));
         speed.setVisible(() -> !mode.is("Разряд") && radius.isVisible());
         waterOpacity.setVisible(() -> mode.is(WATER));
-        hurtColor.setVisible(() -> !mode.is(WATER) && !mode.is(IRON_DUST) && !mode.is(MOIRE));
+        hurtColor.setVisible(() -> !mode.is(WATER) && !mode.is(IRON_DUST) && !mode.is(FOCUS));
         particleSize.setVisible(() -> "Снежинки".equals(mode.get()) || "Души".equals(mode.get()) || "Кубы".equals(mode.get()));
 
         dischargeColorMode.setVisible(() -> "Разряд".equals(mode.get()));
@@ -215,7 +215,7 @@ public class TargetESP extends Module {
         this.dischargeEffect.reset();
         this.waterRenderer.clear();
         this.ironDustRenderer.clear();
-        this.moireRenderer.clear();
+        this.focusRenderer.clear();
         this.animProgress = 0.0f;
         this.snowflakeParticles.clear();
         this.lightningTime = 0.0f;
@@ -361,7 +361,7 @@ public class TargetESP extends Module {
 
         float delta = tickCounter != null ? tickCounter.getTickProgress(true) : 0.0f;
         String curMode = this.mode.get();
-        if (WATER.equals(curMode) || IRON_DUST.equals(curMode) || MOIRE.equals(curMode)) return;
+        if (WATER.equals(curMode) || IRON_DUST.equals(curMode) || FOCUS.equals(curMode)) return;
 
         int themeColor = Theme.getAccent();
         int hurtCol = 0xFFFF2525;
@@ -814,9 +814,9 @@ public class TargetESP extends Module {
         String curMode = this.mode.get();
         if (!WATER.equals(curMode)) waterRenderer.clear();
         if (!IRON_DUST.equals(curMode)) ironDustRenderer.clear();
-        if (!MOIRE.equals(curMode)) moireRenderer.clear();
-        if (MOIRE.equals(curMode)) {
-            moireRenderer.render(this.target, camPos, tickDelta, Theme.getAccent());
+        if (!FOCUS.equals(curMode)) focusRenderer.clear();
+        if (FOCUS.equals(curMode)) {
+            focusRenderer.render(this.target, camPos, tickDelta);
             return;
         }
         if (WATER.equals(curMode)) {
