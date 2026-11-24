@@ -84,13 +84,13 @@ vec3 fractureIce(vec3 model, vec3 background, vec3 p, float heightFraction, floa
     float chip = max(grainOffset.x, max(grainOffset.y, grainOffset.z));
     float frost = step(0.85, hash3(floor(grains))) * (1.0 - smoothstep(0.12, 0.30, chip));
 
+    vec3 skinDetail = mix(vec3(luminance), model, 0.68);
+    ice = mix(mix(background, ice, 0.90), skinDetail, 0.33);
     ice = mix(ice, vec3(0.89, 0.99, 1.0), frost * 0.68 + max(0.0, bevel - seam) * 0.64);
     ice = mix(ice, vec3(0.19, 0.37, 0.46), seam * (0.42 + 0.28 * pattern.y));
-    ice = mix(background, ice, 0.86);
     vec3 color = mix(model, ice, freeze);
     return mix(color, vec3(0.89, 0.99, 1.0), rim * 0.60);
 }
-
 
 void main() {
     ivec2 pixel = ivec2(gl_FragCoord.xy);
@@ -112,40 +112,12 @@ void main() {
     float hNorm = clamp(localPos.y / max(VictimOrigin.w, 0.4), -0.1, 1.3);
     float edgeWave = (noise3(localPos * 6.5 + vec3(0.0, FreezeState.z * 0.35, 0.0)) - 0.5) * 0.075;
     float front = FreezeState.x;
-    float frozenMask = 1.0 - smoothstep(front - 0.11, front + 0.02, hNorm + edgeWave);
-    float frostRim = smoothstep(front - 0.17, front - 0.02, hNorm + edgeWave)
-            * (1.0 - smoothstep(front - 0.01, front + 0.06, hNorm + edgeWave));
+    float steppedFront = floor(hNorm * 48.0) / 48.0 + edgeWave;
+    float freeze = 1.0 - smoothstep(front - 0.062, front + 0.009, steppedFront);
+    float rim = smoothstep(front - 0.08, front - 0.012, steppedFront)
+            * (1.0 - smoothstep(front, front + 0.026, steppedFront));
 
-    vec4 scene = texelFetch(Sampler0, pixel, 0);
-    if (FreezeDepth.y > 0.5) {
-        float steppedFront = floor(hNorm * 48.0) / 48.0 + edgeWave;
-        float freeze = 1.0 - smoothstep(front - 0.062, front + 0.009, steppedFront);
-        float rim = smoothstep(front - 0.08, front - 0.012, steppedFront)
-                * (1.0 - smoothstep(front, front + 0.026, steppedFront));
-        vec3 fractured = fractureIce(ent.rgb, scene.rgb, localPos, hNorm, freeze, rim);
-        fragColor = vec4(fractured, clamp(FreezeState.w, 0.0, 1.0));
-        return;
-    }
-    float lum = dot(ent.rgb, vec3(0.299, 0.587, 0.114));
-    float frostCloud = noise3(localPos * 4.4);
-    vec3 iceBase = mix(vec3(0.46, 0.83, 0.97), vec3(0.84, 0.97, 1.0), clamp(lum * 0.82 + 0.30, 0.0, 1.0));
-    iceBase = mix(iceBase, vec3(0.68, 0.93, 1.0), frostCloud * 0.45);
-
-    float ridgeA = 1.0 - smoothstep(0.0, 0.032, abs(noise3(localPos * 5.2 + 1.7) - 0.5));
-    float ridgeB = 1.0 - smoothstep(0.0, 0.024, abs(noise3(localPos * 9.8 + 5.1) - 0.5));
-    float cracks = clamp(ridgeA * 0.65 + ridgeB * 0.45, 0.0, 1.0);
-    vec3 crackedIce = mix(iceBase, vec3(0.16, 0.40, 0.58), cracks * 0.44);
-    crackedIce = mix(crackedIce, vec3(0.95, 0.995, 1.0), cracks * FreezeState.y * 0.85);
-
-    vec3 spCoord = localPos * 18.0 + vec3(0.01);
-    vec3 spCell = floor(spCoord);
-    vec3 spFrac = fract(spCoord) - 0.5;
-    float speckle = step(0.84, hash3(spCell)) * (1.0 - smoothstep(0.16, 0.34, length(spFrac)));
-    vec3 iceSurface = mix(crackedIce, vec3(0.98, 1.0, 1.0), speckle * 0.88);
-
-    vec3 translucentIce = mix(scene.rgb, iceSurface, 0.78);
-    vec3 finalRgb = mix(ent.rgb, translucentIce, frozenMask);
-    finalRgb = mix(finalRgb, vec3(0.94, 0.995, 1.0), frostRim * 0.75);
-
-    fragColor = vec4(finalRgb, clamp(FreezeState.w, 0.0, 1.0));
+    vec3 background = texelFetch(Sampler0, pixel, 0).rgb;
+    vec3 fractured = fractureIce(ent.rgb, background, localPos, hNorm, freeze, rim);
+    fragColor = vec4(fractured, clamp(FreezeState.w, 0.0, 1.0));
 }
