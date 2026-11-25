@@ -55,7 +55,6 @@ public class NameTags extends Module {
 
     private final BooleanSetting showHealth = new BooleanSetting("Здоровье", true, "Числовое значение здоровья игрока");
     private final BooleanSetting showPing = new BooleanSetting("Пинг", true, "Индикатор задержки игрока");
-    private final BooleanSetting showDistance = new BooleanSetting("Дистанция", true, "Расстояние в метрах");
     private final BooleanSetting showArmor = new BooleanSetting("Броня и руки", true, "Экипированные предметы над ником");
     private final BooleanSetting showSelf = new BooleanSetting("Себя от 3-го лица", false, "Отображать бейдж над своим персонажем");
     private final SliderSetting bgAlpha = new SliderSetting("Непрозрачность", 85.0, 20.0, 100.0, 5.0, "Плотность подложки (%)");
@@ -89,7 +88,7 @@ public class NameTags extends Module {
         this.itemIcons.setVisible(this.showItems::get);
 
         addSettings(
-                showHealth, showPing, showDistance, showArmor, showSelf, bgAlpha,
+                showHealth, showPing, showArmor, showSelf, bgAlpha,
                 showItems, lootBeam, onlyValuable, itemIcons
         );
     }
@@ -359,14 +358,12 @@ public class NameTags extends Module {
             latency = entry.getLatency();
         }
         String pingText = (this.showPing.get() && latency >= 0) ? (latency + "ms") : null;
-        float pingW = pingText != null ? (font.a(pingText, fontSize) + 8.0f) : 0.0f;
+        float pingTextOffset = 6.0f;
+        float pingW = pingText != null ? pingTextOffset + font.a(pingText, fontSize) : 0.0f;
         int pingDotColor;
         if (latency < 80) pingDotColor = 0xFF4ADE80;
         else if (latency < 160) pingDotColor = 0xFFFACC15;
         else pingDotColor = 0xFFF87171;
-
-        String distText = this.showDistance.get() ? ((int) Math.round(dist) + "m") : null;
-        float distW = distText != null ? font.a(distText, fontSize) : 0.0f;
 
         String hpText = null;
         float hpW = 0.0f;
@@ -394,7 +391,6 @@ public class NameTags extends Module {
         float gap = 5.0f;
         float contentW = nameW + eggW;
         if (pingText != null) contentW += pingW + gap;
-        if (distText != null) contentW += distW + gap;
         if (hpText != null) contentW += hpW + hpSuffixGap + Fonts.b.a("hp", hpSuffixSize) + gap;
 
         float cardW = Math.max(44.0f, contentW + padX * 2.0f);
@@ -422,20 +418,20 @@ public class NameTags extends Module {
         int sheenCol = ColorUtil.rgba(255, 255, 255, (int) (14 * alphaFactor));
         Draw2DProcessor.INSTANCE.drawGradient(tagMat, cardX, cardY, cardW, cardH * 0.5f, cardRadius, sheenCol, sheenCol, 0, 0);
 
-        float curX = cardX + padX;
-        float textY = cardY + 2.0f;
+        float curX = -contentW / 2.0f;
+        float centerY = cardY + cardH / 2.0f;
+        float textY = font.a(fontSize, centerY);
 
         if (pingText != null) {
             float dotR = 1.8f;
             float dotX = curX + 2.0f;
-            float dotY = textY + 5.5f;
-            Draw2DProcessor.INSTANCE.drawRect(tagMat, dotX - dotR, dotY - dotR, dotR * 2.0f, dotR * 2.0f, dotR, pingDotColor);
-            font.a(tagMat, pingText, curX + 6.0f, textY, fontSize, ColorUtil.rgba(203, 213, 225, 235));
+            Draw2DProcessor.INSTANCE.drawRect(tagMat, dotX - dotR, centerY - dotR, dotR * 2.0f, dotR * 2.0f, dotR, pingDotColor);
+            font.a(tagMat, pingText, curX + pingTextOffset, textY, fontSize, ColorUtil.rgba(203, 213, 225, 235));
             curX += pingW + gap;
         }
 
         if (isEgg) {
-            float eggY = textY + (font.a(fontSize) - eggSize) / 2.0f;
+            float eggY = centerY - eggSize / 2.0f;
             Draw2DProcessor.INSTANCE.a(tagMat, EGG_LOGO, curX, eggY, eggSize, eggSize, 0.0f, 0xFFFFFFFF);
             curX += eggW;
         }
@@ -443,14 +439,9 @@ public class NameTags extends Module {
         font.a(tagMat, rawName, curX, textY, fontSize, nameColor);
         curX += nameW + gap;
 
-        if (distText != null) {
-            font.a(tagMat, distText, curX, textY, fontSize, ColorUtil.rgba(203, 213, 225, 215));
-            curX += distW + gap;
-        }
-
         if (hpText != null) {
             font.a(tagMat, hpText, curX, textY, fontSize, hpColor);
-            Fonts.b.a(tagMat, "hp", curX + hpW + hpSuffixGap, textY + (fontSize - hpSuffixSize) * 0.83f,
+            Fonts.b.a(tagMat, "hp", curX + hpW + hpSuffixGap, Fonts.b.a(hpSuffixSize, centerY),
                     hpSuffixSize, ColorUtil.rgba(156, 163, 175, 210));
         }
     }
@@ -487,7 +478,6 @@ public class NameTags extends Module {
             String name = stack.getName().getString();
             int count = stack.getCount();
             String countText = count > 1 ? "×" + count : "";
-            String distText = this.showDistance.get() ? Math.round(dist) + "m" : "";
 
             float distScale = (float) MathHelper.clamp(1.0 - (dist - 4.0) * 0.02, 0.65, 1.15);
             float tagScale = 0.70f * distScale;
@@ -498,10 +488,9 @@ public class NameTags extends Module {
 
             float nameW = font.a(name, fontSize);
             float countW = countText.isEmpty() ? 0.0f : 3.0f + font.a(countText, detailsSize);
-            float distW = distText.isEmpty() ? 0.0f : 4.0f + font.a(distText, detailsSize);
 
             float padX = 4.5f;
-            float contentW = nameW + countW + distW + (drawIcon ? iconSize + iconGap : 0.0f);
+            float contentW = nameW + countW + (drawIcon ? iconSize + iconGap : 0.0f);
             float cardW = contentW + padX * 2.0f;
             float cardH = 13.0f;
             float cardX = -cardW / 2.0f;
@@ -517,10 +506,6 @@ public class NameTags extends Module {
             if (!countText.isEmpty()) {
                 font.drawCentered(tagMat, countText, curX + nameW + (countW + 3.0f) / 2.0f, centerY,
                         detailsSize, 0xFFB3BAC6, 0.0f);
-            }
-            if (!distText.isEmpty()) {
-                font.drawCentered(tagMat, distText, curX + nameW + countW + (distW + 4.0f) / 2.0f, centerY,
-                        detailsSize, 0xFF9CA3AF, 0.0f);
             }
 
             if (drawIcon) {
