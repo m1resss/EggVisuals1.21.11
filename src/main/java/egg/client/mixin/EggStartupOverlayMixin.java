@@ -27,11 +27,9 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
     @Shadow @Final private ResourceReload reload;
     @Shadow @Final private boolean reloading;
     @Shadow private long reloadCompleteTime;
-    @Shadow private long reloadStartTime;
 
     @Unique private static boolean egg$startupShown;
     @Unique private EggStartupAnimation egg$animation;
-    @Unique private boolean egg$initialStartup;
     @Unique private long egg$lastTick = -1;
     @Unique private long egg$animMs;
     @Unique private boolean egg$skipped;
@@ -50,16 +48,17 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
 
     @Override
     public float egg$getMenuRevealOpacity() {
-        return egg$revealOpacity;
+        return egg$animation == null ? 1.0f : egg$revealOpacity;
     }
 
     @Inject(method = "<init>", at = @At("RETURN"))
     private void egg$prepareStartup(CallbackInfo ci) {
-        egg$initialStartup = !reloading && !egg$startupShown;
-        egg$startupShown = true;
-        egg$animation = new EggStartupAnimation();
-        if (client != null) {
-            EggStartupAnimation.ensureAtlas(client);
+        if (!reloading && !egg$startupShown) {
+            egg$startupShown = true;
+            egg$animation = new EggStartupAnimation();
+            if (client != null) {
+                EggStartupAnimation.ensureAtlas(client);
+            }
         }
     }
 
@@ -68,17 +67,11 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
         if (egg$animation == null) return;
 
         long now = Util.getMeasuringTimeMs();
-        if (reloading && reloadStartTime == -1L) {
-            reloadStartTime = now;
-        }
         long rawDt = egg$lastTick < 0 ? 0L : Math.max(0L, now - egg$lastTick);
         egg$lastTick = now;
         long dt = Math.min(rawDt, 33L);
 
         boolean loaded = reloadCompleteTime >= 0;
-        if (!egg$initialStartup && loaded && !egg$skipped) {
-            egg$skipped = true;
-        }
         if (!egg$skipped) {
             egg$animMs += dt;
         } else {
@@ -120,7 +113,7 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
 
         if (!loaded) {
             egg$animation.drawProgress(context, now, reload.getProgress());
-        } else if (!egg$skipped && egg$initialStartup) {
+        } else if (!egg$skipped) {
             int x = (width - client.textRenderer.getWidth(CONTINUE_HINT)) / 2;
             int alpha = Math.round(190 * egg$fade(egg$hintMs / 300f));
             if (alpha > 3) {
