@@ -11,14 +11,14 @@ import net.minecraft.util.math.MathHelper;
 import java.util.Arrays;
 
 public final class EggStartupAnimation {
-    private static final Identifier GLYPHS = Identifier.of("egg", "startup_glyphs");
-    private static final int COLUMNS = 59;
-    private static final int ROWS = 45;
-    private static final int CELL_WIDTH = 6;
-    private static final int CELL_HEIGHT = 8;
-    private static final double CELL_DEPTH_Y = 0.057;
-    private static final double CELL_DEPTH_X = CELL_DEPTH_Y * CELL_WIDTH / CELL_HEIGHT;
-    private static final int[] GLYPH_BITS = {
+    public static final Identifier GLYPHS = Identifier.of("egg", "startup_glyphs");
+    public static final int COLUMNS = 59;
+    public static final int ROWS = 45;
+    public static final int CELL_WIDTH = 6;
+    public static final int CELL_HEIGHT = 8;
+    public static final double CELL_DEPTH_Y = 0.057;
+    public static final double CELL_DEPTH_X = CELL_DEPTH_Y * CELL_WIDTH / CELL_HEIGHT;
+    public static final int[] GLYPH_BITS = {
             0b00000_00000_00000_00000_00100,
             0b00000_00100_00000_00100_00000,
             0b00000_00000_01110_00000_00000,
@@ -30,7 +30,8 @@ public final class EggStartupAnimation {
             0b01010_11111_01010_11111_01010,
             0b01110_10001_10111_10101_01110
     };
-    private static final ShellPoint[] SHELL = buildShell();
+    public static final ShellPoint[] SHELL = buildShell();
+    private static boolean sharedAtlasRegistered;
 
     private final double[] depth = new double[COLUMNS * ROWS];
     private final float[] light = new float[depth.length];
@@ -57,7 +58,7 @@ public final class EggStartupAnimation {
         int width = context.getScaledWindowWidth();
         int height = context.getScaledWindowHeight();
         if (!atlasReady) {
-            registerAtlas(client);
+            ensureAtlas(client);
             atlasReady = true;
         }
 
@@ -150,6 +151,12 @@ public final class EggStartupAnimation {
                 glyph * CELL_WIDTH, 0, 5, 5, 5, 5, GLYPH_BITS.length * CELL_WIDTH, 6, color(rgb, ink));
     }
 
+    public static void ensureAtlas(MinecraftClient client) {
+        if (sharedAtlasRegistered || client == null) return;
+        sharedAtlasRegistered = true;
+        registerAtlas(client);
+    }
+
     private static void registerAtlas(MinecraftClient client) {
         NativeImage image = new NativeImage(GLYPH_BITS.length * CELL_WIDTH, 6, true);
         for (int glyph = 0; glyph < GLYPH_BITS.length; glyph++) {
@@ -215,5 +222,5 @@ public final class EggStartupAnimation {
         return red << 16 | green << 8 | blue;
     }
 
-    private record ShellPoint(double x, double y, double z, double nx, double ny, double nz, double grain, double fault) {}
+    public record ShellPoint(double x, double y, double z, double nx, double ny, double nz, double grain, double fault) {}
 }

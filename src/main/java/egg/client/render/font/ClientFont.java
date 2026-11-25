@@ -38,7 +38,8 @@ public final class ClientFont {
 
     public static boolean isClickGui() {
         MinecraftClient mc = MinecraftClient.getInstance();
-        return mc != null && mc.currentScreen instanceof egg.client.ui.ClickGuiScreen;
+        return mc != null && (mc.currentScreen instanceof egg.client.ui.ClickGuiScreen
+                || mc.currentScreen instanceof egg.client.ui.screen.EggTitleScreen);
     }
 
     public static egg.client.render.msdf.Font resolveMsdfFont(StyleSpriteSource.Font font) {

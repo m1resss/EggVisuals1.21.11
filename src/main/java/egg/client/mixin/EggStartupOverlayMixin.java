@@ -33,12 +33,18 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
     @Unique private long egg$firstFrame = -1;
     @Unique private long egg$skipTime = -1;
     @Unique private long egg$menuFadeStart = -1;
+    @Unique private float egg$revealOpacity = 0.0f;
 
     @Override
     public boolean egg$skipStartup() {
-        if (egg$animation == null) return false;
+        if (egg$animation == null || reloadCompleteTime < 0) return false;
         if (egg$skipTime < 0) egg$skipTime = Util.getMeasuringTimeMs();
         return true;
+    }
+
+    @Override
+    public float egg$getMenuRevealOpacity() {
+        return egg$revealOpacity;
     }
 
     @Inject(method = "<init>", at = @At("RETURN"))
@@ -66,6 +72,9 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
         if (revealMenu) {
             if (egg$menuFadeStart < 0) egg$menuFadeStart = now;
             menuOpacity = egg$fade((now - egg$menuFadeStart) / (float) MENU_FADE_TIME);
+        }
+        egg$revealOpacity = menuOpacity;
+        if (revealMenu) {
             if (client.currentScreen != null) {
                 client.currentScreen.renderWithTooltip(context, 0, 0, delta);
             } else {

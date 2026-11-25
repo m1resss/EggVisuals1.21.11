@@ -426,4 +426,32 @@ public final class Pipelines {
             .withVertexFormat(CustomVertexFormats.POSITION_TEX_LINE_WIDTH, DrawMode.QUADS)
             .build()
     );
+
+    public static final RenderPipeline MENU_BG = register(
+        RenderPipeline.builder()
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/menu_bg"))
+            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/menu/menu_bg"))
+            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/menu/menu_bg"))
+            .withUniform("MenuBgData", UniformType.UNIFORM_BUFFER)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .withVertexFormat(VertexFormats.POSITION_TEXTURE_COLOR, DrawMode.QUADS)
+            .build()
+    );
+
+    public static final RenderPipeline MENU_GLYPHS = register(
+        RenderPipeline.builder()
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/menu_glyphs"))
+            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/menu/menu_glyphs"))
+            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/menu/menu_glyphs"))
+            .withSampler("Sampler0")
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .withVertexFormat(VertexFormats.POSITION_TEXTURE_COLOR, DrawMode.QUADS)
+            .build()
+    );
 }
