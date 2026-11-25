@@ -17,6 +17,7 @@ import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.render.shader.Pipelines;
 import egg.client.ui.ClickGuiScreen;
 import egg.client.util.ColorUtil;
+import egg.client.util.EggUpdateChecker;
 import egg.client.util.GuiSoundManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.Click;
@@ -156,6 +157,11 @@ public class EggTitleScreen extends Screen {
     private List<WrappedLine> cachedLines = List.of();
     private float cachedContentHeight;
 
+    private boolean updateDismissed;
+    private float updateAnim;
+    private float updateHover;
+    private float updateCloseHover;
+
     private boolean exitDialogOpen;
     private float exitDialogAnim;
     private float yesHover;
@@ -173,6 +179,7 @@ public class EggTitleScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        EggUpdateChecker.checkAsync();
         if (client != null) {
             EggStartupAnimation.ensureAtlas(client);
         }
@@ -233,6 +240,11 @@ public class EggTitleScreen extends Screen {
         tiltY = MathHelper.lerp(tiltBlend, tiltY, normMouseY);
 
         float hoverBlend = 1.0f - (float) Math.exp(-dt * 14.0f);
+        EggUpdateChecker.UpdateInfo updateInfo = updateDismissed ? null : EggUpdateChecker.getAvailableUpdate();
+        updateAnim = MathHelper.lerp(1.0f - (float) Math.exp(-dt * 11.0f), updateAnim, updateInfo != null ? 1.0f : 0.0f);
+        if (updateInfo == null && updateAnim < 0.004f) {
+            updateAnim = 0.0f;
+        }
         changelogAnim = MathHelper.lerp(1.0f - (float) Math.exp(-dt * 12.0f), changelogAnim, changelogOpen ? 1.0f : 0.0f);
         if (!changelogOpen && changelogAnim < 0.004f) {
             changelogAnim = 0.0f;
@@ -341,7 +353,10 @@ public class EggTitleScreen extends Screen {
                 Draw2DProcessor.INSTANCE.a(null, CIRCLE_ICONS[i], iconX, iconY, iconSize, iconSize, 0.0f, iconCol);
             }
 
-            renderChangelogButton(revealAlpha);
+            renderChangelogButton(revealAlpha, updateInfo != null || updateAnim > 0.01f);
+            if (updateInfo != null && updateAnim > 0.01f) {
+                renderUpdateBanner(updateInfo, mouseX, mouseY, allowMenuHover, revealAlpha, hoverBlend);
+            }
 
             Fonts.sfRegular.a(null, "Egg Visuals • 1.21.11", 12.0f, sh - 17.0f, 8.2f,
                     ColorUtil.withAlphaFloat(0x888E96A8, revealAlpha));
@@ -365,7 +380,7 @@ public class EggTitleScreen extends Screen {
         }
     }
 
-    private void renderChangelogButton(float revealAlpha) {
+    private void renderChangelogButton(float revealAlpha, boolean hideLabel) {
         float active = Math.max(changelogBtnHover, changelogOpen ? 0.65f : 0.0f);
         int fill = ColorUtil.interpolate(
                 ColorUtil.rgba(16, 18, 24, 224),
@@ -390,12 +405,73 @@ public class EggTitleScreen extends Screen {
         Draw2DProcessor.INSTANCE.a(null, ICON_CHANGELOG, iconX, iconY, iconSize, iconSize, 0.0f,
                 ColorUtil.withAlphaFloat(iconCol, revealAlpha));
 
-        float labelAlpha = Math.max(changelogBtnHover, changelogAnim * 0.9f) * revealAlpha;
-        if (labelAlpha > 0.03f) {
-            float labelY = Fonts.sfRegular.a(8.5f, CL_BTN_Y + CL_BTN_SIZE * 0.5f);
-            Fonts.sfRegular.a(null, "ChangeLog", CL_BTN_X + CL_BTN_SIZE + 8.0f, labelY, 8.5f,
-                    ColorUtil.withAlphaFloat(0xFFDDE3EE, labelAlpha));
+        if (!hideLabel) {
+            float labelAlpha = Math.max(changelogBtnHover, changelogAnim * 0.9f) * revealAlpha;
+            if (labelAlpha > 0.03f) {
+                float labelY = Fonts.sfRegular.a(8.5f, CL_BTN_Y + CL_BTN_SIZE * 0.5f);
+                Fonts.sfRegular.a(null, "ChangeLog", CL_BTN_X + CL_BTN_SIZE + 8.0f, labelY, 8.5f,
+                        ColorUtil.withAlphaFloat(0xFFDDE3EE, labelAlpha));
+            }
         }
+    }
+
+    private void renderUpdateBanner(EggUpdateChecker.UpdateInfo info, float mouseX, float mouseY,
+                                    boolean allowHover, float revealAlpha, float hoverBlend) {
+        float ease = smooth(updateAnim);
+        float alpha = ease * revealAlpha;
+        UpdateBannerRect rect = computeUpdateBannerRect(info, ease);
+
+        boolean hovAll = allowHover && hitRect(mouseX, mouseY, rect.x, rect.y, rect.w, rect.h);
+        boolean hovClose = allowHover && hitRect(mouseX, mouseY, rect.closeX, rect.y, rect.closeW, rect.h);
+        updateHover = MathHelper.lerp(hoverBlend, updateHover, hovAll && !hovClose ? 1.0f : 0.0f);
+        updateCloseHover = MathHelper.lerp(hoverBlend, updateCloseHover, hovClose ? 1.0f : 0.0f);
+
+        int fill = ColorUtil.interpolate(
+                ColorUtil.rgba(22, 54, 114, 224),
+                ColorUtil.rgba(30, 72, 152, 244),
+                updateHover
+        );
+        int border = ColorUtil.interpolate(
+                ColorUtil.rgba(70, 134, 240, 236),
+                ColorUtil.rgba(112, 170, 255, 255),
+                updateHover
+        );
+        float radius = rect.h * 0.5f;
+        Draw2DProcessor.INSTANCE.drawRect(null, rect.x, rect.y, rect.w, rect.h, radius,
+                ColorUtil.withAlphaFloat(fill, alpha));
+        Draw2DProcessor.INSTANCE.drawOutline(null, rect.x, rect.y, rect.w, rect.h, radius, 1.0f,
+                ColorUtil.withAlphaFloat(border, alpha));
+
+        float dotSize = 4.5f;
+        Draw2DProcessor.INSTANCE.drawRect(null, rect.x + 10.0f, rect.y + (rect.h - dotSize) * 0.5f,
+                dotSize, dotSize, dotSize * 0.5f, ColorUtil.withAlphaFloat(0xFF7EC0FF, alpha));
+
+        float textX = rect.x + 19.0f;
+        float mainY = Fonts.b.a(8.2f, rect.y + rect.h * 0.5f);
+        Fonts.b.a(null, rect.title, textX, mainY, 8.2f, ColorUtil.withAlphaFloat(0xFFF3F8FF, alpha));
+
+        float sufX = textX + rect.titleW;
+        float sufY = Fonts.sfRegular.a(7.8f, rect.y + rect.h * 0.5f);
+        Fonts.sfRegular.a(null, rect.suffix, sufX, sufY, 7.8f, ColorUtil.withAlphaFloat(0xFFBDD8FF, alpha));
+
+        int closeCol = ColorUtil.interpolate(0xFF9AC0F5, 0xFFFFFFFF, updateCloseHover);
+        float closeTw = Fonts.sfRegular.a("x", 8.2f);
+        float closeY = Fonts.sfRegular.a(8.2f, rect.y + rect.h * 0.5f);
+        Fonts.sfRegular.a(null, "x", rect.closeX + (rect.closeW - closeTw) * 0.5f - 1.5f, closeY, 8.2f,
+                ColorUtil.withAlphaFloat(closeCol, alpha));
+    }
+
+    private UpdateBannerRect computeUpdateBannerRect(EggUpdateChecker.UpdateInfo info, float ease) {
+        String title = "Доступно обновление " + info.version();
+        String suffix = "  •  Скачать";
+        float titleW = Fonts.b.a(title, 8.2f);
+        float suffixW = Fonts.sfRegular.a(suffix, 7.8f);
+        float closeW = 18.0f;
+        float w = 19.0f + titleW + suffixW + 4.0f + closeW;
+        float x = CL_BTN_X + CL_BTN_SIZE + 8.0f - (1.0f - ease) * 8.0f;
+        float y = CL_BTN_Y;
+        float h = CL_BTN_SIZE;
+        return new UpdateBannerRect(x, y, w, h, x + w - closeW, closeW, title, suffix, titleW);
     }
 
     private void renderChangelogPanel(ChangelogRect rect, float ease) {
@@ -752,6 +828,21 @@ public class EggTitleScreen extends Screen {
             return true;
         }
 
+        EggUpdateChecker.UpdateInfo updateInfo = updateDismissed ? null : EggUpdateChecker.getAvailableUpdate();
+        if (updateInfo != null && updateAnim > 0.25f) {
+            UpdateBannerRect rect = computeUpdateBannerRect(updateInfo, smooth(updateAnim));
+            if (hitRect(mx, my, rect.closeX, rect.y, rect.closeW, rect.h)) {
+                GuiSoundManager.playClick();
+                updateDismissed = true;
+                return true;
+            }
+            if (hitRect(mx, my, rect.x, rect.y, rect.w, rect.h)) {
+                GuiSoundManager.playClick();
+                openUrl(updateInfo.url());
+                return true;
+            }
+        }
+
         if (changelogOpen && changelogAnim > 0.2f) {
             ChangelogRect rect = computeChangelogRect(width, height);
             if (hitRect(mx, my, rect.x, rect.y, rect.w, rect.h)) {
@@ -944,6 +1035,9 @@ public class EggTitleScreen extends Screen {
     private record WrappedLine(float yOffset, float height, boolean isDayHeader, String tag, String prefix, String rest) {}
 
     private record ChangelogRect(float x, float y, float w, float h) {}
+
+    private record UpdateBannerRect(float x, float y, float w, float h, float closeX, float closeW,
+                                    String title, String suffix, float titleW) {}
 
     private record TitleMask(int cols, int rows, float[] levels) {}
 
