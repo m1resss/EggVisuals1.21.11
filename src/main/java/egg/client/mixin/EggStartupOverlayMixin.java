@@ -27,6 +27,7 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
     @Shadow @Final private ResourceReload reload;
     @Shadow @Final private boolean reloading;
     @Shadow private long reloadCompleteTime;
+    @Shadow private long reloadStartTime;
 
     @Unique private static boolean egg$startupShown;
     @Unique private EggStartupAnimation egg$animation;
@@ -67,6 +68,9 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
         if (egg$animation == null) return;
 
         long now = Util.getMeasuringTimeMs();
+        if (reloading && reloadStartTime == -1L) {
+            reloadStartTime = now;
+        }
         long rawDt = egg$lastTick < 0 ? 0L : Math.max(0L, now - egg$lastTick);
         egg$lastTick = now;
         long dt = Math.min(rawDt, 33L);
