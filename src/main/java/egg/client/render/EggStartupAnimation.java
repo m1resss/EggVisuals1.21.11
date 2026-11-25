@@ -60,8 +60,8 @@ public final class EggStartupAnimation {
     private long lastFrame;
     private float progress;
 
-    public static void warmup() {
-        ensureAtlas(MinecraftClient.getInstance());
+    public static int warmup() {
+        return SHELL.length + CELL_SEED.length;
     }
 
     public void drawProgress(DrawContext context, long now, float loadProgress) {
@@ -192,7 +192,7 @@ public final class EggStartupAnimation {
     }
 
     public static void ensureAtlas(MinecraftClient client) {
-        if (sharedAtlasRegistered || client == null) return;
+        if (sharedAtlasRegistered || client == null || client.getTextureManager() == null) return;
         sharedAtlasRegistered = true;
         registerAtlas(client);
     }
