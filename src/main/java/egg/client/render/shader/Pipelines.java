@@ -280,6 +280,21 @@ public final class Pipelines {
             .build()
     );
 
+    public static final RenderPipeline TRAIL_COMIC = register(
+        RenderPipeline.builder()
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/trail_comic"))
+            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/world/jump_caustic"))
+            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/world/trail_comic"))
+            .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
+            .withUniform("Projection", UniformType.UNIFORM_BUFFER)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withDepthTestFunction(DepthTestFunction.LEQUAL_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .withVertexFormat(VertexFormats.POSITION_TEXTURE_COLOR, DrawMode.QUADS)
+            .build()
+    );
+
     public static final RenderPipeline WORLD_LYRICS = register(
         RenderPipeline.builder()
             .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/world_lyrics"))

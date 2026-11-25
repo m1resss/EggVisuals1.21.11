@@ -33,6 +33,8 @@ import java.util.*;
 public class Trail extends Module {
     private static Trail instance;
 
+    private static final String COMIC = "Комикс";
+    private final ModeSetting style = new ModeSetting("Стиль", "Неон", "Оформление следа", "Неон", COMIC);
     private final ModeSetting colorMode = new ModeSetting("Режим цвета", "Тема", "Источник цвета нитей",
             "Тема", "Кастомный", "Радуга", "Обложка трека");
     private final ColorSetting customColor = new ColorSetting("Цвет нитей", 0xFF00E5FF, "Пользовательский цвет нитей");
@@ -51,6 +53,7 @@ public class Trail extends Module {
     private float trackColorB = -1.0f;
     private long lastFrameNanos = 0L;
     private float simTimeSec = 0.0f;
+    private boolean comicActive;
 
     private final BufferAllocator allocBloom = createReusableAllocator(131072);
     private final BufferAllocator allocHalo = createReusableAllocator(131072);
@@ -76,13 +79,20 @@ public class Trail extends Module {
             new AnchorDef(0.17f, 0.12f, 0.25f, false, 3.5f)
     };
 
+    private static final AnchorDef[] COMIC_ANCHORS = {
+            new AnchorDef(-0.17f, 0.53f, 0.69f, false, 0.0f),
+            new AnchorDef(0.17f, 0.46f, 0.40f, false, 1.5f)
+    };
+
     public Trail() {
-        super("Trail", "Оставляет светящуюся линию позади персонажа при движении", Category.ESP);
+        super("Trail", "Оставляет след позади персонажа при движении", Category.ESP);
         instance = this;
 
         customColor.setVisible(() -> "Кастомный".equals(colorMode.get()));
 
-        addSettings(colorMode, customColor, length, thickness, glow, waveDynamics, targetMode, audioPulse, firstPerson);
+        glow.setVisible(() -> !style.is(COMIC));
+
+        addSettings(style, colorMode, customColor, length, thickness, glow, waveDynamics, targetMode, audioPulse, firstPerson);
     }
 
     public static Trail getInstance() {
@@ -119,6 +129,13 @@ public class Trail extends Module {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.world == null || mc.player == null) return;
 
+        boolean comic = style.is(COMIC);
+        if (comicActive != comic) {
+            trailStates.clear();
+            comicActive = comic;
+        }
+        AnchorDef[] anchors = comic ? COMIC_ANCHORS : ANCHORS;
+
         long nowNanos = System.nanoTime();
         float dt = (this.lastFrameNanos == 0L) ? 0.016f : MathHelper.clamp((float) ((nowNanos - this.lastFrameNanos) * 1e-9), 0.001f, 0.05f);
         this.lastFrameNanos = nowNanos;
@@ -136,6 +153,7 @@ public class Trail extends Module {
         }
         float audioGlowScale = 1.0f + audioPeak * 0.45f;
         float audioWaveScale = 1.0f + audioPeak * 0.35f;
+        float wave = waveStrength * audioWaveScale * (comic ? 0.28f : 1.0f);
 
         int baseColor = Theme.getAccent();
         String cMode = this.colorMode.get();
@@ -184,6 +202,7 @@ public class Trail extends Module {
 
         List<List<CurveSample>> allStrands = new ArrayList<>();
         List<Integer> strandColors = new ArrayList<>();
+        List<ComicRibbon> comicRibbons = new ArrayList<>();
 
         for (PlayerEntity player : playersToRender) {
             if (!player.isAlive()) continue;
@@ -195,14 +214,19 @@ public class Trail extends Module {
 
             EntityTrailState state = this.trailStates.computeIfAbsent(player.getUuid(), u -> new EntityTrailState());
 
-            for (int sIdx = 0; sIdx < 8; sIdx++) {
-                AnchorDef def = ANCHORS[sIdx];
+            for (int sIdx = 0; sIdx < anchors.length; sIdx++) {
+                AnchorDef def = anchors[sIdx];
                 Vec3d anchorPos = computeAnchorPos(player, def, tickDelta);
 
                 Strand strand = state.strands[sIdx];
-                strand.update(anchorPos, maxPoints, nowMs);
+                if (comic) {
+                    strand.updateComic(anchorPos, maxPoints, nowMs);
+                    if (!strand.hasMotion()) continue;
+                } else {
+                    strand.update(anchorPos, maxPoints, nowMs);
+                }
 
-                List<CurveSample> samples = strand.generateCurveSamples(maxPoints, waveStrength * audioWaveScale, this.simTimeSec, def.phaseOffset);
+                List<CurveSample> samples = strand.generateCurveSamples(maxPoints, wave, this.simTimeSec, def.phaseOffset);
                 if (samples.size() < 2) continue;
 
                 int sColor = baseColor;
@@ -211,11 +235,21 @@ public class Trail extends Module {
                     sColor = hsvToRgb(hue, 0.88f, 1.0f);
                 }
 
-                allStrands.add(samples);
-                strandColors.add(sColor);
+                if (comic) {
+                    boolean main = sIdx == 0;
+                    if (!main) sColor = ColorUtil.interpolate(sColor, 0xFFFFDB9E, 0.36f);
+                    comicRibbons.add(new ComicRibbon(samples, sColor, main));
+                } else {
+                    allStrands.add(samples);
+                    strandColors.add(sColor);
+                }
             }
         }
 
+        if (comic) {
+            if (!comicRibbons.isEmpty()) renderComic(comicRibbons, camPos, thickScale * audioWaveScale);
+            return;
+        }
         if (allStrands.isEmpty()) return;
 
         MatrixStack.Entry entry = matrices.peek();
@@ -280,6 +314,88 @@ public class Trail extends Module {
                 MeshDrawUtil.drawLabeled(pipeline, builtCore, "egg trail core");
             }
         }
+    }
+
+    private void renderComic(List<ComicRibbon> ribbons, Vec3d camera, float thickness) {
+        try (BufferAllocator allocator = allocCore) {
+            BufferBuilder mesh = new BufferBuilder(allocator, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+            for (ComicRibbon ribbon : ribbons) {
+                buildComicRibbon(mesh, ribbon.samples, camera, ribbon.color, ribbon.main, thickness);
+            }
+            BuiltBuffer built = mesh.endNullable();
+            if (built != null) MeshDrawUtil.drawLabeled(Pipelines.TRAIL_COMIC, built, "egg comic trail");
+        }
+    }
+
+    private static void buildComicRibbon(BufferBuilder mesh, List<CurveSample> samples, Vec3d camera, int rgb,
+                                         boolean mainRibbon, float thickness) {
+        Vec3d previous = samples.getFirst().relativeTo(camera);
+        Vec3d previousSide = Vec3d.ZERO;
+        float distance = 0;
+        float nextStroke = 0.44f;
+        float halfWidth = (0.049f + thickness * 0.082f) * (mainRibbon ? 1.0f : 0.61f);
+        int previousColor = rgb & 0xFFFFFF;
+        for (int i = 1; i < samples.size(); i++) {
+            CurveSample sample = samples.get(i);
+            Vec3d center = sample.relativeTo(camera);
+            Vec3d delta = center.subtract(previous);
+            float segment = (float) delta.length();
+            if (segment < 0.0001f) continue;
+            Vec3d next = i + 1 == samples.size() ? center : samples.get(i + 1).relativeTo(camera);
+            Vec3d direction = next.subtract(previous);
+            if (direction.lengthSquared() < 0.000001) direction = delta;
+            Vec3d side = direction.crossProduct(center);
+            if (side.lengthSquared() < 0.000001) side = direction.crossProduct(new Vec3d(0, 1, 0));
+            side = side.normalize();
+            if (side.dotProduct(previousSide) < 0) side = side.negate();
+
+            float arc = distance + segment;
+            float tip = 1 - sample.progress;
+            float alpha = 0.96f * Math.min(1, tip / 0.29f) * Math.min(1, arc / 0.19f);
+            float width = halfWidth * (0.12f + 0.88f * (float) Math.sqrt(tip))
+                    * (0.66f + 0.34f * Math.min(1, arc / 0.35f));
+            Vec3d edge = side.multiply(width);
+            if (previousSide.lengthSquared() < 1.0e-8) previousSide = side.multiply(halfWidth * 0.64f);
+            int color = ColorUtil.withAlphaFloat(rgb, alpha);
+            comicVertex(mesh, previous.subtract(previousSide), distance, 0, previousColor);
+            comicVertex(mesh, previous.add(previousSide), distance, 1, previousColor);
+            comicVertex(mesh, center.add(edge), arc, 1, color);
+            comicVertex(mesh, center.subtract(edge), arc, 0, color);
+
+            if (mainRibbon && arc >= nextStroke && alpha > 0.36f) {
+                Vec3d tangent = delta.multiply(1.0 / segment);
+                Vec3d point = previous.lerp(center, Math.clamp((nextStroke - distance) / segment, 0, 1));
+                Vec3d gap = side.multiply(width + 0.050);
+                drawComicStroke(mesh, point.subtract(gap), tangent, side, 0.15f, 0.014f,
+                        ColorUtil.withAlphaFloat(rgb, alpha * 0.86f));
+                if (((int) (nextStroke / 0.47f) & 1) == 0) {
+                    drawComicStroke(mesh, point.add(gap.multiply(1.17)), tangent, side, 0.10f, 0.012f,
+                            ColorUtil.withAlphaFloat(rgb, alpha * 0.72f));
+                }
+                nextStroke = arc + 0.48f;
+            }
+
+            previous = center;
+            previousSide = edge;
+            previousColor = color;
+            distance = arc;
+        }
+    }
+
+    private static void drawComicStroke(BufferBuilder mesh, Vec3d point, Vec3d tangent, Vec3d side,
+                                        float span, float width, int color) {
+        Vec3d start = point.subtract(tangent.multiply(span * 0.35f));
+        Vec3d end = point.add(tangent.multiply(span * 0.65f));
+        Vec3d edge = side.multiply(width);
+        Vec3d tip = edge.multiply(0.14);
+        comicVertex(mesh, start.subtract(edge), 0, 2, color);
+        comicVertex(mesh, start.add(edge), 0, 3, color);
+        comicVertex(mesh, end.add(tip), 1, 3, color);
+        comicVertex(mesh, end.subtract(tip), 1, 2, color);
+    }
+
+    private static void comicVertex(BufferBuilder mesh, Vec3d position, float u, float v, int color) {
+        mesh.vertex((float) position.x, (float) position.y, (float) position.z).texture(u, v).color(color);
     }
 
     private static void buildStrandLines(BufferBuilder builder, MatrixStack.Entry entry,
@@ -452,6 +568,8 @@ public class Trail extends Module {
         }
     }
 
+    private record ComicRibbon(List<CurveSample> samples, int color, boolean main) {}
+
     private static class CurveSample {
         final double x, y, z;
         final float progress;
@@ -461,6 +579,10 @@ public class Trail extends Module {
             this.y = y;
             this.z = z;
             this.progress = progress;
+        }
+
+        Vec3d relativeTo(Vec3d camera) {
+            return new Vec3d(x - camera.x, y - camera.y, z - camera.z);
         }
     }
 
@@ -496,13 +618,56 @@ public class Trail extends Module {
                 head.time = nowMs;
             }
 
-            while (points.size() > maxPoints) {
-                points.remove(points.size() - 1);
+            trim(maxPoints, nowMs);
+        }
+
+        void updateComic(Vec3d position, int maxPoints, long nowMs) {
+            if (points.isEmpty() || distanceSquared(points.getFirst(), position) > 256.0) {
+                points.clear();
+                points.add(new StrandPoint(position.x, position.y, position.z, nowMs));
+                points.add(new StrandPoint(position.x, position.y, position.z, nowMs));
+                return;
             }
 
-            while (points.size() > 2 && (nowMs - points.get(points.size() - 1).time) > 1800L) {
-                points.remove(points.size() - 1);
+            StrandPoint fixed = points.get(1);
+            long elapsed = nowMs - fixed.time;
+            if (elapsed >= 55 || (elapsed >= 16 && distanceSquared(fixed, position) > 0.0144)) {
+                points.add(1, new StrandPoint(position.x, position.y, position.z, nowMs));
             }
+            StrandPoint head = points.getFirst();
+            head.x = position.x;
+            head.y = position.y;
+            head.z = position.z;
+            head.time = nowMs;
+            trim(maxPoints, nowMs);
+        }
+
+        private static double distanceSquared(StrandPoint point, Vec3d position) {
+            double dx = point.x - position.x;
+            double dy = point.y - position.y;
+            double dz = point.z - position.z;
+            return dx * dx + dy * dy + dz * dz;
+        }
+
+        private void trim(int maxPoints, long nowMs) {
+            while (points.size() > maxPoints) {
+                points.removeLast();
+            }
+            while (points.size() > 2 && (nowMs - points.getLast().time) > 1800L) {
+                points.removeLast();
+            }
+        }
+
+        boolean hasMotion() {
+            StrandPoint head = points.getFirst();
+            for (int i = 1; i < points.size(); i++) {
+                StrandPoint point = points.get(i);
+                double dx = point.x - head.x;
+                double dy = point.y - head.y;
+                double dz = point.z - head.z;
+                if (dx * dx + dy * dy + dz * dz > 0.018) return true;
+            }
+            return false;
         }
 
         List<CurveSample> generateCurveSamples(int maxPoints, float waveStrength, float timeSec, float phaseOffset) {
