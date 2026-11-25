@@ -79,6 +79,8 @@ public class EggTitleScreen extends Screen {
 
     private static final List<ChangeDay> CHANGELOG_DAYS = List.of(
             new ChangeDay("ChangeLog 25.11.2026", List.of(
+                    new ChangeItem("[+]", "TargetESP: новый стиль «Орбитальные глифы» — два наклонных кольца из ASCII-глифов"),
+                    new ChangeItem("[+]", "KillEffect: новый 3D-эффект «Сингулярность» со скручиванием и схлопыванием модели"),
                     new ChangeItem("[+]", "Break Block: новый 3D-стиль «Резонанс» со сжимающейся рамкой, угловыми скобками и сканером"),
                     new ChangeItem("[+]", "ShulkerPreview: карточка предпросмотра 9x3 содержимого шалкеров и контейнеров при наведении"),
                     new ChangeItem("[+]", "MainMenu & Startup: кастомное главное меню на собственном рендере с вращающимся ASCII-яйцом, заголовком Egg Visuals, диалогом выхода и экраном загрузки без логотипа Mojang"),

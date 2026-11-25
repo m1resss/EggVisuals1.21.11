@@ -9,6 +9,7 @@ import egg.client.render.shader.Pipelines;
 import egg.client.render.shader.ProjectionUtil;
 import egg.client.render.world.IronDustTargetRenderer;
 import egg.client.render.world.FocusTargetRenderer;
+import egg.client.render.world.OrbitalGlyphsTargetRenderer;
 import egg.client.render.world.WaterTargetRenderer;
 import egg.client.module.ModuleManager;
 import net.minecraft.client.render.BufferBuilder;
@@ -85,8 +86,9 @@ public class TargetESP extends Module {
     private static final String WATER = "Прибой";
     private static final String IRON_DUST = "Железная пыль";
     private static final String FOCUS = "Фокус";
+    private static final String ORBITAL_GLYPHS = "Орбитальные глифы";
     private final ModeSetting mode = new ModeSetting("Стиль", "Разряд", "Стиль Target ESP",
-            "Разряд", "Молнии", "Снежинки", "Души", "Ромб", "Кубы", WATER, IRON_DUST, FOCUS) {
+            "Разряд", "Молнии", "Снежинки", "Души", "Ромб", "Кубы", WATER, IRON_DUST, FOCUS, ORBITAL_GLYPHS) {
         @Override
         public void set(String value) {
             super.set("Шёлк".equals(value) ? WATER : "Муар".equals(value) ? FOCUS : value);
@@ -96,6 +98,7 @@ public class TargetESP extends Module {
     private final WaterTargetRenderer waterRenderer = new WaterTargetRenderer();
     private final IronDustTargetRenderer ironDustRenderer = new IronDustTargetRenderer();
     private final FocusTargetRenderer focusRenderer = new FocusTargetRenderer();
+    private final OrbitalGlyphsTargetRenderer orbitalRenderer = new OrbitalGlyphsTargetRenderer();
 
     private final SliderSetting rhombusHeight = new SliderSetting("Высота ромба", 0.0, -0.8, 1.5, 0.05, "Смещение ромба по высоте");
     private final SliderSetting rhombusSize = new SliderSetting("Размер ромба", 1.25, 0.3, 2.5, 0.05, "Размер ромба");
@@ -216,6 +219,7 @@ public class TargetESP extends Module {
         this.waterRenderer.clear();
         this.ironDustRenderer.clear();
         this.focusRenderer.clear();
+        this.orbitalRenderer.clear();
         this.animProgress = 0.0f;
         this.snowflakeParticles.clear();
         this.lightningTime = 0.0f;
@@ -361,7 +365,7 @@ public class TargetESP extends Module {
 
         float delta = tickCounter != null ? tickCounter.getTickProgress(true) : 0.0f;
         String curMode = this.mode.get();
-        if (WATER.equals(curMode) || IRON_DUST.equals(curMode) || FOCUS.equals(curMode)) return;
+        if (WATER.equals(curMode) || IRON_DUST.equals(curMode) || FOCUS.equals(curMode) || ORBITAL_GLYPHS.equals(curMode)) return;
 
         int themeColor = Theme.getAccent();
         int hurtCol = 0xFFFF2525;
@@ -815,6 +819,13 @@ public class TargetESP extends Module {
         if (!WATER.equals(curMode)) waterRenderer.clear();
         if (!IRON_DUST.equals(curMode)) ironDustRenderer.clear();
         if (!FOCUS.equals(curMode)) focusRenderer.clear();
+        if (!ORBITAL_GLYPHS.equals(curMode)) orbitalRenderer.clear();
+        if (ORBITAL_GLYPHS.equals(curMode)) {
+            orbitalRenderer.render(this.target, camera, camPos, tickDelta,
+                    (float) this.radius.get(), (float) this.speed.get(),
+                    this.hurtColor.isEnabled(), getActiveDischargeColor(0.0f));
+            return;
+        }
         if (FOCUS.equals(curMode)) {
             focusRenderer.render(this.target, matrices, camera, tickDelta);
             return;

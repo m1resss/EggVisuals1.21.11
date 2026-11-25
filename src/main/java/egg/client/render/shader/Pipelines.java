@@ -232,6 +232,7 @@ public final class Pipelines {
 
     public static final RenderPipeline ICE_FREEZE = killModel("ice_freeze");
     public static final RenderPipeline ASH_MODEL = killModel("ash_model");
+    public static final RenderPipeline SINGULARITY_MODEL = killModel("singularity_model");
 
     private static RenderPipeline killModel(String name) {
         return register(RenderPipeline.builder()
@@ -255,6 +256,21 @@ public final class Pipelines {
             .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/ash_effect"))
             .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/world/jump_caustic"))
             .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/world/ash_effect"))
+            .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
+            .withUniform("Projection", UniformType.UNIFORM_BUFFER)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withDepthTestFunction(DepthTestFunction.LEQUAL_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .withVertexFormat(VertexFormats.POSITION_TEXTURE_COLOR, DrawMode.QUADS)
+            .build()
+    );
+
+    public static final RenderPipeline SINGULARITY_EFFECT = register(
+        RenderPipeline.builder()
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/singularity_effect"))
+            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/world/jump_caustic"))
+            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/world/singularity_effect"))
             .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
             .withUniform("Projection", UniformType.UNIFORM_BUFFER)
             .withBlend(BlendFunction.TRANSLUCENT)

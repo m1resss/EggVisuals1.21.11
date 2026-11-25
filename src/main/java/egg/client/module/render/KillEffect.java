@@ -10,6 +10,7 @@ import egg.client.render.world.AshKillRenderer;
 import egg.client.render.world.GroundFormRenderer;
 import egg.client.render.world.IceFreezeKillRenderer;
 import egg.client.render.world.KillModelPass;
+import egg.client.render.world.SingularityKillRenderer;
 import egg.client.ui.theme.Theme;
 import egg.client.util.EntityUtil;
 import net.minecraft.block.BlockState;
@@ -71,10 +72,11 @@ public class KillEffect extends Module {
     private static final String GROUND_FORM = "Врос в мир";
     private static final String ICE = "Лед";
     private static final String ASH = "Пепел";
+    private static final String SINGULARITY = "Сингулярность";
     private static final long ASCENSION_DURATION = 1_650_000_000L;
 
     private final ModeSetting mode = new ModeSetting("Эффект", "Бабочки", "Тип эффекта при смерти противника",
-            "Бабочки", "Стекло", ASCENSION, GROUND_FORM, ICE, ASH) {
+            "Бабочки", "Стекло", ASCENSION, GROUND_FORM, ICE, ASH, SINGULARITY) {
         @Override
         public void set(String value) {
             super.set("Лед1".equals(value) || "Лед2".equals(value) ? ICE : ASH.equalsIgnoreCase(value) ? ASH : value);
@@ -106,6 +108,7 @@ public class KillEffect extends Module {
     private final KillModelPass killModel = new KillModelPass();
     private final IceFreezeKillRenderer iceFreeze = new IceFreezeKillRenderer(killModel);
     private final AshKillRenderer ash = new AshKillRenderer(killModel);
+    private final SingularityKillRenderer singularity = new SingularityKillRenderer(killModel);
     private final List<ButterflySwarmInstance> butterflySwarms = new ArrayList<>();
     private final List<DeathGlassShard> particles = new ArrayList<>();
     private final Map<Integer, Long> recentAttacks = new ConcurrentHashMap<>();
@@ -349,13 +352,15 @@ public class KillEffect extends Module {
     }
 
     private boolean isMaterialEffect() {
-        return mode.is(ICE) || mode.is(ASH);
+        return mode.is(ICE) || mode.is(ASH) || mode.is(SINGULARITY);
     }
 
     private void spawnMaterialEffect(Entity entity, Vec3d position, double height, double width, EntityRenderState model) {
         boolean spawned = mode.is(ASH)
                 ? ash.spawn(mc, position, height, width, model, sound.isEnabled())
-                : iceFreeze.spawn(mc, position, height, width, model, sound.isEnabled());
+                : mode.is(SINGULARITY)
+                        ? singularity.spawn(mc, position, height, width, model, sound.isEnabled())
+                        : iceFreeze.spawn(mc, position, height, width, model, sound.isEnabled());
         if (spawned && entity != null) {
             hiddenOriginals.put(entity, System.nanoTime());
         }
@@ -681,11 +686,13 @@ public class KillEffect extends Module {
         if (!isEnabled()) return;
         iceFreeze.render(matrices, camera, tickDelta, immediate, camPos, sound.isEnabled());
         ash.render(mc, matrices, camera, camPos, sound.isEnabled());
+        singularity.render(mc, matrices, camera, camPos, sound.isEnabled());
     }
 
     private void clearMaterialEffects() {
         iceFreeze.clear();
         ash.clear();
+        singularity.clear();
         killModel.clear();
     }
 

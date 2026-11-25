@@ -24,6 +24,7 @@ import net.minecraft.client.render.entity.state.EntityRenderState;
 import net.minecraft.client.render.state.CameraRenderState;
 import net.minecraft.client.util.BufferAllocator;
 import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.util.math.RotationAxis;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
@@ -47,6 +48,13 @@ public final class KillModelPass {
     void render(MinecraftClient client, EntityRenderState model, Vec3d position, float height,
                 MatrixStack matrices, Camera camera, Vec3d camPos, RenderPipeline pipeline,
                 float front, float progress, float age, float opacity) {
+        render(client, model, position, height, matrices, camera, camPos, pipeline, front, progress, age, opacity, 0.0f, 1.0f, 1.0f);
+    }
+
+    void render(MinecraftClient client, EntityRenderState model, Vec3d position, float height,
+                MatrixStack matrices, Camera camera, Vec3d camPos, RenderPipeline pipeline,
+                float front, float progress, float age, float opacity,
+                float spinRad, float scaleXZ, float scaleY) {
         if (model == null || !GlStateSnapshot.isOpenGl()) return;
         Framebuffer frame = client.getFramebuffer();
         if (frame == null || frame.getColorAttachmentView() == null || frame.getDepthAttachmentView() == null
@@ -61,14 +69,14 @@ public final class KillModelPass {
         try (var ignored = FullscreenPass.guardState()) {
             var sampler = RenderSystem.getSamplerCache().get(FilterMode.NEAREST);
             FullscreenPass.blitUnflipped(Pipelines.COLOR_COPY, sceneCopy, frame.getColorAttachmentView(), sampler, 0);
-            renderCapturedModel(client, model, position, matrices, camera, camPos);
+            renderCapturedModel(client, model, position, height, matrices, camera, camPos, spinRad, scaleXZ, scaleY);
             compose(frame, position.subtract(camPos), height, pipeline, front, progress, age, opacity);
         }
     }
 
-    private void renderCapturedModel(MinecraftClient client, EntityRenderState model, Vec3d position,
-                                     MatrixStack matrices,
-                                     Camera camera, Vec3d camPos) {
+    private void renderCapturedModel(MinecraftClient client, EntityRenderState model, Vec3d position, float height,
+                                     MatrixStack matrices, Camera camera, Vec3d camPos,
+                                     float spinRad, float scaleXZ, float scaleY) {
         EntityRenderManager manager = client.getEntityRenderDispatcher();
         RenderDispatcher dispatcher = client.gameRenderer.getEntityRenderDispatcher();
         CameraRenderState camState = new CameraRenderState();
@@ -84,7 +92,18 @@ public final class KillModelPass {
         renderingModel = model;
         try {
             Vec3d offset = position.subtract(camPos);
-            manager.render(model, camState, offset.x, offset.y, offset.z, matrices, dispatcher.getQueue());
+            if (spinRad != 0.0f || scaleXZ != 1.0f || scaleY != 1.0f) {
+                float pivotY = height * 0.52f;
+                matrices.push();
+                matrices.translate(offset.x, offset.y + pivotY, offset.z);
+                if (spinRad != 0.0f) matrices.multiply(RotationAxis.POSITIVE_Y.rotation(spinRad));
+                matrices.scale(scaleXZ, scaleY, scaleXZ);
+                matrices.translate(0.0, -pivotY, 0.0);
+                manager.render(model, camState, 0.0, 0.0, 0.0, matrices, dispatcher.getQueue());
+                matrices.pop();
+            } else {
+                manager.render(model, camState, offset.x, offset.y, offset.z, matrices, dispatcher.getQueue());
+            }
             dispatcher.render();
             client.getBufferBuilders().getEntityVertexConsumers().draw();
         } finally {
