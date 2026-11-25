@@ -4,35 +4,55 @@ in vec2 texCoord;
 in vec4 vertexColor;
 out vec4 fragColor;
 
+float lobe(vec2 p, vec2 center, float radius) {
+    return length(p - center) - radius;
+}
+
+float merge(float a, float b, float radius) {
+    float weight = max(radius - abs(a - b), 0.0) / radius;
+    return min(a, b) - weight * weight * radius * 0.25;
+}
+
+float cloud(vec2 p, float style) {
+    if (style == 1.0) p.x = -p.x;
+    if (style == 2.0) p.y += p.x * 0.15;
+
+    float shape = lobe(p, vec2(0.02, -0.06), 0.49);
+    shape = merge(shape, lobe(p, vec2(-0.40, -0.17), 0.34), 0.105);
+    shape = merge(shape, lobe(p, vec2(-0.30, 0.25), 0.30), 0.085);
+    shape = merge(shape, lobe(p, vec2(0.07, 0.37), style == 2.0 ? 0.38 : 0.31), 0.11);
+    shape = merge(shape, lobe(p, vec2(0.40, 0.19), 0.29), 0.095);
+    shape = merge(shape, lobe(p, vec2(0.53, -0.16), style == 2.0 ? 0.27 : 0.35), 0.11);
+    shape = merge(shape, lobe(p, vec2(0.22, -0.40), 0.27), 0.095);
+    return shape;
+}
+
 void main() {
-    float u = texCoord.x;
-    float v = texCoord.y;
-    float opacity = vertexColor.a;
-    vec3 ink = vec3(0.063, 0.053, 0.084);
+    float style = floor(texCoord.x / 2.0);
+    vec2 p = (vec2(mod(texCoord.x, 2.0), texCoord.y) - 0.5) * 2.0;
+    float facing = style == 1.0 ? -1.0 : 1.0;
+    float shape = cloud(p, style);
+    float small = lobe(p, vec2(-facing * 0.79, 0.38), 0.098);
+    float speck = lobe(p, vec2(-facing * 0.54, 0.71), 0.051);
+    float d = min(shape, min(small, speck));
 
-    if (v >= 2.0) {
-        float side = abs((v - 2.5) * 2.0);
-        float outer = 1.0 - smoothstep(0.77, 1.0, side);
-        float inner = 1.0 - smoothstep(0.36, 0.61, side);
-        fragColor = vec4(mix(ink, mix(vertexColor.rgb, vec3(1.0, 0.95, 0.79), 0.60), inner), opacity * outer);
-        return;
-    }
+    float aa = clamp(fwidth(d) * 0.77, 0.004, 0.067);
+    float opacity = (1.0 - smoothstep(-aa, aa, d)) * vertexColor.a;
+    if (opacity < 0.005) discard;
 
-    vec3 fill = mix(vertexColor.rgb, vec3(1.0, 0.95, 0.81), 0.13);
-    vec3 shade = fill * vec3(0.54, 0.53, 0.67);
-    float aa = clamp(fwidth(v) * 0.66, 0.008, 0.075);
-    float outer = smoothstep(0.0, aa * 1.6, min(v, 1.0 - v));
-    float interior = smoothstep(0.107 - aa, 0.107 + aa, min(v, 1.0 - v));
-    float cream = 1.0 - smoothstep(0.206 - aa, 0.206 + aa, v);
-    float shaded = smoothstep(0.55 - aa, 0.55 + aa, v);
-    vec3 color = mix(fill, shade, shaded);
+    vec3 ink = vec3(0.062, 0.051, 0.078);
+    vec3 paper = mix(vec3(1.0, 0.956, 0.831), vertexColor.rgb, 0.115);
+    vec3 shade = mix(vec3(0.60, 0.58, 0.56), vertexColor.rgb, 0.23);
+    float inner = 1.0 - smoothstep(-0.055 - aa, -0.055 + aa, d);
+    float shadow = smoothstep(-aa, aa, cloud(p - vec2(-0.075, 0.21), style) + 0.027);
+    shadow *= 1.0 - smoothstep(-aa, aa, shape);
 
-    vec2 cells = vec2(u * 14.0, v * 6.4);
-    cells.x += mod(floor(cells.y), 2.0) * 0.5;
-    float dotDist = length(fract(cells) - 0.5);
-    float soften = clamp(fwidth(cells.x) * 0.48 + fwidth(cells.y) * 0.26, 0.035, 0.25);
-    float dots = 1.0 - smoothstep(0.245 - soften, 0.245 + soften, dotDist);
-    color = mix(color, ink, dots * shaded * 0.92);
-    color = mix(color, vec3(1.0, 0.95, 0.78), cream * 0.82);
-    fragColor = vec4(mix(ink, color, interior), opacity * outer);
+    vec2 dots = vec2(p.x * 7.7 + 0.25, p.y * 9.5);
+    dots.x += mod(floor(dots.y), 2.0) * 0.5;
+    float dotDist = length(fract(dots) - 0.5);
+    float smoothDot = clamp(fwidth(dotDist) * 0.79, 0.035, 0.25);
+    float printDots = (1.0 - smoothstep(0.255 - smoothDot, 0.255 + smoothDot, dotDist)) * shadow;
+    vec3 fill = mix(paper, shade, shadow);
+    fill = mix(fill, ink, printDots * 0.87);
+    fragColor = vec4(mix(ink, fill, inner), opacity);
 }
