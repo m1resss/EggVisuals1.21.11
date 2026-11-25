@@ -54,7 +54,12 @@ public class TargetHUD extends Module {
     private static TargetHUD instance;
 
     private static final Identifier HEART_ICON = Identifier.of("egg", "textures/hud/heart.png");
+    private static final Identifier HEART_OUTLINE_ICON = Identifier.of("egg", "textures/icons/hud_heart_outline.png");
+    private static final Identifier CROSS_ICON = Identifier.of("egg", "textures/icons/gui_cross.png");
+    private static final String STYLE_CLASSIC = "Классик";
+    private static final String STYLE_SPLIT = "Раздельный";
 
+    private final ModeSetting style = new ModeSetting("Стиль", STYLE_CLASSIC, "Внешний вид Target HUD", STYLE_CLASSIC, STYLE_SPLIT);
     private final ModeSetting mode = new ModeSetting("Режим", "В мире", "Расположение Target HUD", "В мире", "Экран");
     private final SliderSetting hudScale = new SliderSetting("Масштаб", 1.0, 0.5, 2.0, 0.05, "Масштаб Target HUD");
     private final SliderSetting opacity = new SliderSetting("Непрозрачность", 65.0, 10.0, 100.0, 5.0, "Прозрачность Target HUD (%)");
@@ -122,7 +127,9 @@ public class TargetHUD extends Module {
 
         posX.setVisible(() -> false);
         posY.setVisible(() -> false);
+        ghostBar.setVisible(() -> style.is(STYLE_CLASSIC));
 
+        contextMenu.addMode("Стиль", () -> style.get(), () -> style.cycle());
         contextMenu.addMode("Режим", () -> mode.get(), () -> mode.cycle());
         contextMenu.addToggle("Только игроки", () -> onlyPlayers.isEnabled(), () -> onlyPlayers.toggle());
         contextMenu.addToggle("Частицы удара", () -> hitParticles.isEnabled(), () -> hitParticles.toggle());
@@ -131,7 +138,7 @@ public class TargetHUD extends Module {
         contextMenu.addToggle("Прочность в %", () -> showDurabilityPercent.isEnabled(), () -> showDurabilityPercent.toggle());
         contextMenu.addToggle("Ghost Bar", () -> ghostBar.isEnabled(), () -> ghostBar.toggle());
 
-        addSettings(mode, hudScale, opacity, targetTimeout, onlyPlayers, hitParticles, hudThemeGradient, hudGradientStrength, eatIndicator, showDurabilityPercent, ghostBar, posX, posY);
+        addSettings(style, mode, hudScale, opacity, targetTimeout, onlyPlayers, hitParticles, hudThemeGradient, hudGradientStrength, eatIndicator, showDurabilityPercent, ghostBar, posX, posY);
     }
 
     public static TargetHUD getInstance() {
@@ -235,9 +242,10 @@ public class TargetHUD extends Module {
         }
         visualAbsorption += (actualAbsorption - visualAbsorption) * Math.min(1.0f, dt * 10.0f);
 
-        float cardW = 134.0f;
-        float cardH = 44.0f;
-        float cardRadius = 12.0f;
+        boolean splitStyle = style.is(STYLE_SPLIT);
+        float cardW = splitStyle ? 153.0f : 134.0f;
+        float cardH = splitStyle ? 34.0f : 44.0f;
+        float cardRadius = splitStyle ? 7.5f : 12.0f;
         float scale = hudScale.getValueFloat();
         float springPopScale = 0.90f + 0.10f * springProgress;
         scale *= springPopScale;
@@ -373,7 +381,11 @@ public class TargetHUD extends Module {
         this.lastRenderW = cardW * scale;
         this.lastRenderH = cardH * scale;
 
-        renderCard(context, renderTarget, cardX, cardY, cardW, cardH, cardRadius, scale, animAlpha, maxHealth, actualAbsorption, dt);
+        if (splitStyle) {
+            renderSplitCard(context, renderTarget, cardX, cardY, cardW, cardH, scale, animAlpha, maxHealth, actualAbsorption, dt);
+        } else {
+            renderCard(context, renderTarget, cardX, cardY, cardW, cardH, cardRadius, scale, animAlpha, maxHealth, actualAbsorption, dt);
+        }
     }
 
     private void renderCard(DrawContext context, LivingEntity target, float x, float y, float w, float h,
@@ -767,6 +779,350 @@ public class TargetHUD extends Module {
         DrawBatcher.flushPending();
         if (customScale) {
             context.getMatrices().popMatrix();
+        }
+    }
+
+    private void renderSplitCard(DrawContext context, LivingEntity target, float x, float y, float w, float h,
+                                 float scale, float alpha, float maxHp, float absorption, float dt) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        Matrix3x2f mat = null;
+        boolean customScale = Math.abs(scale - 1.0f) > 0.001f;
+        if (customScale) {
+            mat = this.cardMat.identity();
+            mat.translate(x, y);
+            mat.scale(scale, scale);
+            mat.translate(-x, -y);
+
+            context.getMatrices().pushMatrix();
+            context.getMatrices().translate(x, y);
+            context.getMatrices().scale(scale, scale);
+            context.getMatrices().translate(-x, -y);
+        }
+
+        updateEatState(target, dt, mc);
+
+        float op = opacity.getValueFloat() / 100.0f;
+        int bgAlpha = (int) (208.0f * alpha * op);
+        int borderAlpha = (int) (Math.max(18.0f, 36.0f * op) * alpha);
+        int shadowAlpha = (int) (72.0f * alpha * op);
+
+        int bgColor = ColorUtil.rgba(14, 15, 19, bgAlpha);
+        int borderColor = ColorUtil.rgba(255, 255, 255, borderAlpha);
+        int shadowColor = ColorUtil.rgba(0, 0, 0, shadowAlpha);
+
+        float headBoxSize = h;
+        float headBoxR = 7.0f;
+        float gap = 5.0f;
+        float infoX = x + headBoxSize + gap;
+        float infoW = w - headBoxSize - gap;
+        float infoR = 7.5f;
+
+        Draw2DProcessor.INSTANCE.drawGlow(mat, x, y, headBoxSize, headBoxSize, headBoxR, shadowColor, 5.5f);
+        Draw2DProcessor.INSTANCE.drawPanelBlur(mat, x, y, headBoxSize, headBoxSize, headBoxR, alpha);
+        Draw2DProcessor.INSTANCE.drawRect(mat, x, y, headBoxSize, headBoxSize, headBoxR, bgColor);
+        Draw2DProcessor.INSTANCE.drawOutline(mat, x, y, headBoxSize, headBoxSize, headBoxR, 0.8f, borderColor);
+
+        Draw2DProcessor.INSTANCE.drawGlow(mat, infoX, y, infoW, h, infoR, shadowColor, 5.5f);
+        Draw2DProcessor.INSTANCE.drawPanelBlur(mat, infoX, y, infoW, h, infoR, alpha);
+        Draw2DProcessor.INSTANCE.drawRect(mat, infoX, y, infoW, h, infoR, bgColor);
+        Draw2DProcessor.INSTANCE.drawOutline(mat, infoX, y, infoW, h, infoR, 0.8f, borderColor);
+
+        if (hudThemeGradient.isEnabled()) {
+            Interface iface = Interface.getInstance();
+            int gradC = iface != null ? iface.computeHudGradientColor(hudGradientStrength.getValueFloat(), alpha * op)
+                    : ColorUtil.rgba(168, 85, 247, (int) ((hudGradientStrength.getValueFloat() / 100.0f) * 42.0f * alpha * op));
+            Draw2DProcessor.INSTANCE.drawGradient(mat, infoX, y, infoW, h, infoR, gradC, 0x00000000, 0x00000000, gradC);
+        }
+
+        float headPad = 2.5f;
+        float headX = x + headPad;
+        float headY = y + headPad;
+        float headSize = headBoxSize - headPad * 2.0f;
+        float headRadius = 5.0f;
+
+        int headBgColor = ColorUtil.rgba(24, 24, 30, (int) (235 * alpha));
+        if (target.hurtTime > 0) {
+            float hurtFactor = target.hurtTime / 10.0f;
+            headBgColor = ColorUtil.interpolate(headBgColor, ColorUtil.rgba(220, 34, 34, (int) (240 * alpha)), hurtFactor);
+        }
+        Draw2DProcessor.INSTANCE.drawRect(mat, headX, headY, headSize, headSize, headRadius, headBgColor);
+
+        Identifier skinTex = getTargetSkin(target);
+        if (skinTex != null) {
+            if (smoothEatProgress > 0.01f) {
+                renderBlurredHead(mat, skinTex, target, headX, headY, headSize, headRadius, alpha, smoothEatProgress);
+            } else {
+                Draw2DProcessor.INSTANCE.a(mat, skinTex, target, headX, headY, headSize, headSize, headRadius, alpha);
+            }
+        }
+        if (smoothEatProgress > 0.01f && !lastEatStack.isEmpty()) {
+            DrawBatcher.flushPending();
+            float itemScale = 0.78f * (0.85f + 0.15f * smoothEatProgress);
+            float itemCx = headX + headSize * 0.5f;
+            float itemCy = headY + 8.5f;
+            context.getMatrices().pushMatrix();
+            context.getMatrices().translate(itemCx, itemCy);
+            context.getMatrices().scale(itemScale, itemScale);
+            context.getMatrices().translate(-8.0f, -8.0f);
+            context.drawItem(lastEatStack, 0, 0);
+            context.getMatrices().popMatrix();
+
+            String timerStr = String.format(Locale.US, "%.2f", Math.max(0.0f, eatTimerSeconds));
+            float tw = Fonts.b.a(timerStr, 6.8f);
+            float pillW = tw + 4.0f;
+            float pillH = 7.0f;
+            float pillX = headX + (headSize - pillW) * 0.5f;
+            float pillY = headY + headSize - 8.5f;
+            Draw2DProcessor.INSTANCE.drawRect(mat, pillX, pillY, pillW, pillH, 2.5f,
+                    ColorUtil.rgba(8, 8, 12, (int) (190 * smoothEatProgress * alpha)));
+            Fonts.b.a(mat, timerStr, headX + (headSize - tw) * 0.5f, pillY + 0.4f, 6.8f,
+                    ColorUtil.rgba(255, 255, 255, (int) (245 * smoothEatProgress * alpha)));
+        }
+
+        float padX = 7.5f;
+        float topY = y + 4.5f;
+        float pillH = 11.0f;
+
+        int curHp = (int) Math.ceil(target.getHealth());
+        if (lastHpTarget != target) {
+            lastHpTarget = target;
+            hpRolling.reset(curHp);
+        } else {
+            hpRolling.update(curHp);
+        }
+
+        float hpRatio = MathHelper.clamp(visualHp / Math.max(1.0f, maxHp), 0.0f, 1.0f);
+        int pillBaseRgb;
+        int pillEdgeRgb;
+        if (hpRatio >= 0.55f) {
+            float k = (hpRatio - 0.55f) / 0.45f;
+            pillBaseRgb = ColorUtil.interpolate(0xFF9A7B22, 0xFF288C46, k);
+            pillEdgeRgb = ColorUtil.interpolate(0xFFD1AE3D, 0xFF44BD67, k);
+        } else {
+            float k = hpRatio / 0.55f;
+            pillBaseRgb = ColorUtil.interpolate(0xFFA82B36, 0xFF9A7B22, k);
+            pillEdgeRgb = ColorUtil.interpolate(0xFFE0525E, 0xFFD1AE3D, k);
+        }
+
+        String hpStr = String.valueOf(curHp);
+        String absStr = absorption > 0.0f ? "+" + (int) Math.ceil(absorption) : "";
+        float hpFont = 7.9f;
+        float hpNumW = Fonts.b.a(hpStr, hpFont);
+        float absW = absorption > 0.0f ? Fonts.b.a(absStr, 6.8f) + 1.5f : 0.0f;
+        float heartSize = 6.6f;
+        float hpPillW = 5.0f + hpNumW + absW + 2.5f + heartSize + 4.5f;
+        float hpPillX = infoX + infoW - padX - hpPillW;
+
+        int pillBg = ColorUtil.withAlpha(pillBaseRgb, (int) (178 * alpha));
+        int pillBorder = ColorUtil.withAlpha(pillEdgeRgb, (int) (220 * alpha));
+        Draw2DProcessor.INSTANCE.drawRect(mat, hpPillX, topY, hpPillW, pillH, 3.6f, pillBg);
+        Draw2DProcessor.INSTANCE.drawOutline(mat, hpPillX, topY, hpPillW, pillH, 3.6f, 0.7f, pillBorder);
+
+        float hpTextX = hpPillX + 4.8f;
+        float hpTextY = Fonts.b.a(hpFont, topY + pillH * 0.5f);
+        int hpTextColor = ColorUtil.rgba(235, 255, 240, (int) (248 * alpha));
+        hpRolling.render(mat, hpTextX, hpTextY, hpFont, hpTextColor, 1.0f);
+
+        if (absorption > 0.0f) {
+            Fonts.b.a(mat, absStr, hpTextX + hpNumW + 1.5f, Fonts.b.a(6.8f, topY + pillH * 0.5f),
+                    6.8f, ColorUtil.rgba(255, 224, 96, (int) (250 * alpha)));
+        }
+
+        float heartX = hpPillX + hpPillW - 4.3f - heartSize;
+        float heartY = topY + (pillH - heartSize) * 0.5f;
+        Draw2DProcessor.INSTANCE.a(mat, HEART_OUTLINE_ICON, heartX, heartY, heartSize, heartSize, 0.0f,
+                ColorUtil.rgba(235, 255, 240, (int) (245 * alpha)));
+
+        String name = target.getName().getString();
+        if (egg.client.module.misc.Globals.isEggUser(target)) {
+            name = "🥚 " + name;
+        }
+        float nameX = infoX + padX;
+        float availNameW = Math.max(20.0f, hpPillX - nameX - 5.0f);
+        String displayName = name;
+        float nameFont = 8.9f;
+        if (Fonts.b.a(displayName, nameFont) > availNameW) {
+            while (displayName.length() > 3 && Fonts.b.a(displayName + "...", nameFont) > availNameW) {
+                displayName = displayName.substring(0, displayName.length() - 1);
+            }
+            displayName += "...";
+        }
+        Fonts.b.a(mat, displayName, nameX, Fonts.b.a(nameFont, topY + pillH * 0.5f),
+                nameFont, ColorUtil.rgba(246, 248, 252, (int) (255 * alpha)));
+
+        ItemStack[] equipStacks = new ItemStack[]{
+                target.getEquippedStack(EquipmentSlot.HEAD),
+                target.getEquippedStack(EquipmentSlot.CHEST),
+                target.getEquippedStack(EquipmentSlot.LEGS),
+                target.getEquippedStack(EquipmentSlot.FEET),
+                target.getMainHandStack(),
+                target.getOffHandStack()
+        };
+
+        float rowY = y + 18.8f;
+        float slotSize = 12.0f;
+        float armorGap = 2.6f;
+        float groupGap = 8.0f;
+
+        for (int i = 0; i < 6; i++) {
+            ItemStack stack = equipStacks[i];
+            float slotX = computeSplitSlotX(infoX + padX, i, slotSize, armorGap, groupGap);
+            boolean empty = stack == null || stack.isEmpty();
+            if (empty) {
+                float crossSize = 6.8f;
+                float cx = slotX + (slotSize - crossSize) * 0.5f;
+                float cy = rowY + (slotSize - crossSize) * 0.5f;
+                Draw2DProcessor.INSTANCE.a(mat, CROSS_ICON, cx, cy, crossSize, crossSize, 0.0f,
+                        ColorUtil.rgba(255, 255, 255, (int) (58 * alpha)));
+            } else if (stack.isDamageable() && stack.getMaxDamage() > 0) {
+                int maxDmg = stack.getMaxDamage();
+                int curDmg = stack.getDamage();
+                float durRatio = Math.clamp((float) Math.max(0, maxDmg - curDmg) / (float) maxDmg, 0.0f, 1.0f);
+                if (durRatio < 1.0f) {
+                    int durColor = durRatio > 0.5f
+                            ? ColorUtil.interpolate(0xFFFFD700, 0xFF33FF55, (durRatio - 0.5f) * 2.0f)
+                            : ColorUtil.interpolate(0xFFFF3333, 0xFFFFD700, durRatio * 2.0f);
+                    float barW = slotSize - 2.0f;
+                    Draw2DProcessor.INSTANCE.drawRect(mat, slotX + 1.0f, rowY + slotSize - 1.2f, barW, 1.0f, 0.4f,
+                            ColorUtil.rgba(0, 0, 0, (int) (175 * alpha)));
+                    Draw2DProcessor.INSTANCE.drawRect(mat, slotX + 1.0f, rowY + slotSize - 1.2f,
+                            Math.max(1.0f, barW * durRatio), 1.0f, 0.4f, ColorUtil.withAlpha(durColor, (int) (235 * alpha)));
+                }
+            }
+        }
+
+        float curActualHp = target.getHealth();
+        int curHurt = target.hurtTime;
+        if (lastDamageTarget != target || lastKnownHp < 0.0f) {
+            lastDamageTarget = target;
+            lastKnownHp = curActualHp;
+            lastHurtTime = curHurt;
+        } else {
+            float diff = lastKnownHp - curActualHp;
+            boolean damaged = diff > 0.01f || (curHurt > 0 && lastHurtTime == 0);
+            if (damaged && hitParticles.get()) {
+                spawnDamageParticles(hpPillX + hpPillW * 0.5f, topY + pillH * 0.5f, Math.max(diff, 1.0f));
+            }
+            lastKnownHp = curActualHp;
+            lastHurtTime = curHurt;
+        }
+
+        if (!particles.isEmpty()) {
+            final float deltaSec = dt;
+            particles.removeIf(p -> !p.update(deltaSec));
+            if (hitParticles.get()) {
+                for (HitParticle p : particles) {
+                    p.render(mat, alpha);
+                }
+            } else {
+                particles.clear();
+            }
+        }
+
+        DrawBatcher.flushPending();
+
+        for (int i = 0; i < 6; i++) {
+            ItemStack stack = equipStacks[i];
+            if (stack == null || stack.isEmpty()) continue;
+            float slotX = computeSplitSlotX(infoX + padX, i, slotSize, armorGap, groupGap);
+            float itemCx = slotX + slotSize * 0.5f;
+            float itemCy = rowY + slotSize * 0.5f - 0.3f;
+            float itemScale = 0.62f;
+
+            context.getMatrices().pushMatrix();
+            context.getMatrices().translate(itemCx, itemCy);
+            context.getMatrices().scale(itemScale, itemScale);
+            context.getMatrices().translate(-8.0f, -8.0f);
+            context.drawItem(stack, 0, 0);
+            context.getMatrices().popMatrix();
+
+            if (stack.isDamageable() && stack.getMaxDamage() > 0 && showDurabilityPercent.isEnabled()) {
+                float durRatio = Math.clamp((float) Math.max(0, stack.getMaxDamage() - stack.getDamage()) / (float) stack.getMaxDamage(), 0.0f, 1.0f);
+                if (durRatio < 1.0f && mc != null && mc.textRenderer != null) {
+                    String pctStr = Math.round(durRatio * 100.0f) + "%";
+                    int durColor = durRatio > 0.5f
+                            ? ColorUtil.interpolate(0xFFFFD700, 0xFF33FF55, (durRatio - 0.5f) * 2.0f)
+                            : ColorUtil.interpolate(0xFFFF3333, 0xFFFFD700, durRatio * 2.0f);
+                    float textScale = 0.52f;
+                    int textW = mc.textRenderer.getWidth(pctStr);
+                    int textH = mc.textRenderer.fontHeight;
+                    context.getMatrices().pushMatrix();
+                    context.getMatrices().translate(itemCx, itemCy);
+                    context.getMatrices().scale(textScale, textScale);
+                    context.drawTextWithShadow(mc.textRenderer, pctStr, -textW / 2, -textH / 2, ColorUtil.withAlpha(durColor, (int) (255 * alpha)));
+                    context.getMatrices().popMatrix();
+                }
+            } else if (stack.getCount() > 1 && mc != null && mc.textRenderer != null) {
+                String countStr = String.valueOf(stack.getCount());
+                float countScale = 0.52f;
+                int cw = mc.textRenderer.getWidth(countStr);
+                int ch = mc.textRenderer.fontHeight;
+                context.getMatrices().pushMatrix();
+                context.getMatrices().translate(slotX + slotSize - 0.5f - (cw * countScale), rowY + slotSize - 1.0f - (ch * countScale));
+                context.getMatrices().scale(countScale, countScale);
+                context.drawTextWithShadow(mc.textRenderer, countStr, 0, 0, ColorUtil.rgba(255, 255, 255, (int) (245 * alpha)));
+                context.getMatrices().popMatrix();
+            }
+        }
+
+        if (customScale) {
+            context.getMatrices().popMatrix();
+        }
+    }
+
+    private static float computeSplitSlotX(float startX, int index, float slotSize, float armorGap, float groupGap) {
+        if (index < 4) {
+            return startX + index * (slotSize + armorGap);
+        }
+        return startX + 4 * slotSize + 3 * armorGap + groupGap + (index - 4) * (slotSize + armorGap);
+    }
+
+    private void updateEatState(LivingEntity target, float dt, MinecraftClient mc) {
+        if (lastEatTarget != target) {
+            lastEatTarget = target;
+            smoothEatProgress = 0.0f;
+            lastEatStack = ItemStack.EMPTY;
+            eatTimerSeconds = 0.0f;
+        }
+
+        boolean eating = false;
+        ItemStack activeStack = target.isUsingItem() ? target.getActiveItem() : ItemStack.EMPTY;
+        if (activeStack.isEmpty() && target.isUsingItem()) {
+            if (isConsumable(target.getMainHandStack())) {
+                activeStack = target.getMainHandStack();
+            } else if (isConsumable(target.getOffHandStack())) {
+                activeStack = target.getOffHandStack();
+            }
+        }
+        if (target.isUsingItem() && isConsumable(activeStack)) {
+            eating = true;
+            lastEatStack = activeStack.copy();
+            int timeLeft = target.getItemUseTimeLeft();
+            if (timeLeft > 0) {
+                float tickDelta = (mc != null && mc.getRenderTickCounter() != null) ? mc.getRenderTickCounter().getTickProgress(false) : 0.0f;
+                eatTimerSeconds = Math.max(0.0f, (float) timeLeft - tickDelta) * 0.05f;
+            } else if (eatTimerSeconds <= 0.0f) {
+                int maxTime = lastEatStack.getMaxUseTime(target);
+                eatTimerSeconds = (maxTime > 0 ? maxTime : 32) * 0.05f;
+            } else {
+                eatTimerSeconds = Math.max(0.0f, eatTimerSeconds - dt);
+            }
+        } else {
+            eatTimerSeconds = Math.max(0.0f, eatTimerSeconds - dt);
+        }
+
+        float targetEatProgress = (eating && eatIndicator.get()) ? 1.0f : 0.0f;
+        if (smoothEatProgress < targetEatProgress) {
+            smoothEatProgress = Math.min(targetEatProgress, smoothEatProgress + dt * 10.0f);
+        } else if (smoothEatProgress > targetEatProgress) {
+            smoothEatProgress = Math.max(targetEatProgress, smoothEatProgress - dt * 8.0f);
+        }
+        if (smoothEatProgress <= 0.001f) {
+            smoothEatProgress = 0.0f;
+            if (!eating) {
+                lastEatStack = ItemStack.EMPTY;
+                eatTimerSeconds = 0.0f;
+            }
         }
     }
 
