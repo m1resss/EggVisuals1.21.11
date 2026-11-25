@@ -909,8 +909,8 @@ public class TargetHUD extends Module {
         float hpFont = 7.9f;
         float hpNumW = Fonts.b.a(hpStr, hpFont);
         float absW = absorption > 0.0f ? Fonts.b.a(absStr, 6.8f) + 1.5f : 0.0f;
-        float heartSize = 6.6f;
-        float hpPillW = 5.0f + hpNumW + absW + 2.5f + heartSize + 4.5f;
+        float heartSize = 7.4f;
+        float hpPillW = 5.0f + hpNumW + absW + 2.6f + heartSize + 4.2f;
         float hpPillX = infoX + infoW - padX - hpPillW;
 
         int pillBg = ColorUtil.withAlpha(pillBaseRgb, (int) (178 * alpha));
@@ -920,7 +920,7 @@ public class TargetHUD extends Module {
 
         float hpTextX = hpPillX + 4.8f;
         float hpTextY = Fonts.b.a(hpFont, topY + pillH * 0.5f);
-        int hpTextColor = ColorUtil.rgba(235, 255, 240, (int) (248 * alpha));
+        int hpTextColor = ColorUtil.rgba(255, 255, 255, (int) (252 * alpha));
         hpRolling.render(mat, hpTextX, hpTextY, hpFont, hpTextColor, 1.0f);
 
         if (absorption > 0.0f) {
@@ -928,10 +928,10 @@ public class TargetHUD extends Module {
                     6.8f, ColorUtil.rgba(255, 224, 96, (int) (250 * alpha)));
         }
 
-        float heartX = hpPillX + hpPillW - 4.3f - heartSize;
-        float heartY = topY + (pillH - heartSize) * 0.5f;
+        float heartX = hpPillX + hpPillW - 4.0f - heartSize;
+        float heartY = topY + (pillH - heartSize) * 0.5f + 0.1f;
         Draw2DProcessor.INSTANCE.a(mat, HEART_OUTLINE_ICON, heartX, heartY, heartSize, heartSize, 0.0f,
-                ColorUtil.rgba(235, 255, 240, (int) (245 * alpha)));
+                ColorUtil.rgba(255, 255, 255, (int) (255 * alpha)));
 
         String name = target.getName().getString();
         if (egg.client.module.misc.Globals.isEggUser(target)) {
