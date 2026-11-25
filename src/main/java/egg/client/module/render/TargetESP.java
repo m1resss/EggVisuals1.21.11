@@ -7,9 +7,9 @@ import egg.client.render.shader.MeshDrawUtil;
 import egg.client.render.shader.ParticleBlurRenderer;
 import egg.client.render.shader.Pipelines;
 import egg.client.render.shader.ProjectionUtil;
+import egg.client.render.world.BracketsTargetRenderer;
 import egg.client.render.world.IronDustTargetRenderer;
 import egg.client.render.world.FocusTargetRenderer;
-import egg.client.render.world.WaterTargetRenderer;
 import egg.client.module.ModuleManager;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.BuiltBuffer;
@@ -82,18 +82,17 @@ public class TargetESP extends Module {
     private static final float GROUND_LIFE = 0.8F;
     private static final float FREE_LIFE = 1.1F;
 
-    private static final String WATER = "Прибой";
+    private static final String BRACKETS = "Скобы";
     private static final String IRON_DUST = "Железная пыль";
     private static final String FOCUS = "Фокус";
     private final ModeSetting mode = new ModeSetting("Стиль", "Разряд", "Стиль Target ESP",
-            "Разряд", "Молнии", "Снежинки", "Души", "Ромб", "Кубы", WATER, IRON_DUST, FOCUS) {
+            "Разряд", "Молнии", "Снежинки", "Души", "Ромб", "Кубы", BRACKETS, IRON_DUST, FOCUS) {
         @Override
         public void set(String value) {
-            super.set("Шёлк".equals(value) ? WATER : "Муар".equals(value) ? FOCUS : value);
+            super.set(("Шёлк".equals(value) || "Прибой".equals(value)) ? BRACKETS : "Муар".equals(value) ? FOCUS : value);
         }
     };
-    private final SliderSetting waterOpacity = new SliderSetting("Непрозрачность воды", 58, 20, 85, 1, "Прозрачность водяного кольца в процентах");
-    private final WaterTargetRenderer waterRenderer = new WaterTargetRenderer();
+    private final BracketsTargetRenderer bracketsRenderer = new BracketsTargetRenderer();
     private final IronDustTargetRenderer ironDustRenderer = new IronDustTargetRenderer();
     private final FocusTargetRenderer focusRenderer = new FocusTargetRenderer();
 
@@ -168,10 +167,9 @@ public class TargetESP extends Module {
         rhombusSize.setVisible(() -> "Ромб".equals(mode.get()));
         tailLength.setVisible(() -> "Души".equals(mode.get()));
         coreGlow.setVisible(() -> "Души".equals(mode.get()));
-        radius.setVisible(() -> !mode.is("Ромб") && !mode.is(WATER) && !mode.is(IRON_DUST) && !mode.is(FOCUS));
+        radius.setVisible(() -> !mode.is("Ромб") && !mode.is(IRON_DUST) && !mode.is(FOCUS));
         speed.setVisible(() -> !mode.is("Разряд") && radius.isVisible());
-        waterOpacity.setVisible(() -> mode.is(WATER));
-        hurtColor.setVisible(() -> !mode.is(WATER) && !mode.is(IRON_DUST) && !mode.is(FOCUS));
+        hurtColor.setVisible(() -> !mode.is(IRON_DUST) && !mode.is(FOCUS));
         particleSize.setVisible(() -> "Снежинки".equals(mode.get()) || "Души".equals(mode.get()) || "Кубы".equals(mode.get()));
 
         dischargeColorMode.setVisible(() -> "Разряд".equals(mode.get()));
@@ -180,7 +178,7 @@ public class TargetESP extends Module {
         dischargeColorStatic.setVisible(() -> "Разряд".equals(mode.get()) && "Статичный".equals(dischargeColorMode.get()));
         dischargeSpeed.setVisible(() -> "Разряд".equals(mode.get()));
 
-        addSettings(mode, waterOpacity, rhombusHeight, rhombusSize, radius, speed, particleSize, tailLength, coreGlow,
+        addSettings(mode, rhombusHeight, rhombusSize, radius, speed, particleSize, tailLength, coreGlow,
                 dischargeColorMode, dischargeColor1, dischargeColor2, dischargeColorStatic, dischargeSpeed,
                 hurtColor, maxDistance, onlyPlayers, retainTime, focusSystem);
     }
@@ -213,7 +211,7 @@ public class TargetESP extends Module {
         this.targetRetainTimer = 0.0f;
         this.newTargetHoverTicks = 0;
         this.dischargeEffect.reset();
-        this.waterRenderer.clear();
+        this.bracketsRenderer.clear();
         this.ironDustRenderer.clear();
         this.focusRenderer.clear();
         this.animProgress = 0.0f;
@@ -361,7 +359,7 @@ public class TargetESP extends Module {
 
         float delta = tickCounter != null ? tickCounter.getTickProgress(true) : 0.0f;
         String curMode = this.mode.get();
-        if (WATER.equals(curMode) || IRON_DUST.equals(curMode) || FOCUS.equals(curMode)) return;
+        if (BRACKETS.equals(curMode) || IRON_DUST.equals(curMode) || FOCUS.equals(curMode)) return;
 
         int themeColor = Theme.getAccent();
         int hurtCol = 0xFFFF2525;
@@ -812,15 +810,15 @@ public class TargetESP extends Module {
     public void renderWorld3D(MatrixStack matrices, Camera camera, float tickDelta, VertexConsumerProvider.Immediate immediate, Vec3d camPos) {
         if (!isEnabled()) return;
         String curMode = this.mode.get();
-        if (!WATER.equals(curMode)) waterRenderer.clear();
+        if (!BRACKETS.equals(curMode)) bracketsRenderer.clear();
         if (!IRON_DUST.equals(curMode)) ironDustRenderer.clear();
         if (!FOCUS.equals(curMode)) focusRenderer.clear();
         if (FOCUS.equals(curMode)) {
             focusRenderer.render(this.target, matrices, camera, tickDelta);
             return;
         }
-        if (WATER.equals(curMode)) {
-            waterRenderer.render(this.target, camPos, tickDelta, waterOpacity.getValueFloat() / 100);
+        if (BRACKETS.equals(curMode)) {
+            bracketsRenderer.render(this.target, camPos, tickDelta, radius.getValueFloat(), speed.getValueFloat(), hurtColor.get());
             return;
         }
         if (IRON_DUST.equals(curMode)) {

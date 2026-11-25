@@ -162,11 +162,11 @@ public final class Pipelines {
             .build()
     );
 
-    public static final RenderPipeline TARGET_WATER = register(
+    public static final RenderPipeline TARGET_BRACKETS = register(
         RenderPipeline.builder()
-            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/target_water"))
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/target_brackets"))
             .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/world/jump_caustic"))
-            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/world/target_water"))
+            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/world/target_brackets"))
             .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
             .withUniform("Projection", UniformType.UNIFORM_BUFFER)
             .withBlend(BlendFunction.TRANSLUCENT)

@@ -2597,6 +2597,26 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         this.openDropdownMaxModeW = maxW;
     }
 
+    private static float getDropdownListHeight(int itemCount) {
+        float dItemH = 19.0f;
+        if (itemCount > 6) {
+            return 5.6f * dItemH;
+        }
+        return itemCount * dItemH;
+    }
+
+    private float getDropdownPopupWidth(List<String> modes) {
+        if (this.openDropdownMaxModeW <= 0.0f) {
+            float maxW = 0.0f;
+            for (String m : modes) {
+                maxW = Math.max(maxW, ClientFont.getWidth(m, ClientFont.SF_REGULAR));
+            }
+            this.openDropdownMaxModeW = maxW;
+        }
+        float pad = modes.size() > 6 ? 36.0f : 28.0f;
+        return Math.max(this.openDropdownW, this.openDropdownMaxModeW + pad);
+    }
+
     private void renderOpenDropdown(DrawContext context, double mouseX, double mouseY, float alpha) {
         boolean shouldShow = (this.openDropdownSetting != null);
         if (shouldShow) {
@@ -2611,19 +2631,11 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         float dAnim = this.openDropdownAnim * alpha;
         List<String> dModes = this.openDropdownSetting.getModes();
         float dItemH = 19.0f;
-        int maxVisible = 6;
-        int displayItems = Math.min(dModes.size(), maxVisible);
-        float dListH = displayItems * dItemH;
+        boolean scrollable = dModes.size() > 6;
+        float dListH = getDropdownListHeight(dModes.size());
         float dPopH = dListH + 6.0f;
 
-        if (this.openDropdownMaxModeW <= 0.0f) {
-            float maxW = 0.0f;
-            for (String m : dModes) {
-                maxW = Math.max(maxW, ClientFont.getWidth(m, ClientFont.SF_REGULAR));
-            }
-            this.openDropdownMaxModeW = maxW;
-        }
-        float dPopW = Math.max(this.openDropdownW, this.openDropdownMaxModeW + 28.0f);
+        float dPopW = getDropdownPopupWidth(dModes);
         float btnRight = this.openDropdownX + this.openDropdownW;
         float dPopX = btnRight - dPopW;
         float dPopY = this.openDropdownY;
@@ -2645,24 +2657,27 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
         float dropOffset = (1.0f - this.openDropdownAnim) * 5.0f;
         float renderPopY = dPopY + dropOffset;
+        float listRightPad = scrollable ? 10.0f : 3.0f;
 
         Render2D.drawShadow(context, dPopX, renderPopY, dPopW, dPopH, 6.0f, 12.0f, ColorUtil.rgba(0, 0, 0, (int) (180 * dAnim)));
         Render2D.drawRoundedRect(context, dPopX, renderPopY, dPopW, dPopH, 6.0f, ColorUtil.rgba(18, 20, 26, (int) (255 * dAnim)));
         Render2D.drawRoundedOutline(context, dPopX, renderPopY, dPopW, dPopH, 6.0f, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (38 * dAnim)));
 
-        enableGuiScissor(context, dPopX, renderPopY + 3.0f, dPopX + dPopW, renderPopY + 3.0f + dListH);
+        enableGuiScissor(context, dPopX + 1.0f, renderPopY + 3.0f, dPopX + dPopW - (scrollable ? 8.0f : 1.0f), renderPopY + 3.0f + dListH);
 
         float curItemY = renderPopY + 3.0f - this.openDropdownScrollY;
         String curMode = this.openDropdownSetting.get();
 
         for (String mName : dModes) {
             boolean isCur = mName.equalsIgnoreCase(curMode);
-            boolean isHov = mouseX >= dPopX && mouseX <= (dPopX + dPopW) && mouseY >= curItemY && mouseY <= (curItemY + dItemH);
+            boolean isHov = mouseX >= dPopX && mouseX <= (dPopX + dPopW - (scrollable ? 9.0f : 0.0f))
+                    && mouseY >= Math.max(renderPopY + 3.0f, curItemY)
+                    && mouseY <= Math.min(renderPopY + 3.0f + dListH, curItemY + dItemH);
 
             if (curItemY + dItemH >= renderPopY + 3.0f && curItemY <= renderPopY + 3.0f + dListH) {
                 if (isHov || isCur) {
                     int rBg = isCur ? ColorUtil.withAlphaFloat(Theme.getAccent(), 0.24f * dAnim) : ColorUtil.rgba(255, 255, 255, (int) (14 * dAnim));
-                    Render2D.drawRoundedRect(context, dPopX + 3.0f, curItemY + 1.0f, dPopW - 6.0f, dItemH - 2.0f, 3.0f, rBg);
+                    Render2D.drawRoundedRect(context, dPopX + 3.0f, curItemY + 1.0f, dPopW - 3.0f - listRightPad, dItemH - 2.0f, 3.0f, rBg);
                 }
 
                 int txtColor = isCur ? Theme.getAccent() : (isHov ? 0xFFFFFFFF : ColorUtil.withAlphaFloat(Theme.TEXT_TITLE, dAnim));
@@ -2670,13 +2685,47 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
 
                 if (isCur) {
                     float dotR = 2.5f;
-                    Render2D.drawCircle(context, dPopX + dPopW - 9.0f, curItemY + dItemH / 2.0f, dotR, ColorUtil.withAlphaFloat(Theme.getAccent(), dAnim));
+                    float dotX = dPopX + dPopW - (scrollable ? 15.0f : 9.0f);
+                    Render2D.drawCircle(context, dotX, curItemY + dItemH / 2.0f, dotR, ColorUtil.withAlphaFloat(Theme.getAccent(), dAnim));
                 }
             }
             curItemY += dItemH;
         }
 
+        if (scrollable && this.openDropdownMaxScroll > 0.0f) {
+            float fadeW = dPopW - 10.0f;
+            float fadeH = 14.0f;
+            if (this.openDropdownScrollY > 1.5f) {
+                Render2D.drawRoundedGradientRect(context, dPopX + 1.5f, renderPopY + 3.0f, fadeW, fadeH, 0.0f,
+                        ColorUtil.rgba(18, 20, 26, (int) (235 * dAnim)), ColorUtil.rgba(18, 20, 26, 0));
+                IconRenderer.drawDropdownChevron(context, dPopX + fadeW * 0.5f, renderPopY + 7.5f, true,
+                        ColorUtil.rgba(255, 255, 255, (int) (185 * dAnim)));
+            }
+            if (this.openDropdownScrollY < this.openDropdownMaxScroll - 1.5f) {
+                float botY = renderPopY + 3.0f + dListH - fadeH;
+                Render2D.drawRoundedGradientRect(context, dPopX + 1.5f, botY, fadeW, fadeH, 0.0f,
+                        ColorUtil.rgba(18, 20, 26, 0), ColorUtil.rgba(18, 20, 26, (int) (242 * dAnim)));
+                IconRenderer.drawDropdownChevron(context, dPopX + fadeW * 0.5f, renderPopY + 3.0f + dListH - 4.5f, false,
+                        ColorUtil.rgba(255, 255, 255, (int) (195 * dAnim)));
+            }
+        }
+
         disableGuiScissor(context);
+
+        if (scrollable && this.openDropdownMaxScroll > 0.0f) {
+            float trackW = 2.4f;
+            float trackX = dPopX + dPopW - 5.2f;
+            float trackY = renderPopY + 5.0f;
+            float trackH = dListH - 4.0f;
+            float totalContentH = dModes.size() * dItemH;
+            float thumbH = Math.max(14.0f, trackH * (dListH / totalContentH));
+            float scrollFrac = this.openDropdownScrollY / this.openDropdownMaxScroll;
+            float thumbY = trackY + (trackH - thumbH) * scrollFrac;
+            int thumbColor = ColorUtil.withAlphaFloat(ColorUtil.interpolate(0xFFE2E8F0, Theme.getAccent(), 0.55f), 0.85f * dAnim);
+
+            Render2D.drawRoundedRect(context, trackX, trackY, trackW, trackH, 1.2f, ColorUtil.rgba(255, 255, 255, (int) (26 * dAnim)));
+            Render2D.drawRoundedRect(context, trackX, thumbY, trackW, thumbH, 1.2f, thumbColor);
+        }
     }
 
     private String getSliderValueString(SliderSetting slider) {
@@ -2926,19 +2975,11 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         if (this.openDropdownSetting != null) {
             List<String> dModes = this.openDropdownSetting.getModes();
             float dItemH = 19.0f;
-            int maxVisible = 6;
-            int displayItems = Math.min(dModes.size(), maxVisible);
-            float dListH = displayItems * dItemH;
+            boolean scrollable = dModes.size() > 6;
+            float dListH = getDropdownListHeight(dModes.size());
             float dPopH = dListH + 6.0f;
 
-            if (this.openDropdownMaxModeW <= 0.0f) {
-                float maxW = 0.0f;
-                for (String m : dModes) {
-                    maxW = Math.max(maxW, ClientFont.getWidth(m, ClientFont.SF_REGULAR));
-                }
-                this.openDropdownMaxModeW = maxW;
-            }
-            float dPopW = Math.max(this.openDropdownW, this.openDropdownMaxModeW + 28.0f);
+            float dPopW = getDropdownPopupWidth(dModes);
             float btnRight = this.openDropdownX + this.openDropdownW;
             float dPopX = btnRight - dPopW;
             float dPopY = this.openDropdownY;
@@ -2956,15 +2997,24 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             }
 
             if (mouseX >= dPopX && mouseX <= dPopX + dPopW && mouseY >= dPopY && mouseY <= dPopY + dPopH) {
-                float curItemY = dPopY + 3.0f - this.openDropdownScrollY;
-                for (String mName : dModes) {
-                    if (mouseY >= curItemY && mouseY <= curItemY + dItemH) {
-                        this.openDropdownSetting.set(mName);
-                        this.openDropdownSetting = null;
-                        egg.client.config.ConfigManager.save();
-                        return true;
+                if (scrollable && this.openDropdownMaxScroll > 0.0f && mouseX >= dPopX + dPopW - 10.0f) {
+                    float trackY = dPopY + 5.0f;
+                    float trackH = Math.max(1.0f, dListH - 4.0f);
+                    float frac = Math.clamp((float) (mouseY - trackY) / trackH, 0.0f, 1.0f);
+                    this.openDropdownScrollY = frac * this.openDropdownMaxScroll;
+                    return true;
+                }
+                if (mouseY >= dPopY + 3.0f && mouseY <= dPopY + 3.0f + dListH) {
+                    float curItemY = dPopY + 3.0f - this.openDropdownScrollY;
+                    for (String mName : dModes) {
+                        if (mouseY >= curItemY && mouseY <= curItemY + dItemH) {
+                            this.openDropdownSetting.set(mName);
+                            this.openDropdownSetting = null;
+                            egg.client.config.ConfigManager.save();
+                            return true;
+                        }
+                        curItemY += dItemH;
                     }
-                    curItemY += dItemH;
                 }
                 return true;
             } else {
