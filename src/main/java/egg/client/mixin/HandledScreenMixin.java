@@ -4,6 +4,7 @@ import egg.client.module.ModuleManager;
 import egg.client.module.misc.ServerAssistant;
 import egg.client.module.player.ContainerSearch;
 import egg.client.module.player.ItemScroller;
+import egg.client.module.render.ShulkerPreview;
 import egg.client.ui.widget.ContainerSearchBar;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Click;
@@ -154,6 +155,29 @@ public abstract class HandledScreenMixin extends Screen {
                     cir.setReturnValue(true);
                 }
             }
+        }
+    }
+
+    @Inject(method = "drawMouseoverTooltip", at = @At("HEAD"), cancellable = true)
+    private void egg$renderShulkerPreviewHead(DrawContext context, int mouseX, int mouseY, CallbackInfo ci) {
+        Slot focused = ((HandledScreenAccessor) this).getFocusedSlot();
+        HandledScreen<?> self = (HandledScreen<?>) (Object) this;
+        if (focused == null || !focused.hasStack() || !self.getScreenHandler().getCursorStack().isEmpty()) return;
+        ShulkerPreview preview = ModuleManager.getInstance().getModule(ShulkerPreview.class);
+        if (preview != null && preview.isEnabled() && preview.canPreview(focused.getStack()) && preview.shouldSuppressVanilla(focused.getStack())) {
+            preview.renderPreview(context, focused.getStack(), mouseX, mouseY, width, height, true);
+            ci.cancel();
+        }
+    }
+
+    @Inject(method = "drawMouseoverTooltip", at = @At("RETURN"))
+    private void egg$renderShulkerPreviewTail(DrawContext context, int mouseX, int mouseY, CallbackInfo ci) {
+        Slot focused = ((HandledScreenAccessor) this).getFocusedSlot();
+        HandledScreen<?> self = (HandledScreen<?>) (Object) this;
+        if (focused == null || !focused.hasStack() || !self.getScreenHandler().getCursorStack().isEmpty()) return;
+        ShulkerPreview preview = ModuleManager.getInstance().getModule(ShulkerPreview.class);
+        if (preview != null && preview.isEnabled() && preview.canPreview(focused.getStack()) && !preview.shouldSuppressVanilla(focused.getStack())) {
+            preview.renderPreview(context, focused.getStack(), mouseX, mouseY, width, height, false);
         }
     }
 

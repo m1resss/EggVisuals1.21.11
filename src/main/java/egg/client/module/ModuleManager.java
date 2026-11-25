@@ -86,6 +86,7 @@ public class ModuleManager {
 
         register(new Trajectories());
         register(new PearlPredict());
+        register(new ShulkerPreview());
 
         register(new CustomHitbox());
 
