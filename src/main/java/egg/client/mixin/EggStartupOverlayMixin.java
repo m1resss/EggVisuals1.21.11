@@ -19,10 +19,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(value = SplashOverlay.class, priority = 1200)
 public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
-    @Unique private static final long SHOWCASE_TIME = 3750;
     @Unique private static final long SCATTER_TIME = 1230;
-    @Unique private static final long LOOP_TIME = SHOWCASE_TIME + SCATTER_TIME;
-    @Unique private static final long SKIP_FADE_TIME = 420;
+    @Unique private static final long MENU_FADE_TIME = 420;
     @Unique private static final Text CONTINUE_HINT = Text.literal("Любая клавиша или кнопка мыши");
 
     @Shadow @Final private MinecraftClient client;
@@ -58,15 +56,16 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
         long now = Util.getMeasuringTimeMs();
         if (egg$firstFrame < 0) egg$firstFrame = now;
         boolean skipped = egg$skipTime >= 0;
+        long scatterAge = skipped ? now - egg$skipTime : 0;
         boolean loaded = reloadCompleteTime >= 0;
-        boolean revealMenu = skipped && loaded;
+        boolean revealMenu = skipped && scatterAge >= SCATTER_TIME && loaded;
         int width = context.getScaledWindowWidth();
         int height = context.getScaledWindowHeight();
 
         float menuOpacity = 0f;
         if (revealMenu) {
             if (egg$menuFadeStart < 0) egg$menuFadeStart = now;
-            menuOpacity = egg$fade((now - egg$menuFadeStart) / (float) SKIP_FADE_TIME);
+            menuOpacity = egg$fade((now - egg$menuFadeStart) / (float) MENU_FADE_TIME);
             if (client.currentScreen != null) {
                 client.currentScreen.renderWithTooltip(context, 0, 0, delta);
             } else {
@@ -77,11 +76,10 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
         int backgroundAlpha = Math.round(255 * (1f - menuOpacity));
         context.fill(0, 0, width, height, backgroundAlpha << 24);
 
-        float visibility = skipped ? 1f - egg$fade((now - egg$skipTime) / (float) SKIP_FADE_TIME) : 1f;
-        if (visibility > 0f) {
-            long phase = Math.max(0, (skipped ? egg$skipTime : now) - egg$firstFrame) % LOOP_TIME;
-            float scatter = Math.max(0, phase - SHOWCASE_TIME) / (float) SCATTER_TIME;
-            egg$animation.draw(client, context, phase, scatter, visibility * egg$fade(phase / 140f));
+        if (!skipped || scatterAge < SCATTER_TIME) {
+            long poseAge = Math.max(0, (skipped ? egg$skipTime : now) - egg$firstFrame);
+            float scatter = scatterAge / (float) SCATTER_TIME;
+            egg$animation.draw(client, context, poseAge, scatter, egg$fade(poseAge / 140f));
         }
 
         if (!loaded) {
