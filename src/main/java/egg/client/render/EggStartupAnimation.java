@@ -39,22 +39,18 @@ public final class EggStartupAnimation {
     private long lastFrame;
     private float progress;
 
-    public void render(MinecraftClient client, DrawContext context, long age, float scatter, float loadProgress) {
+    public void drawProgress(DrawContext context, long now, float loadProgress) {
         int width = context.getScaledWindowWidth();
         int height = context.getScaledWindowHeight();
-        context.fill(0, 0, width, height, 0xFF000000);
-        draw(client, context, age, scatter, 1f);
-
-        float elapsed = Math.min(100, age - lastFrame);
+        float elapsed = Math.min(100, now - lastFrame);
         progress = MathHelper.lerp(1f - (float) Math.exp(-elapsed / 125f), progress, MathHelper.clamp(loadProgress, 0f, 1f));
-        lastFrame = age;
-        float barOpacity = smooth(age / 420f) * (1f - smooth(scatter * 2.8f));
+        lastFrame = now;
         int half = Math.max(10, Math.round(Math.min(width, height) * 0.105f));
         int left = width / 2 - half;
         int y = Math.round(height * 0.89f);
-        context.fill(left, y, left + half * 2, y + 1, color(0xAAB1BD, barOpacity * 0.26f));
+        context.fill(left, y, left + half * 2, y + 1, color(0xAAB1BD, 0.26f));
         int filled = Math.round(progress * half * 2);
-        if (filled > 0) context.fill(left, y, left + filled, y + 1, color(0xE8EAEE, barOpacity * 0.72f));
+        if (filled > 0) context.fill(left, y, left + filled, y + 1, color(0xE8EAEE, 0.72f));
     }
 
     public void draw(MinecraftClient client, DrawContext context, long age, float scatter, float opacity) {

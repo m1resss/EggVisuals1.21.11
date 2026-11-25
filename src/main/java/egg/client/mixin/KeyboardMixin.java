@@ -2,6 +2,7 @@ package egg.client.mixin;
 
 import egg.client.module.ModuleManager;
 import egg.client.module.combat.AutoSwap;
+import egg.client.render.StartupOverlayControl;
 import egg.client.ui.ClickGuiScreen;
 import egg.client.ui.screen.SwapScreen;
 import net.minecraft.client.MinecraftClient;
@@ -21,6 +22,12 @@ public class KeyboardMixin {
 
     @Inject(method = "onKey", at = @At("HEAD"), cancellable = true)
     private void onKeyInject(long window, int action, KeyInput keyInput, CallbackInfo ci) {
+        if (action == GLFW.GLFW_PRESS && window == client.getWindow().getHandle()
+                && client.getOverlay() instanceof StartupOverlayControl startup && startup.egg$skipStartup()) {
+            ci.cancel();
+            return;
+        }
+
         if (action == GLFW.GLFW_RELEASE) {
             if (client.currentScreen instanceof SwapScreen swapScreen) {
                 AutoSwap as = ModuleManager.getInstance().getModule(AutoSwap.class);

@@ -6,6 +6,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.SplashOverlay;
 import net.minecraft.resource.ResourceReload;
+import net.minecraft.text.Text;
 import net.minecraft.util.Util;
 import net.minecraft.util.math.MathHelper;
 import org.spongepowered.asm.mixin.Final;
@@ -20,8 +21,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
     @Unique private static final long SHOWCASE_TIME = 3750;
     @Unique private static final long SCATTER_TIME = 1230;
-    @Unique private static final long MENU_FADE_TIME = 670;
+    @Unique private static final long LOOP_TIME = SHOWCASE_TIME + SCATTER_TIME;
     @Unique private static final long SKIP_FADE_TIME = 420;
+    @Unique private static final Text CONTINUE_HINT = Text.literal("Любая клавиша или кнопка мыши");
 
     @Shadow @Final private MinecraftClient client;
     @Shadow @Final private ResourceReload reload;
@@ -37,7 +39,7 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
     @Override
     public boolean egg$skipStartup() {
         if (egg$animation == null) return false;
-        if (egg$skipTime < 0 && egg$menuFadeStart < 0) egg$skipTime = Util.getMeasuringTimeMs();
+        if (egg$skipTime < 0) egg$skipTime = Util.getMeasuringTimeMs();
         return true;
     }
 
@@ -55,35 +57,45 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
 
         long now = Util.getMeasuringTimeMs();
         if (egg$firstFrame < 0) egg$firstFrame = now;
-        long age = now - egg$firstFrame;
-        long outro = reloadCompleteTime < 0 ? -1 : now - Math.max(reloadCompleteTime, egg$firstFrame + SHOWCASE_TIME);
         boolean skipped = egg$skipTime >= 0;
+        boolean loaded = reloadCompleteTime >= 0;
+        boolean revealMenu = skipped && loaded;
+        int width = context.getScaledWindowWidth();
+        int height = context.getScaledWindowHeight();
 
-        if (reloadCompleteTime >= 0 && (skipped || outro >= SCATTER_TIME)) {
+        float menuOpacity = 0f;
+        if (revealMenu) {
             if (egg$menuFadeStart < 0) egg$menuFadeStart = now;
-            float menuOpacity = egg$fade((now - egg$menuFadeStart) / (float) (skipped ? SKIP_FADE_TIME : MENU_FADE_TIME));
+            menuOpacity = egg$fade((now - egg$menuFadeStart) / (float) SKIP_FADE_TIME);
             if (client.currentScreen != null) {
                 client.currentScreen.renderWithTooltip(context, 0, 0, delta);
             } else {
                 client.inGameHud.renderDeferredSubtitles();
             }
             context.createNewRootLayer();
-            int alpha = Math.round(255 * (1f - menuOpacity));
-            context.fill(0, 0, context.getScaledWindowWidth(), context.getScaledWindowHeight(), alpha << 24);
-            if (alpha == 0 && client.getOverlay() == (Object) this) {
-                client.setOverlay(null);
-            }
-        } else if (!skipped) {
-            egg$animation.render(client, context, age, Math.max(0, outro) / (float) SCATTER_TIME, reload.getProgress());
-        } else {
-            context.fill(0, 0, context.getScaledWindowWidth(), context.getScaledWindowHeight(), 0xFF000000);
+        }
+        int backgroundAlpha = Math.round(255 * (1f - menuOpacity));
+        context.fill(0, 0, width, height, backgroundAlpha << 24);
+
+        float visibility = skipped ? 1f - egg$fade((now - egg$skipTime) / (float) SKIP_FADE_TIME) : 1f;
+        if (visibility > 0f) {
+            long phase = Math.max(0, (skipped ? egg$skipTime : now) - egg$firstFrame) % LOOP_TIME;
+            float scatter = Math.max(0, phase - SHOWCASE_TIME) / (float) SCATTER_TIME;
+            egg$animation.draw(client, context, phase, scatter, visibility * egg$fade(phase / 140f));
         }
 
-        if (skipped) {
-            float opacity = 1f - egg$fade((now - egg$skipTime) / (float) SKIP_FADE_TIME);
-            if (opacity > 0f) {
-                egg$animation.draw(client, context, Math.max(0, egg$skipTime - egg$firstFrame), MathHelper.clamp(outro / (float) SCATTER_TIME, 0f, 1f), opacity);
+        if (!loaded) {
+            egg$animation.drawProgress(context, now, reload.getProgress());
+        } else if (!skipped) {
+            int x = (width - client.textRenderer.getWidth(CONTINUE_HINT)) / 2;
+            int alpha = Math.round(190 * egg$fade((now - reloadCompleteTime) / 300f));
+            if (alpha > 3) {
+                context.drawText(client.textRenderer, CONTINUE_HINT, x, Math.round(height * 0.89f), alpha << 24 | 0xD8DADE, false);
             }
+        }
+
+        if (revealMenu && backgroundAlpha == 0 && client.getOverlay() == (Object) this) {
+            client.setOverlay(null);
         }
         ci.cancel();
     }
