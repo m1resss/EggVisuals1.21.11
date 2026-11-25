@@ -270,19 +270,6 @@ public class BreakBlock extends Module {
         emitScanBand(lightBuf, cx - hx - 0.003f, cz - hz - 0.003f, cx + hx + 0.003f, cz + hz + 0.003f,
                 scanY, bandHalf, coreR, coreG, coreB, Math.round(145 + 90 * prog));
 
-        Direction side = this.currentBreakingSide != null ? this.currentBreakingSide : Direction.UP;
-        Vec3d u = getTangentU(side);
-        Vec3d v = getTangentV(side);
-        Vec3d hitFaceCenter = new Vec3d(
-                (box.minX + box.maxX) * 0.5 + side.getOffsetX() * (hx + expand + 0.004),
-                (box.minY + box.maxY) * 0.5 + side.getOffsetY() * (hy + expand + 0.004),
-                (box.minZ + box.maxZ) * 0.5 + side.getOffsetZ() * (hz + expand + 0.004)
-        ).subtract(camPos);
-        float faceMinSpan = Math.min(hx, Math.min(hy, hz));
-        float diamondR = Math.max(0.08f, faceMinSpan * MathHelper.lerp(eased, 0.25f, 0.72f));
-        emitRotatingDiamond(lightBuf, hitFaceCenter, u, v, diamondR, diamondR * 0.14f,
-                (float) (timeSec * 2.4 + prog * 3.14), coreR, coreG, coreB, Math.round(170 + 85 * prog));
-
         immediate.draw();
 
         MatrixStack.Entry entry = matrices.peek();
@@ -367,28 +354,6 @@ public class BreakBlock extends Module {
             buf.vertex(wall[2], yBot, wall[3]).color(r, g, b, 0);
             buf.vertex(wall[2], yCenter, wall[3]).color(r, g, b, peakA);
             buf.vertex(wall[0], yCenter, wall[1]).color(r, g, b, peakA);
-        }
-    }
-
-    private static void emitRotatingDiamond(VertexConsumer buf, Vec3d center, Vec3d u, Vec3d v,
-                                            float rad, float width, float angle, int r, int g, int b, int a) {
-        int sides = 4;
-        float rIn = Math.max(0.02f, rad - width);
-        for (int i = 0; i < sides; i++) {
-            double a0 = angle + i * (Math.PI * 0.5);
-            double a1 = angle + (i + 1) * (Math.PI * 0.5);
-            double c0 = Math.cos(a0), s0 = Math.sin(a0);
-            double c1 = Math.cos(a1), s1 = Math.sin(a1);
-
-            Vec3d p0In = center.add(u.multiply(c0 * rIn)).add(v.multiply(s0 * rIn));
-            Vec3d p0Out = center.add(u.multiply(c0 * rad)).add(v.multiply(s0 * rad));
-            Vec3d p1In = center.add(u.multiply(c1 * rIn)).add(v.multiply(s1 * rIn));
-            Vec3d p1Out = center.add(u.multiply(c1 * rad)).add(v.multiply(s1 * rad));
-
-            buf.vertex((float) p0In.x, (float) p0In.y, (float) p0In.z).color(r, g, b, a);
-            buf.vertex((float) p1In.x, (float) p1In.y, (float) p1In.z).color(r, g, b, a);
-            buf.vertex((float) p1Out.x, (float) p1Out.y, (float) p1Out.z).color(r, g, b, a);
-            buf.vertex((float) p0Out.x, (float) p0Out.y, (float) p0Out.z).color(r, g, b, a);
         }
     }
 
