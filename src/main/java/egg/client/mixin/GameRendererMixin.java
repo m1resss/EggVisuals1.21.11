@@ -261,6 +261,7 @@ public abstract class GameRendererMixin {
         }
         GuiOverlays.renderPending();
         DrawBatcher.flushPending();
+        DrawBatcher.setEnabledSilent(false);
         ScissorUtil.reset();
         com.mojang.blaze3d.opengl.GlStateManager._disableScissorTest();
         com.mojang.blaze3d.systems.RenderSystem.disableScissorForRenderTypeDraws();

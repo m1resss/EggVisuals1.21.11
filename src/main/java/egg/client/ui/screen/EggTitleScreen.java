@@ -37,6 +37,11 @@ import net.minecraft.util.math.MathHelper;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.system.MemoryUtil;
 
+import java.awt.Color;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -59,6 +64,7 @@ public class EggTitleScreen extends Screen {
     private static final Identifier[] CIRCLE_ICONS = {ICON_TG, ICON_DA, ICON_GEAR, ICON_EXIT};
 
     private static final long START_NANOS = System.nanoTime();
+    private static final TitleMask TITLE_MASK = buildTitleMask();
 
     private final float[] mainHover = new float[4];
     private final float[] circleHover = new float[4];
@@ -154,89 +160,100 @@ public class EggTitleScreen extends Screen {
             yesTargetY = 0.0f;
         }
 
-        float eggCenterNormX = 0.31f;
-        bgBatch.queue(fbW, fbH, eggCenterNormX, revealAlpha);
-
-        double timeSec = (now - START_NANOS) / 1_000_000_000.0;
-        eggBatch.queue(client, sw, sh, sw * eggCenterNormX, sh * 0.48f, timeSec, tiltX, tiltY, revealAlpha);
-
         Layout layout = computeLayout(sw, sh);
-        boolean allowMenuHover = !underOverlay && !exitDialogOpen && exitDialogAnim < 0.05f;
+        float eggCenterNormX = 0.31f;
+        double timeSec = (now - START_NANOS) / 1_000_000_000.0;
 
-        for (int i = 0; i < 4; i++) {
-            float by = layout.buttonY(i);
-            boolean hov = allowMenuHover && hitRect(mouseX, mouseY, layout.colX, by, layout.colW, layout.btnH);
-            mainHover[i] = MathHelper.lerp(hoverBlend, mainHover[i], hov ? 1.0f : 0.0f);
+        boolean prevBatch = DrawBatcher.isEnabled();
+        DrawBatcher.setEnabledSilent(true);
+        try {
+            bgBatch.queue(fbW, fbH, eggCenterNormX, revealAlpha);
+            eggBatch.queue(client, sw, sh, sw * eggCenterNormX, sh * 0.49f,
+                    layout.colX + layout.colW * 0.5f, layout.titleY, layout.titleW,
+                    timeSec, tiltX, tiltY, revealAlpha);
 
-            int fill = ColorUtil.interpolate(
-                    ColorUtil.rgba(16, 18, 24, 224),
-                    ColorUtil.rgba(25, 28, 37, 242),
-                    mainHover[i]
-            );
-            int border = ColorUtil.interpolate(
-                    ColorUtil.rgba(38, 42, 54, 255),
-                    ColorUtil.rgba(78, 86, 108, 255),
-                    mainHover[i]
-            );
-            fill = ColorUtil.withAlphaFloat(fill, revealAlpha);
-            border = ColorUtil.withAlphaFloat(border, revealAlpha);
+            boolean allowMenuHover = !underOverlay && !exitDialogOpen && exitDialogAnim < 0.05f && mouseX >= 0 && mouseY >= 0;
 
-            Draw2DProcessor.INSTANCE.drawRect(null, layout.colX, by, layout.colW, layout.btnH, 6.0f, fill);
-            Draw2DProcessor.INSTANCE.drawOutline(null, layout.colX, by, layout.colW, layout.btnH, 6.0f, 1.0f, border);
+            for (int i = 0; i < 4; i++) {
+                float by = layout.buttonY(i);
+                boolean hov = allowMenuHover && hitRect(mouseX, mouseY, layout.colX, by, layout.colW, layout.btnH);
+                mainHover[i] = MathHelper.lerp(hoverBlend, mainHover[i], hov ? 1.0f : 0.0f);
 
-            float iconSize = 11.0f;
-            float iconX = layout.colX + 12.0f;
-            float iconY = by + (layout.btnH - iconSize) * 0.5f;
-            int iconCol = ColorUtil.interpolate(0xFFD6DCE6, 0xFFFFFFFF, mainHover[i]);
-            Draw2DProcessor.INSTANCE.a(null, MAIN_ICONS[i], iconX, iconY, iconSize, iconSize, 0.0f,
-                    ColorUtil.withAlphaFloat(iconCol, revealAlpha));
+                int fill = ColorUtil.interpolate(
+                        ColorUtil.rgba(16, 18, 24, 224),
+                        ColorUtil.rgba(25, 28, 37, 242),
+                        mainHover[i]
+                );
+                int border = ColorUtil.interpolate(
+                        ColorUtil.rgba(38, 42, 54, 255),
+                        ColorUtil.rgba(78, 86, 108, 255),
+                        mainHover[i]
+                );
+                fill = ColorUtil.withAlphaFloat(fill, revealAlpha);
+                border = ColorUtil.withAlphaFloat(border, revealAlpha);
 
-            Font font = Fonts.b;
-            float fontSize = 9.5f;
-            float textX = iconX + iconSize + 9.0f;
-            float textY = font.a(fontSize, by + layout.btnH * 0.5f);
-            int textCol = ColorUtil.interpolate(0xFFDDE3EE, 0xFFFFFFFF, mainHover[i]);
-            font.a(null, MAIN_LABELS[i], textX, textY, fontSize, ColorUtil.withAlphaFloat(textCol, revealAlpha));
-        }
+                Draw2DProcessor.INSTANCE.drawRect(null, layout.colX, by, layout.colW, layout.btnH, 6.0f, fill);
+                Draw2DProcessor.INSTANCE.drawOutline(null, layout.colX, by, layout.colW, layout.btnH, 6.0f, 1.0f, border);
 
-        for (int i = 0; i < 4; i++) {
-            float cx = layout.circleX(i);
-            float cy = layout.circleY;
-            boolean hov = allowMenuHover && hitCircle(mouseX, mouseY, cx + layout.circleSize * 0.5f, cy + layout.circleSize * 0.5f, layout.circleSize * 0.5f);
-            circleHover[i] = MathHelper.lerp(hoverBlend, circleHover[i], hov ? 1.0f : 0.0f);
+                float iconSize = 11.0f;
+                float iconX = layout.colX + 12.0f;
+                float iconY = by + (layout.btnH - iconSize) * 0.5f;
+                int iconCol = ColorUtil.interpolate(0xFFD6DCE6, 0xFFFFFFFF, mainHover[i]);
+                Draw2DProcessor.INSTANCE.a(null, MAIN_ICONS[i], iconX, iconY, iconSize, iconSize, 0.0f,
+                        ColorUtil.withAlphaFloat(iconCol, revealAlpha));
 
-            int fill = ColorUtil.interpolate(
-                    ColorUtil.rgba(16, 18, 24, 224),
-                    ColorUtil.rgba(25, 28, 37, 242),
-                    circleHover[i]
-            );
-            int border = ColorUtil.interpolate(
-                    ColorUtil.rgba(40, 44, 57, 255),
-                    i == 3 ? ColorUtil.rgba(168, 76, 86, 255) : ColorUtil.rgba(82, 90, 114, 255),
-                    circleHover[i]
-            );
-            fill = ColorUtil.withAlphaFloat(fill, revealAlpha);
-            border = ColorUtil.withAlphaFloat(border, revealAlpha);
+                Font font = Fonts.b;
+                float fontSize = 9.5f;
+                float textX = iconX + iconSize + 9.0f;
+                float textY = font.a(fontSize, by + layout.btnH * 0.5f);
+                int textCol = ColorUtil.interpolate(0xFFDDE3EE, 0xFFFFFFFF, mainHover[i]);
+                font.a(null, MAIN_LABELS[i], textX, textY, fontSize, ColorUtil.withAlphaFloat(textCol, revealAlpha));
+            }
 
-            float radius = layout.circleSize * 0.5f;
-            Draw2DProcessor.INSTANCE.drawRect(null, cx, cy, layout.circleSize, layout.circleSize, radius, fill);
-            Draw2DProcessor.INSTANCE.drawOutline(null, cx, cy, layout.circleSize, layout.circleSize, radius, 1.0f, border);
+            for (int i = 0; i < 4; i++) {
+                float cx = layout.circleX(i);
+                float cy = layout.circleY;
+                boolean hov = allowMenuHover && hitCircle(mouseX, mouseY, cx + layout.circleSize * 0.5f, cy + layout.circleSize * 0.5f, layout.circleSize * 0.5f);
+                circleHover[i] = MathHelper.lerp(hoverBlend, circleHover[i], hov ? 1.0f : 0.0f);
 
-            float iconSize = i <= 1 ? 13.5f : 11.5f;
-            float iconX = cx + (layout.circleSize - iconSize) * 0.5f;
-            float iconY = cy + (layout.circleSize - iconSize) * 0.5f;
-            int iconCol = i <= 1 ? ColorUtil.withAlphaFloat(0xFFFFFFFF, revealAlpha)
-                    : ColorUtil.withAlphaFloat(ColorUtil.interpolate(0xFFDDE3EE, 0xFFFFFFFF, circleHover[i]), revealAlpha);
-            Draw2DProcessor.INSTANCE.a(null, CIRCLE_ICONS[i], iconX, iconY, iconSize, iconSize, 0.0f, iconCol);
-        }
+                int fill = ColorUtil.interpolate(
+                        ColorUtil.rgba(16, 18, 24, 224),
+                        ColorUtil.rgba(25, 28, 37, 242),
+                        circleHover[i]
+                );
+                int border = ColorUtil.interpolate(
+                        ColorUtil.rgba(40, 44, 57, 255),
+                        i == 3 ? ColorUtil.rgba(168, 76, 86, 255) : ColorUtil.rgba(82, 90, 114, 255),
+                        circleHover[i]
+                );
+                fill = ColorUtil.withAlphaFloat(fill, revealAlpha);
+                border = ColorUtil.withAlphaFloat(border, revealAlpha);
 
-        Fonts.sfRegular.a(null, "Egg Visuals • 1.21.11", 12.0f, sh - 17.0f, 8.2f,
-                ColorUtil.withAlphaFloat(0x888E96A8, revealAlpha));
+                float radius = layout.circleSize * 0.5f;
+                Draw2DProcessor.INSTANCE.drawRect(null, cx, cy, layout.circleSize, layout.circleSize, radius, fill);
+                Draw2DProcessor.INSTANCE.drawOutline(null, cx, cy, layout.circleSize, layout.circleSize, radius, 1.0f, border);
 
-        if (!underOverlay && exitDialogAnim > 0.005f) {
-            DrawBatcher.flushPending();
-            Draw2DProcessor.INSTANCE.getBlurPipeline().capture(12.0f * exitDialogAnim, 1);
-            renderExitDialog(sw, sh, mouseX, mouseY, dt, now, hoverBlend);
+                float iconSize = i <= 1 ? 13.5f : 11.5f;
+                float iconX = cx + (layout.circleSize - iconSize) * 0.5f;
+                float iconY = cy + (layout.circleSize - iconSize) * 0.5f;
+                int iconCol = i <= 1 ? ColorUtil.withAlphaFloat(0xFFFFFFFF, revealAlpha)
+                        : ColorUtil.withAlphaFloat(ColorUtil.interpolate(0xFFDDE3EE, 0xFFFFFFFF, circleHover[i]), revealAlpha);
+                Draw2DProcessor.INSTANCE.a(null, CIRCLE_ICONS[i], iconX, iconY, iconSize, iconSize, 0.0f, iconCol);
+            }
+
+            Fonts.sfRegular.a(null, "Egg Visuals • 1.21.11", 12.0f, sh - 17.0f, 8.2f,
+                    ColorUtil.withAlphaFloat(0x888E96A8, revealAlpha));
+
+            if (!underOverlay) {
+                DrawBatcher.flushPending();
+                if (exitDialogAnim > 0.005f) {
+                    Draw2DProcessor.INSTANCE.getBlurPipeline().capture(12.0f * exitDialogAnim, 1);
+                    renderExitDialog(sw, sh, mouseX, mouseY, dt, now, hoverBlend);
+                    DrawBatcher.flushPending();
+                }
+            }
+        } finally {
+            DrawBatcher.setEnabledSilent(underOverlay || prevBatch);
         }
     }
 
@@ -428,7 +445,11 @@ public class EggTitleScreen extends Screen {
         switch (index) {
             case 0 -> openUrl(TELEGRAM_URL);
             case 1 -> openUrl(SUPPORT_URL);
-            case 2 -> client.setScreen(ClickGuiScreen.getInstance());
+            case 2 -> {
+                ClickGuiScreen gui = ClickGuiScreen.getInstance();
+                gui.setReturnScreen(this);
+                client.setScreen(gui);
+            }
             case 3 -> openExitDialog();
         }
     }
@@ -454,17 +475,23 @@ public class EggTitleScreen extends Screen {
     }
 
     private Layout computeLayout(float sw, float sh) {
-        float colW = MathHelper.clamp(sw * 0.21f, 152.0f, 186.0f);
+        float colW = MathHelper.clamp(sw * 0.21f, 154.0f, 188.0f);
+        float titleW = Math.max(colW * 1.14f, 184.0f);
+        float titleCellW = titleW / TITLE_MASK.cols;
+        float titleH = TITLE_MASK.rows * (titleCellW * (8.0f / 6.0f));
+        float titleGap = 15.0f;
         float btnH = 24.0f;
         float gap = 6.0f;
         float circleSize = 24.0f;
         float circleTopGap = 10.0f;
-        float totalH = 4.0f * btnH + 3.0f * gap + circleTopGap + circleSize;
+        float buttonsH = 4.0f * btnH + 3.0f * gap + circleTopGap + circleSize;
+        float totalH = titleH + titleGap + buttonsH;
         float colX = sw * 0.72f - colW * 0.5f;
-        float startY = (sh - totalH) * 0.5f;
+        float titleY = (sh - totalH) * 0.5f;
+        float startY = titleY + titleH + titleGap;
         float circleY = startY + 4.0f * btnH + 3.0f * gap + circleTopGap;
         float circleGap = (colW - 4.0f * circleSize) / 3.0f;
-        return new Layout(colX, startY, colW, btnH, gap, circleY, circleSize, circleGap);
+        return new Layout(colX, startY, colW, btnH, gap, circleY, circleSize, circleGap, titleY, titleW);
     }
 
     private static boolean hitRect(double mx, double my, float x, float y, float w, float h) {
@@ -482,8 +509,69 @@ public class EggTitleScreen extends Screen {
         return t * t * (3.0f - 2.0f * t);
     }
 
+    private static TitleMask buildTitleMask() {
+        java.awt.Font awtFont;
+        try (var stream = EggTitleScreen.class.getResourceAsStream("/assets/egg/font/sf_bold.ttf")) {
+            if (stream != null) {
+                awtFont = java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, stream).deriveFont(java.awt.Font.BOLD, 64.0f);
+            } else {
+                awtFont = new java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.BOLD, 64);
+            }
+        } catch (Exception ignored) {
+            awtFont = new java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.BOLD, 64);
+        }
+
+        BufferedImage probe = new BufferedImage(8, 8, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g0 = probe.createGraphics();
+        FontMetrics fm = g0.getFontMetrics(awtFont);
+        int rawW = fm.stringWidth("Egg Visuals") + 24;
+        int rawH = fm.getHeight() + 24;
+        int ascent = fm.getAscent();
+        g0.dispose();
+
+        BufferedImage hi = new BufferedImage(rawW, rawH, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = hi.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g.setFont(awtFont);
+        g.setColor(Color.WHITE);
+        g.drawString("Egg Visuals", 12, ascent + 12);
+        g.dispose();
+
+        int minX = rawW, minY = rawH, maxX = 0, maxY = 0;
+        for (int y = 0; y < rawH; y++) {
+            for (int x = 0; x < rawW; x++) {
+                if (((hi.getRGB(x, y) >>> 24) & 255) > 20) {
+                    minX = Math.min(minX, x);
+                    minY = Math.min(minY, y);
+                    maxX = Math.max(maxX, x);
+                    maxY = Math.max(maxY, y);
+                }
+            }
+        }
+        int cw = Math.max(1, maxX - minX + 1);
+        int ch = Math.max(1, maxY - minY + 1);
+        int rows = 15;
+        int cols = Math.max(48, Math.round((float) cw / ch * rows * (8.0f / 6.0f)));
+        BufferedImage grid = new BufferedImage(cols, rows, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = grid.createGraphics();
+        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g2.drawImage(hi.getSubimage(minX, minY, cw, ch), 0, 0, cols, rows, null);
+        g2.dispose();
+
+        float[] levels = new float[cols * rows];
+        for (int r = 0; r < rows; r++) {
+            for (int c = 0; c < cols; c++) {
+                int al = (grid.getRGB(c, r) >>> 24) & 255;
+                levels[r * cols + c] = al < 55 ? 0.0f : al / 255.0f;
+            }
+        }
+        return new TitleMask(cols, rows, levels);
+    }
+
+    private record TitleMask(int cols, int rows, float[] levels) {}
+
     private record Layout(float colX, float startY, float colW, float btnH, float gap,
-                          float circleY, float circleSize, float circleGap) {
+                          float circleY, float circleSize, float circleGap, float titleY, float titleW) {
         float buttonY(int index) {
             return startY + index * (btnH + gap);
         }
@@ -622,18 +710,25 @@ public class EggTitleScreen extends Screen {
         private float sh;
         private float centerX;
         private float centerY;
+        private float titleCenterX;
+        private float titleTopY;
+        private float titleWidth;
         private double seconds;
         private float tiltX;
         private float tiltY;
         private float alpha;
 
         void queue(MinecraftClient client, float sw, float sh, float centerX, float centerY,
+                   float titleCenterX, float titleTopY, float titleWidth,
                    double seconds, float tiltX, float tiltY, float alpha) {
             EggStartupAnimation.ensureAtlas(client);
             this.sw = sw;
             this.sh = sh;
             this.centerX = centerX;
             this.centerY = centerY;
+            this.titleCenterX = titleCenterX;
+            this.titleTopY = titleTopY;
+            this.titleWidth = titleWidth;
             this.seconds = seconds;
             this.tiltX = tiltX;
             this.tiltY = tiltY;
@@ -698,7 +793,8 @@ public class EggTitleScreen extends Screen {
             float atlasW = EggStartupAnimation.GLYPH_BITS.length * EggStartupAnimation.CELL_WIDTH;
             float atlasH = 6.0f;
 
-            if (allocator == null) allocator = new BufferAllocator(2655 * 4 * VertexFormats.POSITION_TEXTURE_COLOR.getVertexSize());
+            int maxQuads = 2655 + TITLE_MASK.cols * TITLE_MASK.rows;
+            if (allocator == null) allocator = new BufferAllocator(maxQuads * 4 * VertexFormats.POSITION_TEXTURE_COLOR.getVertexSize());
             try {
                 BufferBuilder mesh = new BufferBuilder(allocator, VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
                 for (int row = 0; row < EggStartupAnimation.ROWS; row++) {
@@ -714,29 +810,24 @@ public class EggTitleScreen extends Screen {
 
                         float seed = cellNoise(cell);
                         float brightness = MathHelper.clamp(light[cell] + (seed - 0.5f) * 0.18f, 0.0f, 1.0f);
-                        int glyph = Math.min(EggStartupAnimation.GLYPH_BITS.length - 1,
-                                (int) (brightness * EggStartupAnimation.GLYPH_BITS.length));
+                        emitGlyphQuad(mesh, sx, sy, sizePx, sizePx, brightness, alpha, atlasW, atlasH);
+                    }
+                }
 
-                        float smoothB = smooth(brightness * 1.35f);
-                        int r = MathHelper.clamp(Math.round(MathHelper.lerp(smoothB, 141, 255)), 0, 255);
-                        int g = MathHelper.clamp(Math.round(MathHelper.lerp(smoothB, 148, 255)), 0, 255);
-                        int b = MathHelper.clamp(Math.round(MathHelper.lerp(smoothB, 158, 255)), 0, 255);
-                        int a = MathHelper.clamp(Math.round((0.68f + brightness * 0.32f) * alpha * 255.0f), 0, 255);
-
-                        float u0 = (glyph * EggStartupAnimation.CELL_WIDTH) / atlasW;
-                        float u1 = (glyph * EggStartupAnimation.CELL_WIDTH + 5.0f) / atlasW;
-                        float v0 = 0.0f;
-                        float v1 = 5.0f / atlasH;
-
-                        float nx0 = (sx / sw) * 2.0f - 1.0f;
-                        float nx1 = ((sx + sizePx) / sw) * 2.0f - 1.0f;
-                        float ny0 = 1.0f - (sy / sh) * 2.0f;
-                        float ny1 = 1.0f - ((sy + sizePx) / sh) * 2.0f;
-
-                        mesh.vertex(nx0, ny0, 0.0f).texture(u0, v0).color(r, g, b, a);
-                        mesh.vertex(nx0, ny1, 0.0f).texture(u0, v1).color(r, g, b, a);
-                        mesh.vertex(nx1, ny1, 0.0f).texture(u1, v1).color(r, g, b, a);
-                        mesh.vertex(nx1, ny0, 0.0f).texture(u1, v0).color(r, g, b, a);
+                float cellStepX = titleWidth / TITLE_MASK.cols;
+                float cellStepY = cellStepX * (8.0f / 6.0f);
+                float glyphSize = cellStepX * (5.0f / 6.0f);
+                float titleStartX = titleCenterX - titleWidth * 0.5f;
+                for (int r = 0; r < TITLE_MASK.rows; r++) {
+                    for (int c = 0; c < TITLE_MASK.cols; c++) {
+                        float lvl = TITLE_MASK.levels[r * TITLE_MASK.cols + c];
+                        if (lvl <= 0.01f) continue;
+                        float wave = 0.82f + 0.18f * (float) Math.sin(seconds * 1.8 - c * 0.11 + r * 0.15);
+                        float seed = cellNoise(r * 193 + c * 37);
+                        float brightness = MathHelper.clamp(lvl * wave + (seed - 0.5f) * 0.14f, 0.35f, 1.0f);
+                        float sx = titleStartX + c * cellStepX;
+                        float sy = titleTopY + r * cellStepY;
+                        emitGlyphQuad(mesh, sx, sy, glyphSize, glyphSize, brightness, alpha, atlasW, atlasH);
                     }
                 }
 
@@ -762,6 +853,32 @@ public class EggTitleScreen extends Screen {
             } finally {
                 allocator.reset();
             }
+        }
+
+        private void emitGlyphQuad(BufferBuilder mesh, float sx, float sy, float wPx, float hPx,
+                                   float brightness, float alpha, float atlasW, float atlasH) {
+            int glyph = Math.min(EggStartupAnimation.GLYPH_BITS.length - 1,
+                    (int) (brightness * EggStartupAnimation.GLYPH_BITS.length));
+            float smoothB = smooth(brightness * 1.35f);
+            int r = MathHelper.clamp(Math.round(MathHelper.lerp(smoothB, 141, 255)), 0, 255);
+            int g = MathHelper.clamp(Math.round(MathHelper.lerp(smoothB, 148, 255)), 0, 255);
+            int b = MathHelper.clamp(Math.round(MathHelper.lerp(smoothB, 158, 255)), 0, 255);
+            int a = MathHelper.clamp(Math.round((0.68f + brightness * 0.32f) * alpha * 255.0f), 0, 255);
+
+            float u0 = (glyph * EggStartupAnimation.CELL_WIDTH) / atlasW;
+            float u1 = (glyph * EggStartupAnimation.CELL_WIDTH + 5.0f) / atlasW;
+            float v0 = 0.0f;
+            float v1 = 5.0f / atlasH;
+
+            float nx0 = (sx / sw) * 2.0f - 1.0f;
+            float nx1 = ((sx + wPx) / sw) * 2.0f - 1.0f;
+            float ny0 = 1.0f - (sy / sh) * 2.0f;
+            float ny1 = 1.0f - ((sy + hPx) / sh) * 2.0f;
+
+            mesh.vertex(nx0, ny0, 0.0f).texture(u0, v0).color(r, g, b, a);
+            mesh.vertex(nx0, ny1, 0.0f).texture(u0, v1).color(r, g, b, a);
+            mesh.vertex(nx1, ny1, 0.0f).texture(u1, v1).color(r, g, b, a);
+            mesh.vertex(nx1, ny0, 0.0f).texture(u1, v0).color(r, g, b, a);
         }
 
         @Override

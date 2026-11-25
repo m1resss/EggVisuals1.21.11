@@ -276,6 +276,12 @@ public class ClickGuiScreen extends Screen {
     private float openDropdownScrollY = 0.0f;
     private float openDropdownMaxScroll = 0.0f;
 
+    private Screen returnScreen;
+
+    public void setReturnScreen(Screen screen) {
+        this.returnScreen = screen;
+    }
+
     public ClickGuiScreen() {
         super(Text.of("Egg Visual"));
         for (Category cat : Category.values()) {
@@ -286,6 +292,9 @@ public class ClickGuiScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        if (returnScreen != null && (returnScreen.width != width || returnScreen.height != height)) {
+            returnScreen.init(width, height);
+        }
         ScissorUtil.reset();
         GuiSoundManager.playScreenOpen();
         if (closing) {
@@ -431,6 +440,7 @@ public class ClickGuiScreen extends Screen {
     public void removed() {
         saveState();
         super.removed();
+        this.returnScreen = null;
         frostCaptured = false;
         ScissorUtil.reset();
         this.closing = false;
@@ -502,11 +512,22 @@ public class ClickGuiScreen extends Screen {
     @Override
     public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
         updateAnimationProgress();
-        frostCaptured = currentAnimProgress > 0.01f && client != null && client.world != null
-                && ClientSettings.isBlurEnabled() && !FpsBenchmark.overrideNoBlur;
-        if (frostCaptured) {
-            DrawBatcher.flushPending();
-            Draw2DProcessor.INSTANCE.getBlurPipeline().capture(8.0f + ClientSettings.getBlurStrength() * 5.0f, 2);
+        if (returnScreen != null && client != null && client.world == null) {
+            returnScreen.render(context, -1000, -1000, delta);
+            frostCaptured = currentAnimProgress > 0.01f && ClientSettings.isBlurEnabled() && !FpsBenchmark.overrideNoBlur;
+            if (frostCaptured) {
+                DrawBatcher.flushPending();
+                Draw2DProcessor.INSTANCE.getBlurPipeline().capture(Math.max(1.5f, (9.0f + ClientSettings.getBlurStrength() * 5.0f) * currentAnimProgress), 1);
+                Draw2DProcessor.INSTANCE.drawFullscreenBlur(width, height, currentAnimProgress);
+                DrawBatcher.flushPending();
+            }
+        } else {
+            frostCaptured = currentAnimProgress > 0.01f && client != null && client.world != null
+                    && ClientSettings.isBlurEnabled() && !FpsBenchmark.overrideNoBlur;
+            if (frostCaptured) {
+                DrawBatcher.flushPending();
+                Draw2DProcessor.INSTANCE.getBlurPipeline().capture(8.0f + ClientSettings.getBlurStrength() * 5.0f, 2);
+            }
         }
         if (currentAnimProgress > 0.01f) {
             float dimFactor = ClientSettings.getScreenDimOpacity();
@@ -537,7 +558,9 @@ public class ClickGuiScreen extends Screen {
         if (closing && currentAnimProgress <= 0.005f) {
             closing = false;
             if (client != null) {
-                client.setScreen(null);
+                Screen target = this.returnScreen;
+                this.returnScreen = null;
+                client.setScreen(target);
             }
             return;
         }

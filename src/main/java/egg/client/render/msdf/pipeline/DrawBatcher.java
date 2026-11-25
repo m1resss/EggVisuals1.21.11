@@ -48,6 +48,10 @@ public final class DrawBatcher {
         enabled = value;
     }
 
+    public static void setEnabledSilent(boolean value) {
+        enabled = value;
+    }
+
     public static void register(Batched owner) {
         if (!active.contains(owner)) {
             active.add(owner);
