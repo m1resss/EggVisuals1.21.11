@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public class UseDurationMixin {
     @Inject(method={"getValue"}, at={@At(value="RETURN")}, cancellable=true)
     private void swapProperty(ItemStack stack, ClientWorld world, HeldItemContext context, int seed, CallbackInfoReturnable<Float> cir) {
-        if (egg.client.module.render.HMI.getInstance() == null || !egg.client.module.render.HMI.getInstance().isEnabled()) {
+        if (!egg.client.module.render.HMI.usesAnimations()) {
             return;
         }
         if (MinecraftClient.getInstance().player != null && MinecraftClient.getInstance().player.getActiveItem() == stack && GlobalsStorage.useDuration.containsKey(stack.getItem().toString())) {

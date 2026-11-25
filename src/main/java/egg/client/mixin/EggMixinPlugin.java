@@ -11,10 +11,12 @@ import java.util.Set;
 public final class EggMixinPlugin implements IMixinConfigPlugin {
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        boolean sodium = FabricLoader.getInstance().isModLoaded("sodium");
+        FabricLoader loader = FabricLoader.getInstance();
         return switch (mixinClassName) {
-            case "egg.client.mixin.PearlWorldRendererMixin" -> !sodium;
-            case "egg.client.mixin.SodiumPearlTargetMixin" -> sodium;
+            case "egg.client.mixin.PearlWorldRendererMixin" -> !loader.isModLoaded("sodium");
+            case "egg.client.mixin.SodiumPearlTargetMixin" -> loader.isModLoaded("sodium");
+            case "egg.client.mixin.SmoothPlayerAnimationsConfigMixin" -> loader.isModLoaded("spa_packs");
+            case "egg.client.mixin.LocomotionConfigMixin", "egg.client.mixin.LocomotionBlockAnimationsMixin" -> loader.isModLoaded("locomotion");
             default -> true;
         };
     }

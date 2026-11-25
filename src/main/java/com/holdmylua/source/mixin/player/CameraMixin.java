@@ -85,7 +85,7 @@ implements CameraAccessor {
 
     @Inject(method={"setRotation"}, at={@At(value="HEAD")}, cancellable=true)
     public void setRotationMixin(float yaw, float pitch, CallbackInfo ci) {
-        if (egg.client.module.render.HMI.getInstance() == null || !egg.client.module.render.HMI.getInstance().isEnabled()) {
+        if (!egg.client.module.render.HMI.usesAnimations()) {
             return;
         }
         if (!FabricLoader.getInstance().isModLoaded("do_a_barrel_roll")) {
@@ -101,7 +101,7 @@ implements CameraAccessor {
 
     @Inject(method={"setPos(DDD)V"}, at={@At(value="HEAD")}, cancellable=true)
     public void setRotationMixin(double x, double y, double z, CallbackInfo ci) {
-        if (egg.client.module.render.HMI.getInstance() == null || !egg.client.module.render.HMI.getInstance().isEnabled()) {
+        if (!egg.client.module.render.HMI.usesAnimations()) {
             return;
         }
         if (!FabricLoader.getInstance().isModLoaded("do_a_barrel_roll")) {
