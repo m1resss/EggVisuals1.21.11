@@ -66,7 +66,10 @@
     "PostEffectProcessorAccessor",
     "PostEffectPassAccessor"
   ],
-  "client": [],
+  "client": [
+    "EggStartupOverlayMixin",
+    "RrlsStartupOverlayMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

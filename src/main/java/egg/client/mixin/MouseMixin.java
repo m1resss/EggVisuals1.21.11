@@ -2,6 +2,7 @@ package egg.client.mixin;
 
 import egg.client.module.ModuleManager;
 import egg.client.module.combat.AutoSwap;
+import egg.client.render.StartupOverlayControl;
 import egg.client.ui.widget.SwapWheelWidget;
 import egg.client.util.GuiSoundManager;
 import net.minecraft.client.MinecraftClient;
@@ -25,6 +26,12 @@ public class MouseMixin {
 
     @Inject(method = "onMouseButton", at = @At("HEAD"), cancellable = true)
     private void onMouseButtonInject(long window, MouseInput mouseInput, int action, CallbackInfo ci) {
+        if (action == GLFW.GLFW_PRESS && client != null && window == client.getWindow().getHandle()
+                && client.getOverlay() instanceof StartupOverlayControl startup && startup.egg$skipStartup()) {
+            ci.cancel();
+            return;
+        }
+
         int button = mouseInput.button();
 
         if (client != null && client.currentScreen instanceof InventoryScreen invScreen) {

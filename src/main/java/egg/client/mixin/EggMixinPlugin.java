@@ -15,6 +15,7 @@ public final class EggMixinPlugin implements IMixinConfigPlugin {
         return switch (mixinClassName) {
             case "egg.client.mixin.PearlWorldRendererMixin" -> !sodium;
             case "egg.client.mixin.SodiumPearlTargetMixin" -> sodium;
+            case "egg.client.mixin.RrlsStartupOverlayMixin" -> FabricLoader.getInstance().isModLoaded("rrls");
             default -> true;
         };
     }
