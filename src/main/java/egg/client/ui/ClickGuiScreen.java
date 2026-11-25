@@ -35,6 +35,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.ConfirmLinkScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.input.CharInput;
 import net.minecraft.client.input.KeyInput;
@@ -57,6 +58,10 @@ public class ClickGuiScreen extends Screen {
         return instance;
     }
 
+    private static final String SUPPORT_URL = "https://www.donationalerts.com/r/imireessa";
+    private static final float SIDEBAR_FOOTER_HEIGHT = 30.0f;
+    private static final float SUPPORT_BUTTON_HEIGHT = 22.0f;
+    private static final Identifier SUPPORT_ICON = Identifier.of("egg", "textures/icons/gui_support.png");
     private static final Identifier LOGO_TEXTURE = Identifier.of("egg", "textures/egg_logo.png");
 
     private long animStartTime = 0L;
@@ -347,7 +352,7 @@ public class ClickGuiScreen extends Screen {
 
     private void ensureCategoryVisible(Category cat) {
         float cp = sidebarCollapseAnim.getValue();
-        float startY = MathHelper.lerp(cp, 60.0f, 38.0f) + 4.0f;
+        float startY = sidebarListTop(0.0f, cp) + 4.0f;
         float curY = startY;
         String lastSec = "";
         float catY = -1.0f;
@@ -357,7 +362,7 @@ public class ClickGuiScreen extends Screen {
                 if (curY > startY + 2.0f) {
                     curY += MathHelper.lerp(cp, 8.0f, 2.0f);
                 }
-                curY += MathHelper.lerp(cp, 14.0f, 4.0f);
+                curY += MathHelper.lerp(cp, 13.0f, 4.0f);
             }
             if (c == cat) {
                 catY = curY;
@@ -366,13 +371,12 @@ public class ClickGuiScreen extends Screen {
             curY += 25.0f;
         }
         if (catY >= 0.0f) {
-            float gh = getGuiBaseHeight();
-            float viewportH = gh - startY - 4.0f;
+            float bottomBound = getGuiBaseHeight() - SIDEBAR_FOOTER_HEIGHT - 4.0f;
             float topBound = startY;
             if (catY - sidebarTargetScroll < topBound) {
                 sidebarTargetScroll = Math.max(0.0f, catY - topBound);
-            } else if (catY + 22.0f - sidebarTargetScroll > topBound + viewportH) {
-                sidebarTargetScroll = Math.max(0.0f, catY + 22.0f - (topBound + viewportH));
+            } else if (catY + 22.0f - sidebarTargetScroll > bottomBound) {
+                sidebarTargetScroll = Math.max(0.0f, catY + 22.0f - bottomBound);
             }
         }
     }
@@ -764,6 +768,54 @@ public class ClickGuiScreen extends Screen {
         }
     }
 
+    private static float sidebarListTop(float y, float collapse) {
+        return y + MathHelper.lerp(collapse, 62.0f, 38.0f);
+    }
+
+    private static float sidebarContentHeight(float collapse) {
+        float height = 5.0f + Category.values().length * 25.0f;
+        String lastSection = "";
+        for (Category category : Category.values()) {
+            if (category.getSection().equals(lastSection)) continue;
+            if (!lastSection.isEmpty()) height += MathHelper.lerp(collapse, 8.0f, 2.0f);
+            height += MathHelper.lerp(collapse, 13.0f, 4.0f);
+            lastSection = category.getSection();
+        }
+        return height;
+    }
+
+    private record SupportButton(float x, float y, float width) {
+        boolean contains(double mouseX, double mouseY) {
+            return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + SUPPORT_BUTTON_HEIGHT;
+        }
+    }
+
+    private static SupportButton supportButton(float x, float bottom, float width, float collapse) {
+        float buttonWidth = MathHelper.lerp(collapse, width - 16.0f, 24.0f);
+        return new SupportButton(x + (width - buttonWidth) / 2.0f, bottom - 27.0f, buttonWidth);
+    }
+
+    private void renderSupportButton(DrawContext context, float x, float bottom, float width,
+                                     float mouseX, float mouseY, float alpha, float collapse) {
+        SupportButton button = supportButton(x, bottom, width, collapse);
+        boolean hovered = button.contains(mouseX, mouseY);
+        Render2D.drawRect(context, x + 8.0f, bottom - SIDEBAR_FOOTER_HEIGHT, width - 16.0f, 1.0f,
+                ColorUtil.rgba(255, 255, 255, (int) (16 * alpha)));
+        if (hovered) {
+            Render2D.drawRoundedRect(context, button.x, button.y, button.width, SUPPORT_BUTTON_HEIGHT, 6.0f,
+                    ColorUtil.withAlphaFloat(Theme.getAccent(), alpha * 0.15f));
+        }
+        int color = hovered ? Theme.getAccent() : Theme.TEXT_SUB;
+        float iconX = MathHelper.lerp(collapse, x + 21.0f, x + width / 2.0f);
+        IconRenderer.drawTextureCentered(context, SUPPORT_ICON, iconX, button.y + SUPPORT_BUTTON_HEIGHT / 2.0f,
+                12.0f, ColorUtil.withAlphaFloat(color, alpha));
+        float labelAlpha = Math.max(0.0f, 1.0f - collapse * 2.0f) * alpha;
+        if (labelAlpha > 0.01f && !FpsBenchmark.overrideNoText) {
+            ClientFont.draw(context, "Поддержать", x + 34.0f, button.y + 7.0f, ClientFont.SF_MEDIUM,
+                    ColorUtil.withAlphaFloat(color, labelAlpha));
+        }
+    }
+
     private void renderSidebar(DrawContext context, float x, float y, float width, float height, float mouseX, float mouseY, float alpha, float collapseProgress) {
         float logoAreaH = 34.0f;
         renderLogo(context, x, y, width, logoAreaH, mouseX, mouseY, alpha, collapseProgress);
@@ -775,8 +827,14 @@ public class ClickGuiScreen extends Screen {
             renderSidebarSearch(context, x + 8.0f, searchY, width - 16.0f, searchH, searchAlpha, mouseX, mouseY);
         }
 
-        float listStartY = searchY + searchH + MathHelper.lerp(collapseProgress, 4.0f, 4.0f);
-        enableGuiScissor(context, x, listStartY, x + width, y + height);
+        float listStartY = sidebarListTop(y, collapseProgress);
+        float listBottom = y + height - SIDEBAR_FOOTER_HEIGHT;
+        float viewportH = listBottom - listStartY;
+        float totalItemsH = sidebarContentHeight(collapseProgress);
+        sidebarMaxScroll = Math.max(0.0f, totalItemsH - viewportH);
+        sidebarTargetScroll = Math.clamp(sidebarTargetScroll, 0.0f, sidebarMaxScroll);
+        sidebarScrollOffset = Math.clamp(sidebarScrollOffset, 0.0f, sidebarMaxScroll);
+        enableGuiScissor(context, x, listStartY, x + width, listBottom);
 
         float startItemY = listStartY + 4.0f;
         float itemY = startItemY - sidebarScrollOffset;
@@ -823,7 +881,7 @@ public class ClickGuiScreen extends Screen {
 
             boolean isSelected = (cat == selectedCategory);
             boolean isHovered = mouseX >= x && mouseX <= (x + width) &&
-                    mouseY >= listStartY && mouseY <= (y + height) &&
+                    mouseY >= listStartY && mouseY < listBottom &&
                     mouseY >= curItemY && mouseY <= (curItemY + itemH);
 
 
@@ -866,11 +924,6 @@ public class ClickGuiScreen extends Screen {
 
         disableGuiScissor(context);
 
-        float totalItemsH = (itemY + sidebarScrollOffset) - startItemY + 6.0f;
-        float viewportH = height - listStartY;
-        sidebarMaxScroll = Math.max(0.0f, totalItemsH - viewportH + 6.0f);
-        sidebarTargetScroll = Math.clamp(sidebarTargetScroll, 0.0f, sidebarMaxScroll);
-
         if (sidebarMaxScroll > 0.0f && collapseProgress < 0.6f) {
             float sbarW = 2.0f;
             float sbarPad = 2.0f;
@@ -879,6 +932,7 @@ public class ClickGuiScreen extends Screen {
             float thumbY = listStartY + 4.0f + (sidebarScrollOffset / sidebarMaxScroll) * (trackH - thumbH);
             Render2D.drawRoundedRect(context, x + width - sbarW - sbarPad, thumbY, sbarW, thumbH, 1.0f, ColorUtil.rgba(255, 255, 255, (int) (40 * alpha)));
         }
+        renderSupportButton(context, x, y + height, width, mouseX, mouseY, alpha, collapseProgress);
     }
 
     private void renderLogo(DrawContext context, float x, float y, float width, float height, float mouseX, float mouseY, float alpha, float collapseProgress) {
@@ -1301,6 +1355,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         float totalHeight = maxColY - (y - scrollOffset);
         maxScroll = Math.max(0.0f, totalHeight - height);
         targetScroll = Math.clamp(targetScroll, 0.0f, maxScroll);
+        scrollOffset = Math.clamp(scrollOffset, 0.0f, maxScroll);
 
         long timeSinceScroll = System.currentTimeMillis() - lastScrollTime;
         scrollbarAlphaAnim.setTarget(timeSinceScroll < 1200 ? 1.0f : 0.0f);
@@ -1439,10 +1494,11 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             disableGuiScissor(context);
         }
 
-        float maxColY = Math.max(col0Y, col1Y);
+        float maxColY = Math.max(y - scrollOffset, Math.max(col0Y, col1Y) - 10.0f);
         float totalHeight = maxColY - (y - scrollOffset);
         maxScroll = Math.max(0.0f, totalHeight - height);
         targetScroll = Math.clamp(targetScroll, 0.0f, maxScroll);
+        scrollOffset = Math.clamp(scrollOffset, 0.0f, maxScroll);
 
         long timeSinceScroll = System.currentTimeMillis() - lastScrollTime;
         scrollbarAlphaAnim.setTarget(timeSinceScroll < 1200 ? 1.0f : 0.0f);
@@ -2990,8 +3046,15 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             }
         }
 
-        float listStartY = gy + 38.0f + 2.0f * (1.0f - collapseProgress) + searchH;
-        if (mouseX >= gx && mouseX <= gx + sidebarWidth && mouseY >= listStartY && mouseY <= gy + guiHeight) {
+        if (button == 0 && supportButton(gx, gy + guiHeight, sidebarWidth, collapseProgress).contains(mouseX, mouseY)) {
+            GuiSoundManager.playClick();
+            ConfirmLinkScreen.open(this, SUPPORT_URL, true);
+            return true;
+        }
+
+        float listStartY = sidebarListTop(gy, collapseProgress);
+        if (mouseX >= gx && mouseX <= gx + sidebarWidth && mouseY >= listStartY
+                && mouseY < gy + guiHeight - SIDEBAR_FOOTER_HEIGHT) {
             float itemH = 22.0f;
             float startItemY = listStartY + 4.0f;
             float itemY = startItemY - sidebarScrollOffset;
@@ -3503,10 +3566,14 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         float collapseProgress = sidebarCollapseAnim.getValue();
         float sidebarW = MathHelper.lerp(collapseProgress, 132.0f, 36.0f);
 
-        if (mouseX >= guiX && mouseX <= guiX + sidebarW && mouseY >= guiY + 34.0f && mouseY <= guiY + guiH) {
+        if (mouseX >= guiX && mouseX <= guiX + sidebarW && mouseY >= sidebarListTop(guiY, collapseProgress) && mouseY < guiY + guiH - SIDEBAR_FOOTER_HEIGHT) {
             sidebarTargetScroll -= (float) (verticalAmount * 26.0f);
             sidebarTargetScroll = Math.clamp(sidebarTargetScroll, 0.0f, sidebarMaxScroll);
             return true;
+        }
+
+        if (mouseX < guiX + sidebarW || mouseX > guiX + guiW || mouseY < guiY + 54.0f || mouseY >= guiY + guiH - 6.0f) {
+            return false;
         }
 
         if (selectedCategory == Category.INVENTORY) {
