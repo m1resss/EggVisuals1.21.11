@@ -79,6 +79,7 @@ public class EggTitleScreen extends Screen {
 
     private static final List<ChangeDay> CHANGELOG_DAYS = List.of(
             new ChangeDay("ChangeLog 25.11.2026", List.of(
+                    new ChangeItem("[//]", "Sprint: плавное удержание клавиши бега через ввод вместо ежетикового форсажа срывов"),
                     new ChangeItem("[+]", "TargetESP: стиль «Скобы» (аккуратная PvP-рамка у ног с реакцией на удар) вместо «Прибоя»"),
                     new ChangeItem("[//]", "ClickGUI: скроллбар, стрелки и градиент в выпадающих списках при переполнении"),
                     new ChangeItem("[+]", "TargetHUD: добавлен второй раздельный стиль с головой, бейджем HP и 6 слотами экипировки"),
