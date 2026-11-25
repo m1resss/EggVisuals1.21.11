@@ -192,21 +192,6 @@ public final class Pipelines {
             .build()
     );
 
-    public static final RenderPipeline TARGET_PLATES = register(
-        RenderPipeline.builder()
-            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/target_plates"))
-            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/world/jump_caustic"))
-            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/world/target_plates"))
-            .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
-            .withUniform("Projection", UniformType.UNIFORM_BUFFER)
-            .withBlend(BlendFunction.TRANSLUCENT)
-            .withDepthTestFunction(DepthTestFunction.LEQUAL_DEPTH_TEST)
-            .withDepthWrite(false)
-            .withCull(false)
-            .withVertexFormat(VertexFormats.POSITION_TEXTURE_COLOR, DrawMode.QUADS)
-            .build()
-    );
-
     public static final RenderPipeline COLOR_COPY = register(
         RenderPipeline.builder()
             .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/color_copy"))
