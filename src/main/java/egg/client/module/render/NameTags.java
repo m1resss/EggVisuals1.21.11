@@ -4,13 +4,11 @@ import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.misc.Globals;
 import egg.client.module.setting.BooleanSetting;
-import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Font;
 import egg.client.render.msdf.Fonts;
 import egg.client.render.msdf.pipeline.DrawBatcher;
-import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
 import egg.client.util.EntityUtil;
 import egg.client.util.FriendManager;
@@ -55,13 +53,12 @@ public class NameTags extends Module {
 
     private static final Identifier EGG_LOGO = Identifier.of("egg", "textures/egg_logo.png");
 
-    private final BooleanSetting showHealth = new BooleanSetting("Здоровье", true, "Шкала и числовое значение HP");
+    private final BooleanSetting showHealth = new BooleanSetting("Здоровье", true, "Числовое значение здоровья игрока");
     private final BooleanSetting showPing = new BooleanSetting("Пинг", true, "Индикатор задержки игрока");
     private final BooleanSetting showDistance = new BooleanSetting("Дистанция", true, "Расстояние в метрах");
     private final BooleanSetting showArmor = new BooleanSetting("Броня и руки", true, "Экипированные предметы над ником");
     private final BooleanSetting showSelf = new BooleanSetting("Себя от 3-го лица", false, "Отображать бейдж над своим персонажем");
     private final SliderSetting bgAlpha = new SliderSetting("Непрозрачность", 85.0, 20.0, 100.0, 5.0, "Плотность подложки (%)");
-    private final ModeSetting colorMode = new ModeSetting("Цвет шкалы", "Градиент", "Градиент", "Тема", "Здоровье");
 
     private final BooleanSetting showItems = new BooleanSetting("Предметы", true, "Отображать названия и количество выброшенных предметов");
     private final BooleanSetting lootBeam = new BooleanSetting("Лучи над ценным лутом", true, "Вертикальные лучи света над ценными предметами");
@@ -72,10 +69,6 @@ public class NameTags extends Module {
         float smoothX = 0.0f;
         float smoothY = 0.0f;
         boolean smoothInit = false;
-        float visualHp = 20.0f;
-        float trailingHp = 20.0f;
-        float lastHp = 20.0f;
-        long lastDamageTime = 0L;
         long lastSeenTime = 0L;
     }
 
@@ -96,7 +89,7 @@ public class NameTags extends Module {
         this.itemIcons.setVisible(this.showItems::get);
 
         addSettings(
-                showHealth, showPing, showDistance, showArmor, showSelf, bgAlpha, colorMode,
+                showHealth, showPing, showDistance, showArmor, showSelf, bgAlpha,
                 showItems, lootBeam, onlyValuable, itemIcons
         );
     }
@@ -300,13 +293,7 @@ public class NameTags extends Module {
             boolean onScreen = ProjectUtil.toScreen(wx, wy, wz, tickDelta, scratchScreenPos);
             if (!onScreen || !ProjectUtil.isOnScreen(scratchScreenPos)) continue;
 
-            PlayerTagState state = stateMap.computeIfAbsent(player.getUuid(), u -> {
-                PlayerTagState s = new PlayerTagState();
-                s.visualHp = player.getHealth();
-                s.trailingHp = player.getHealth();
-                s.lastHp = player.getHealth();
-                return s;
-            });
+            PlayerTagState state = stateMap.computeIfAbsent(player.getUuid(), u -> new PlayerTagState());
             state.lastSeenTime = nowMs;
 
             if (!state.smoothInit || Math.abs(state.smoothX - scratchScreenPos.x) > 120.0f || Math.abs(state.smoothY - scratchScreenPos.y) > 120.0f) {
@@ -319,7 +306,7 @@ public class NameTags extends Module {
                 state.smoothY = MathHelper.lerp(smoothSpeed, state.smoothY, scratchScreenPos.y);
             }
 
-            renderSingleTag(context, mc, player, state, dist, dt);
+            renderSingleTag(context, mc, player, state, dist);
         }
 
         this.stateMap.entrySet().removeIf(e -> nowMs - e.getValue().lastSeenTime > 4000L);
@@ -333,21 +320,10 @@ public class NameTags extends Module {
         }
     }
 
-    private void renderSingleTag(DrawContext context, MinecraftClient mc, PlayerEntity player, PlayerTagState state, double dist, float dt) {
+    private void renderSingleTag(DrawContext context, MinecraftClient mc, PlayerEntity player, PlayerTagState state, double dist) {
         float maxHp = Math.max(1.0f, player.getMaxHealth());
         float currentHp = MathHelper.clamp(player.getHealth(), 0.0f, maxHp);
         float absorption = Math.max(0.0f, player.getAbsorptionAmount());
-
-        if (currentHp < state.lastHp) {
-            state.lastDamageTime = System.currentTimeMillis();
-        }
-        state.lastHp = currentHp;
-        state.visualHp += (currentHp - state.visualHp) * Math.min(1.0f, dt * 14.0f);
-
-        long timeSinceDamage = System.currentTimeMillis() - state.lastDamageTime;
-        if (timeSinceDamage > 250L) {
-            state.trailingHp += (currentHp - state.trailingHp) * Math.min(1.0f, dt * 6.5f);
-        }
 
         float distScale = (float) MathHelper.clamp(1.0 - (dist - 6.0) * 0.016, 0.68, 1.22);
         float tagScale = 0.75f * distScale;
@@ -422,7 +398,7 @@ public class NameTags extends Module {
         if (hpText != null) contentW += hpW + hpSuffixGap + Fonts.b.a("hp", hpSuffixSize) + gap;
 
         float cardW = Math.max(44.0f, contentW + padX * 2.0f);
-        float cardH = this.showHealth.get() ? 19.0f : 15.0f;
+        float cardH = 15.0f;
         float cardRadius = 4.0f;
 
         float alphaFactor = this.bgAlpha.getValueFloat() / 100.0f;
@@ -445,49 +421,6 @@ public class NameTags extends Module {
 
         int sheenCol = ColorUtil.rgba(255, 255, 255, (int) (14 * alphaFactor));
         Draw2DProcessor.INSTANCE.drawGradient(tagMat, cardX, cardY, cardW, cardH * 0.5f, cardRadius, sheenCol, sheenCol, 0, 0);
-
-        if (this.showHealth.get()) {
-            float barX = cardX + 5.0f;
-            float barY = cardY + cardH - 3.2f;
-            float barW = cardW - 10.0f;
-            float barH = 1.8f;
-
-            Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, barW, barH, 0.9f, ColorUtil.rgba(255, 255, 255, 25));
-
-            float visualRatio = MathHelper.clamp(state.visualHp / maxHp, 0.0f, 1.0f);
-            float trailingRatio = MathHelper.clamp(state.trailingHp / maxHp, 0.0f, 1.0f);
-
-            if (trailingRatio > visualRatio) {
-                float trailW = Math.max(1.5f, barW * trailingRatio);
-                Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, trailW, barH, 0.9f, ColorUtil.rgba(251, 146, 60, 240));
-            }
-
-            float fillW = Math.max(1.0f, barW * visualRatio);
-            int barCol;
-            String colorSetting = this.colorMode.get();
-            if ("Тема".equals(colorSetting)) {
-                barCol = Theme.getAccent();
-            } else if ("Градиент".equals(colorSetting)) {
-                if (visualRatio > 0.5f) {
-                    float f = (visualRatio - 0.5f) * 2.0f;
-                    barCol = ColorUtil.interpolate(0xFFFACC15, 0xFF22C55E, f);
-                } else {
-                    float f = visualRatio * 2.0f;
-                    barCol = ColorUtil.interpolate(0xFFEF4444, 0xFFFACC15, f);
-                }
-            } else {
-                if (visualRatio > 0.6f) barCol = 0xFF22C55E;
-                else if (visualRatio > 0.25f) barCol = 0xFFFACC15;
-                else barCol = 0xFFEF4444;
-            }
-            Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, fillW, barH, 0.9f, barCol);
-
-            if (absorption > 0.0f) {
-                float absRatio = MathHelper.clamp(absorption / maxHp, 0.0f, 1.0f);
-                float absW = Math.max(1.0f, barW * absRatio);
-                Draw2DProcessor.INSTANCE.drawRect(tagMat, barX, barY, absW, barH, 0.9f, ColorUtil.rgba(252, 211, 77, 255));
-            }
-        }
 
         float curX = cardX + padX;
         float textY = cardY + 2.0f;
