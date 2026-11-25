@@ -1,12 +1,23 @@
 package egg.client.render;
 
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.textures.FilterMode;
+import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gl.GpuSampler;
 import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.ScreenRect;
+import net.minecraft.client.gui.render.state.SimpleGuiElementRenderState;
+import net.minecraft.client.render.VertexConsumer;
+import net.minecraft.client.texture.AbstractTexture;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
+import net.minecraft.client.texture.TextureSetup;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.MathHelper;
+import org.joml.Matrix3x2f;
 
 import java.util.Arrays;
 
@@ -31,19 +42,32 @@ public final class EggStartupAnimation {
             0b01110_10001_10111_10101_01110
     };
     public static final ShellPoint[] SHELL = buildShell();
+    private static final float[] CELL_SEED = buildSeeds();
+    private static final Matrix3x2f IDENTITY = new Matrix3x2f();
     private static boolean sharedAtlasRegistered;
 
     private final double[] depth = new double[COLUMNS * ROWS];
     private final float[] light = new float[depth.length];
     private final float[] cracks = new float[depth.length];
-    private boolean atlasReady;
+    private final float[] qx1 = new float[depth.length];
+    private final float[] qy1 = new float[depth.length];
+    private final float[] qx2 = new float[depth.length];
+    private final float[] qy2 = new float[depth.length];
+    private final float[] qu1 = new float[depth.length];
+    private final float[] qu2 = new float[depth.length];
+    private final int[] qColor = new int[depth.length];
+    private int quadCount;
     private long lastFrame;
     private float progress;
+
+    public static void warmup() {
+        ensureAtlas(MinecraftClient.getInstance());
+    }
 
     public void drawProgress(DrawContext context, long now, float loadProgress) {
         int width = context.getScaledWindowWidth();
         int height = context.getScaledWindowHeight();
-        float elapsed = Math.min(100, now - lastFrame);
+        float elapsed = lastFrame == 0L ? 16f : Math.min(33f, Math.max(0f, now - lastFrame));
         progress = MathHelper.lerp(1f - (float) Math.exp(-elapsed / 125f), progress, MathHelper.clamp(loadProgress, 0f, 1f));
         lastFrame = now;
         int half = Math.max(10, Math.round(Math.min(width, height) * 0.105f));
@@ -55,35 +79,75 @@ public final class EggStartupAnimation {
     }
 
     public void draw(MinecraftClient client, DrawContext context, long age, float scatter, float opacity) {
+        if (client == null || opacity < 0.01f) return;
         int width = context.getScaledWindowWidth();
         int height = context.getScaledWindowHeight();
-        if (!atlasReady) {
-            ensureAtlas(client);
-            atlasReady = true;
-        }
+        if (width <= 0 || height <= 0) return;
+
+        ensureAtlas(client);
+        AbstractTexture texture = client.getTextureManager().getTexture(GLYPHS);
+        if (texture == null) return;
 
         double seconds = age * 0.001;
         float intro = smooth(age / 1910f);
         project(seconds, intro, smooth((age - 2300) / 1050f));
         float scale = Math.min(height * 0.84f / (ROWS * CELL_HEIGHT), width * 0.80f / (COLUMNS * CELL_WIDTH));
+        float originX = width * 0.5f;
+        float originY = height * 0.47f;
+        float atlasW = GLYPH_BITS.length * CELL_WIDTH;
+        float v2 = 5.0f / 6.0f;
 
-        var matrices = context.getMatrices();
-        matrices.pushMatrix();
-        try {
-            matrices.translate(width * 0.5f, height * 0.47f);
-            matrices.scale(scale);
-            for (int row = 0; row < ROWS; row++) {
-                for (int col = 0; col < COLUMNS; col++) {
-                    int cell = row * COLUMNS + col;
-                    if (depth[cell] != Double.NEGATIVE_INFINITY) {
-                        drawCell(context, col, row, cell, intro, scatter, opacity);
-                    }
-                }
+        quadCount = 0;
+        for (int row = 0; row < ROWS; row++) {
+            float y = row - (ROWS - 1) * 0.5f;
+            int rowBase = row * COLUMNS;
+            for (int col = 0; col < COLUMNS; col++) {
+                int cell = rowBase + col;
+                if (depth[cell] == Double.NEGATIVE_INFINITY) continue;
+
+                float x = col - (COLUMNS - 1) * 0.5f;
+                float seed = CELL_SEED[cell];
+                float order = 0.40f + x * 0.009f + y * 0.006f + seed * 0.30f;
+                float gather = 1f - smooth((intro - order + 0.48f) / 0.52f);
+                float leave = smooth((scatter - seed * 0.34f - (x + 19) * 0.005f) / 0.46f);
+                float cellAlpha = (1f - smooth(gather * 1.3f)) * (1f - smooth(leave)) * opacity;
+                if (cellAlpha < 0.025f) continue;
+
+                float spread = leave * (0.35f + seed * 0.85f);
+                float sweep = gather * (0.3f + seed * 0.6f);
+                float gx = Math.round((x * (1f + spread) - y * sweep * 0.76f + spread * 8f) * CELL_WIDTH) - 2;
+                float gy = Math.round((y * (1f + spread * 0.65f) + x * sweep * 0.56f - spread * 8f) * CELL_HEIGHT) - 2;
+                float brightness = MathHelper.clamp(light[cell] + (seed - 0.5f) * 0.19f, 0f, 1f);
+                int glyph = Math.min(GLYPH_BITS.length - 1, (int) (brightness * GLYPH_BITS.length));
+                if (leave > 0.08f || gather > 0.3f) glyph = Math.min(glyph, 4);
+
+                int rgb = blendRgb(0x8D949E, 0xFFFFFF, smooth(brightness * 1.35f));
+                float ink = (0.66f + brightness * 0.34f) * (1f - cracks[cell] * 0.73f) * cellAlpha;
+
+                int idx = quadCount++;
+                float x1 = originX + gx * scale;
+                float y1 = originY + gy * scale;
+                float sizePx = 5.0f * scale;
+                qx1[idx] = x1;
+                qy1[idx] = y1;
+                qx2[idx] = x1 + sizePx;
+                qy2[idx] = y1 + sizePx;
+                qu1[idx] = (glyph * CELL_WIDTH) / atlasW;
+                qu2[idx] = (glyph * CELL_WIDTH + 5.0f) / atlasW;
+                qColor[idx] = color(rgb, ink);
             }
-        } finally {
-            matrices.popMatrix();
         }
 
+        if (quadCount <= 0) return;
+        GpuTextureView view = texture.getGlTextureView();
+        if (view == null) return;
+        GpuSampler sampler = RenderSystem.getSamplerCache().get(FilterMode.NEAREST);
+        context.state.addSimpleElement(new EggGlyphBatchState(
+                RenderPipelines.GUI_TEXTURED,
+                TextureSetup.of(view, sampler),
+                new ScreenRect(0, 0, width, height),
+                v2
+        ));
     }
 
     private void project(double seconds, float intro, float fracture) {
@@ -127,30 +191,6 @@ public final class EggStartupAnimation {
         }
     }
 
-    private void drawCell(DrawContext context, int col, int row, int cell, float intro, float scatter, float visibility) {
-        float x = col - (COLUMNS - 1) * 0.5f;
-        float y = row - (ROWS - 1) * 0.5f;
-        float seed = noise(cell);
-        float order = 0.40f + x * 0.009f + y * 0.006f + seed * 0.30f;
-        float gather = 1f - smooth((intro - order + 0.48f) / 0.52f);
-        float leave = smooth((scatter - seed * 0.34f - (x + 19) * 0.005f) / 0.46f);
-        float opacity = (1f - smooth(gather * 1.3f)) * (1f - smooth(leave)) * visibility;
-        if (opacity < 0.025f) return;
-
-        float spread = leave * (0.35f + seed * 0.85f);
-        float sweep = gather * (0.3f + seed * 0.6f);
-        int drawX = Math.round((x * (1f + spread) - y * sweep * 0.76f + spread * 8f) * CELL_WIDTH) - 2;
-        int drawY = Math.round((y * (1f + spread * 0.65f) + x * sweep * 0.56f - spread * 8f) * CELL_HEIGHT) - 2;
-        float brightness = MathHelper.clamp(light[cell] + (seed - 0.5f) * 0.19f, 0f, 1f);
-        int glyph = Math.min(GLYPH_BITS.length - 1, (int) (brightness * GLYPH_BITS.length));
-        if (leave > 0.08f || gather > 0.3f) glyph = Math.min(glyph, 4);
-
-        int rgb = blendRgb(0x8D949E, 0xFFFFFF, smooth(brightness * 1.35f));
-        float ink = (0.66f + brightness * 0.34f) * (1f - cracks[cell] * 0.73f) * opacity;
-        context.drawTexture(RenderPipelines.GUI_TEXTURED, GLYPHS, drawX, drawY,
-                glyph * CELL_WIDTH, 0, 5, 5, 5, 5, GLYPH_BITS.length * CELL_WIDTH, 6, color(rgb, ink));
-    }
-
     public static void ensureAtlas(MinecraftClient client) {
         if (sharedAtlasRegistered || client == null) return;
         sharedAtlasRegistered = true;
@@ -169,6 +209,14 @@ public final class EggStartupAnimation {
         NativeImageBackedTexture texture = new NativeImageBackedTexture(() -> GLYPHS.toString(), image);
         texture.upload();
         client.getTextureManager().registerTexture(GLYPHS, texture);
+    }
+
+    private static float[] buildSeeds() {
+        float[] seeds = new float[COLUMNS * ROWS];
+        for (int i = 0; i < seeds.length; i++) {
+            seeds[i] = noise(i);
+        }
+        return seeds;
     }
 
     private static ShellPoint[] buildShell() {
@@ -212,7 +260,7 @@ public final class EggStartupAnimation {
     }
 
     private static int color(int rgb, float alpha) {
-        return rgb | (Math.round(alpha * 255) << 24);
+        return rgb | (Math.round(MathHelper.clamp(alpha, 0f, 1f) * 255) << 24);
     }
 
     private static int blendRgb(int from, int to, float amount) {
@@ -220,6 +268,57 @@ public final class EggStartupAnimation {
         int green = MathHelper.lerp(amount, (from >> 8) & 255, (to >> 8) & 255);
         int blue = MathHelper.lerp(amount, from & 255, to & 255);
         return red << 16 | green << 8 | blue;
+    }
+
+    private final class EggGlyphBatchState implements SimpleGuiElementRenderState {
+        private final RenderPipeline pipeline;
+        private final TextureSetup textureSetup;
+        private final ScreenRect bounds;
+        private final float v2;
+
+        EggGlyphBatchState(RenderPipeline pipeline, TextureSetup textureSetup, ScreenRect bounds, float v2) {
+            this.pipeline = pipeline;
+            this.textureSetup = textureSetup;
+            this.bounds = bounds;
+            this.v2 = v2;
+        }
+
+        @Override
+        public void setupVertices(VertexConsumer consumer) {
+            for (int i = 0; i < quadCount; i++) {
+                float x1 = qx1[i];
+                float y1 = qy1[i];
+                float x2 = qx2[i];
+                float y2 = qy2[i];
+                float u1 = qu1[i];
+                float u2 = qu2[i];
+                int col = qColor[i];
+                consumer.vertex(IDENTITY, x1, y1).texture(u1, 0.0f).color(col);
+                consumer.vertex(IDENTITY, x1, y2).texture(u1, v2).color(col);
+                consumer.vertex(IDENTITY, x2, y2).texture(u2, v2).color(col);
+                consumer.vertex(IDENTITY, x2, y1).texture(u2, 0.0f).color(col);
+            }
+        }
+
+        @Override
+        public RenderPipeline pipeline() {
+            return pipeline;
+        }
+
+        @Override
+        public TextureSetup textureSetup() {
+            return textureSetup;
+        }
+
+        @Override
+        public ScreenRect scissorArea() {
+            return null;
+        }
+
+        @Override
+        public ScreenRect bounds() {
+            return bounds;
+        }
     }
 
     public record ShellPoint(double x, double y, double z, double nx, double ny, double nz, double grain, double fault) {}

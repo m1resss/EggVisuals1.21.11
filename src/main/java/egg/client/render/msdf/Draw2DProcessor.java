@@ -226,6 +226,14 @@ public class Draw2DProcessor {
         return true;
     }
 
+    public boolean drawRoundedBlur(float x, float y, float width, float height, float radius, float alpha) {
+        GpuTextureView blurView = this.blurPipeline.view();
+        if (blurView == null || blurView.isClosed() || alpha <= 0.0f || width <= 2.0f || height <= 2.0f) return false;
+        float r = Math.max(0.0f, radius);
+        this.panelBlurPipeline.drawBlurTexture(blurView, x, y, width, height, new float[]{r, r, r, r}, alpha);
+        return true;
+    }
+
     public void drawPanelBlur(Matrix3x2f matrices, float x, float y, float width, float height, float radius, float alpha) {
         if (!egg.client.module.render.Interface.isHudBlurEnabled() || alpha <= 0.01f) return;
         float[] t = transformRect(matrices, x, y, width, height, radius);

@@ -17,7 +17,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(value = SplashOverlay.class, priority = 1200)
+@Mixin(value = SplashOverlay.class, priority = 900)
 public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
     @Unique private static final long SCATTER_TIME = 1230;
     @Unique private static final long MENU_FADE_TIME = 420;
@@ -30,15 +30,20 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
 
     @Unique private static boolean egg$startupShown;
     @Unique private EggStartupAnimation egg$animation;
-    @Unique private long egg$firstFrame = -1;
-    @Unique private long egg$skipTime = -1;
-    @Unique private long egg$menuFadeStart = -1;
+    @Unique private boolean egg$initialStartup;
+    @Unique private long egg$lastTick = -1;
+    @Unique private long egg$animMs;
+    @Unique private boolean egg$skipped;
+    @Unique private long egg$scatterMs;
+    @Unique private boolean egg$menuFading;
+    @Unique private long egg$fadeMs;
+    @Unique private long egg$hintMs;
     @Unique private float egg$revealOpacity = 0.0f;
 
     @Override
     public boolean egg$skipStartup() {
         if (egg$animation == null || reloadCompleteTime < 0) return false;
-        if (egg$skipTime < 0) egg$skipTime = Util.getMeasuringTimeMs();
+        egg$skipped = true;
         return true;
     }
 
@@ -49,9 +54,11 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
 
     @Inject(method = "<init>", at = @At("RETURN"))
     private void egg$prepareStartup(CallbackInfo ci) {
-        if (!reloading && !egg$startupShown) {
-            egg$startupShown = true;
-            egg$animation = new EggStartupAnimation();
+        egg$initialStartup = !reloading && !egg$startupShown;
+        egg$startupShown = true;
+        egg$animation = new EggStartupAnimation();
+        if (client != null) {
+            EggStartupAnimation.ensureAtlas(client);
         }
     }
 
@@ -60,18 +67,35 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
         if (egg$animation == null) return;
 
         long now = Util.getMeasuringTimeMs();
-        if (egg$firstFrame < 0) egg$firstFrame = now;
-        boolean skipped = egg$skipTime >= 0;
-        long scatterAge = skipped ? now - egg$skipTime : 0;
+        long rawDt = egg$lastTick < 0 ? 0L : Math.max(0L, now - egg$lastTick);
+        egg$lastTick = now;
+        long dt = Math.min(rawDt, 33L);
+
         boolean loaded = reloadCompleteTime >= 0;
-        boolean revealMenu = skipped && scatterAge >= SCATTER_TIME && loaded;
+        if (!egg$initialStartup && loaded && !egg$skipped) {
+            egg$skipped = true;
+        }
+        if (!egg$skipped) {
+            egg$animMs += dt;
+        } else {
+            egg$scatterMs += dt;
+        }
+        if (loaded && !egg$skipped) {
+            egg$hintMs += dt;
+        }
+
+        boolean revealMenu = egg$skipped && egg$scatterMs >= SCATTER_TIME && loaded;
         int width = context.getScaledWindowWidth();
         int height = context.getScaledWindowHeight();
 
         float menuOpacity = 0f;
         if (revealMenu) {
-            if (egg$menuFadeStart < 0) egg$menuFadeStart = now;
-            menuOpacity = egg$fade((now - egg$menuFadeStart) / (float) MENU_FADE_TIME);
+            if (!egg$menuFading) {
+                egg$menuFading = true;
+            } else {
+                egg$fadeMs += dt;
+            }
+            menuOpacity = egg$fade(egg$fadeMs / (float) MENU_FADE_TIME);
         }
         egg$revealOpacity = menuOpacity;
         if (revealMenu) {
@@ -85,17 +109,16 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
         int backgroundAlpha = Math.round(255 * (1f - menuOpacity));
         context.fill(0, 0, width, height, backgroundAlpha << 24);
 
-        if (!skipped || scatterAge < SCATTER_TIME) {
-            long poseAge = Math.max(0, (skipped ? egg$skipTime : now) - egg$firstFrame);
-            float scatter = scatterAge / (float) SCATTER_TIME;
-            egg$animation.draw(client, context, poseAge, scatter, egg$fade(poseAge / 140f));
+        if (!egg$skipped || egg$scatterMs < SCATTER_TIME) {
+            float scatter = Math.min(1f, egg$scatterMs / (float) SCATTER_TIME);
+            egg$animation.draw(client, context, egg$animMs, scatter, egg$fade((egg$animMs + 20f) / 140f));
         }
 
         if (!loaded) {
             egg$animation.drawProgress(context, now, reload.getProgress());
-        } else if (!skipped) {
+        } else if (!egg$skipped && egg$initialStartup) {
             int x = (width - client.textRenderer.getWidth(CONTINUE_HINT)) / 2;
-            int alpha = Math.round(190 * egg$fade((now - reloadCompleteTime) / 300f));
+            int alpha = Math.round(190 * egg$fade(egg$hintMs / 300f));
             if (alpha > 3) {
                 context.drawText(client.textRenderer, CONTINUE_HINT, x, Math.round(height * 0.89f), alpha << 24 | 0xD8DADE, false);
             }

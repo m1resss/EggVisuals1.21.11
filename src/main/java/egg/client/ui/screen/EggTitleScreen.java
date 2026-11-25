@@ -12,6 +12,7 @@ import egg.client.render.StartupOverlayControl;
 import egg.client.render.msdf.Draw2DProcessor;
 import egg.client.render.msdf.Font;
 import egg.client.render.msdf.Fonts;
+import egg.client.render.msdf.ScissorUtil;
 import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.render.shader.Pipelines;
 import egg.client.ui.ClickGuiScreen;
@@ -34,6 +35,7 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.Util;
 import net.minecraft.util.math.MathHelper;
+import org.joml.Matrix3x2f;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.system.MemoryUtil;
 
@@ -44,7 +46,9 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 public class EggTitleScreen extends Screen {
     private static final String SUPPORT_URL = "https://www.donationalerts.com/r/imireessa";
@@ -58,10 +62,76 @@ public class EggTitleScreen extends Screen {
     private static final Identifier ICON_DA = Identifier.of("egg", "textures/icons/menu_da.png");
     private static final Identifier ICON_GEAR = Identifier.of("egg", "textures/icons/menu_gear.png");
     private static final Identifier ICON_EXIT = Identifier.of("egg", "textures/icons/menu_exit.png");
+    private static final Identifier ICON_CHANGELOG = Identifier.of("egg", "textures/icons/menu_changelog.png");
 
     private static final String[] MAIN_LABELS = {"Одиночная игра", "Мультиплеер", "Настройки", "Поддержать"};
     private static final Identifier[] MAIN_ICONS = {ICON_SINGLEPLAYER, ICON_MULTIPLAYER, ICON_SLIDERS, ICON_HEART};
     private static final Identifier[] CIRCLE_ICONS = {ICON_TG, ICON_DA, ICON_GEAR, ICON_EXIT};
+
+    private static final float CL_BTN_X = 14.0f;
+    private static final float CL_BTN_Y = 14.0f;
+    private static final float CL_BTN_SIZE = 24.0f;
+
+    private static final int TAG_PLUS_COLOR = 0xFF72EE9A;
+    private static final int TAG_MINUS_COLOR = 0xFFFF6670;
+    private static final int TAG_CHANGE_COLOR = 0xFFFFD866;
+
+    private static final List<ChangeDay> CHANGELOG_DAYS = List.of(
+            new ChangeDay("ChangeLog 25.11.2026", List.of(
+                    new ChangeItem("[+]", "MainMenu & Startup: кастомное главное меню на собственном рендере с вращающимся ASCII-яйцом, заголовком Egg Visuals, диалогом выхода и экраном загрузки без логотипа Mojang"),
+                    new ChangeItem("[+]", "Changelog: выдвижная панель обновлений в меню с полупрозрачным блюр-фоном"),
+                    new ChangeItem("[+]", "KillEffect: новый 3D-эффект «Пепел» с рассыпанием модели"),
+                    new ChangeItem("[+]", "Trail: добавлен новый стиль «Комикс»"),
+                    new ChangeItem("[+]", "HMI: интеграция анимаций удержания и использования предметов от 1-го лица"),
+                    new ChangeItem("[//]", "KillEffect (Лед): доработка ледяной глыбы, трещин и кристаллов"),
+                    new ChangeItem("[//]", "ClickGUI & NameTags: открытие ClickGUI поверх главного меню с блюром и фиксы рендера тегов")
+            )),
+            new ChangeDay("ChangeLog 24.11.2026", List.of(
+                    new ChangeItem("[+]", "KillEffect: добавлены новые эффекты «Лед» (заморозка модели и раскол) и «Врос в мир»"),
+                    new ChangeItem("[+]", "TargetESP: добавлены новые стили «Прибой», «Железная пыль» и «Фокус»"),
+                    new ChangeItem("[+]", "ContainerSearch & ItemComparison: поиск предметов по названию и описанию в сундуках и сравнение характеристик по Alt"),
+                    new ChangeItem("[+]", "Lyrics: 3D-рендер текста трека в мире"),
+                    new ChangeItem("[+]", "Fun: добавлен режим «Bedrock Бег»"),
+                    new ChangeItem("[//]", "Trajectories: переработка линий траекторий и предсказания полёта")
+            )),
+            new ChangeDay("ChangeLog 23.11.2026", List.of(
+                    new ChangeItem("[+]", "WorldTweaks: масштабная переработка погоды — лужи и плёнка на земле, снег, туман, дымка, мгла, штормовое и звёздное небо"),
+                    new ChangeItem("[+]", "TotemPop & KillEffect: шейдерный эффект душ после смерти и срабатывания тотема"),
+                    new ChangeItem("[+]", "PearlPredict: добавлена поддержка геометрии Sodium для точного расчёта полёта жемчуга"),
+                    new ChangeItem("[//]", "ClickGUI & HUD: добавлен матовый стеклянный фон (FrostedSurface) и доработано прилипание HUD"),
+                    new ChangeItem("[-]", "Chess: удалена встроенная мини-игра и команда .chess")
+            )),
+            new ChangeDay("ChangeLog 22.11.2026", List.of(
+                    new ChangeItem("[+]", "PearlPredict: новый модуль с 3D-траекторией эндер-жемчуга, меткой попадания и камерой предпросмотра"),
+                    new ChangeItem("[//]", "ClickGUI & ConfigManager: фиксы сохранения настроек, контекстного меню HUD и прокрутки")
+            )),
+            new ChangeDay("ChangeLog 21.11.2026", List.of(
+                    new ChangeItem("[+]", "Theme & ClientSettings: добавлены новые цветовые темы оформления интерфейса"),
+                    new ChangeItem("[//]", "CosmeticsPanel: улучшено 3D-превью моделей часов и мечей в меню косметики"),
+                    new ChangeItem("[//]", "Crosshair, Interface & NameTags: улучшен MSDF-рендер, размытие панелей и прицел")
+            )),
+            new ChangeDay("ChangeLog 20.11.2026", List.of(
+                    new ChangeItem("[+]", "KillEffect: новый режим «Вознесение» с плавным подъёмом и свечением модели"),
+                    new ChangeItem("[//]", "KillEffect, NameTags & ZakoOptimization: оптимизация рендера и доработка анимаций")
+            )),
+            new ChangeDay("ChangeLog 19.11.2026", List.of(
+                    new ChangeItem("[+]", "Команды: добавлена команда .hw для HolyWorld, улучшены .confetti и .help"),
+                    new ChangeItem("[+]", "TotemPop: модуль переработан и получил новые настройки эффектов"),
+                    new ChangeItem("[-]", "Удалены устаревшие модули: PlayerESP, NoJumpDelay, AutoAuth, AutoEat, AutoRespawn и NoChatBackground")
+            )),
+            new ChangeDay("ChangeLog 18.11.2026", List.of(
+                    new ChangeItem("[+]", "Cosmetics (Часы): объёмные 3д часы (Rolex, Patek Philippe, AP, Richard Mille, Jacob & Co, Apple Ultra, G-Shock и др.) с живым ходом стрелок, анимированными механизмами и осмотром от 1-го лица на клавишу J"),
+                    new ChangeItem("[+]", "Cosmetics (Мечи): 33 кастомных 3д меча с уникальными формами клинков и свечением"),
+                    new ChangeItem("[+]", "SwingAnimation: кастомные анимации удара и взмаха рукой с выбором режимов и настройкой скорости (пока не много вариаций но прикольные есть)"),
+                    new ChangeItem("[+]", "HitSounds: звуки попаданий по противникам с выбором звуков и настройкой громкости"),
+                    new ChangeItem("[+]", "TickSync: новый модуль"),
+                    new ChangeItem("[//]", "MotionBlur: добавлен новый режим Natural с глубинным размытием"),
+                    new ChangeItem("[//]", "ZakoOptimization: модуль обновлён до версии 2.1.8"),
+                    new ChangeItem("[//]", "JumpCircles: красивая космическая переработка"),
+                    new ChangeItem("[//]", "ClickGUI: почти полностью изменено"),
+                    new ChangeItem("[//]", "HUD: фиксы")
+            ))
+    );
 
     private static final long START_NANOS = System.nanoTime();
     private static final TitleMask TITLE_MASK = buildTitleMask();
@@ -75,6 +145,16 @@ public class EggTitleScreen extends Screen {
     private long lastFrameNanos;
     private float tiltX;
     private float tiltY;
+
+    private boolean changelogOpen;
+    private float changelogAnim;
+    private float changelogBtnHover;
+    private float changelogScroll;
+    private float changelogTargetScroll;
+    private float changelogMaxScroll;
+    private float cachedWrapWidth = -1.0f;
+    private List<WrappedLine> cachedLines = List.of();
+    private float cachedContentHeight;
 
     private boolean exitDialogOpen;
     private float exitDialogAnim;
@@ -100,13 +180,15 @@ public class EggTitleScreen extends Screen {
 
     @Override
     public boolean shouldCloseOnEsc() {
-        return exitDialogOpen;
+        return exitDialogOpen || changelogOpen;
     }
 
     @Override
     public void close() {
         if (exitDialogOpen) {
             closeExitDialog();
+        } else if (changelogOpen) {
+            changelogOpen = false;
         }
     }
 
@@ -151,6 +233,15 @@ public class EggTitleScreen extends Screen {
         tiltY = MathHelper.lerp(tiltBlend, tiltY, normMouseY);
 
         float hoverBlend = 1.0f - (float) Math.exp(-dt * 14.0f);
+        changelogAnim = MathHelper.lerp(1.0f - (float) Math.exp(-dt * 12.0f), changelogAnim, changelogOpen ? 1.0f : 0.0f);
+        if (!changelogOpen && changelogAnim < 0.004f) {
+            changelogAnim = 0.0f;
+        }
+        changelogScroll = MathHelper.lerp(1.0f - (float) Math.exp(-dt * 16.0f), changelogScroll, changelogTargetScroll);
+        if (Math.abs(changelogScroll - changelogTargetScroll) < 0.05f) {
+            changelogScroll = changelogTargetScroll;
+        }
+
         exitDialogAnim = MathHelper.lerp(1.0f - (float) Math.exp(-dt * 13.0f), exitDialogAnim, exitDialogOpen ? 1.0f : 0.0f);
         if (!exitDialogOpen && exitDialogAnim < 0.005f) {
             exitDialogAnim = 0.0f;
@@ -174,9 +265,17 @@ public class EggTitleScreen extends Screen {
 
             boolean allowMenuHover = !underOverlay && !exitDialogOpen && exitDialogAnim < 0.05f && mouseX >= 0 && mouseY >= 0;
 
+            boolean hovClBtn = allowMenuHover && hitCircle(mouseX, mouseY,
+                    CL_BTN_X + CL_BTN_SIZE * 0.5f, CL_BTN_Y + CL_BTN_SIZE * 0.5f, CL_BTN_SIZE * 0.5f);
+            changelogBtnHover = MathHelper.lerp(hoverBlend, changelogBtnHover, hovClBtn ? 1.0f : 0.0f);
+
+            ChangelogRect clRect = computeChangelogRect(sw, sh);
+            float clPanelHovFactor = changelogOpen ? changelogAnim : 0.0f;
+            boolean mouseBlockedByPanel = clPanelHovFactor > 0.25f && hitRect(mouseX, mouseY, clRect.x, clRect.y, clRect.w, clRect.h);
+
             for (int i = 0; i < 4; i++) {
                 float by = layout.buttonY(i);
-                boolean hov = allowMenuHover && hitRect(mouseX, mouseY, layout.colX, by, layout.colW, layout.btnH);
+                boolean hov = allowMenuHover && !mouseBlockedByPanel && hitRect(mouseX, mouseY, layout.colX, by, layout.colW, layout.btnH);
                 mainHover[i] = MathHelper.lerp(hoverBlend, mainHover[i], hov ? 1.0f : 0.0f);
 
                 int fill = ColorUtil.interpolate(
@@ -213,7 +312,8 @@ public class EggTitleScreen extends Screen {
             for (int i = 0; i < 4; i++) {
                 float cx = layout.circleX(i);
                 float cy = layout.circleY;
-                boolean hov = allowMenuHover && hitCircle(mouseX, mouseY, cx + layout.circleSize * 0.5f, cy + layout.circleSize * 0.5f, layout.circleSize * 0.5f);
+                boolean hov = allowMenuHover && !mouseBlockedByPanel && hitCircle(mouseX, mouseY,
+                        cx + layout.circleSize * 0.5f, cy + layout.circleSize * 0.5f, layout.circleSize * 0.5f);
                 circleHover[i] = MathHelper.lerp(hoverBlend, circleHover[i], hov ? 1.0f : 0.0f);
 
                 int fill = ColorUtil.interpolate(
@@ -241,11 +341,19 @@ public class EggTitleScreen extends Screen {
                 Draw2DProcessor.INSTANCE.a(null, CIRCLE_ICONS[i], iconX, iconY, iconSize, iconSize, 0.0f, iconCol);
             }
 
+            renderChangelogButton(revealAlpha);
+
             Fonts.sfRegular.a(null, "Egg Visuals • 1.21.11", 12.0f, sh - 17.0f, 8.2f,
                     ColorUtil.withAlphaFloat(0x888E96A8, revealAlpha));
 
             if (!underOverlay) {
                 DrawBatcher.flushPending();
+                if (changelogAnim > 0.005f) {
+                    float clEase = smooth(changelogAnim);
+                    Draw2DProcessor.INSTANCE.getBlurPipeline().capture(14.0f * clEase, 1);
+                    renderChangelogPanel(clRect, clEase);
+                    DrawBatcher.flushPending();
+                }
                 if (exitDialogAnim > 0.005f) {
                     Draw2DProcessor.INSTANCE.getBlurPipeline().capture(12.0f * exitDialogAnim, 1);
                     renderExitDialog(sw, sh, mouseX, mouseY, dt, now, hoverBlend);
@@ -255,6 +363,234 @@ public class EggTitleScreen extends Screen {
         } finally {
             DrawBatcher.setEnabledSilent(underOverlay || prevBatch);
         }
+    }
+
+    private void renderChangelogButton(float revealAlpha) {
+        float active = Math.max(changelogBtnHover, changelogOpen ? 0.65f : 0.0f);
+        int fill = ColorUtil.interpolate(
+                ColorUtil.rgba(16, 18, 24, 224),
+                ColorUtil.rgba(25, 29, 39, 244),
+                active
+        );
+        int border = ColorUtil.interpolate(
+                ColorUtil.rgba(40, 44, 57, 255),
+                ColorUtil.rgba(96, 110, 146, 255),
+                active
+        );
+        float radius = CL_BTN_SIZE * 0.5f;
+        Draw2DProcessor.INSTANCE.drawRect(null, CL_BTN_X, CL_BTN_Y, CL_BTN_SIZE, CL_BTN_SIZE, radius,
+                ColorUtil.withAlphaFloat(fill, revealAlpha));
+        Draw2DProcessor.INSTANCE.drawOutline(null, CL_BTN_X, CL_BTN_Y, CL_BTN_SIZE, CL_BTN_SIZE, radius, 1.0f,
+                ColorUtil.withAlphaFloat(border, revealAlpha));
+
+        float iconSize = 11.5f;
+        float iconX = CL_BTN_X + (CL_BTN_SIZE - iconSize) * 0.5f;
+        float iconY = CL_BTN_Y + (CL_BTN_SIZE - iconSize) * 0.5f;
+        int iconCol = ColorUtil.interpolate(0xFFD6DCE6, 0xFFFFFFFF, active);
+        Draw2DProcessor.INSTANCE.a(null, ICON_CHANGELOG, iconX, iconY, iconSize, iconSize, 0.0f,
+                ColorUtil.withAlphaFloat(iconCol, revealAlpha));
+
+        float labelAlpha = Math.max(changelogBtnHover, changelogAnim * 0.9f) * revealAlpha;
+        if (labelAlpha > 0.03f) {
+            float labelY = Fonts.sfRegular.a(8.5f, CL_BTN_Y + CL_BTN_SIZE * 0.5f);
+            Fonts.sfRegular.a(null, "ChangeLog", CL_BTN_X + CL_BTN_SIZE + 8.0f, labelY, 8.5f,
+                    ColorUtil.withAlphaFloat(0xFFDDE3EE, labelAlpha));
+        }
+    }
+
+    private void renderChangelogPanel(ChangelogRect rect, float ease) {
+        Draw2DProcessor.INSTANCE.drawRoundedBlur(rect.x, rect.y, rect.w, rect.h, 10.0f, ease);
+        Draw2DProcessor.INSTANCE.drawRect(null, rect.x, rect.y, rect.w, rect.h, 10.0f,
+                ColorUtil.rgba(12, 14, 20, Math.round(172 * ease)));
+        Draw2DProcessor.INSTANCE.drawOutline(null, rect.x, rect.y, rect.w, rect.h, 10.0f, 1.0f,
+                ColorUtil.rgba(60, 67, 86, Math.round(235 * ease)));
+
+        float padX = 12.0f;
+        float headerH = 26.0f;
+        float headerTitleY = Fonts.b.a(9.6f, rect.y + headerH * 0.5f);
+        Fonts.b.a(null, "История изменений", rect.x + padX, headerTitleY, 9.6f,
+                ColorUtil.withAlphaFloat(0xFFF2F5FA, ease));
+        String span = "18.11 — 25.11.2026";
+        float spanW = Fonts.sfRegular.a(span, 7.6f);
+        Fonts.sfRegular.a(null, span, rect.x + rect.w - padX - spanW, Fonts.sfRegular.a(7.6f, rect.y + headerH * 0.5f),
+                7.6f, ColorUtil.withAlphaFloat(0xFF8C96AC, ease));
+
+        Draw2DProcessor.INSTANCE.drawRect(null, rect.x + padX, rect.y + headerH, rect.w - padX * 2.0f, 0.7f, 0.0f,
+                ColorUtil.rgba(72, 80, 102, Math.round(135 * ease)));
+
+        float bodyX = rect.x + 2.0f;
+        float bodyY = rect.y + headerH + 4.0f;
+        float bodyW = rect.w - 4.0f;
+        float bodyH = rect.h - headerH - 10.0f;
+
+        float textColX = rect.x + padX + 18.0f;
+        float wrapW = Math.max(80.0f, rect.x + rect.w - padX - 8.0f - textColX);
+        ensureChangelogLayout(wrapW);
+        changelogMaxScroll = Math.max(0.0f, cachedContentHeight - bodyH);
+        changelogTargetScroll = MathHelper.clamp(changelogTargetScroll, 0.0f, changelogMaxScroll);
+        changelogScroll = MathHelper.clamp(changelogScroll, 0.0f, changelogMaxScroll);
+
+        ScissorUtil.a((Matrix3x2f) null, bodyX, bodyY, bodyW, bodyH);
+        try {
+            float curY = bodyY + 4.0f - changelogScroll;
+            float bottomLimit = bodyY + bodyH;
+            for (WrappedLine line : cachedLines) {
+                float lineY = curY + line.yOffset;
+                if (lineY + line.height >= bodyY - 4.0f && lineY <= bottomLimit + 4.0f) {
+                    if (line.isDayHeader) {
+                        Fonts.b.a(null, line.prefix, rect.x + padX, lineY, 8.6f,
+                                ColorUtil.withAlphaFloat(0xFFF4F7FD, ease));
+                    } else {
+                        if (line.tag != null) {
+                            Fonts.b.a(null, line.tag, rect.x + padX, lineY + 0.3f, 7.4f,
+                                    ColorUtil.withAlphaFloat(tagColor(line.tag), ease));
+                        }
+                        float drawX = textColX;
+                        if (line.prefix != null && !line.prefix.isEmpty()) {
+                            Fonts.b.a(null, line.prefix, drawX, lineY, 7.6f,
+                                    ColorUtil.withAlphaFloat(0xFFEDF2FA, ease));
+                            drawX += Fonts.b.a(line.prefix, 7.6f);
+                        }
+                        if (line.rest != null && !line.rest.isEmpty()) {
+                            Fonts.sfRegular.a(null, line.rest, drawX, lineY, 7.6f,
+                                    ColorUtil.withAlphaFloat(0xFFB8C2D4, ease));
+                        }
+                    }
+                }
+            }
+        } finally {
+            ScissorUtil.a((Matrix3x2f) null);
+        }
+
+        if (changelogMaxScroll > 1.0f && bodyH > 12.0f) {
+            float trackX = rect.x + rect.w - 5.5f;
+            float trackW = 2.0f;
+            float ratio = MathHelper.clamp(bodyH / cachedContentHeight, 0.12f, 1.0f);
+            float thumbH = Math.max(18.0f, bodyH * ratio);
+            float thumbTravel = bodyH - thumbH;
+            float thumbY = bodyY + (changelogScroll / changelogMaxScroll) * thumbTravel;
+            Draw2DProcessor.INSTANCE.drawRect(null, trackX, bodyY, trackW, bodyH, 1.0f,
+                    ColorUtil.rgba(35, 40, 52, Math.round(120 * ease)));
+            Draw2DProcessor.INSTANCE.drawRect(null, trackX, thumbY, trackW, thumbH, 1.0f,
+                    ColorUtil.rgba(148, 162, 192, Math.round(190 * ease)));
+        }
+    }
+
+    private void ensureChangelogLayout(float wrapW) {
+        if (Math.abs(cachedWrapWidth - wrapW) < 0.5f && !cachedLines.isEmpty()) return;
+        cachedWrapWidth = wrapW;
+        List<WrappedLine> lines = new ArrayList<>();
+        float y = 0.0f;
+        float lineH = 10.6f;
+
+        for (int d = 0; d < CHANGELOG_DAYS.size(); d++) {
+            ChangeDay day = CHANGELOG_DAYS.get(d);
+            if (d > 0) y += 8.0f;
+            lines.add(new WrappedLine(y, 13.0f, true, null, day.title, null));
+            y += 14.0f;
+
+            for (ChangeItem item : day.items) {
+                String full = item.text;
+                int colonIdx = full.indexOf(':');
+                String head = colonIdx >= 0 ? full.substring(0, colonIdx + 1) : "";
+                String tail = colonIdx >= 0 ? full.substring(colonIdx + 1) : full;
+
+                if (!head.isEmpty() && Fonts.b.a(head, 7.6f) <= wrapW * 0.72f) {
+                    float headW = Fonts.b.a(head, 7.6f);
+                    List<String> wrapped = wrapAfterHead(tail, wrapW - headW, wrapW, 7.6f);
+                    String firstRest = wrapped.isEmpty() ? "" : wrapped.get(0);
+                    lines.add(new WrappedLine(y, lineH, false, item.tag, head, firstRest));
+                    y += lineH;
+                    for (int wi = 1; wi < wrapped.size(); wi++) {
+                        lines.add(new WrappedLine(y, lineH, false, null, null, wrapped.get(wi)));
+                        y += lineH;
+                    }
+                } else {
+                    List<String> wrapped = wrapSegments(full, wrapW, 7.6f);
+                    for (int li = 0; li < wrapped.size(); li++) {
+                        lines.add(new WrappedLine(y, lineH, false, li == 0 ? item.tag : null, null, wrapped.get(li)));
+                        y += lineH;
+                    }
+                }
+                y += 2.5f;
+            }
+        }
+        cachedLines = lines;
+        cachedContentHeight = y + 6.0f;
+    }
+
+    private static List<String> wrapAfterHead(String tail, float firstLineW, float nextLineW, float fontSize) {
+        List<String> out = new ArrayList<>();
+        String trimmed = tail.stripLeading();
+        if (trimmed.isEmpty()) {
+            out.add("");
+            return out;
+        }
+        String[] words = trimmed.split("\\s+");
+        StringBuilder current = new StringBuilder();
+        boolean firstLine = true;
+        for (String word : words) {
+            float limit = firstLine ? firstLineW : nextLineW;
+            String candidate = current.isEmpty()
+                    ? (firstLine ? " " + word : word)
+                    : current + " " + word;
+            if (!current.isEmpty() && Fonts.sfRegular.a(candidate, fontSize) > limit) {
+                out.add(current.toString());
+                current.setLength(0);
+                current.append(word);
+                firstLine = false;
+            } else {
+                current.setLength(0);
+                current.append(candidate);
+            }
+        }
+        if (!current.isEmpty()) {
+            out.add(current.toString());
+        }
+        return out;
+    }
+
+    private static List<String> wrapSegments(String text, float maxWidth, float fontSize) {
+        List<String> out = new ArrayList<>();
+        String trimmed = text.stripLeading();
+        if (trimmed.isEmpty()) {
+            out.add("");
+            return out;
+        }
+        String[] words = trimmed.split("\\s+");
+        StringBuilder current = new StringBuilder();
+        for (String word : words) {
+            String candidate = current.isEmpty() ? word : current + " " + word;
+            if (!current.isEmpty() && Fonts.sfRegular.a(candidate, fontSize) > maxWidth) {
+                out.add(current.toString());
+                current.setLength(0);
+                current.append(word);
+            } else {
+                current.setLength(0);
+                current.append(candidate);
+            }
+        }
+        if (!current.isEmpty()) {
+            out.add(current.toString());
+        }
+        return out;
+    }
+
+    private static int tagColor(String tag) {
+        return switch (tag) {
+            case "[+]" -> TAG_PLUS_COLOR;
+            case "[-]" -> TAG_MINUS_COLOR;
+            default -> TAG_CHANGE_COLOR;
+        };
+    }
+
+    private ChangelogRect computeChangelogRect(float sw, float sh) {
+        float panelW = MathHelper.clamp(sw * 0.44f, 252.0f, 368.0f);
+        float panelY = CL_BTN_Y + CL_BTN_SIZE + 6.0f;
+        float panelH = Math.max(140.0f, sh - panelY - 26.0f);
+        float ease = smooth(changelogAnim);
+        float panelX = MathHelper.lerp(ease, -panelW - 16.0f, 14.0f);
+        return new ChangelogRect(panelX, panelY, panelW, panelH);
     }
 
     private void renderExitDialog(float sw, float sh, float mouseX, float mouseY, float dt, long now, float hoverBlend) {
@@ -363,6 +699,18 @@ public class EggTitleScreen extends Screen {
     }
 
     @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        if (changelogOpen && !exitDialogOpen && changelogAnim > 0.2f) {
+            ChangelogRect rect = computeChangelogRect(width, height);
+            if (hitRect(mouseX, mouseY, rect.x, rect.y, rect.w, rect.h)) {
+                changelogTargetScroll = MathHelper.clamp(changelogTargetScroll - (float) verticalAmount * 22.0f, 0.0f, changelogMaxScroll);
+                return true;
+            }
+        }
+        return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+    }
+
+    @Override
     public boolean mouseClicked(Click click, boolean bl) {
         if (click.button() != 0 || client == null) return super.mouseClicked(click, bl);
         if (client.getOverlay() != null) return false;
@@ -398,6 +746,20 @@ public class EggTitleScreen extends Screen {
             return true;
         }
 
+        if (hitCircle(mx, my, CL_BTN_X + CL_BTN_SIZE * 0.5f, CL_BTN_Y + CL_BTN_SIZE * 0.5f, CL_BTN_SIZE * 0.5f)) {
+            GuiSoundManager.playClick();
+            changelogOpen = !changelogOpen;
+            return true;
+        }
+
+        if (changelogOpen && changelogAnim > 0.2f) {
+            ChangelogRect rect = computeChangelogRect(width, height);
+            if (hitRect(mx, my, rect.x, rect.y, rect.w, rect.h)) {
+                return true;
+            }
+            changelogOpen = false;
+        }
+
         Layout layout = computeLayout(width, height);
         for (int i = 0; i < 4; i++) {
             if (hitRect(mx, my, layout.colX, layout.buttonY(i), layout.colW, layout.btnH)) {
@@ -422,10 +784,17 @@ public class EggTitleScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyInput input) {
-        if (input.key() == GLFW.GLFW_KEY_ESCAPE && exitDialogOpen) {
-            GuiSoundManager.playClick();
-            closeExitDialog();
-            return true;
+        if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
+            if (exitDialogOpen) {
+                GuiSoundManager.playClick();
+                closeExitDialog();
+                return true;
+            }
+            if (changelogOpen) {
+                GuiSoundManager.playClick();
+                changelogOpen = false;
+                return true;
+            }
         }
         return super.keyPressed(input);
     }
@@ -567,6 +936,14 @@ public class EggTitleScreen extends Screen {
         }
         return new TitleMask(cols, rows, levels);
     }
+
+    private record ChangeItem(String tag, String text) {}
+
+    private record ChangeDay(String title, List<ChangeItem> items) {}
+
+    private record WrappedLine(float yOffset, float height, boolean isDayHeader, String tag, String prefix, String rest) {}
+
+    private record ChangelogRect(float x, float y, float w, float h) {}
 
     private record TitleMask(int cols, int rows, float[] levels) {}
 
