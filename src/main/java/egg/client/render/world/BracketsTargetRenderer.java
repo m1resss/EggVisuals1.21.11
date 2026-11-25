@@ -73,7 +73,10 @@ public final class BracketsTargetRenderer {
         float clench = 1.0f - hitSnap * 0.16f;
         float quadHalf = baseRadius * acquireSpread * clench * 1.38f;
         float angle = age * (0.40f * speedScale) + hitSnap * 0.11f;
-        float y = (float) feet.y + 0.036f;
+        float liftPhase = 0.5f - 0.5f * MathHelper.cos(age * (1.45f * speedScale));
+        float minH = Math.max(0.05f, height * 0.06f);
+        float maxH = Math.max(minH + 0.10f, height * 0.84f);
+        float y = (float) feet.y + MathHelper.lerp(liftPhase, minH, maxH);
 
         int accent = Theme.getAccent();
         int finalColor = accent;
