@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public class UsingItemMixin {
     @Inject(method={"test"}, at={@At(value="RETURN")}, cancellable=true)
     private void swapProperty(ItemStack stack, ClientWorld world, LivingEntity entity, int seed, ItemDisplayContext displayContext, CallbackInfoReturnable<Boolean> cir) {
-        if (!egg.client.module.render.HMI.usesAnimations()) {
+        if (egg.client.module.render.HMI.getInstance() == null || !egg.client.module.render.HMI.getInstance().isEnabled()) {
             return;
         }
         if (entity != null && entity.getActiveItem() == stack && GlobalsStorage.usingItem.containsKey(stack.getItem().toString())) {

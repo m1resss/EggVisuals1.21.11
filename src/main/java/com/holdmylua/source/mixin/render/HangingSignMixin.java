@@ -19,7 +19,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class HangingSignMixin {
     @Inject(method={"renderAsItem"}, at={@At(value="HEAD")}, cancellable=true)
     private static void render(SpriteHolder spriteHolder, MatrixStack matrixStack, OrderedRenderCommandQueue orderedRenderCommandQueue, int i, int j, Model.SinglePartModel singlePartModel, SpriteIdentifier spriteIdentifier, CallbackInfo ci) {
-        if (!egg.client.module.render.HMI.usesAnimations()) {
+        if (egg.client.module.render.HMI.getInstance() == null || !egg.client.module.render.HMI.getInstance().isEnabled()) {
             return;
         }
         matrixStack.push();

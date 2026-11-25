@@ -66,11 +66,7 @@
     "PostEffectProcessorAccessor",
     "PostEffectPassAccessor"
   ],
-  "client": [
-    "SmoothPlayerAnimationsConfigMixin",
-    "LocomotionConfigMixin",
-    "LocomotionBlockAnimationsMixin"
-  ],
+  "client": [],
   "injectors": {
     "defaultRequire": 1
   }

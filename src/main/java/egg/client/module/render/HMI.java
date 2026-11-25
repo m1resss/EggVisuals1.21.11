@@ -2,7 +2,6 @@ package egg.client.module.render;
 
 import egg.client.module.Category;
 import egg.client.module.Module;
-import egg.client.module.misc.Fun;
 
 public class HMI extends Module {
     private static HMI instance;
@@ -12,7 +11,7 @@ public class HMI extends Module {
         instance = this;
     }
 
-    public static boolean usesAnimations() {
-        return instance != null && instance.isEnabled() && !Fun.usesLocomotion();
+    public static HMI getInstance() {
+        return instance;
     }
 }

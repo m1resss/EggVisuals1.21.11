@@ -46,7 +46,7 @@ public abstract class ItemRendererMixin {
 
     @Redirect(method={"render"}, at=@At(value="INVOKE", target="Lnet/minecraft/client/render/item/ItemRenderer;renderItem(Lnet/minecraft/item/ItemDisplayContext;Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;II[ILjava/util/List;Lnet/minecraft/client/render/RenderLayer;Lnet/minecraft/client/render/item/ItemRenderState$Glint;)V"))
     private static void render(ItemDisplayContext displayContext, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light, int overlay, int[] tints, List<BakedQuad> quads, RenderLayer layer, ItemRenderState.Glint glint) {
-        if (!egg.client.module.render.HMI.usesAnimations()) {
+        if (egg.client.module.render.HMI.getInstance() == null || !egg.client.module.render.HMI.getInstance().isEnabled()) {
             ItemRenderer.renderItem(displayContext, matrices, vertexConsumers, light, overlay, tints, quads, layer, glint);
             return;
         }
