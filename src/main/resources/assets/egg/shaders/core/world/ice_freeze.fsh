@@ -4,7 +4,7 @@ uniform sampler2D Sampler0;
 uniform sampler2D Sampler1;
 uniform sampler2D Sampler2;
 
-layout(std140) uniform IceFreezeUniforms {
+layout(std140) uniform KillModelUniforms {
     mat4 InvViewProj;
     vec4 VictimOrigin;
     vec4 FreezeState;

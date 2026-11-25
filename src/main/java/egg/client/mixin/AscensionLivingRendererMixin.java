@@ -37,7 +37,7 @@ public abstract class AscensionLivingRendererMixin {
             at = @At(value = "INVOKE", target = "Lnet/minecraft/client/render/entity/LivingEntityRenderer;getRenderLayer(Lnet/minecraft/client/render/entity/state/LivingEntityRenderState;ZZZ)Lnet/minecraft/client/render/RenderLayer;"))
     private RenderLayer egg$ascensionLayer(LivingEntityRenderer<?, ?, ?> renderer, LivingEntityRenderState state,
                                            boolean visible, boolean translucent, boolean outline, Operation<RenderLayer> original) {
-        if (KillEffect.isRenderingIce(state) && visible) return egg$iceFractureModel.apply(getTexture(state));
+        if (KillEffect.isRenderingKillModel(state) && visible) return egg$iceFractureModel.apply(getTexture(state));
         if (KillEffect.isRenderingAscension(state)) return RenderLayers.entityTranslucent(getTexture(state));
         return original.call(renderer, state, visible, translucent, outline);
     }

@@ -1,31 +1,17 @@
 package egg.client.render.world;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.VertexFormat.DrawMode;
-import egg.client.render.shader.FrameBufferPool;
-import egg.client.render.shader.FullscreenPass;
-import egg.client.render.shader.GlStateSnapshot;
 import egg.client.render.shader.MeshDrawUtil;
 import egg.client.render.shader.Pipelines;
-import egg.client.render.shader.ProjectionUtil;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.DynamicUniformStorage;
-import net.minecraft.client.gl.Framebuffer;
-import net.minecraft.client.gl.SimpleFramebuffer;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.RenderLayers;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.VertexFormats;
-import net.minecraft.client.render.command.RenderDispatcher;
-import net.minecraft.client.render.entity.EntityRenderManager;
 import net.minecraft.client.render.entity.state.EntityRenderState;
-import net.minecraft.client.render.state.CameraRenderState;
 import net.minecraft.client.util.BufferAllocator;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.client.world.ClientWorld;
@@ -37,17 +23,12 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
-import org.joml.Matrix4f;
-import org.joml.Matrix4fc;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.OptionalDouble;
-import java.util.OptionalInt;
 import java.util.Random;
 
 public final class IceFreezeKillRenderer {
@@ -68,22 +49,17 @@ public final class IceFreezeKillRenderer {
     private final List<IceShard> shards = new ArrayList<>();
     private final List<IceSparkle> sparkles = new ArrayList<>();
     private final Random random = new Random();
-    private final Matrix4f invViewProj = new Matrix4f();
+    private final KillModelPass modelPass;
     private final Vector3f camRight = new Vector3f();
     private final Vector3f camUp = new Vector3f();
     private final Vector3f lightDir = new Vector3f(0.35f, 0.90f, 0.25f).normalize();
 
-    private SimpleFramebuffer sceneCopy;
-    private SimpleFramebuffer targetMask;
-    private DynamicUniformStorage<FreezeUniform> uniforms;
     private BufferAllocator meshAllocator;
-    private BufferAllocator quadAllocator;
-    private EntityRenderState renderingModel;
     private ClientWorld lastWorld;
     private long lastFrameNanos;
 
-    public boolean isRendering(EntityRenderState state) {
-        return state != null && state == renderingModel;
+    public IceFreezeKillRenderer(KillModelPass modelPass) {
+        this.modelPass = modelPass;
     }
 
     public boolean spawn(MinecraftClient client, Vec3d position, double height, double width,
@@ -216,103 +192,13 @@ public final class IceFreezeKillRenderer {
 
     private void renderFrozenEntityPass(MinecraftClient client, FreezeEffect effect, float age,
                                         MatrixStack matrices, Camera camera, Vec3d camPos) {
-        if (effect.model == null || !GlStateSnapshot.isOpenGl()) return;
-        Framebuffer frame = client.getFramebuffer();
-        if (frame == null || frame.getColorAttachmentView() == null || frame.getDepthAttachmentView() == null
-                || (RenderSystem.outputColorTextureOverride != null && RenderSystem.outputColorTextureOverride != frame.getColorAttachmentView())
-                || (RenderSystem.outputDepthTextureOverride != null && RenderSystem.outputDepthTextureOverride != frame.getDepthAttachmentView())) {
-            return;
-        }
-
-        sceneCopy = resize(sceneCopy, "Egg ice scene", frame, false);
-        targetMask = resize(targetMask, "Egg ice mask", frame, true);
-
         float freezeLinear = MathHelper.clamp(age / FREEZE_RISE_SEC, 0.0f, 1.0f);
         float freezeFront = MathHelper.lerp(smooth(freezeLinear), -0.08f, 1.24f);
         float shatterPulse = MathHelper.clamp((age - FREEZE_RISE_SEC) / (SHATTER_AT_SEC - FREEZE_RISE_SEC), 0.0f, 1.0f);
         float pulseGlow = shatterPulse * shatterPulse;
         float opacity = MathHelper.clamp(age / 0.05f, 0.0f, 1.0f);
-
-        try (var ignored = FullscreenPass.guardState()) {
-            var sampler = RenderSystem.getSamplerCache().get(FilterMode.NEAREST);
-            FullscreenPass.blitUnflipped(Pipelines.COLOR_COPY, sceneCopy, frame.getColorAttachmentView(), sampler, 0);
-            renderCapturedModel(client, effect, matrices, camera, camPos);
-            composeFrozenEntity(frame, effect, camPos, freezeFront, pulseGlow, age, opacity);
-        }
-    }
-
-    private void renderCapturedModel(MinecraftClient client, FreezeEffect effect, MatrixStack matrices,
-                                     Camera camera, Vec3d camPos) {
-        EntityRenderManager manager = client.getEntityRenderDispatcher();
-        RenderDispatcher dispatcher = client.gameRenderer.getEntityRenderDispatcher();
-        CameraRenderState camState = new CameraRenderState();
-        camState.orientation = camera.getRotation();
-
-        GlStateSnapshot snapshot = GlStateSnapshot.capture();
-        RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(
-                targetMask.getColorAttachment(), 0, targetMask.getDepthAttachment(), 1.0);
-        GpuTextureView prevColor = RenderSystem.outputColorTextureOverride;
-        GpuTextureView prevDepth = RenderSystem.outputDepthTextureOverride;
-        RenderSystem.outputColorTextureOverride = targetMask.getColorAttachmentView();
-        RenderSystem.outputDepthTextureOverride = targetMask.getDepthAttachmentView();
-        renderingModel = effect.model;
-        try {
-            Vec3d offset = effect.position.subtract(camPos);
-            manager.render(effect.model, camState, offset.x, offset.y, offset.z, matrices, dispatcher.getQueue());
-            dispatcher.render();
-            client.getBufferBuilders().getEntityVertexConsumers().draw();
-        } finally {
-            renderingModel = null;
-            RenderSystem.outputColorTextureOverride = prevColor;
-            RenderSystem.outputDepthTextureOverride = prevDepth;
-            snapshot.restore();
-        }
-    }
-
-    private void composeFrozenEntity(Framebuffer frame, FreezeEffect effect, Vec3d camPos,
-                                     float freezeFront, float pulseGlow, float age, float opacity) {
-        if (uniforms == null) uniforms = new DynamicUniformStorage<>("EggIceFreeze", 112, 16);
-        uniforms.clear();
-        ProjectionUtil.getInverseViewProjection(invViewProj);
-        Vec3d rel = effect.position.subtract(camPos);
-        GpuBufferSlice uniformSlice = uniforms.write(new FreezeUniform(
-                invViewProj,
-                (float) rel.x, (float) rel.y, (float) rel.z, effect.height,
-                freezeFront, pulseGlow, age, opacity,
-                ProjectionUtil.isZeroToOneDepth() ? 1.0f : 0.0f
-        ));
-
-        if (quadAllocator == null) quadAllocator = new BufferAllocator(256);
-        try {
-            BufferBuilder mesh = new BufferBuilder(quadAllocator, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
-            mesh.vertex(-1, 1, 0).texture(0, 1).color(255, 255, 255, 255);
-            mesh.vertex(-1, -1, 0).texture(0, 0).color(255, 255, 255, 255);
-            mesh.vertex(1, -1, 0).texture(1, 0).color(255, 255, 255, 255);
-            mesh.vertex(1, 1, 0).texture(1, 1).color(255, 255, 255, 255);
-            try (var built = mesh.end()) {
-                var vertices = FrameBufferPool.createBuffer(() -> "Egg ice freeze quad", built.getBuffer());
-                var indices = RenderSystem.getSequentialBuffer(DrawMode.QUADS);
-                var indexBuffer = indices.getIndexBuffer(built.getDrawParameters().indexCount());
-                var sampler = RenderSystem.getSamplerCache().get(FilterMode.NEAREST);
-                try (var pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
-                        () -> "Egg ice freeze composite",
-                        frame.getColorAttachmentView(),
-                        OptionalInt.empty(),
-                        frame.getDepthAttachmentView(),
-                        OptionalDouble.empty())) {
-                    pass.setPipeline(Pipelines.ICE_FREEZE);
-                    pass.bindTexture("Sampler0", sceneCopy.getColorAttachmentView(), sampler);
-                    pass.bindTexture("Sampler1", targetMask.getColorAttachmentView(), sampler);
-                    pass.bindTexture("Sampler2", targetMask.getDepthAttachmentView(), sampler);
-                    pass.setUniform("IceFreezeUniforms", uniformSlice);
-                    pass.setVertexBuffer(0, vertices);
-                    pass.setIndexBuffer(indexBuffer, indices.getIndexType());
-                    pass.drawIndexed(0, 0, built.getDrawParameters().indexCount(), 1);
-                }
-            }
-        } finally {
-            quadAllocator.reset();
-        }
+        modelPass.render(client, effect.model, effect.position, effect.height, matrices, camera, camPos,
+                Pipelines.ICE_FREEZE, freezeFront, pulseGlow, age, opacity);
     }
 
     private void renderCrystalAndShardGeometry(long now, Vec3d camPos) {
@@ -765,14 +651,6 @@ public final class IceFreezeKillRenderer {
                 .texture(0.0f, 0.0f).color(r, g, b, a);
     }
 
-    private static SimpleFramebuffer resize(SimpleFramebuffer target, String name, Framebuffer source, boolean depth) {
-        if (target == null) return new SimpleFramebuffer(name, source.textureWidth, source.textureHeight, depth);
-        if (target.textureWidth != source.textureWidth || target.textureHeight != source.textureHeight) {
-            target.resize(source.textureWidth, source.textureHeight);
-        }
-        return target;
-    }
-
     private static float smooth(float value) {
         float t = MathHelper.clamp(value, 0.0f, 1.0f);
         return t * t * (3.0f - 2.0f * t);
@@ -783,25 +661,9 @@ public final class IceFreezeKillRenderer {
         shards.clear();
         sparkles.clear();
         lastFrameNanos = 0L;
-        if (sceneCopy != null) {
-            sceneCopy.delete();
-            sceneCopy = null;
-        }
-        if (targetMask != null) {
-            targetMask.delete();
-            targetMask = null;
-        }
-        if (uniforms != null) {
-            uniforms.close();
-            uniforms = null;
-        }
         if (meshAllocator != null) {
             meshAllocator.close();
             meshAllocator = null;
-        }
-        if (quadAllocator != null) {
-            quadAllocator.close();
-            quadAllocator = null;
         }
     }
 
@@ -884,20 +746,6 @@ public final class IceFreezeKillRenderer {
             this.isStar = isStar;
             this.texIndex = texIndex;
             this.phase = phase;
-        }
-    }
-
-    private record FreezeUniform(Matrix4fc invViewProj, float relX, float relY, float relZ, float height,
-                                 float freezeFront, float pulseGlow, float age, float opacity,
-                                 float zeroToOneDepth) implements DynamicUniformStorage.Uploadable {
-        @Override
-        public void write(ByteBuffer buffer) {
-            for (float v : invViewProj.get(new float[16])) {
-                buffer.putFloat(v);
-            }
-            buffer.putFloat(relX).putFloat(relY).putFloat(relZ).putFloat(height);
-            buffer.putFloat(freezeFront).putFloat(pulseGlow).putFloat(age).putFloat(opacity);
-            buffer.putFloat(zeroToOneDepth).putFloat(0.0f).putFloat(0.0f).putFloat(0.0f);
         }
     }
 }

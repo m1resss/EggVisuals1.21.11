@@ -230,18 +230,36 @@ public final class Pipelines {
             .build()
     );
 
-    public static final RenderPipeline ICE_FREEZE = register(
+    public static final RenderPipeline ICE_FREEZE = killModel("ice_freeze");
+    public static final RenderPipeline ASH_MODEL = killModel("ash_model");
+
+    private static RenderPipeline killModel(String name) {
+        return register(RenderPipeline.builder()
+                .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/" + name))
+                .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/world/ice_freeze"))
+                .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/world/" + name))
+                .withSampler("Sampler0")
+                .withSampler("Sampler1")
+                .withSampler("Sampler2")
+                .withUniform("KillModelUniforms", UniformType.UNIFORM_BUFFER)
+                .withBlend(BlendFunction.TRANSLUCENT)
+                .withDepthTestFunction(DepthTestFunction.LEQUAL_DEPTH_TEST)
+                .withDepthWrite(true)
+                .withCull(false)
+                .withVertexFormat(VertexFormats.POSITION_TEXTURE_COLOR, DrawMode.QUADS)
+                .build());
+    }
+
+    public static final RenderPipeline ASH_EFFECT = register(
         RenderPipeline.builder()
-            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/ice_freeze"))
-            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/world/ice_freeze"))
-            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/world/ice_freeze"))
-            .withSampler("Sampler0")
-            .withSampler("Sampler1")
-            .withSampler("Sampler2")
-            .withUniform("IceFreezeUniforms", UniformType.UNIFORM_BUFFER)
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/ash_effect"))
+            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/world/jump_caustic"))
+            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/world/ash_effect"))
+            .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
+            .withUniform("Projection", UniformType.UNIFORM_BUFFER)
             .withBlend(BlendFunction.TRANSLUCENT)
             .withDepthTestFunction(DepthTestFunction.LEQUAL_DEPTH_TEST)
-            .withDepthWrite(true)
+            .withDepthWrite(false)
             .withCull(false)
             .withVertexFormat(VertexFormats.POSITION_TEXTURE_COLOR, DrawMode.QUADS)
             .build()

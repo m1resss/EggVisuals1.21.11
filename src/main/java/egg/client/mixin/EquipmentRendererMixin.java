@@ -43,7 +43,7 @@ public class EquipmentRendererMixin {
     @WrapOperation(method = egg$RENDER, at = @At(value = "INVOKE",
             target = "Lnet/minecraft/client/render/RenderLayers;armorCutoutNoCull(Lnet/minecraft/util/Identifier;)Lnet/minecraft/client/render/RenderLayer;"))
     private RenderLayer egg$armorLayer(Identifier texture, Operation<RenderLayer> original, @Local(argsOnly = true) Object state) {
-        if (state instanceof LivingEntityRenderState living && KillEffect.isRenderingIce(living)) {
+        if (state instanceof LivingEntityRenderState living && KillEffect.isRenderingKillModel(living)) {
             return egg$iceFractureArmor.apply(texture);
         }
         return egg$hasHurtArmor(state) ? egg$hurtArmor.apply(texture) : original.call(texture);
