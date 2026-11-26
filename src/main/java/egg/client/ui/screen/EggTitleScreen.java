@@ -16,6 +16,7 @@ import egg.client.render.msdf.ScissorUtil;
 import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.render.shader.Pipelines;
 import egg.client.ui.ClickGuiScreen;
+import egg.client.util.AccountManager;
 import egg.client.util.ColorUtil;
 import egg.client.util.EggUpdateChecker;
 import egg.client.util.GuiSoundManager;
@@ -26,6 +27,7 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
 import net.minecraft.client.gui.screen.option.OptionsScreen;
 import net.minecraft.client.gui.screen.world.SelectWorldScreen;
+import net.minecraft.client.input.CharInput;
 import net.minecraft.client.input.KeyInput;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.BuiltBuffer;
@@ -57,6 +59,7 @@ public class EggTitleScreen extends Screen {
 
     private static final Identifier ICON_SINGLEPLAYER = Identifier.of("egg", "textures/icons/menu_singleplayer.png");
     private static final Identifier ICON_MULTIPLAYER = Identifier.of("egg", "textures/icons/menu_multiplayer.png");
+    private static final Identifier ICON_ACCOUNTS = Identifier.of("egg", "textures/icons/menu_accounts.png");
     private static final Identifier ICON_SLIDERS = Identifier.of("egg", "textures/icons/menu_sliders.png");
     private static final Identifier ICON_HEART = Identifier.of("egg", "textures/icons/menu_heart.png");
     private static final Identifier ICON_TG = Identifier.of("egg", "textures/icons/menu_tg.png");
@@ -64,9 +67,10 @@ public class EggTitleScreen extends Screen {
     private static final Identifier ICON_GEAR = Identifier.of("egg", "textures/icons/menu_gear.png");
     private static final Identifier ICON_EXIT = Identifier.of("egg", "textures/icons/menu_exit.png");
     private static final Identifier ICON_CHANGELOG = Identifier.of("egg", "textures/icons/menu_changelog.png");
+    private static final Identifier ICON_TRASH = Identifier.of("egg", "textures/icons/gui_trash.png");
 
-    private static final String[] MAIN_LABELS = {"Одиночная игра", "Мультиплеер", "Настройки", "Поддержать"};
-    private static final Identifier[] MAIN_ICONS = {ICON_SINGLEPLAYER, ICON_MULTIPLAYER, ICON_SLIDERS, ICON_HEART};
+    private static final String[] MAIN_LABELS = {"Одиночная игра", "Мультиплеер", "Аккаунты", "Настройки", "Поддержать"};
+    private static final Identifier[] MAIN_ICONS = {ICON_SINGLEPLAYER, ICON_MULTIPLAYER, ICON_ACCOUNTS, ICON_SLIDERS, ICON_HEART};
     private static final Identifier[] CIRCLE_ICONS = {ICON_TG, ICON_DA, ICON_GEAR, ICON_EXIT};
 
     private static final float CL_BTN_X = 14.0f;
@@ -79,6 +83,7 @@ public class EggTitleScreen extends Screen {
 
     private static final List<ChangeDay> CHANGELOG_DAYS = List.of(
             new ChangeDay("ChangeLog 26.11.2026", List.of(
+                    new ChangeItem("[+]", "MainMenu (Аккаунты): новая кнопка и панель быстрой смены пиратских ников, сохранения списка и генерации случайного ника"),
                     new ChangeItem("[//]", "ItemRadius: исправлен 3D-рендер и добавлены зоны предметов FunTime, HolyWorld и FunCubes (трапки, пласт, дезориентация, снежок, бур)"),
                     new ChangeItem("[//]", "Inventory: новый двухпанельный интерфейс сохранений, полного просмотра инвентаря 9x4 и нижней панели сохранения"),
                     new ChangeItem("[+]", "JumpCircles: новый минималистичный 3D-стиль «Фаза» с сужающимися дугами, внутренним эхо и контрастной фаской"),
@@ -153,7 +158,7 @@ public class EggTitleScreen extends Screen {
     private static final long START_NANOS = System.nanoTime();
     private static final TitleMask TITLE_MASK = buildTitleMask();
 
-    private final float[] mainHover = new float[4];
+    private final float[] mainHover = new float[5];
     private final float[] circleHover = new float[4];
 
     private final MenuBackgroundBatch bgBatch = new MenuBackgroundBatch();
@@ -172,6 +177,25 @@ public class EggTitleScreen extends Screen {
     private float cachedWrapWidth = -1.0f;
     private List<WrappedLine> cachedLines = List.of();
     private float cachedContentHeight;
+
+    private boolean accountsOpen;
+    private float accountsAnim;
+    private final StringBuilder accountInput = new StringBuilder();
+    private int accountCursor;
+    private boolean accountInputFocused;
+    private boolean accountInputAllSelected;
+    private float accountLoginHover;
+    private float accountRandomHover;
+    private float accountCloseHover;
+    private float accountRestoreHover;
+    private float accountScroll;
+    private float accountTargetScroll;
+    private float accountMaxScroll;
+    private String accountStatusMessage;
+    private boolean accountStatusIsError;
+    private long accountStatusUntilNanos;
+    private int hoveredAccountIndex = -1;
+    private int hoveredDeleteIndex = -1;
 
     private boolean updateDismissed;
     private float updateAnim;
@@ -198,18 +222,21 @@ public class EggTitleScreen extends Screen {
         EggUpdateChecker.checkAsync();
         if (client != null) {
             EggStartupAnimation.ensureAtlas(client);
+            AccountManager.getInstance().captureOriginal(client);
         }
     }
 
     @Override
     public boolean shouldCloseOnEsc() {
-        return exitDialogOpen || changelogOpen;
+        return exitDialogOpen || accountsOpen || changelogOpen;
     }
 
     @Override
     public void close() {
         if (exitDialogOpen) {
             closeExitDialog();
+        } else if (accountsOpen) {
+            closeAccountsDialog();
         } else if (changelogOpen) {
             changelogOpen = false;
         }
@@ -279,6 +306,15 @@ public class EggTitleScreen extends Screen {
             yesTargetY = 0.0f;
         }
 
+        accountsAnim = MathHelper.lerp(1.0f - (float) Math.exp(-dt * 13.0f), accountsAnim, accountsOpen ? 1.0f : 0.0f);
+        if (!accountsOpen && accountsAnim < 0.005f) {
+            accountsAnim = 0.0f;
+        }
+        accountScroll = MathHelper.lerp(1.0f - (float) Math.exp(-dt * 16.0f), accountScroll, accountTargetScroll);
+        if (Math.abs(accountScroll - accountTargetScroll) < 0.05f) {
+            accountScroll = accountTargetScroll;
+        }
+
         Layout layout = computeLayout(sw, sh);
         float eggCenterNormX = 0.31f;
         double timeSec = (now - START_NANOS) / 1_000_000_000.0;
@@ -291,7 +327,8 @@ public class EggTitleScreen extends Screen {
                     layout.colX + layout.colW * 0.5f, layout.titleY, layout.titleW,
                     timeSec, tiltX, tiltY, revealAlpha);
 
-            boolean allowMenuHover = !underOverlay && !exitDialogOpen && exitDialogAnim < 0.05f && mouseX >= 0 && mouseY >= 0;
+            boolean allowMenuHover = !underOverlay && !exitDialogOpen && exitDialogAnim < 0.05f
+                    && !accountsOpen && accountsAnim < 0.05f && mouseX >= 0 && mouseY >= 0;
 
             boolean hovClBtn = allowMenuHover && hitCircle(mouseX, mouseY,
                     CL_BTN_X + CL_BTN_SIZE * 0.5f, CL_BTN_Y + CL_BTN_SIZE * 0.5f, CL_BTN_SIZE * 0.5f);
@@ -301,7 +338,9 @@ public class EggTitleScreen extends Screen {
             float clPanelHovFactor = changelogOpen ? changelogAnim : 0.0f;
             boolean mouseBlockedByPanel = clPanelHovFactor > 0.25f && hitRect(mouseX, mouseY, clRect.x, clRect.y, clRect.w, clRect.h);
 
-            for (int i = 0; i < 4; i++) {
+            String currentUsername = AccountManager.getInstance().getCurrentUsername(client);
+
+            for (int i = 0; i < MAIN_LABELS.length; i++) {
                 float by = layout.buttonY(i);
                 boolean hov = allowMenuHover && !mouseBlockedByPanel && hitRect(mouseX, mouseY, layout.colX, by, layout.colW, layout.btnH);
                 mainHover[i] = MathHelper.lerp(hoverBlend, mainHover[i], hov ? 1.0f : 0.0f);
@@ -335,6 +374,19 @@ public class EggTitleScreen extends Screen {
                 float textY = font.a(fontSize, by + layout.btnH * 0.5f);
                 int textCol = ColorUtil.interpolate(0xFFDDE3EE, 0xFFFFFFFF, mainHover[i]);
                 font.a(null, MAIN_LABELS[i], textX, textY, fontSize, ColorUtil.withAlphaFloat(textCol, revealAlpha));
+
+                if (i == 2 && currentUsername != null && !currentUsername.isEmpty()) {
+                    float labelEnd = textX + font.a(MAIN_LABELS[i], fontSize) + 6.0f;
+                    float availW = (layout.colX + layout.colW - 10.0f) - labelEnd;
+                    if (availW > 18.0f) {
+                        String badge = trimTextToWidth(Fonts.sfRegular, currentUsername, 7.6f, availW);
+                        float bw = Fonts.sfRegular.a(badge, 7.6f);
+                        float byText = Fonts.sfRegular.a(7.6f, by + layout.btnH * 0.5f);
+                        int badgeCol = ColorUtil.interpolate(0xFF7D90B0, 0xFFB0C6EA, mainHover[i]);
+                        Fonts.sfRegular.a(null, badge, layout.colX + layout.colW - 10.0f - bw, byText, 7.6f,
+                                ColorUtil.withAlphaFloat(badgeCol, revealAlpha));
+                    }
+                }
             }
 
             for (int i = 0; i < 4; i++) {
@@ -383,6 +435,11 @@ public class EggTitleScreen extends Screen {
                     float clEase = smooth(changelogAnim);
                     Draw2DProcessor.INSTANCE.getBlurPipeline().capture(14.0f * clEase, 1);
                     renderChangelogPanel(clRect, clEase);
+                    DrawBatcher.flushPending();
+                }
+                if (accountsAnim > 0.005f) {
+                    Draw2DProcessor.INSTANCE.getBlurPipeline().capture(14.0f * accountsAnim, 1);
+                    renderAccountsDialog(sw, sh, mouseX, mouseY, now, hoverBlend);
                     DrawBatcher.flushPending();
                 }
                 if (exitDialogAnim > 0.005f) {
@@ -792,6 +849,14 @@ public class EggTitleScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        if (accountsOpen && !exitDialogOpen && accountsAnim > 0.2f) {
+            AccountsRect rect = computeAccountsModalRect(width, height);
+            if (hitRect(mouseX, mouseY, rect.listX, rect.listY, rect.listW, rect.listH)) {
+                accountTargetScroll = MathHelper.clamp(accountTargetScroll - (float) verticalAmount * 22.0f, 0.0f, accountMaxScroll);
+                return true;
+            }
+            return true;
+        }
         if (changelogOpen && !exitDialogOpen && changelogAnim > 0.2f) {
             ChangelogRect rect = computeChangelogRect(width, height);
             if (hitRect(mouseX, mouseY, rect.x, rect.y, rect.w, rect.h)) {
@@ -838,6 +903,76 @@ public class EggTitleScreen extends Screen {
             return true;
         }
 
+        if (accountsOpen) {
+            AccountsRect rect = computeAccountsModalRect(width, height);
+            if (!hitRect(mx, my, rect.x, rect.y, rect.w, rect.h)) {
+                GuiSoundManager.playClick();
+                closeAccountsDialog();
+                return true;
+            }
+            if (hitRect(mx, my, rect.closeX, rect.closeY, rect.closeSize, rect.closeSize)) {
+                GuiSoundManager.playClick();
+                closeAccountsDialog();
+                return true;
+            }
+            if (hitRect(mx, my, rect.inputX, rect.inputY, rect.inputW, rect.inputH)) {
+                accountInputFocused = true;
+                accountCursor = accountInput.length();
+                accountInputAllSelected = false;
+                return true;
+            }
+            accountInputFocused = false;
+            accountInputAllSelected = false;
+
+            if (hitRect(mx, my, rect.loginX, rect.inputY, rect.loginW, rect.inputH)) {
+                GuiSoundManager.playClick();
+                submitAccountLogin(accountInput.toString());
+                return true;
+            }
+            if (hitRect(mx, my, rect.randX, rect.inputY, rect.randW, rect.inputH)) {
+                GuiSoundManager.playClick();
+                String randomNick = AccountManager.getInstance().generateRandomName();
+                accountInput.setLength(0);
+                accountInput.append(randomNick);
+                accountCursor = accountInput.length();
+                accountInputFocused = true;
+                accountInputAllSelected = false;
+                setAccountStatus("Сгенерирован: " + randomNick, false);
+                return true;
+            }
+            if (rect.hasRestore && hitRect(mx, my, rect.restoreX, rect.restoreY, rect.restoreW, rect.restoreH)) {
+                GuiSoundManager.playClick();
+                AccountManager.getInstance().restoreOriginal(client);
+                String orig = AccountManager.getInstance().getCurrentUsername(client);
+                setAccountStatus("Возвращён исходный аккаунт: " + orig, false);
+                return true;
+            }
+
+            if (hitRect(mx, my, rect.listX, rect.listY, rect.listW, rect.listH)) {
+                List<String> list = AccountManager.getInstance().getAccounts();
+                float rowH = 26.0f;
+                float rowGap = 4.0f;
+                float relY = (float) my - (rect.listY + 2.0f - accountScroll);
+                for (int i = 0; i < list.size(); i++) {
+                    float ry = i * (rowH + rowGap);
+                    if (relY >= ry && relY <= ry + rowH) {
+                        float delX = rect.listX + rect.listW - 22.0f;
+                        String targetNick = list.get(i);
+                        if (mx >= delX && mx <= rect.listX + rect.listW - 4.0f) {
+                            GuiSoundManager.playClick();
+                            AccountManager.getInstance().removeAccount(targetNick);
+                            setAccountStatus("Удалён: " + targetNick, false);
+                            return true;
+                        }
+                        GuiSoundManager.playClick();
+                        submitAccountLogin(targetNick);
+                        return true;
+                    }
+                }
+            }
+            return true;
+        }
+
         if (hitCircle(mx, my, CL_BTN_X + CL_BTN_SIZE * 0.5f, CL_BTN_Y + CL_BTN_SIZE * 0.5f, CL_BTN_SIZE * 0.5f)) {
             GuiSoundManager.playClick();
             changelogOpen = !changelogOpen;
@@ -868,7 +1003,7 @@ public class EggTitleScreen extends Screen {
         }
 
         Layout layout = computeLayout(width, height);
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < MAIN_LABELS.length; i++) {
             if (hitRect(mx, my, layout.colX, layout.buttonY(i), layout.colW, layout.btnH)) {
                 GuiSoundManager.playClick();
                 onMainAction(i);
@@ -891,10 +1026,16 @@ public class EggTitleScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyInput input) {
-        if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
+        int key = input.key();
+        if (key == GLFW.GLFW_KEY_ESCAPE) {
             if (exitDialogOpen) {
                 GuiSoundManager.playClick();
                 closeExitDialog();
+                return true;
+            }
+            if (accountsOpen) {
+                GuiSoundManager.playClick();
+                closeAccountsDialog();
                 return true;
             }
             if (changelogOpen) {
@@ -903,7 +1044,88 @@ public class EggTitleScreen extends Screen {
                 return true;
             }
         }
+        if (accountsOpen && !exitDialogOpen) {
+            if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+                GuiSoundManager.playClick();
+                submitAccountLogin(accountInput.toString());
+                return true;
+            }
+            if (accountInputFocused) {
+                if (isCtrlPressed() && key == GLFW.GLFW_KEY_A) {
+                    accountInputAllSelected = !accountInput.isEmpty();
+                    accountCursor = accountInput.length();
+                    return true;
+                }
+                if (isCtrlPressed() && key == GLFW.GLFW_KEY_V && client != null && client.keyboard != null) {
+                    String clip = client.keyboard.getClipboard();
+                    if (clip != null && !clip.isEmpty()) {
+                        insertFilteredAccountText(clip);
+                    }
+                    return true;
+                }
+                if (isCtrlPressed() && key == GLFW.GLFW_KEY_C && client != null && client.keyboard != null) {
+                    if (!accountInput.isEmpty()) {
+                        client.keyboard.setClipboard(accountInput.toString());
+                    }
+                    return true;
+                }
+                if (key == GLFW.GLFW_KEY_BACKSPACE) {
+                    if (accountInputAllSelected) {
+                        accountInput.setLength(0);
+                        accountCursor = 0;
+                        accountInputAllSelected = false;
+                    } else if (accountCursor > 0) {
+                        accountInput.deleteCharAt(accountCursor - 1);
+                        accountCursor--;
+                    }
+                    return true;
+                }
+                if (key == GLFW.GLFW_KEY_DELETE) {
+                    if (accountInputAllSelected) {
+                        accountInput.setLength(0);
+                        accountCursor = 0;
+                        accountInputAllSelected = false;
+                    } else if (accountCursor < accountInput.length()) {
+                        accountInput.deleteCharAt(accountCursor);
+                    }
+                    return true;
+                }
+                if (key == GLFW.GLFW_KEY_LEFT) {
+                    accountInputAllSelected = false;
+                    if (accountCursor > 0) accountCursor--;
+                    return true;
+                }
+                if (key == GLFW.GLFW_KEY_RIGHT) {
+                    accountInputAllSelected = false;
+                    if (accountCursor < accountInput.length()) accountCursor++;
+                    return true;
+                }
+                if (key == GLFW.GLFW_KEY_HOME) {
+                    accountInputAllSelected = false;
+                    accountCursor = 0;
+                    return true;
+                }
+                if (key == GLFW.GLFW_KEY_END) {
+                    accountInputAllSelected = false;
+                    accountCursor = accountInput.length();
+                    return true;
+                }
+            }
+            return true;
+        }
         return super.keyPressed(input);
+    }
+
+    @Override
+    public boolean charTyped(CharInput input) {
+        if (accountsOpen && !exitDialogOpen && accountInputFocused) {
+            String str = input.asString();
+            if (str != null && !str.isEmpty()) {
+                insertFilteredAccountText(str);
+            }
+            return true;
+        }
+        return super.charTyped(input);
     }
 
     private void onMainAction(int index) {
@@ -911,8 +1133,9 @@ public class EggTitleScreen extends Screen {
         switch (index) {
             case 0 -> client.setScreen(new SelectWorldScreen(this));
             case 1 -> client.setScreen(new MultiplayerScreen(this));
-            case 2 -> client.setScreen(new OptionsScreen(this, client.options));
-            case 3 -> openUrl(SUPPORT_URL);
+            case 2 -> openAccountsDialog();
+            case 3 -> client.setScreen(new OptionsScreen(this, client.options));
+            case 4 -> openUrl(SUPPORT_URL);
         }
     }
 
@@ -928,6 +1151,381 @@ public class EggTitleScreen extends Screen {
             }
             case 3 -> openExitDialog();
         }
+    }
+
+    private void openAccountsDialog() {
+        changelogOpen = false;
+        accountsOpen = true;
+        accountInputFocused = true;
+        accountInputAllSelected = false;
+        accountScroll = 0.0f;
+        accountTargetScroll = 0.0f;
+        accountStatusMessage = null;
+        if (client != null) {
+            AccountManager mgr = AccountManager.getInstance();
+            mgr.captureOriginal(client);
+            String orig = mgr.getOriginalUsername();
+            if (orig != null && AccountManager.isValidUsername(orig) && mgr.getAccounts().isEmpty()) {
+                mgr.addOrPromote(orig);
+            }
+            if (accountInput.isEmpty()) {
+                String cur = mgr.getCurrentUsername(client);
+                if (AccountManager.isValidUsername(cur)) {
+                    accountInput.append(cur);
+                    accountCursor = accountInput.length();
+                    accountInputAllSelected = true;
+                }
+            } else {
+                accountCursor = accountInput.length();
+            }
+        }
+    }
+
+    private void closeAccountsDialog() {
+        accountsOpen = false;
+        accountInputFocused = false;
+        accountInputAllSelected = false;
+    }
+
+    private void submitAccountLogin(String nick) {
+        if (client == null) return;
+        String err = AccountManager.getInstance().loginOffline(client, nick);
+        if (err != null) {
+            setAccountStatus(err, true);
+        } else {
+            String active = AccountManager.getInstance().getCurrentUsername(client);
+            accountInput.setLength(0);
+            accountInput.append(active);
+            accountCursor = accountInput.length();
+            accountInputAllSelected = true;
+            setAccountStatus("Аккаунт переключён на " + active, false);
+        }
+    }
+
+    private void setAccountStatus(String message, boolean error) {
+        this.accountStatusMessage = message;
+        this.accountStatusIsError = error;
+        this.accountStatusUntilNanos = System.nanoTime() + 3_500_000_000L;
+    }
+
+    private void insertFilteredAccountText(String raw) {
+        if (accountInputAllSelected) {
+            accountInput.setLength(0);
+            accountCursor = 0;
+            accountInputAllSelected = false;
+        }
+        int pos = MathHelper.clamp(accountCursor, 0, accountInput.length());
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if (accountInput.length() >= 16) break;
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+                accountInput.insert(pos, c);
+                pos++;
+            }
+        }
+        accountCursor = pos;
+    }
+
+    private boolean isCtrlPressed() {
+        if (client == null || client.getWindow() == null) return false;
+        long handle = client.getWindow().getHandle();
+        return GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
+                || GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
+    }
+
+    private void renderAccountsDialog(float sw, float sh, float mouseX, float mouseY, long now, float hoverBlend) {
+        Draw2DProcessor.INSTANCE.drawFullscreenBlur(sw, sh, accountsAnim);
+        Draw2DProcessor.INSTANCE.drawRect(null, 0.0f, 0.0f, sw, sh, 0.0f,
+                ColorUtil.rgba(6, 7, 11, (int) (136 * accountsAnim)));
+
+        float ease = smooth(accountsAnim);
+        AccountsRect rect = computeAccountsModalRect(sw, sh);
+
+        int modalBg = ColorUtil.rgba(16, 18, 25, (int) (242 * ease));
+        int modalBorder = ColorUtil.rgba(54, 60, 76, (int) (255 * ease));
+        Draw2DProcessor.INSTANCE.drawRect(null, rect.x, rect.y, rect.w, rect.h, 10.0f, modalBg);
+        Draw2DProcessor.INSTANCE.drawOutline(null, rect.x, rect.y, rect.w, rect.h, 10.0f, 1.0f, modalBorder);
+
+        float padX = 12.0f;
+        AccountManager mgr = AccountManager.getInstance();
+        String currentName = mgr.getCurrentUsername(client);
+
+        float titleY = Fonts.b.a(10.2f, rect.y + 18.0f);
+        Fonts.b.a(null, "Аккаунты", rect.x + padX, titleY, 10.2f, ColorUtil.withAlphaFloat(0xFFF2F5FA, ease));
+
+        boolean hovClose = accountsOpen && hitRect(mouseX, mouseY, rect.closeX, rect.closeY, rect.closeSize, rect.closeSize);
+        accountCloseHover = MathHelper.lerp(hoverBlend, accountCloseHover, hovClose ? 1.0f : 0.0f);
+        int closeFill = ColorUtil.withAlphaFloat(ColorUtil.interpolate(ColorUtil.rgba(24, 28, 38, 210), ColorUtil.rgba(46, 30, 38, 240), accountCloseHover), ease);
+        Draw2DProcessor.INSTANCE.drawRect(null, rect.closeX, rect.closeY, rect.closeSize, rect.closeSize, 4.5f, closeFill);
+        float crossW = Fonts.sfRegular.a("×", 10.5f);
+        float crossY = Fonts.sfRegular.a(10.5f, rect.closeY + rect.closeSize * 0.5f);
+        Fonts.sfRegular.a(null, "×", rect.closeX + (rect.closeSize - crossW) * 0.5f, crossY, 10.5f,
+                ColorUtil.withAlphaFloat(ColorUtil.interpolate(0xFF9BA6BE, 0xFFFFD8DF, accountCloseHover), ease));
+
+        String activeLabel = "Активен: " + currentName;
+        float activeW = Fonts.sfRegular.a(activeLabel, 7.6f);
+        float pillW = activeW + 14.0f;
+        float pillH = 14.0f;
+        float pillX = rect.closeX - pillW - 6.0f;
+        float pillY = rect.closeY + (rect.closeSize - pillH) * 0.5f;
+        Draw2DProcessor.INSTANCE.drawRect(null, pillX, pillY, pillW, pillH, pillH * 0.5f,
+                ColorUtil.rgba(24, 34, 46, (int) (220 * ease)));
+        Draw2DProcessor.INSTANCE.drawOutline(null, pillX, pillY, pillW, pillH, pillH * 0.5f, 0.8f,
+                ColorUtil.rgba(60, 128, 102, (int) (210 * ease)));
+        Draw2DProcessor.INSTANCE.drawRect(null, pillX + 5.0f, pillY + (pillH - 4.0f) * 0.5f, 4.0f, 4.0f, 2.0f,
+                ColorUtil.withAlphaFloat(0xFF4ADE80, ease));
+        float activeTy = Fonts.sfRegular.a(7.6f, pillY + pillH * 0.5f);
+        Fonts.sfRegular.a(null, activeLabel, pillX + 11.0f, activeTy, 7.6f, ColorUtil.withAlphaFloat(0xFFD7E6F5, ease));
+
+        Draw2DProcessor.INSTANCE.drawRect(null, rect.x + padX, rect.y + 32.0f, rect.w - padX * 2.0f, 0.7f, 0.0f,
+                ColorUtil.rgba(62, 70, 90, (int) (135 * ease)));
+
+        int inputBg = ColorUtil.withAlphaFloat(accountInputFocused ? ColorUtil.rgba(12, 15, 22, 245) : ColorUtil.rgba(14, 16, 23, 220), ease);
+        int inputBrd = ColorUtil.withAlphaFloat(accountInputFocused ? ColorUtil.rgba(86, 136, 232, 245) : ColorUtil.rgba(48, 54, 70, 235), ease);
+        Draw2DProcessor.INSTANCE.drawRect(null, rect.inputX, rect.inputY, rect.inputW, rect.inputH, 5.5f, inputBg);
+        Draw2DProcessor.INSTANCE.drawOutline(null, rect.inputX, rect.inputY, rect.inputW, rect.inputH, 5.5f, 1.0f, inputBrd);
+
+        String typed = accountInput.toString();
+        float inputTextX = rect.inputX + 7.5f;
+        float inputTextY = Fonts.sfRegular.a(8.4f, rect.inputY + rect.inputH * 0.5f);
+        ScissorUtil.a((Matrix3x2f) null, rect.inputX + 4.0f, rect.inputY + 1.0f, rect.inputW - 8.0f, rect.inputH - 2.0f);
+        try {
+            if (typed.isEmpty()) {
+                Fonts.sfRegular.a(null, "Пиратский ник...", inputTextX, inputTextY, 8.4f,
+                        ColorUtil.withAlphaFloat(0xFF6E778B, ease));
+            } else {
+                if (accountInputFocused && accountInputAllSelected) {
+                    float selW = Math.min(rect.inputW - 14.0f, Fonts.sfRegular.a(typed, 8.4f));
+                    Draw2DProcessor.INSTANCE.drawRect(null, inputTextX - 1.0f, rect.inputY + 4.0f, selW + 2.0f, rect.inputH - 8.0f, 2.0f,
+                            ColorUtil.rgba(64, 118, 214, (int) (110 * ease)));
+                }
+                Fonts.sfRegular.a(null, typed, inputTextX, inputTextY, 8.4f,
+                        ColorUtil.withAlphaFloat(0xFFF0F4FC, ease));
+            }
+            if (accountInputFocused && ((now / 500_000_000L) % 2L == 0L)) {
+                String beforeCursor = typed.substring(0, MathHelper.clamp(accountCursor, 0, typed.length()));
+                float curX = inputTextX + Fonts.sfRegular.a(beforeCursor, 8.4f);
+                Draw2DProcessor.INSTANCE.drawRect(null, curX, rect.inputY + 4.5f, 1.0f, rect.inputH - 9.0f, 0.5f,
+                        ColorUtil.withAlphaFloat(0xFF9AC2FF, ease));
+            }
+        } finally {
+            ScissorUtil.a((Matrix3x2f) null);
+        }
+
+        boolean validTyped = AccountManager.isValidUsername(typed);
+        boolean hovLogin = accountsOpen && hitRect(mouseX, mouseY, rect.loginX, rect.inputY, rect.loginW, rect.inputH);
+        accountLoginHover = MathHelper.lerp(hoverBlend, accountLoginHover, hovLogin ? 1.0f : 0.0f);
+        int loginBg = ColorUtil.withAlphaFloat(
+                validTyped
+                        ? ColorUtil.interpolate(ColorUtil.rgba(38, 90, 186, 238), ColorUtil.rgba(52, 114, 224, 252), accountLoginHover)
+                        : ColorUtil.rgba(28, 32, 44, 215),
+                ease);
+        int loginBrd = ColorUtil.withAlphaFloat(
+                validTyped
+                        ? ColorUtil.interpolate(ColorUtil.rgba(78, 138, 240, 245), ColorUtil.rgba(122, 174, 255, 255), accountLoginHover)
+                        : ColorUtil.rgba(52, 58, 74, 220),
+                ease);
+        Draw2DProcessor.INSTANCE.drawRect(null, rect.loginX, rect.inputY, rect.loginW, rect.inputH, 5.5f, loginBg);
+        Draw2DProcessor.INSTANCE.drawOutline(null, rect.loginX, rect.inputY, rect.loginW, rect.inputH, 5.5f, 1.0f, loginBrd);
+        float loginTw = Fonts.b.a("Войти", 8.2f);
+        float loginTy = Fonts.b.a(8.2f, rect.inputY + rect.inputH * 0.5f);
+        Fonts.b.a(null, "Войти", rect.loginX + (rect.loginW - loginTw) * 0.5f, loginTy, 8.2f,
+                ColorUtil.withAlphaFloat(validTyped ? 0xFFF5F8FF : 0xFF7D879C, ease));
+
+        boolean hovRand = accountsOpen && hitRect(mouseX, mouseY, rect.randX, rect.inputY, rect.randW, rect.inputH);
+        accountRandomHover = MathHelper.lerp(hoverBlend, accountRandomHover, hovRand ? 1.0f : 0.0f);
+        int randBg = ColorUtil.withAlphaFloat(ColorUtil.interpolate(ColorUtil.rgba(24, 28, 38, 232), ColorUtil.rgba(38, 44, 60, 248), accountRandomHover), ease);
+        int randBrd = ColorUtil.withAlphaFloat(ColorUtil.interpolate(ColorUtil.rgba(52, 58, 76, 240), ColorUtil.rgba(98, 112, 146, 255), accountRandomHover), ease);
+        Draw2DProcessor.INSTANCE.drawRect(null, rect.randX, rect.inputY, rect.randW, rect.inputH, 5.5f, randBg);
+        Draw2DProcessor.INSTANCE.drawOutline(null, rect.randX, rect.inputY, rect.randW, rect.inputH, 5.5f, 1.0f, randBrd);
+        drawDiceIcon(rect.randX + rect.randW * 0.5f, rect.inputY + rect.inputH * 0.5f,
+                ColorUtil.withAlphaFloat(ColorUtil.interpolate(0xFFD0D9EA, 0xFFFFFFFF, accountRandomHover), ease));
+
+        float statusY = rect.inputY + rect.inputH + 6.0f;
+        if (accountStatusMessage != null && now < accountStatusUntilNanos) {
+            int stCol = accountStatusIsError ? 0xFFFF7A88 : 0xFF6CE59A;
+            Fonts.sfRegular.a(null, accountStatusMessage, rect.x + padX, statusY, 7.5f, ColorUtil.withAlphaFloat(stCol, ease));
+        } else {
+            Fonts.sfRegular.a(null, "Нажмите на аккаунт в списке для быстрого входа", rect.x + padX, statusY, 7.4f,
+                    ColorUtil.withAlphaFloat(0xFF7C869C, ease));
+        }
+
+        List<String> list = mgr.getAccounts();
+        String secTitle = "Сохранённые (" + list.size() + ")";
+        float secY = rect.listY - 12.0f;
+        Fonts.b.a(null, secTitle, rect.x + padX, secY, 8.2f, ColorUtil.withAlphaFloat(0xFFD5DCE9, ease));
+
+        if (rect.hasRestore) {
+            boolean hovRes = accountsOpen && hitRect(mouseX, mouseY, rect.restoreX, rect.restoreY, rect.restoreW, rect.restoreH);
+            accountRestoreHover = MathHelper.lerp(hoverBlend, accountRestoreHover, hovRes ? 1.0f : 0.0f);
+            int resCol = ColorUtil.interpolate(0xFF8AA8D6, 0xFFBED8FF, accountRestoreHover);
+            Fonts.sfRegular.a(null, "Сброс: " + mgr.getOriginalUsername(), rect.restoreX, rect.restoreY, 7.4f,
+                    ColorUtil.withAlphaFloat(resCol, ease));
+        }
+
+        Draw2DProcessor.INSTANCE.drawRect(null, rect.listX, rect.listY, rect.listW, rect.listH, 6.0f,
+                ColorUtil.rgba(10, 12, 18, (int) (170 * ease)));
+        Draw2DProcessor.INSTANCE.drawOutline(null, rect.listX, rect.listY, rect.listW, rect.listH, 6.0f, 0.8f,
+                ColorUtil.rgba(44, 50, 66, (int) (200 * ease)));
+
+        float rowH = 26.0f;
+        float rowGap = 4.0f;
+        float contentH = list.isEmpty() ? 0.0f : list.size() * rowH + (list.size() - 1) * rowGap + 4.0f;
+        accountMaxScroll = Math.max(0.0f, contentH - (rect.listH - 4.0f));
+        accountTargetScroll = MathHelper.clamp(accountTargetScroll, 0.0f, accountMaxScroll);
+        accountScroll = MathHelper.clamp(accountScroll, 0.0f, accountMaxScroll);
+
+        hoveredAccountIndex = -1;
+        hoveredDeleteIndex = -1;
+        String origName = mgr.getOriginalUsername();
+
+        ScissorUtil.a((Matrix3x2f) null, rect.listX + 1.0f, rect.listY + 1.0f, rect.listW - 2.0f, rect.listH - 2.0f);
+        try {
+            if (list.isEmpty()) {
+                String emptyText = "Список пока пуст — введите ник выше";
+                float ew = Fonts.sfRegular.a(emptyText, 8.0f);
+                float ey = Fonts.sfRegular.a(8.0f, rect.listY + rect.listH * 0.5f);
+                Fonts.sfRegular.a(null, emptyText, rect.listX + (rect.listW - ew) * 0.5f, ey, 8.0f,
+                        ColorUtil.withAlphaFloat(0xFF6B748A, ease));
+            } else {
+                boolean listHoverAllowed = accountsOpen && hitRect(mouseX, mouseY, rect.listX, rect.listY, rect.listW, rect.listH);
+                for (int i = 0; i < list.size(); i++) {
+                    String nick = list.get(i);
+                    float rx = rect.listX + 4.0f;
+                    float ry = rect.listY + 3.0f + i * (rowH + rowGap) - accountScroll;
+                    float rw = rect.listW - (accountMaxScroll > 1.0f ? 11.0f : 8.0f);
+                    if (ry + rowH < rect.listY || ry > rect.listY + rect.listH) continue;
+
+                    boolean isActive = currentName != null && currentName.equalsIgnoreCase(nick);
+                    boolean isOrig = origName != null && origName.equalsIgnoreCase(nick);
+                    boolean hovRow = listHoverAllowed && hitRect(mouseX, mouseY, rx, ry, rw, rowH);
+                    float delSize = 16.0f;
+                    float delX = rx + rw - delSize - 5.0f;
+                    float delY = ry + (rowH - delSize) * 0.5f;
+                    boolean hovDel = listHoverAllowed && hitRect(mouseX, mouseY, delX, delY, delSize, delSize);
+                    if (hovRow) hoveredAccountIndex = i;
+                    if (hovDel) hoveredDeleteIndex = i;
+
+                    int rowBg = isActive
+                            ? (hovRow && !hovDel ? ColorUtil.rgba(24, 42, 38, 225) : ColorUtil.rgba(19, 34, 32, 210))
+                            : (hovRow && !hovDel ? ColorUtil.rgba(28, 32, 44, 232) : ColorUtil.rgba(19, 22, 30, 205));
+                    int rowBrd = isActive
+                            ? ColorUtil.rgba(68, 168, 118, 235)
+                            : (hovRow && !hovDel ? ColorUtil.rgba(78, 88, 114, 240) : ColorUtil.rgba(44, 50, 66, 200));
+                    Draw2DProcessor.INSTANCE.drawRect(null, rx, ry, rw, rowH, 5.0f, ColorUtil.withAlphaFloat(rowBg, ease));
+                    Draw2DProcessor.INSTANCE.drawOutline(null, rx, ry, rw, rowH, 5.0f, 0.85f, ColorUtil.withAlphaFloat(rowBrd, ease));
+
+                    int avatarCol = avatarColorFor(nick);
+                    float avSize = 17.0f;
+                    float avX = rx + 5.5f;
+                    float avY = ry + (rowH - avSize) * 0.5f;
+                    Draw2DProcessor.INSTANCE.drawRect(null, avX, avY, avSize, avSize, 4.0f, ColorUtil.withAlphaFloat(avatarCol, ease));
+                    String initial = nick.substring(0, 1).toUpperCase();
+                    float iw = Fonts.b.a(initial, 8.6f);
+                    float iy = Fonts.b.a(8.6f, avY + avSize * 0.5f);
+                    Fonts.b.a(null, initial, avX + (avSize - iw) * 0.5f, iy, 8.6f, ColorUtil.withAlphaFloat(0xFFFFFFFF, ease));
+
+                    float textLeft = avX + avSize + 7.5f;
+                    Fonts.b.a(null, nick, textLeft, ry + 5.0f, 8.5f,
+                            ColorUtil.withAlphaFloat(isActive ? 0xFFF2FFF7 : 0xFFE8EDF8, ease));
+                    String sub = isActive
+                            ? (isOrig ? "Активен • исходный" : "Активен • пиратский")
+                            : (isOrig ? "Исходный • клик для входа" : "Пиратский • клик для входа");
+                    int subCol = isActive ? 0xFF69DF9B : 0xFF7F89A0;
+                    Fonts.sfRegular.a(null, sub, textLeft, ry + 15.0f, 7.0f, ColorUtil.withAlphaFloat(subCol, ease));
+
+                    int delBg = hovDel ? ColorUtil.rgba(78, 30, 38, 220) : ColorUtil.rgba(28, 32, 42, 160);
+                    Draw2DProcessor.INSTANCE.drawRect(null, delX, delY, delSize, delSize, 3.5f, ColorUtil.withAlphaFloat(delBg, ease));
+                    float trashSz = 9.0f;
+                    Draw2DProcessor.INSTANCE.a(null, ICON_TRASH, delX + (delSize - trashSz) * 0.5f, delY + (delSize - trashSz) * 0.5f,
+                            trashSz, trashSz, 0.0f, ColorUtil.withAlphaFloat(hovDel ? 0xFFFF8896 : 0xFF8B96AE, ease));
+                }
+            }
+        } finally {
+            ScissorUtil.a((Matrix3x2f) null);
+        }
+
+        if (accountMaxScroll > 1.0f && rect.listH > 16.0f) {
+            float trackX = rect.listX + rect.listW - 4.5f;
+            float trackY = rect.listY + 4.0f;
+            float trackH = rect.listH - 8.0f;
+            float ratio = MathHelper.clamp(rect.listH / Math.max(1.0f, contentH), 0.14f, 1.0f);
+            float thumbH = Math.max(16.0f, trackH * ratio);
+            float thumbY = trackY + (accountScroll / accountMaxScroll) * (trackH - thumbH);
+            Draw2DProcessor.INSTANCE.drawRect(null, trackX, trackY, 2.0f, trackH, 1.0f,
+                    ColorUtil.rgba(35, 40, 52, (int) (120 * ease)));
+            Draw2DProcessor.INSTANCE.drawRect(null, trackX, thumbY, 2.0f, thumbH, 1.0f,
+                    ColorUtil.rgba(138, 152, 182, (int) (195 * ease)));
+        }
+    }
+
+    private static void drawDiceIcon(float cx, float cy, int color) {
+        Draw2DProcessor.INSTANCE.drawOutline(null, cx - 5.0f, cy - 5.0f, 10.0f, 10.0f, 2.0f, 1.0f, color);
+        Draw2DProcessor.INSTANCE.drawRect(null, cx - 3.1f, cy - 3.1f, 1.8f, 1.8f, 0.9f, color);
+        Draw2DProcessor.INSTANCE.drawRect(null, cx + 1.3f, cy - 3.1f, 1.8f, 1.8f, 0.9f, color);
+        Draw2DProcessor.INSTANCE.drawRect(null, cx - 0.9f, cy - 0.9f, 1.8f, 1.8f, 0.9f, color);
+        Draw2DProcessor.INSTANCE.drawRect(null, cx - 3.1f, cy + 1.3f, 1.8f, 1.8f, 0.9f, color);
+        Draw2DProcessor.INSTANCE.drawRect(null, cx + 1.3f, cy + 1.3f, 1.8f, 1.8f, 0.9f, color);
+    }
+
+    private static int avatarColorFor(String nick) {
+        int hash = Math.abs(nick.toLowerCase().hashCode());
+        int[] palette = {0xFF3B6FD8, 0xFF2F9E78, 0xFF845EF7, 0xFFD96B43, 0xFF288FB4, 0xFFB85490};
+        return palette[hash % palette.length];
+    }
+
+    private static String trimTextToWidth(Font font, String text, float size, float maxWidth) {
+        if (text == null || font.a(text, size) <= maxWidth) return text;
+        String dots = "..";
+        float dotsW = font.a(dots, size);
+        int len = text.length();
+        while (len > 1 && font.a(text.substring(0, len), size) + dotsW > maxWidth) {
+            len--;
+        }
+        return text.substring(0, len) + dots;
+    }
+
+    private AccountsRect computeAccountsModalRect(float sw, float sh) {
+        float w = MathHelper.clamp(sw * 0.42f, 240.0f, 272.0f);
+        float h = MathHelper.clamp(sh * 0.68f, 214.0f, 266.0f);
+        float ease = smooth(accountsAnim);
+        float x = (sw - w) * 0.5f;
+        float y = (sh - h) * 0.5f + (1.0f - ease) * 8.0f;
+        float padX = 12.0f;
+        float innerW = w - padX * 2.0f;
+        float closeSize = 15.0f;
+        float closeX = x + w - padX - closeSize;
+        float closeY = y + 10.5f;
+
+        float inputY = y + 40.0f;
+        float inputH = 22.0f;
+        float randW = 22.0f;
+        float loginW = 50.0f;
+        float gap = 5.0f;
+        float inputW = innerW - loginW - randW - gap * 2.0f;
+        float inputX = x + padX;
+        float loginX = inputX + inputW + gap;
+        float randX = loginX + loginW + gap;
+
+        float listY = inputY + inputH + 34.0f;
+        float listH = Math.max(60.0f, (y + h - 12.0f) - listY);
+
+        AccountManager mgr = AccountManager.getInstance();
+        String orig = mgr.getOriginalUsername();
+        boolean hasRestore = orig != null && !mgr.isOriginalActive(client);
+        float restoreW = hasRestore ? Fonts.sfRegular.a("Сброс: " + orig, 7.4f) : 0.0f;
+        float restoreX = x + w - padX - restoreW;
+        float restoreY = listY - 12.0f;
+
+        return new AccountsRect(
+                x, y, w, h,
+                closeX, closeY, closeSize,
+                inputX, inputY, inputW, inputH,
+                loginX, loginW,
+                randX, randW,
+                x + padX, listY, innerW, listH,
+                hasRestore, restoreX, restoreY, restoreW, 10.0f
+        );
     }
 
     private void openExitDialog() {
@@ -955,17 +1553,19 @@ public class EggTitleScreen extends Screen {
         float titleW = Math.max(colW * 1.14f, 184.0f);
         float titleCellW = titleW / TITLE_MASK.cols;
         float titleH = TITLE_MASK.rows * (titleCellW * (8.0f / 6.0f));
-        float titleGap = 15.0f;
-        float btnH = 24.0f;
-        float gap = 6.0f;
-        float circleSize = 24.0f;
-        float circleTopGap = 10.0f;
-        float buttonsH = 4.0f * btnH + 3.0f * gap + circleTopGap + circleSize;
+        boolean compact = sh < 285.0f;
+        float titleGap = compact ? 11.0f : 15.0f;
+        float btnH = compact ? 21.0f : 24.0f;
+        float gap = compact ? 4.5f : 6.0f;
+        float circleSize = compact ? 22.0f : 24.0f;
+        float circleTopGap = compact ? 8.0f : 10.0f;
+        int btnCount = MAIN_LABELS.length;
+        float buttonsH = btnCount * btnH + (btnCount - 1) * gap + circleTopGap + circleSize;
         float totalH = titleH + titleGap + buttonsH;
         float colX = sw * 0.72f - colW * 0.5f;
         float titleY = (sh - totalH) * 0.5f;
         float startY = titleY + titleH + titleGap;
-        float circleY = startY + 4.0f * btnH + 3.0f * gap + circleTopGap;
+        float circleY = startY + btnCount * btnH + (btnCount - 1) * gap + circleTopGap;
         float circleGap = (colW - 4.0f * circleSize) / 3.0f;
         return new Layout(colX, startY, colW, btnH, gap, circleY, circleSize, circleGap, titleY, titleW);
     }
@@ -1047,6 +1647,16 @@ public class EggTitleScreen extends Screen {
     private record ChangeItem(String tag, String text) {}
 
     private record ChangeDay(String title, List<ChangeItem> items) {}
+
+    private record AccountsRect(
+            float x, float y, float w, float h,
+            float closeX, float closeY, float closeSize,
+            float inputX, float inputY, float inputW, float inputH,
+            float loginX, float loginW,
+            float randX, float randW,
+            float listX, float listY, float listW, float listH,
+            boolean hasRestore, float restoreX, float restoreY, float restoreW, float restoreH
+    ) {}
 
     private record WrappedLine(float yOffset, float height, boolean isDayHeader, String tag, String prefix, String rest) {}
 
