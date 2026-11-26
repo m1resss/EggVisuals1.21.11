@@ -79,7 +79,7 @@ public class EggTitleScreen extends Screen {
 
     private static final List<ChangeDay> CHANGELOG_DAYS = List.of(
             new ChangeDay("ChangeLog 26.11.2026", List.of(
-                    new ChangeItem("[+]", "Startup Intro: светящиеся рифлёные «шторки» из референса, разъезжающиеся в стороны и открывающие главное меню"),
+                    new ChangeItem("[+]", "Startup Intro: проигрывание видеозаставки при запуске и раскрытие «шторками» в стороны в главное меню"),
                     new ChangeItem("[+]", "JumpCircles: новый минималистичный 3D-стиль «Фаза» с сужающимися дугами, внутренним эхо и контрастной фаской"),
                     new ChangeItem("[+]", "Trajectories: круглый радиус зоны эффекта у взрывных и туманных зелий (показывает, попадёт ли эффект по вам)"),
                     new ChangeItem("[//]", "ShulkerPreview: MSDF-текст, бейдж заполненности, мини-иконка контейнера и плавная SDF-обводка"),

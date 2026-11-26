@@ -494,6 +494,7 @@ public final class Pipelines {
             .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/startup_curtain"))
             .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/menu/menu_bg"))
             .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/menu/startup_curtain"))
+            .withSampler("Sampler0")
             .withUniform("CausticUniforms", UniformType.UNIFORM_BUFFER)
             .withBlend(BlendFunction.TRANSLUCENT)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)

@@ -21,8 +21,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(value = SplashOverlay.class, priority = 900)
 public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
-    @Unique private static final long HOLD_AFTER_LOAD_MS = 650L;
-    @Unique private static final long CURTAIN_SPLIT_MS = 1050L;
+    @Unique private static final long CURTAIN_SPLIT_MS = 950L;
 
     @Shadow @Final private MinecraftClient client;
     @Shadow @Final private ResourceReload reload;
@@ -33,7 +32,6 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
     @Unique private boolean egg$active;
     @Unique private long egg$lastTick = -1L;
     @Unique private long egg$animMs;
-    @Unique private long egg$holdMs;
     @Unique private long egg$openMs;
     @Unique private boolean egg$opening;
     @Unique private float egg$smoothProgress;
@@ -55,6 +53,7 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
         if (!reloading && !egg$startupShown) {
             egg$startupShown = true;
             egg$active = true;
+            StartupCurtainRenderer.preload();
             if (client != null) {
                 EggStartupAnimation.ensureAtlas(client);
             }
@@ -76,8 +75,8 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
         egg$smoothProgress = MathHelper.lerp(1.0f - (float) Math.exp(-dt / 120.0f), egg$smoothProgress, targetProgress);
 
         if (loaded && !egg$opening) {
-            egg$holdMs += dt;
-            if (egg$holdMs >= HOLD_AFTER_LOAD_MS) {
+            long videoWaitMs = Math.max(5800L, Math.round(StartupCurtainRenderer.getVideoDurationMs()));
+            if (egg$animMs >= videoWaitMs) {
                 egg$opening = true;
             }
         }
@@ -100,7 +99,7 @@ public abstract class EggStartupOverlayMixin implements StartupOverlayControl {
         final float timeSec = egg$animMs * 0.001f;
         final float splitFinal = split;
         final float introFinal = egg$fade((egg$animMs + 20.0f) / 280.0f);
-        final boolean showProgress = !loaded || splitFinal < 0.05f;
+        final boolean showProgress = !loaded;
         final float progressVal = egg$smoothProgress;
 
         GuiOverlays.defer(() -> {
