@@ -267,6 +267,11 @@ public abstract class GameRendererMixin {
         com.mojang.blaze3d.systems.RenderSystem.disableScissorForRenderTypeDraws();
         com.mojang.blaze3d.systems.RenderSystem.outputColorTextureOverride = null;
         com.mojang.blaze3d.systems.RenderSystem.outputDepthTextureOverride = null;
+        egg.client.module.misc.Rollback rollback = ModuleManager.getInstance().getModule(egg.client.module.misc.Rollback.class);
+        if (rollback != null) {
+            rollback.captureFrame(mc);
+            rollback.renderOverlay(mc);
+        }
     }
 
 }

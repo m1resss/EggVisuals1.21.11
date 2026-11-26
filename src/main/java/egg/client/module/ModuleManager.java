@@ -133,6 +133,7 @@ public class ModuleManager {
         register(new egg.client.module.misc.TickSync());
         register(new egg.client.module.misc.DiscordRPC());
         register(new egg.client.module.misc.ServerAssistant());
+        register(new egg.client.module.misc.Rollback());
 
         register(new egg.client.module.cosmetic.CosmeticsModule());
 

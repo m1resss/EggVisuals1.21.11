@@ -1172,6 +1172,7 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
         MODULE_KEYWORDS.put("ClientSettings", new String[]{"настройки", "клиент", "тема", "блюр", "шрифт", "акцент", "цвета", "звук", "громкость", "звук меню", "client settings"});
         MODULE_KEYWORDS.put("StreamerMode", new String[]{"стример", "стрим", "скрыть ник", "ютуб", "защита", "streamer mode"});
         MODULE_KEYWORDS.put("Server Assistant", new String[]{"server assistant", "сервер ассистент", "ассистент", "донки", "трапка", "аукцион", "донат"});
+        MODULE_KEYWORDS.put("Rollback", new String[]{"откат", "роллбэк", "повтор", "мгновенный повтор", "запись", "клип", "nvidia", "shadowplay", "replay", "rollback"});
 
     }
 

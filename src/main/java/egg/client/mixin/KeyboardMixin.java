@@ -60,6 +60,13 @@ public class KeyboardMixin {
 
             if (client.currentScreen == null) {
                 ModuleManager.getInstance().onKey(key, action);
+            } else if (!(client.currentScreen instanceof ClickGuiScreen)
+                    && !(client.currentScreen instanceof net.minecraft.client.gui.screen.ChatScreen)
+                    && !(client.currentScreen instanceof egg.client.ui.screen.EggTitleScreen)) {
+                egg.client.module.misc.Rollback rollback = ModuleManager.getInstance().getModule(egg.client.module.misc.Rollback.class);
+                if (rollback != null) {
+                    rollback.handleGlobalKey(key);
+                }
             }
         }
     }
