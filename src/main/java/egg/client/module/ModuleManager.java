@@ -64,6 +64,8 @@ public class ModuleManager {
 
         register(new Crosshair());
 
+        register(new HitReady());
+
         register(new Hitmarker());
 
         register(new ItemPhysic());

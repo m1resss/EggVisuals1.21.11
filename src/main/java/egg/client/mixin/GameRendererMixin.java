@@ -169,6 +169,11 @@ public abstract class GameRendererMixin {
 
         }
 
+        HitReady hitReady = ModuleManager.getInstance().getModule(HitReady.class);
+        if (hitReady != null && hitReady.isEnabled()) {
+            hitReady.render(context, tickCounter);
+        }
+
         ViewModel vm = ModuleManager.getInstance().getModule(ViewModel.class);
 
         if (vm != null && vm.isEnabled()) {

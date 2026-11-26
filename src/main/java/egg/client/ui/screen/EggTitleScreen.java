@@ -78,6 +78,9 @@ public class EggTitleScreen extends Screen {
     private static final int TAG_CHANGE_COLOR = 0xFFFFD866;
 
     private static final List<ChangeDay> CHANGELOG_DAYS = List.of(
+            new ChangeDay("ChangeLog 26.11.2026", List.of(
+                    new ChangeItem("[+]", "HitReady: индикатор готовности удара на прицеле (дистанция, КД, крит, преграды и занятость рукой)")
+            )),
             new ChangeDay("ChangeLog 25.11.2026", List.of(
                     new ChangeItem("[+]", "KillEffect: новый 3D-эффект «Молния» с мультяшным рентгеном скелета, встряской и распадом в пыль"),
                     new ChangeItem("[//]", "Sprint: плавное удержание клавиши бега через ввод вместо ежетикового форсажа срывов"),
