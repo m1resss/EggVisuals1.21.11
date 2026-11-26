@@ -88,63 +88,32 @@ public class EggTitleScreen extends Screen {
 
     private static final List<ChangeDay> CHANGELOG_DAYS = List.of(
             new ChangeDay("ChangeLog 26.11.2026", List.of(
-                    new ChangeItem("[+]", "Rollback: фоновая буферизация до 1.5 минут геймплея и мгновенное сохранение отката в MP4 по бинду"),
-                    new ChangeItem("[+]", "HitEffect: новый 3D-эффект при ударе с режимами «Разрез» и «Линза» и усилением критов"),
-                    new ChangeItem("[+]", "MainMenu (Аккаунты): новая кнопка и панель быстрой смены пиратских ников, сохранения списка и генерации случайного ника"),
-                    new ChangeItem("[//]", "ItemRadius: исправлен 3D-рендер и добавлены зоны предметов FunTime и HolyWorld (трапки, пласт, дезориентация, снежок, бур)"),
-                    new ChangeItem("[//]", "Inventory: новый двухпанельный интерфейс сохранений, полного просмотра инвентаря 9x4 и нижней панели сохранения"),
-                    new ChangeItem("[+]", "JumpCircles: новый минималистичный 3D-стиль «Фаза» с сужающимися дугами, внутренним эхо и контрастной фаской"),
-                    new ChangeItem("[+]", "Trajectories: круглый радиус зоны эффекта у взрывных и туманных зелий (показывает, попадёт ли эффект по вам)"),
-                    new ChangeItem("[//]", "ShulkerPreview: MSDF-текст, бейдж заполненности, мини-иконка контейнера и плавная SDF-обводка"),
-                    new ChangeItem("[+]", "HitReach: 3D-круги дистанции удара на земле (зелёный — можно бить, жёлтый — крит, оранжевый — КД, красный — вне радиуса)")
-            )),
-            new ChangeDay("ChangeLog 25.11.2026", List.of(
-                    new ChangeItem("[//]", "Sprint: плавное удержание клавиши бега через ввод вместо ежетикового форсажа срывов"),
-                    new ChangeItem("[+]", "TargetESP: стиль «Скобы» (аккуратная PvP-рамка у ног с реакцией на удар) вместо «Прибоя»"),
-                    new ChangeItem("[//]", "ClickGUI: скроллбар, стрелки и градиент в выпадающих списках при переполнении"),
-                    new ChangeItem("[+]", "TargetHUD: добавлен второй раздельный стиль с головой, бейджем HP и 6 слотами экипировки"),
-                    new ChangeItem("[+]", "Break Block: новый 3D-стиль «Резонанс» со сжимающейся рамкой, угловыми скобками и сканером"),
-                    new ChangeItem("[+]", "ShulkerPreview: карточка предпросмотра 9x3 содержимого шалкеров и контейнеров при наведении"),
-                    new ChangeItem("[+]", "MainMenu & Startup: кастомное главное меню на собственном рендере с вращающимся ASCII-яйцом, заголовком Egg Visuals, диалогом выхода и экраном загрузки без логотипа Mojang"),
-                    new ChangeItem("[+]", "Changelog: выдвижная панель обновлений в меню с полупрозрачным блюр-фоном"),
-                    new ChangeItem("[+]", "KillEffect: новый 3D-эффект «Пепел» с рассыпанием модели"),
-                    new ChangeItem("[+]", "Trail: добавлен новый стиль «Комикс»"),
-                    new ChangeItem("[+]", "HMI: интеграция анимаций удержания и использования предметов от 1-го лица"),
-                    new ChangeItem("[//]", "KillEffect (Лед): доработка ледяной глыбы, трещин и кристаллов"),
-                    new ChangeItem("[//]", "ClickGUI & NameTags: открытие ClickGUI поверх главного меню с блюром и фиксы рендера тегов")
-            )),
-            new ChangeDay("ChangeLog 24.11.2026", List.of(
-                    new ChangeItem("[+]", "KillEffect: добавлены новые эффекты «Лед» (заморозка модели и раскол) и «Врос в мир»"),
-                    new ChangeItem("[+]", "TargetESP: добавлены новые стили «Прибой», «Железная пыль» и «Фокус»"),
-                    new ChangeItem("[+]", "ContainerSearch & ItemComparison: поиск предметов по названию и описанию в сундуках и сравнение характеристик по Alt"),
-                    new ChangeItem("[+]", "Lyrics: 3D-рендер текста трека в мире"),
+                    new ChangeItem("[+]", "Rollback: запись до 1.5 минут геймплея и сохранение отката в MP4 по бинду (как мгновенный повтор в NVIDIA)"),
+                    new ChangeItem("[+]", "MainMenu & Accounts: новое главное меню, экран загрузки без логотипа Mojang, панель ченджлога и быстрая смена пиратских аккаунтов"),
+                    new ChangeItem("[+]", "HitEffect: эффекты при ударе («Разрез» и «Линза») с усилением на критах"),
+                    new ChangeItem("[+]", "HitReach: круги дистанции удара на земле (можно бить, крит, КД, вне радиуса)"),
+                    new ChangeItem("[+]", "PearlPredict: траектория эндер-жемчуга, метка попадания и камера предпросмотра с поддержкой Sodium"),
+                    new ChangeItem("[+]", "ShulkerPreview: просмотр содержимого шалкеров и контейнеров при наведении с заполненностью"),
+                    new ChangeItem("[+]", "ContainerSearch & ItemComparison: поиск предметов по названию и описанию в сундуках и сравнение вещей по Alt"),
+                    new ChangeItem("[+]", "TargetESP: новые стили «Скобы», «Железная пыль» и «Фокус»"),
+                    new ChangeItem("[+]", "KillEffect: новые эффекты «Вознесение», «Врос в мир», «Лед», «Пепел» и эффект душ"),
+                    new ChangeItem("[+]", "JumpCircles: новый стиль «Фаза»"),
+                    new ChangeItem("[+]", "BreakBlock: новый стиль «Резонанс»"),
+                    new ChangeItem("[+]", "Trail: новый стиль «Комикс»"),
+                    new ChangeItem("[+]", "TargetHUD: добавлен второй раздельный стиль с головой, HP и слотами экипировки"),
+                    new ChangeItem("[+]", "Lyrics: переделан"),
                     new ChangeItem("[+]", "Fun: добавлен режим «Bedrock Бег»"),
-                    new ChangeItem("[//]", "Trajectories: переработка линий траекторий и предсказания полёта")
-            )),
-            new ChangeDay("ChangeLog 23.11.2026", List.of(
-                    new ChangeItem("[+]", "WorldTweaks: масштабная переработка погоды — лужи и плёнка на земле, снег, туман, дымка, мгла, штормовое и звёздное небо"),
-                    new ChangeItem("[+]", "TotemPop & KillEffect: шейдерный эффект душ после смерти и срабатывания тотема"),
-                    new ChangeItem("[+]", "PearlPredict: добавлена поддержка геометрии Sodium для точного расчёта полёта жемчуга"),
-                    new ChangeItem("[//]", "ClickGUI & HUD: добавлен матовый стеклянный фон (FrostedSurface) и доработано прилипание HUD"),
-                    new ChangeItem("[-]", "Chess: удалена встроенная мини-игра и команда .chess")
-            )),
-            new ChangeDay("ChangeLog 22.11.2026", List.of(
-                    new ChangeItem("[+]", "PearlPredict: новый модуль с 3D-траекторией эндер-жемчуга, меткой попадания и камерой предпросмотра"),
-                    new ChangeItem("[//]", "ClickGUI & ConfigManager: фиксы сохранения настроек, контекстного меню HUD и прокрутки")
-            )),
-            new ChangeDay("ChangeLog 21.11.2026", List.of(
-                    new ChangeItem("[+]", "Theme & ClientSettings: добавлены новые цветовые темы оформления интерфейса"),
-                    new ChangeItem("[//]", "CosmeticsPanel: улучшено 3D-превью моделей часов и мечей в меню косметики"),
-                    new ChangeItem("[//]", "Crosshair, Interface & NameTags: улучшен MSDF-рендер, размытие панелей и прицел")
-            )),
-            new ChangeDay("ChangeLog 20.11.2026", List.of(
-                    new ChangeItem("[+]", "KillEffect: новый режим «Вознесение» с плавным подъёмом и свечением модели"),
-                    new ChangeItem("[//]", "KillEffect, NameTags & ZakoOptimization: оптимизация рендера и доработка анимаций")
-            )),
-            new ChangeDay("ChangeLog 19.11.2026", List.of(
                     new ChangeItem("[+]", "Команды: добавлена команда .hw для HolyWorld, улучшены .confetti и .help"),
-                    new ChangeItem("[+]", "TotemPop: модуль переработан и получил новые настройки эффектов"),
-                    new ChangeItem("[-]", "Удалены устаревшие модули: PlayerESP, NoJumpDelay, AutoAuth, AutoEat, AutoRespawn и NoChatBackground")
+                    new ChangeItem("[//]", "ItemRadius: исправлен рендер и добавлены зоны предметов для FunTime (дезориентация, явная пыль, огненный смерч, божья аура, снежок, трапка, пласт, бур) и HolyWorld (стан, трапки, светильник Джейка)"),
+                    new ChangeItem("[//]", "Inventory: новый интерфейс сохранений с просмотром инвентаря"),
+                    new ChangeItem("[//]", "WorldTweaks: переработка погоды и атмосферы (лужи, снег, туман, дымка, мгла, шторм и звёздное небо)"),
+                    new ChangeItem("[//]", "TotemPop: новый эффект тотема с душами"),
+                    new ChangeItem("[//]", "Trajectories: обновлены линии траекторий и добавлен радиус зоны взрывных и туманных зелий"),
+                    new ChangeItem("[//]", "ClickGUI & HUD: обновлён фон и темы, открытие ClickGUI в главном меню, скроллбар в списках, прилипание HUD"),
+                    new ChangeItem("[//]", "Sprint: пофикшен теперь работает коректно"),
+                    new ChangeItem("[//]", "CosmeticsPanel & NameTags: доработано превью косметики и исправлен рендер тегов"),
+                    new ChangeItem("[-]", "Удалено: мини-игра Chess (.chess) и устаревшие модули NoJumpDelay, AutoAuth, AutoEat, AutoRespawn, NoChatBackground"),
+                    new ChangeItem(null, "Также пофикшены некоторые мне известные баги")
             )),
             new ChangeDay("ChangeLog 18.11.2026", List.of(
                     new ChangeItem("[+]", "Cosmetics (Часы): объёмные 3д часы (Rolex, Patek Philippe, AP, Richard Mille, Jacob & Co, Apple Ultra, G-Shock и др.) с живым ходом стрелок, анимированными механизмами и осмотром от 1-го лица на клавишу J"),
