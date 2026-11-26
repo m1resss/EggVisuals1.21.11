@@ -79,7 +79,7 @@ public class EggTitleScreen extends Screen {
 
     private static final List<ChangeDay> CHANGELOG_DAYS = List.of(
             new ChangeDay("ChangeLog 26.11.2026", List.of(
-                    new ChangeItem("[+]", "HitReady: индикатор готовности удара на прицеле (дистанция, КД, крит, преграды и занятость рукой)")
+                    new ChangeItem("[+]", "HitReady: 3D-круги дистанции удара на земле (зелёный — можно бить, жёлтый — крит, оранжевый — КД, красный — вне радиуса)")
             )),
             new ChangeDay("ChangeLog 25.11.2026", List.of(
                     new ChangeItem("[+]", "KillEffect: новый 3D-эффект «Молния» с мультяшным рентгеном скелета, встряской и распадом в пыль"),
