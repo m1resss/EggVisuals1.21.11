@@ -8,19 +8,13 @@ import egg.client.module.combat.NoFriendDamage;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
-import egg.client.render.msdf.Draw2DProcessor;
-import egg.client.render.msdf.Fonts;
-import egg.client.render.msdf.Primitive2D;
-import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.render.shader.MeshDrawUtil;
 import egg.client.render.shader.Pipelines;
 import egg.client.util.ColorUtil;
 import egg.client.util.EntityUtil;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.Camera;
-import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.VertexFormats;
 import net.minecraft.client.util.BufferAllocator;
@@ -30,7 +24,6 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.decoration.ArmorStandEntity;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
@@ -40,9 +33,8 @@ import net.minecraft.world.RaycastContext;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Optional;
 
-public class HitReady extends Module {
+public class HitReach extends Module {
 
     private static final String MODE_TARGETS = "Вокруг врагов";
     private static final String MODE_SELF = "Вокруг себя";
@@ -56,14 +48,13 @@ public class HitReady extends Module {
     private static final int COL_COOLDOWN = 0xFFF59E0B;
     private static final int COL_CANT = 0xFFEF4444;
     private static final int COL_FRIEND = 0xFF60A5FA;
-    private static final int COL_IDLE = 0xFF94A3B8;
 
     private final ModeSetting circleMode = new ModeSetting("Режим кругов", MODE_TARGETS, "Где рисовать круги дистанции удара",
             MODE_TARGETS, MODE_SELF, MODE_BOTH);
     private final ModeSetting ringShape = new ModeSetting("Стиль круга", SHAPE_SOLID, "Вид линии круга на земле",
             SHAPE_SOLID, SHAPE_DASHED);
     private final BooleanSetting respectCooldown = new BooleanSetting("Учитывать КД", true,
-            "Показывать оранжевым/красным пока удар перезаряжается");
+            "Показывать оранжевым пока удар перезаряжается");
     private final BooleanSetting critIndicator = new BooleanSetting("Индикатор крита", true,
             "Подсвечивать золотым готовность критического удара");
     private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", false,
@@ -72,25 +63,16 @@ public class HitReady extends Module {
             "Максимальная дистанция отображения кругов врагов");
     private final SliderSetting opacity = new SliderSetting("Прозрачность", 85.0, 20.0, 100.0, 5.0,
             "Яркость кругов дистанции на земле");
-    private final BooleanSetting crosshairHint = new BooleanSetting("Статус у прицела", false,
-            "Дополнительно показывать компактное кольцо и плашку у прицела");
 
     private final Map<Integer, CircleState> circleStates = new HashMap<>();
     private final CircleState selfState = new CircleState();
     private BufferAllocator allocator;
     private long lastWorldNanos = 0L;
 
-    private float hudAlpha = 0.0f;
-    private float hudFill = 1.0f;
-    private int hudColor = COL_IDLE;
-    private float readyPop = 0.0f;
-    private boolean lastCanHit = false;
-    private long lastHudNanos = 0L;
-
-    public HitReady() {
-        super("HitReady", "Показывает 3D-круги дистанции удара на земле: зелёный — достаёшь, красный — далеко", Category.ESP);
+    public HitReach() {
+        super("HitReach", "Показывает 3D-круги дистанции удара на земле: зелёный — достаёшь, красный — далеко", Category.ESP);
         maxShowDist.setVisible(() -> !circleMode.is(MODE_SELF));
-        addSettings(circleMode, ringShape, respectCooldown, critIndicator, onlyPlayers, maxShowDist, opacity, crosshairHint);
+        addSettings(circleMode, ringShape, respectCooldown, critIndicator, onlyPlayers, maxShowDist, opacity);
     }
 
     public void renderWorld3D(MatrixStack matrices, Camera camera, float tickDelta, VertexConsumerProvider immediate, Vec3d camPos) {
@@ -228,152 +210,6 @@ public class HitReady extends Module {
         }
     }
 
-    public void render(DrawContext context, RenderTickCounter tickCounter) {
-        if (!isEnabled() || !crosshairHint.isEnabled() || context == null) {
-            hudAlpha = 0.0f;
-            lastHudNanos = 0L;
-            return;
-        }
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc == null || mc.player == null || mc.world == null || mc.currentScreen != null
-                || mc.options.hudHidden || !mc.options.getPerspective().isFirstPerson()) {
-            hudAlpha = 0.0f;
-            lastHudNanos = 0L;
-            return;
-        }
-
-        long now = System.nanoTime();
-        float dt = lastHudNanos == 0L ? 0.016f : Math.clamp((now - lastHudNanos) / 1_000_000_000.0f, 0.001f, 0.05f);
-        lastHudNanos = now;
-
-        float tickProgress = tickCounter != null ? tickCounter.getTickProgress(true) : 1.0f;
-        Probe probe = evaluateCrosshair(mc, tickProgress);
-
-        float targetAlpha = (probe.hasTarget || probe.cooldown < 0.96f) ? probe.alphaScale : 0.0f;
-        hudAlpha = MathHelper.lerp(Math.clamp(dt * 18.0f, 0.0f, 1.0f), hudAlpha, targetAlpha);
-        hudFill = MathHelper.lerp(Math.clamp(dt * 24.0f, 0.0f, 1.0f), hudFill, probe.ringFill);
-        hudColor = hudAlpha < 0.02f ? probe.color : ColorUtil.interpolate(hudColor, probe.color, Math.clamp(dt * 22.0f, 0.0f, 1.0f));
-
-        if (probe.canHit && !lastCanHit) {
-            readyPop = 1.0f;
-        }
-        readyPop = Math.max(0.0f, readyPop - dt * 6.0f);
-        lastCanHit = probe.canHit;
-
-        if (hudAlpha <= 0.02f) return;
-
-        float cx = mc.getWindow().getScaledWidth() * 0.5f;
-        float cy = mc.getWindow().getScaledHeight() * 0.5f;
-
-        DrawBatcher.flushPending();
-        float r = 11.5f + readyPop * 1.6f;
-        float thickness = 2.0f + readyPop * 0.5f;
-        float innerR = Math.max(4.0f, r - thickness * 0.5f);
-        float outerR = innerR + thickness;
-
-        Primitive2D.drawRingArc(cx, cy, innerR - 0.6f, outerR + 0.6f, 0.0f, 360.0f,
-                ColorUtil.rgba(8, 10, 14, Math.round(135.0f * hudAlpha)));
-        Primitive2D.drawProgressRing(cx, cy, innerR, outerR, Math.clamp(hudFill, 0.0f, 1.0f),
-                ColorUtil.rgba(255, 255, 255, Math.round(28.0f * hudAlpha)),
-                ColorUtil.withAlphaFloat(hudColor, hudAlpha * 0.96f));
-
-        float fontSize = 7.2f;
-        float textW = Fonts.b.a(probe.label, fontSize);
-        float dotSize = 4.2f;
-        float padX = 5.0f;
-        float gap = 3.8f;
-        float pillW = padX * 2.0f + dotSize + gap + textW;
-        float pillH = 12.5f;
-        float pillX = cx - pillW * 0.5f;
-        float pillY = cy + 19.0f;
-
-        Draw2DProcessor.INSTANCE.drawPanelBlur(null, pillX, pillY, pillW, pillH, 4.2f, hudAlpha);
-        Draw2DProcessor.INSTANCE.drawRect(null, pillX, pillY, pillW, pillH, 4.2f,
-                ColorUtil.rgba(12, 14, 20, Math.round(208.0f * hudAlpha)));
-        Draw2DProcessor.INSTANCE.drawOutline(null, pillX, pillY, pillW, pillH, 4.2f, 0.8f,
-                ColorUtil.withAlphaFloat(hudColor, hudAlpha * 0.72f));
-        Draw2DProcessor.INSTANCE.drawRect(null, pillX + padX, pillY + (pillH - dotSize) * 0.5f, dotSize, dotSize, dotSize * 0.5f,
-                ColorUtil.withAlphaFloat(hudColor, hudAlpha));
-        Fonts.b.a(null, probe.label, pillX + padX + dotSize + gap, Fonts.b.a(fontSize, pillY + pillH * 0.5f),
-                fontSize, ColorUtil.withAlphaFloat(0xFFFFFFFF, hudAlpha));
-        DrawBatcher.flushPending();
-    }
-
-    private Probe evaluateCrosshair(MinecraftClient mc, float tickProgress) {
-        double reach = Math.max(0.5, mc.player.getEntityInteractionRange());
-        float cooldown = Math.clamp(mc.player.getAttackCooldownProgress(tickProgress), 0.0f, 1.0f);
-        boolean checkCd = respectCooldown.isEnabled();
-        boolean usingItem = mc.player.isUsingItem();
-        boolean playersOnly = onlyPlayers.isEnabled();
-        NoFriendDamage nfd = ModuleManager.getInstance().getModule(NoFriendDamage.class);
-
-        Vec3d eye = mc.player.getEyePos();
-        Vec3d look = mc.player.getRotationVec(tickProgress).normalize();
-        double scanRange = reach + 3.5;
-        Vec3d rayEnd = eye.add(look.multiply(scanRange));
-
-        var blockHit = mc.world.raycast(new RaycastContext(
-                eye, rayEnd, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player));
-        double blockDist = blockHit.getType() == HitResult.Type.BLOCK
-                ? eye.distanceTo(blockHit.getPos())
-                : scanRange + 1.0;
-
-        LivingEntity aimed = null;
-        double aimedDist = Double.MAX_VALUE;
-        boolean occluded = false;
-
-        if (mc.crosshairTarget instanceof EntityHitResult ehr && ehr.getEntity() instanceof LivingEntity living && isValidTarget(living, playersOnly)) {
-            aimed = living;
-            aimedDist = eye.distanceTo(ehr.getPos());
-        }
-
-        LivingEntity nearest = aimed;
-        double nearestDist = aimed != null ? Math.min(aimedDist, reach) : Double.MAX_VALUE;
-
-        for (Entity entity : mc.world.getEntities()) {
-            if (!(entity instanceof LivingEntity living) || !isValidTarget(living, playersOnly)) continue;
-            if (entity.squaredDistanceTo(mc.player) > (scanRange + 2.0) * (scanRange + 2.0)) continue;
-            Box bb = living.getBoundingBox().expand(living.getTargetingMargin());
-            double boxDist = distanceToBox(eye, bb);
-            if (boxDist <= scanRange) {
-                if (aimed == null) {
-                    Optional<Vec3d> hit = bb.raycast(eye, rayEnd);
-                    if (hit.isPresent()) {
-                        double d = eye.distanceTo(hit.get());
-                        if (d < aimedDist) {
-                            aimedDist = d;
-                            aimed = living;
-                            occluded = d > blockDist + 0.05;
-                        }
-                    }
-                }
-                if (boxDist < nearestDist && hasLineOfSight(mc, eye, bb)) {
-                    nearestDist = boxDist;
-                    nearest = living;
-                }
-            }
-        }
-
-        if (aimed != null) {
-            if (nfd != null && nfd.shouldCancelAttack(aimed)) return new Probe(true, false, COL_FRIEND, "ДРУГ", 1.0f, 0.9f, cooldown);
-            if (occluded) return new Probe(true, false, COL_CANT, "СТЕНА", 1.0f, 0.95f, cooldown);
-            if (aimedDist > reach + 0.01) return new Probe(true, false, COL_CANT, "ДАЛЕКО", 1.0f, 0.95f, cooldown);
-            if (usingItem) return new Probe(true, false, COL_CANT, "ЗАНЯТ", 1.0f, 0.95f, cooldown);
-            if (checkCd && cooldown < 0.96f) return new Probe(true, false, COL_COOLDOWN, "КД", cooldown, 0.98f, cooldown);
-            if (critIndicator.isEnabled() && isCritReady(mc)) return new Probe(true, true, COL_CRIT, "КРИТ", 1.0f, 1.0f, cooldown);
-            return new Probe(true, true, COL_CAN, "МОЖНО", 1.0f, 1.0f, cooldown);
-        }
-
-        if (nearest != null) {
-            if (nearestDist <= reach + 0.02) {
-                return new Probe(true, false, COL_CANT, "НАВЕДИ", Math.max(0.3f, cooldown), 0.9f, cooldown);
-            }
-            return new Probe(true, false, COL_CANT, "ДАЛЕКО", 0.35f, 0.78f, cooldown);
-        }
-
-        return new Probe(false, false, COL_COOLDOWN, "КД", cooldown, 0.7f, cooldown);
-    }
-
     private static void emitCircleQuad(BufferBuilder mesh, float cx, float cy, float cz, float worldRadius,
                                        float uOffset, int color, float alpha) {
         float uv = 1.04f;
@@ -441,11 +277,7 @@ public class HitReady extends Module {
             allocator.close();
             allocator = null;
         }
-        hudAlpha = 0.0f;
-        readyPop = 0.0f;
-        lastCanHit = false;
         lastWorldNanos = 0L;
-        lastHudNanos = 0L;
     }
 
     private static final class CircleState {
@@ -454,6 +286,4 @@ public class HitReady extends Module {
         boolean initialized;
         long seenAt;
     }
-
-    private record Probe(boolean hasTarget, boolean canHit, int color, String label, float ringFill, float alphaScale, float cooldown) {}
 }

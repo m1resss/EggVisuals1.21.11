@@ -2,7 +2,7 @@ package egg.client;
 
 import egg.client.module.ModuleManager;
 import egg.client.module.render.HitParticles;
-import egg.client.module.render.HitReady;
+import egg.client.module.render.HitReach;
 import egg.client.module.render.KillEffect;
 import egg.client.module.render.ItemRadius;
 import egg.client.module.render.LethalZone;
@@ -90,9 +90,9 @@ public class EggClient implements ClientModInitializer {
                 itemRadius.render(immediate, camPos);
             }
 
-            HitReady hitReady = ModuleManager.getInstance().getModule(HitReady.class);
-            if (hitReady != null && hitReady.isEnabled()) {
-                hitReady.renderWorld3D(matrices, camera, tickDelta, immediate, camPos);
+            HitReach hitReach = ModuleManager.getInstance().getModule(HitReach.class);
+            if (hitReach != null && hitReach.isEnabled()) {
+                hitReach.renderWorld3D(matrices, camera, tickDelta, immediate, camPos);
             }
 
             LethalZone lethalZone = ModuleManager.getInstance().getModule(LethalZone.class);

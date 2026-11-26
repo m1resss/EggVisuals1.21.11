@@ -1146,7 +1146,7 @@ public class ClickGuiScreen extends Screen {
         MODULE_KEYWORDS.put("Glow", new String[]{"свечение", "глов", "обводка", "подсветка", "аура", "glow"});
         MODULE_KEYWORDS.put("NameTags", new String[]{"ники", "неймтаги", "имена", "таблички", "хп игроков", "name tags"});
         MODULE_KEYWORDS.put("Crosshair", new String[]{"прицел", "крестик", "точка", "кастом прицел", "crosshair"});
-        MODULE_KEYWORDS.put("HitReady", new String[]{"круги дистанции", "круги", "круг", "удар", "хит", "рич", "дистанция", "кд", "крит", "можно бить", "хитреди", "hitready", "reach", "attack"});
+        MODULE_KEYWORDS.put("HitReach", new String[]{"круги дистанции", "круги", "круг", "удар", "хит", "рич", "дистанция", "крит", "хитрич", "hitreach", "reach", "attack"});
         MODULE_KEYWORDS.put("Hitmarker", new String[]{"хитмаркер", "маркер удара", "звук удара", "колокольчик", "hitmarker"});
         MODULE_KEYWORDS.put("HitSounds", new String[]{"хитсаунд", "хит саунд", "звук удара", "звуки попадания", "звук попадания", "hitsounds", "hitsound", "skeet", "neverlose"});
         MODULE_KEYWORDS.put("ItemPhysic", new String[]{"физика", "дроп", "вещи", "предметы", "реалистичный дроп", "item physic"});

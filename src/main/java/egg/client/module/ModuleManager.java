@@ -64,7 +64,7 @@ public class ModuleManager {
 
         register(new Crosshair());
 
-        register(new HitReady());
+        register(new HitReach());
 
         register(new Hitmarker());
 
