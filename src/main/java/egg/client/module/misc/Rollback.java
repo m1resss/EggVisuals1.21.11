@@ -24,11 +24,14 @@ import net.minecraft.util.Formatting;
 import net.minecraft.util.Util;
 import net.minecraft.util.math.MathHelper;
 import org.lwjgl.glfw.GLFW;
+import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL21;
 import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL32;
+import org.lwjgl.opengl.GL44;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
@@ -46,6 +49,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
@@ -68,20 +73,31 @@ public class Rollback extends Module {
     private final ButtonSetting saveNowButton = new ButtonSetting("Сохранить сейчас", "Сохранить текущий буфер отката в MP4", this::saveRollback);
     private final ButtonSetting openFolderButton = new ButtonSetting("Открыть папку", "Открыть папку с сохранёнными откатами", this::openOutputFolder);
 
+    private static final int PBO_COUNT = 3;
+    private static final int MAILBOX_SLOTS = 3;
+
     private int readSrcFbo;
+    private int attachedSrcTexId;
+    private int attachedSrcW;
+    private int attachedSrcH;
     private int downscaleFbo;
     private int downscaleTex;
-    private final int[] pboIds = new int[2];
+    private final int[] pboIds = new int[PBO_COUNT];
+    private final long[] pboSyncs = new long[PBO_COUNT];
+    private final ByteBuffer[] pboMapped = new ByteBuffer[PBO_COUNT];
+    private final boolean[] pboPrimed = new boolean[PBO_COUNT];
+    private boolean persistentPboMode;
     private int pboWriteIdx;
-    private boolean[] pboPrimed = new boolean[2];
     private int glWidth;
     private int glHeight;
-    private byte[] readScratch;
 
-    private volatile byte[] latestFrame;
-    private volatile int latestFrameWidth;
-    private volatile int latestFrameHeight;
-    private long lastCaptureNanos;
+    private final Object mailboxLock = new Object();
+    private byte[][] mailboxFrames;
+    private int mailboxWidth;
+    private int mailboxHeight;
+    private int latestReadySlot = -1;
+    private int feederInUseSlot = -1;
+    private long nextCaptureNanos;
 
     private final Object ringLock = new Object();
     private final ArrayDeque<GopChunk> gopRing = new ArrayDeque<>();
@@ -91,6 +107,7 @@ public class Rollback extends Module {
     private int pmtPid = 0x1000;
     private boolean currentGopHasKey;
     private long currentGopStartNanos;
+    private volatile long ringFirstStartNanos;
 
     private final Object sessionLock = new Object();
     private volatile boolean sessionRunning;
@@ -105,7 +122,7 @@ public class Rollback extends Module {
     private String activeEncoderChoice;
 
     private volatile String cachedFfmpegPath;
-    private volatile Boolean nvencSupported;
+    private final Map<String, Boolean> encoderSupportCache = new ConcurrentHashMap<>();
     private volatile boolean startingSession;
     private volatile boolean savingInProgress;
     private volatile long shutdownHookEpoch;
@@ -145,8 +162,10 @@ public class Rollback extends Module {
     @Override
     public void onEnable() {
         super.onEnable();
-        latestFrame = null;
-        lastCaptureNanos = 0L;
+        nextCaptureNanos = 0L;
+        synchronized (mailboxLock) {
+            latestReadySlot = -1;
+        }
         triggerToast("Откат активен", "Буфер " + Math.round(durationSec.get()) + "с • " + saveBind.getKeyName(), false);
     }
 
@@ -155,7 +174,14 @@ public class Rollback extends Module {
         super.onDisable();
         stopEncoderSession();
         cleanupGlPending();
-        latestFrame = null;
+        synchronized (mailboxLock) {
+            latestReadySlot = -1;
+            feederInUseSlot = -1;
+            mailboxFrames = null;
+            mailboxWidth = 0;
+            mailboxHeight = 0;
+        }
+        ringFirstStartNanos = 0L;
         synchronized (ringLock) {
             gopRing.clear();
             currentGop.reset();
@@ -180,10 +206,14 @@ public class Rollback extends Module {
         int targetFps = getTargetFps();
         long frameIntervalNanos = 1_000_000_000L / targetFps;
         long now = System.nanoTime();
-        if (lastCaptureNanos != 0L && now - lastCaptureNanos < frameIntervalNanos) {
+        if (nextCaptureNanos != 0L && now + 1_500_000L < nextCaptureNanos) {
             return;
         }
-        lastCaptureNanos = now;
+        if (nextCaptureNanos == 0L || now - nextCaptureNanos > frameIntervalNanos * 2L) {
+            nextCaptureNanos = now + frameIntervalNanos;
+        } else {
+            nextCaptureNanos += frameIntervalNanos;
+        }
 
         int[] targetDims = computeRecordingResolution(srcW, srcH);
         int recW = targetDims[0];
@@ -200,43 +230,44 @@ public class Rollback extends Module {
         int prevPackAlign = GL11.glGetInteger(GL11.GL_PACK_ALIGNMENT);
 
         try {
-            GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1);
-
-            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, readSrcFbo);
-            GL30.glFramebufferTexture2D(GL30.GL_READ_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, srcTexId, 0);
-
-            if (srcW == recW && srcH == recH) {
-                GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pboIds[pboWriteIdx]);
-                GL11.glReadPixels(0, 0, recW, recH, GL12.GL_BGRA, GL11.GL_UNSIGNED_BYTE, 0L);
-            } else {
-                GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, downscaleFbo);
-                GL30.glBlitFramebuffer(0, 0, srcW, srcH, 0, 0, recW, recH, GL11.GL_COLOR_BUFFER_BIT, GL11.GL_LINEAR);
-                GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, downscaleFbo);
-                GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pboIds[pboWriteIdx]);
-                GL11.glReadPixels(0, 0, recW, recH, GL12.GL_BGRA, GL11.GL_UNSIGNED_BYTE, 0L);
-            }
-            pboPrimed[pboWriteIdx] = true;
-
-            int readIdx = 1 - pboWriteIdx;
-            if (pboPrimed[readIdx]) {
-                int byteSize = recW * recH * 4;
-                GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pboIds[readIdx]);
-                ByteBuffer mapped = GL30.glMapBufferRange(GL21.GL_PIXEL_PACK_BUFFER, 0L, byteSize, GL30.GL_MAP_READ_BIT);
-                if (mapped != null) {
-                    if (readScratch == null || readScratch.length != byteSize) {
-                        readScratch = new byte[byteSize];
-                    }
-                    mapped.get(readScratch, 0, byteSize);
-                    GL15.glUnmapBuffer(GL21.GL_PIXEL_PACK_BUFFER);
-                    byte[] frameCopy = new byte[byteSize];
-                    System.arraycopy(readScratch, 0, frameCopy, 0, byteSize);
-                    latestFrameWidth = recW;
-                    latestFrameHeight = recH;
-                    latestFrame = frameCopy;
+            for (int step = 1; step < PBO_COUNT; step++) {
+                int readIdx = (pboWriteIdx + step) % PBO_COUNT;
+                if (!pboPrimed[readIdx]) continue;
+                if (isSyncReady(readIdx)) {
+                    copyPboToMailbox(readIdx, recW, recH);
+                    pboPrimed[readIdx] = false;
                 }
             }
 
-            pboWriteIdx = readIdx;
+            if (pboPrimed[pboWriteIdx]) {
+                if (!isSyncReady(pboWriteIdx)) {
+                    return;
+                }
+                copyPboToMailbox(pboWriteIdx, recW, recH);
+                pboPrimed[pboWriteIdx] = false;
+            }
+
+            GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1);
+
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, readSrcFbo);
+            if (attachedSrcTexId != srcTexId || attachedSrcW != srcW || attachedSrcH != srcH) {
+                GL30.glFramebufferTexture2D(GL30.GL_READ_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, srcTexId, 0);
+                attachedSrcTexId = srcTexId;
+                attachedSrcW = srcW;
+                attachedSrcH = srcH;
+            }
+
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, downscaleFbo);
+            int filter = (srcW == recW && srcH == recH) ? GL11.GL_NEAREST : GL11.GL_LINEAR;
+            GL30.glBlitFramebuffer(0, srcH, srcW, 0, 0, 0, recW, recH, GL11.GL_COLOR_BUFFER_BIT, filter);
+
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, downscaleFbo);
+            GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pboIds[pboWriteIdx]);
+            GL11.glReadPixels(0, 0, recW, recH, GL12.GL_BGRA, GL11.GL_UNSIGNED_BYTE, 0L);
+
+            pboSyncs[pboWriteIdx] = GL32.glFenceSync(GL32.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+            pboPrimed[pboWriteIdx] = true;
+            pboWriteIdx = (pboWriteIdx + 1) % PBO_COUNT;
         } catch (Throwable t) {
             EggClient.LOGGER.warn("[Rollback] GL capture error", t);
         } finally {
@@ -244,6 +275,70 @@ public class Rollback extends Module {
             GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
             GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDrawFbo);
             GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, prevPackAlign);
+        }
+    }
+
+    private boolean isSyncReady(int idx) {
+        long sync = pboSyncs[idx];
+        if (sync == 0L) {
+            return true;
+        }
+        int status = GL32.glClientWaitSync(sync, 0, 0L);
+        if (status == GL32.GL_ALREADY_SIGNALED || status == GL32.GL_CONDITION_SATISFIED) {
+            GL32.glDeleteSync(sync);
+            pboSyncs[idx] = 0L;
+            return true;
+        }
+        return false;
+    }
+
+    private void copyPboToMailbox(int slotIdx, int w, int h) {
+        int byteSize = w * h * 4;
+        byte[][] frames;
+        int writeSlot = -1;
+        synchronized (mailboxLock) {
+            if (mailboxFrames == null || mailboxWidth != w || mailboxHeight != h) {
+                mailboxFrames = new byte[MAILBOX_SLOTS][byteSize];
+                mailboxWidth = w;
+                mailboxHeight = h;
+                latestReadySlot = -1;
+                feederInUseSlot = -1;
+            }
+            frames = mailboxFrames;
+            for (int i = 0; i < MAILBOX_SLOTS; i++) {
+                if (i != latestReadySlot && i != feederInUseSlot) {
+                    writeSlot = i;
+                    break;
+                }
+            }
+        }
+        if (writeSlot < 0) {
+            return;
+        }
+        byte[] dst = frames[writeSlot];
+        boolean copied = false;
+        if (persistentPboMode) {
+            ByteBuffer mapped = pboMapped[slotIdx];
+            if (mapped != null && mapped.capacity() >= byteSize) {
+                mapped.position(0);
+                mapped.get(dst, 0, byteSize);
+                copied = true;
+            }
+        } else {
+            GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pboIds[slotIdx]);
+            ByteBuffer mapped = GL30.glMapBufferRange(GL21.GL_PIXEL_PACK_BUFFER, 0L, byteSize, GL30.GL_MAP_READ_BIT);
+            if (mapped != null) {
+                mapped.get(dst, 0, byteSize);
+                GL15.glUnmapBuffer(GL21.GL_PIXEL_PACK_BUFFER);
+                copied = true;
+            }
+        }
+        if (copied) {
+            synchronized (mailboxLock) {
+                if (mailboxFrames == frames && mailboxWidth == w && mailboxHeight == h) {
+                    latestReadySlot = writeSlot;
+                }
+            }
         }
     }
 
@@ -483,17 +578,11 @@ public class Rollback extends Module {
     }
 
     private double getBufferedSeconds(long now) {
-        synchronized (ringLock) {
-            long firstStart = Long.MAX_VALUE;
-            if (!gopRing.isEmpty()) {
-                firstStart = gopRing.peekFirst().startNanos;
-            }
-            if (currentGopHasKey && currentGopStartNanos > 0L && currentGopStartNanos < firstStart) {
-                firstStart = currentGopStartNanos;
-            }
-            if (firstStart == Long.MAX_VALUE || firstStart <= 0L) return 0.0;
-            return Math.max(0.0, (now - firstStart) / 1_000_000_000.0);
+        long firstStart = ringFirstStartNanos;
+        if (firstStart <= 0L || firstStart == Long.MAX_VALUE) {
+            return 0.0;
         }
+        return Math.max(0.0, (now - firstStart) / 1_000_000_000.0);
     }
 
     private int getTargetFps() {
@@ -525,6 +614,9 @@ public class Rollback extends Module {
         cleanupGlResources();
 
         readSrcFbo = GL30.glGenFramebuffers();
+        attachedSrcTexId = 0;
+        attachedSrcW = 0;
+        attachedSrcH = 0;
         downscaleFbo = GL30.glGenFramebuffers();
         downscaleTex = GL11.glGenTextures();
 
@@ -543,12 +635,60 @@ public class Rollback extends Module {
         GL30.glFramebufferTexture2D(GL30.GL_DRAW_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, downscaleTex, 0);
 
         int byteSize = w * h * 4;
-        for (int i = 0; i < 2; i++) {
-            pboIds[i] = GL15.glGenBuffers();
-            GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pboIds[i]);
-            GL15.glBufferData(GL21.GL_PIXEL_PACK_BUFFER, byteSize, GL15.GL_STREAM_READ);
-            pboPrimed[i] = false;
+        boolean canPersistent = GL.getCapabilities().OpenGL44;
+        boolean persistentOk = canPersistent;
+        if (canPersistent) {
+            int mapFlags = GL30.GL_MAP_READ_BIT | GL44.GL_MAP_PERSISTENT_BIT | GL44.GL_MAP_COHERENT_BIT;
+            int storageFlags = mapFlags | GL44.GL_CLIENT_STORAGE_BIT;
+            for (int i = 0; i < PBO_COUNT; i++) {
+                pboIds[i] = GL15.glGenBuffers();
+                GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pboIds[i]);
+                GL44.glBufferStorage(GL21.GL_PIXEL_PACK_BUFFER, byteSize, storageFlags);
+                pboMapped[i] = GL30.glMapBufferRange(GL21.GL_PIXEL_PACK_BUFFER, 0L, byteSize, mapFlags);
+                pboSyncs[i] = 0L;
+                pboPrimed[i] = false;
+                if (pboMapped[i] == null) {
+                    persistentOk = false;
+                    break;
+                }
+            }
+            if (!persistentOk) {
+                for (int i = 0; i < PBO_COUNT; i++) {
+                    if (pboMapped[i] != null && pboIds[i] != 0) {
+                        GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pboIds[i]);
+                        GL15.glUnmapBuffer(GL21.GL_PIXEL_PACK_BUFFER);
+                        pboMapped[i] = null;
+                    }
+                    if (pboIds[i] != 0) {
+                        GL15.glDeleteBuffers(pboIds[i]);
+                        pboIds[i] = 0;
+                    }
+                }
+            }
         }
+
+        persistentPboMode = persistentOk;
+        if (!persistentOk) {
+            for (int i = 0; i < PBO_COUNT; i++) {
+                pboIds[i] = GL15.glGenBuffers();
+                GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pboIds[i]);
+                GL15.glBufferData(GL21.GL_PIXEL_PACK_BUFFER, byteSize, GL15.GL_STREAM_READ);
+                pboMapped[i] = null;
+                pboSyncs[i] = 0L;
+                pboPrimed[i] = false;
+            }
+        }
+
+        synchronized (mailboxLock) {
+            if (mailboxWidth != w || mailboxHeight != h || mailboxFrames == null) {
+                mailboxFrames = new byte[MAILBOX_SLOTS][byteSize];
+                mailboxWidth = w;
+                mailboxHeight = h;
+                latestReadySlot = -1;
+                feederInUseSlot = -1;
+            }
+        }
+
         pboWriteIdx = 0;
         glWidth = w;
         glHeight = h;
@@ -569,10 +709,14 @@ public class Rollback extends Module {
     }
 
     private void cleanupGlResources() {
+        int prevPack = GL11.glGetInteger(GL21.GL_PIXEL_PACK_BUFFER_BINDING);
         if (readSrcFbo != 0) {
             GL30.glDeleteFramebuffers(readSrcFbo);
             readSrcFbo = 0;
         }
+        attachedSrcTexId = 0;
+        attachedSrcW = 0;
+        attachedSrcH = 0;
         if (downscaleFbo != 0) {
             GL30.glDeleteFramebuffers(downscaleFbo);
             downscaleFbo = 0;
@@ -581,16 +725,26 @@ public class Rollback extends Module {
             GL11.glDeleteTextures(downscaleTex);
             downscaleTex = 0;
         }
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < PBO_COUNT; i++) {
+            if (pboSyncs[i] != 0L) {
+                GL32.glDeleteSync(pboSyncs[i]);
+                pboSyncs[i] = 0L;
+            }
+            if (pboMapped[i] != null && pboIds[i] != 0) {
+                GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pboIds[i]);
+                GL15.glUnmapBuffer(GL21.GL_PIXEL_PACK_BUFFER);
+                pboMapped[i] = null;
+            }
             if (pboIds[i] != 0) {
                 GL15.glDeleteBuffers(pboIds[i]);
                 pboIds[i] = 0;
             }
             pboPrimed[i] = false;
         }
+        GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, prevPack);
+        persistentPboMode = false;
         glWidth = 0;
         glHeight = 0;
-        readScratch = null;
     }
 
     private void ensureEncoderSession(int w, int h, int fps) {
@@ -635,21 +789,34 @@ public class Rollback extends Module {
         starter.start();
     }
 
-    private void startEncoderSession(String ff, int w, int h, int fps, String qual, String encChoice) {
-
-        boolean useNvenc = false;
-        if (encChoice.contains("NVENC")) {
-            useNvenc = isNvencAvailable(ff);
-        } else if (encChoice.contains("Авто")) {
-            useNvenc = isNvencAvailable(ff);
+    private String resolveCodec(String ff, String encChoice) {
+        if (encChoice.contains("CPU")) {
+            return "libx264";
         }
+        if (encChoice.contains("NVENC")) {
+            return isEncoderAvailable(ff, "h264_nvenc") ? "h264_nvenc" : "libx264";
+        }
+        if (isEncoderAvailable(ff, "h264_nvenc")) {
+            return "h264_nvenc";
+        }
+        if (isEncoderAvailable(ff, "h264_amf")) {
+            return "h264_amf";
+        }
+        if (isEncoderAvailable(ff, "h264_qsv")) {
+            return "h264_qsv";
+        }
+        return "libx264";
+    }
 
-        List<String> cmd = buildEncodeCommand(ff, w, h, fps, qual, useNvenc);
+    private void startEncoderSession(String ff, int w, int h, int fps, String qual, String encChoice) {
+        String codec = resolveCodec(ff, encChoice);
+        List<String> cmd = buildEncodeCommand(ff, w, h, fps, qual, codec);
         try {
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectError(ProcessBuilder.Redirect.DISCARD);
             Process proc = pb.start();
 
+            ringFirstStartNanos = 0L;
             synchronized (ringLock) {
                 gopRing.clear();
                 currentGop.reset();
@@ -684,7 +851,7 @@ public class Rollback extends Module {
         }
     }
 
-    private List<String> buildEncodeCommand(String ff, int w, int h, int fps, String qual, boolean nvenc) {
+    private List<String> buildEncodeCommand(String ff, int w, int h, int fps, String qual, String codec) {
         int crf = switch (qual) {
             case "Ультра" -> 16;
             case "Высокое" -> 20;
@@ -694,6 +861,11 @@ public class Rollback extends Module {
             case "Ультра" -> "18M";
             case "Высокое" -> "10M";
             default -> "5M";
+        };
+        String targetRate = switch (qual) {
+            case "Ультра" -> "14M";
+            case "Высокое" -> "8M";
+            default -> "4M";
         };
         String bufSize = switch (qual) {
             case "Ультра" -> "36M";
@@ -717,49 +889,87 @@ public class Rollback extends Module {
         cmd.add(String.valueOf(fps));
         cmd.add("-i");
         cmd.add("-");
-        cmd.add("-vf");
-        cmd.add("vflip");
 
-        if (nvenc) {
-            cmd.add("-c:v");
-            cmd.add("h264_nvenc");
-            cmd.add("-preset");
-            cmd.add("p1");
-            cmd.add("-tune");
-            cmd.add("ull");
-            cmd.add("-rc");
-            cmd.add("vbr");
-            cmd.add("-cq");
-            cmd.add(String.valueOf(crf));
-            cmd.add("-b:v");
-            cmd.add("0");
-            cmd.add("-maxrate");
-            cmd.add(maxRate);
-            cmd.add("-bufsize");
-            cmd.add(bufSize);
-        } else {
-            cmd.add("-c:v");
-            cmd.add("libx264");
-            cmd.add("-preset");
-            cmd.add("ultrafast");
-            cmd.add("-tune");
-            cmd.add("zerolatency");
-            cmd.add("-crf");
-            cmd.add(String.valueOf(crf));
-            cmd.add("-maxrate");
-            cmd.add(maxRate);
-            cmd.add("-bufsize");
-            cmd.add(bufSize);
-            cmd.add("-sc_threshold");
-            cmd.add("0");
+        switch (codec) {
+            case "h264_nvenc" -> {
+                cmd.add("-c:v");
+                cmd.add("h264_nvenc");
+                cmd.add("-preset");
+                cmd.add("p1");
+                cmd.add("-tune");
+                cmd.add("ull");
+                cmd.add("-rc");
+                cmd.add("vbr");
+                cmd.add("-cq");
+                cmd.add(String.valueOf(crf));
+                cmd.add("-b:v");
+                cmd.add("0");
+                cmd.add("-maxrate");
+                cmd.add(maxRate);
+                cmd.add("-bufsize");
+                cmd.add(bufSize);
+                cmd.add("-pix_fmt");
+                cmd.add("yuv420p");
+            }
+            case "h264_amf" -> {
+                cmd.add("-c:v");
+                cmd.add("h264_amf");
+                cmd.add("-usage");
+                cmd.add("ultralowlatency");
+                cmd.add("-quality");
+                cmd.add("speed");
+                cmd.add("-rc");
+                cmd.add("vbr_latency");
+                cmd.add("-b:v");
+                cmd.add(targetRate);
+                cmd.add("-maxrate");
+                cmd.add(maxRate);
+                cmd.add("-bufsize");
+                cmd.add(bufSize);
+                cmd.add("-pix_fmt");
+                cmd.add("yuv420p");
+            }
+            case "h264_qsv" -> {
+                cmd.add("-c:v");
+                cmd.add("h264_qsv");
+                cmd.add("-preset");
+                cmd.add("veryfast");
+                cmd.add("-global_quality");
+                cmd.add(String.valueOf(crf));
+                cmd.add("-maxrate");
+                cmd.add(maxRate);
+                cmd.add("-bufsize");
+                cmd.add(bufSize);
+                cmd.add("-pix_fmt");
+                cmd.add("nv12");
+            }
+            default -> {
+                int x264Threads = Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 3));
+                cmd.add("-c:v");
+                cmd.add("libx264");
+                cmd.add("-preset");
+                cmd.add("ultrafast");
+                cmd.add("-tune");
+                cmd.add("zerolatency");
+                cmd.add("-threads");
+                cmd.add(String.valueOf(x264Threads));
+                cmd.add("-crf");
+                cmd.add(String.valueOf(crf));
+                cmd.add("-maxrate");
+                cmd.add(maxRate);
+                cmd.add("-bufsize");
+                cmd.add(bufSize);
+                cmd.add("-sc_threshold");
+                cmd.add("0");
+                cmd.add("-pix_fmt");
+                cmd.add("yuv420p");
+            }
         }
 
         cmd.add("-g");
         cmd.add(String.valueOf(fps));
         cmd.add("-keyint_min");
         cmd.add(String.valueOf(fps));
-        cmd.add("-pix_fmt");
-        cmd.add("yuv420p");
         cmd.add("-f");
         cmd.add("mpegts");
         cmd.add("-mpegts_flags");
@@ -775,8 +985,11 @@ public class Rollback extends Module {
         OutputStream out = encoderStdin;
 
         while (sessionRunning && proc.isAlive() && shutdownHookEpoch == epoch) {
-            byte[] frame = latestFrame;
-            if (frame == null || latestFrameWidth != w || latestFrameHeight != h || frame.length != expectedBytes) {
+            boolean hasFrame;
+            synchronized (mailboxLock) {
+                hasFrame = mailboxFrames != null && mailboxWidth == w && mailboxHeight == h && latestReadySlot >= 0;
+            }
+            if (!hasFrame) {
                 LockSupport.parkNanos(5_000_000L);
                 nextTick = System.nanoTime();
                 continue;
@@ -792,10 +1005,32 @@ public class Rollback extends Module {
             }
             nextTick += intervalNanos;
 
+            byte[] frame = null;
+            synchronized (mailboxLock) {
+                if (mailboxFrames != null && mailboxWidth == w && mailboxHeight == h && latestReadySlot >= 0) {
+                    feederInUseSlot = latestReadySlot;
+                    frame = mailboxFrames[feederInUseSlot];
+                }
+            }
+            if (frame == null || frame.length != expectedBytes) {
+                synchronized (mailboxLock) {
+                    if (mailboxWidth == w && mailboxHeight == h) {
+                        feederInUseSlot = -1;
+                    }
+                }
+                continue;
+            }
+
             try {
                 out.write(frame);
             } catch (IOException e) {
                 break;
+            } finally {
+                synchronized (mailboxLock) {
+                    if (mailboxWidth == w && mailboxHeight == h) {
+                        feederInUseSlot = -1;
+                    }
+                }
             }
         }
     }
@@ -871,6 +1106,7 @@ public class Rollback extends Module {
                     currentGop.write(lastPmtPacket, 0, TS_PACKET_SIZE);
                 }
                 trimRingLocked(now);
+                ringFirstStartNanos = !gopRing.isEmpty() ? gopRing.peekFirst().startNanos : currentGopStartNanos;
             }
 
             if (currentGopHasKey) {
@@ -973,23 +1209,26 @@ public class Rollback extends Module {
         }
     }
 
-    private boolean isNvencAvailable(String ff) {
-        if (nvencSupported != null) {
-            return nvencSupported;
+    private boolean isEncoderAvailable(String ff, String codec) {
+        Boolean cached = encoderSupportCache.get(codec);
+        if (cached != null) {
+            return cached;
         }
         try {
+            String pixFmt = "h264_qsv".equals(codec) ? "nv12" : "yuv420p";
             Process p = new ProcessBuilder(
                     ff, "-hide_banner", "-loglevel", "error",
-                    "-f", "lavfi", "-i", "color=c=black:s=64x64:d=0.04",
-                    "-c:v", "h264_nvenc", "-f", "null", "-"
+                    "-f", "lavfi", "-i", "color=c=black:s=256x256:d=0.04",
+                    "-pix_fmt", pixFmt,
+                    "-c:v", codec, "-f", "null", "-"
             ).redirectOutput(ProcessBuilder.Redirect.DISCARD)
                     .redirectError(ProcessBuilder.Redirect.DISCARD)
                     .start();
             boolean ok = p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() == 0;
-            nvencSupported = ok;
+            encoderSupportCache.put(codec, ok);
             return ok;
         } catch (Exception e) {
-            nvencSupported = false;
+            encoderSupportCache.put(codec, false);
             return false;
         }
     }
