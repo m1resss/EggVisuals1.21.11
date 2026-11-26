@@ -223,6 +223,36 @@ public final class Pipelines {
             .build()
     );
 
+    public static final RenderPipeline HIT_SLASH = register(
+        RenderPipeline.builder()
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/hit_slash"))
+            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/world/jump_caustic"))
+            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/world/hit_slash"))
+            .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
+            .withUniform("Projection", UniformType.UNIFORM_BUFFER)
+            .withBlend(new BlendFunction(SourceFactor.SRC_ALPHA, DestFactor.ONE, SourceFactor.ONE, DestFactor.ZERO))
+            .withDepthTestFunction(DepthTestFunction.LEQUAL_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .withVertexFormat(VertexFormats.POSITION_TEXTURE_COLOR, DrawMode.QUADS)
+            .build()
+    );
+
+    public static final RenderPipeline HIT_IMPACT = register(
+        RenderPipeline.builder()
+            .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/hit_impact"))
+            .withVertexShader(Identifier.of(EggClient.MOD_ID, "core/world/jump_caustic"))
+            .withFragmentShader(Identifier.of(EggClient.MOD_ID, "core/world/hit_impact"))
+            .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
+            .withUniform("Projection", UniformType.UNIFORM_BUFFER)
+            .withBlend(new BlendFunction(SourceFactor.SRC_ALPHA, DestFactor.ONE, SourceFactor.ONE, DestFactor.ZERO))
+            .withDepthTestFunction(DepthTestFunction.LEQUAL_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .withVertexFormat(VertexFormats.POSITION_TEXTURE_COLOR, DrawMode.QUADS)
+            .build()
+    );
+
     public static final RenderPipeline COLOR_COPY = register(
         RenderPipeline.builder()
             .withLocation(Identifier.of(EggClient.MOD_ID, "pipeline/color_copy"))

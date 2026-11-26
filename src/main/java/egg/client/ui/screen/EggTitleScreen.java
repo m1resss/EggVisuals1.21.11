@@ -88,6 +88,7 @@ public class EggTitleScreen extends Screen {
 
     private static final List<ChangeDay> CHANGELOG_DAYS = List.of(
             new ChangeDay("ChangeLog 26.11.2026", List.of(
+                    new ChangeItem("[+]", "HitEffect: новый 3D-эффект при ударе с режимами «Разрез», «Линза» и «Отголосок» и усилением критов"),
                     new ChangeItem("[+]", "MainMenu (Аккаунты): новая кнопка и панель быстрой смены пиратских ников, сохранения списка и генерации случайного ника"),
                     new ChangeItem("[//]", "ItemRadius: исправлен 3D-рендер и добавлены зоны предметов FunTime и HolyWorld (трапки, пласт, дезориентация, снежок, бур)"),
                     new ChangeItem("[//]", "Inventory: новый двухпанельный интерфейс сохранений, полного просмотра инвентаря 9x4 и нижней панели сохранения"),

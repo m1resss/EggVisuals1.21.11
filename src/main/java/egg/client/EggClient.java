@@ -105,6 +105,11 @@ public class EggClient implements ClientModInitializer {
                 hitParticles.render(immediate, camPos);
             }
 
+            egg.client.module.render.HitEffect hitEffect = ModuleManager.getInstance().getModule(egg.client.module.render.HitEffect.class);
+            if (hitEffect != null && hitEffect.isEnabled()) {
+                hitEffect.render(immediate, camPos, tickDelta);
+            }
+
             KillEffect killEffect = ModuleManager.getInstance().getModule(KillEffect.class);
             if (killEffect != null && killEffect.isEnabled()) {
                 killEffect.render(immediate, camPos);
