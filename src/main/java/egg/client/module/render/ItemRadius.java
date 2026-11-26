@@ -1,24 +1,41 @@
 package egg.client.module.render;
 
+import com.mojang.blaze3d.vertex.VertexFormat.DrawMode;
 import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.ModeSetting;
 import egg.client.module.setting.SliderSetting;
+import egg.client.render.shader.MeshDrawUtil;
+import egg.client.render.shader.Pipelines;
+import egg.client.render.world.TrajectoryLines;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
 import egg.client.util.EntityUtil;
 import egg.client.util.FriendManager;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.RenderLayers;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.render.VertexFormats;
+import net.minecraft.client.util.BufferAllocator;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.LoreComponent;
+import net.minecraft.component.type.NbtComponent;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtList;
+import net.minecraft.text.Text;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.MathHelper;
@@ -26,35 +43,98 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
 import org.joml.Vector3f;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
 
 public class ItemRadius extends Module {
 
-    private final ModeSetting server = new ModeSetting("Сервер", "Funtime", "Выбор сервера", "Funtime", "HolyWorld");
+    private static final String SRV_FT = "FunTime";
+    private static final String SRV_HW = "HolyWorld";
+    private static final String SRV_FC = "FunCubes";
 
-    private final BooleanSetting showDez = new BooleanSetting("Дезка", true, "Радиус дезориентации (10м)");
-    private final BooleanSetting showYavka = new BooleanSetting("Явка", true, "Радиус явной пыли (10м)");
-    private final BooleanSetting showFireCharge = new BooleanSetting("Огненный заряд", true, "Радиус огненного заряда / смерча (10м)");
-    private final BooleanSetting showGodAura = new BooleanSetting("Божья Аура", true, "Радиус божьей ауры (2-3м)");
-    private final BooleanSetting showTrap = new BooleanSetting("Трапка", true, "Куб трапки / ловушки (4х4х4м)");
-    private final BooleanSetting showPlast = new BooleanSetting("Пласт", true, "Стена пласта перед игроком (4х4х1.5м)");
+    private static final int HIT_COLOR = 0xFF22C55E;
+    private static final int FRIEND_COLOR = 0xFF2BFF88;
 
-    private final BooleanSetting radarWave = new BooleanSetting("Радарная волна", true, "Анимированный сканирующий луч");
-    private final BooleanSetting pulseRing = new BooleanSetting("Пульсация", true, "Расширяющееся эхо-кольцо");
+    private final ModeSetting server = new ModeSetting("Сервер", SRV_FT, "Выбор сервера", SRV_FT, SRV_HW, SRV_FC);
+
+    private final BooleanSetting showDez = new BooleanSetting("Дезориентация", true, "Радиус дезориентации (10м)");
+    private final BooleanSetting showYavka = new BooleanSetting("Явная пыль", true, "Радиус явной пыли (10м)");
+    private final BooleanSetting showFireCharge = new BooleanSetting("Огненный смерч", true, "Радиус огненного смерча (10м)");
+    private final BooleanSetting showGodAura = new BooleanSetting("Божья Аура", true, "Радиус божьей ауры (2м)");
+    private final BooleanSetting showSnowball = new BooleanSetting("Снежок заморозка", true, "Траектория и радиус снежка заморозки (5м)");
+    private final BooleanSetting showTrap = new BooleanSetting("Трапка", true, "Зона трапки (5x4x5 или 7x6x7)");
+    private final BooleanSetting dragonTrap = new BooleanSetting("Драконья трапка", false, "Увеличенная зона драконьей трапки и пласта (7x6x7)");
+    private final BooleanSetting showPlast = new BooleanSetting("Пласт", true, "Зона установки пласта (по взгляду)");
+    private final BooleanSetting showDrill = new BooleanSetting("Бур / Бульдозер", true, "Зона копания кирки с чарами Бур или Бульдозер");
+
+    private final BooleanSetting hwStun = new BooleanSetting("Стан (Звезда)", true, "Зона стана 30x30x30 (15м)");
+    private final BooleanSetting hwExplosiveTrap = new BooleanSetting("Взрывная трапка", true, "Зона взрывной трапки (осколок призмарина)");
+    private final BooleanSetting hwTrap = new BooleanSetting("Трапка HW", true, "Зона обычной трапки (плод хоруса)");
+    private final BooleanSetting hwJake = new BooleanSetting("Светильник Джейка", true, "Радиус светильника Джейка (15м)");
+
+    private final BooleanSetting fcLightning = new BooleanSetting("Шаровая молния", true, "Зона сбития элитр (10м)");
+    private final BooleanSetting fcSlime = new BooleanSetting("Ком слизи", true, "Зона кома слизи (5м)");
+    private final BooleanSetting fcScute = new BooleanSetting("Черепаший захват", true, "Зона черепашьего захвата (7x6x7)");
+    private final BooleanSetting fcWeb = new BooleanSetting("Паутина судьбы", true, "Стена паутины 3x3 перед игроком");
+    private final BooleanSetting fcStun = new BooleanSetting("Стан FC", true, "Зона стана 60x60x60 (30м)");
+    private final BooleanSetting fcMagnet = new BooleanSetting("Магнитный шар", true, "Зона магнитного шара (7м)");
+
+    private final BooleanSetting onlyDonate = new BooleanSetting("Только донат-NBT", false, "Проверять NBT и лор сервера (выкл — любые предметы)");
+    private final BooleanSetting radarWave = new BooleanSetting("Радарная волна", true, "Анимированный сканирующий луч на круге");
+    private final BooleanSetting pulseRing = new BooleanSetting("Пульсация", true, "Расширяющееся эхо-кольцо на круге");
     private final SliderSetting fillOpacity = new SliderSetting("Прозрачность", 40.0, 5.0, 100.0, 5.0, "Прозрачность заливки");
 
     private float threatTimer = 0.0f;
     private float animTime = 0.0f;
     private long lastFrameNanos = 0L;
-
-    private Vec3d plastSmoothedCenter = Vec3d.ZERO;
-    private float plastSmoothedYawDeg = 0.0f;
-    private float plastSmoothedPitchDeg = 0.0f;
-    private boolean plastHasSmoothedPose = false;
+    private BufferAllocator lineAllocator;
 
     public ItemRadius() {
-        super("ItemRadius", "Показывает круги радиуса действия предметов на земле", Category.ESP);
-        addSettings(server, showDez, showYavka, showFireCharge, showGodAura, showTrap, showPlast, radarWave, pulseRing, fillOpacity);
+        super("ItemRadius", "Показывает зоны и радиусы донат-предметов (FunTime, HolyWorld, FunCubes)", Category.ESP);
+
+        showDez.setVisible(() -> server.is(SRV_FT));
+        showYavka.setVisible(() -> server.is(SRV_FT));
+        showFireCharge.setVisible(() -> server.is(SRV_FT));
+        showGodAura.setVisible(() -> server.is(SRV_FT));
+        showSnowball.setVisible(() -> server.is(SRV_FT));
+        showTrap.setVisible(() -> server.is(SRV_FT));
+        dragonTrap.setVisible(() -> server.is(SRV_FT) && (showTrap.isEnabled() || showPlast.isEnabled()));
+        showPlast.setVisible(() -> server.is(SRV_FT));
+        showDrill.setVisible(() -> server.is(SRV_FT) || server.is(SRV_HW));
+
+        hwStun.setVisible(() -> server.is(SRV_HW));
+        hwExplosiveTrap.setVisible(() -> server.is(SRV_HW));
+        hwTrap.setVisible(() -> server.is(SRV_HW));
+        hwJake.setVisible(() -> server.is(SRV_HW));
+
+        fcLightning.setVisible(() -> server.is(SRV_FC));
+        fcSlime.setVisible(() -> server.is(SRV_FC));
+        fcScute.setVisible(() -> server.is(SRV_FC));
+        fcWeb.setVisible(() -> server.is(SRV_FC));
+        fcStun.setVisible(() -> server.is(SRV_FC));
+        fcMagnet.setVisible(() -> server.is(SRV_FC));
+
+        addSettings(
+                server,
+                showDez, showYavka, showFireCharge, showGodAura, showSnowball, showTrap, dragonTrap, showPlast,
+                hwStun, hwExplosiveTrap, hwTrap, hwJake,
+                fcLightning, fcSlime, fcScute, fcWeb, fcStun, fcMagnet,
+                showDrill, onlyDonate, radarWave, pulseRing, fillOpacity
+        );
+    }
+
+    @Override
+    public void onDisable() {
+        super.onDisable();
+        if (lineAllocator != null) {
+            lineAllocator.close();
+            lineAllocator = null;
+        }
+        threatTimer = 0.0f;
     }
 
     public void render(VertexConsumerProvider consumers, Vec3d camPos) {
@@ -64,210 +144,713 @@ public class ItemRadius extends Module {
 
         long now = System.nanoTime();
         if (lastFrameNanos == 0L) lastFrameNanos = now;
-        float dt = (float) ((now - lastFrameNanos) * 1e-9);
+        float dt = Math.clamp((float) ((now - lastFrameNanos) * 1e-9), 0.001f, 0.05f);
         lastFrameNanos = now;
-        if (dt <= 0.0f || dt > 0.1f) dt = 0.016f;
-
         animTime += dt;
+
+        float tickDelta = mc.getRenderTickCounter() != null ? mc.getRenderTickCounter().getTickProgress(false) : 1.0f;
+        Vec3d playerPos = new Vec3d(
+                MathHelper.lerp(tickDelta, mc.player.lastRenderX, mc.player.getX()),
+                MathHelper.lerp(tickDelta, mc.player.lastRenderY, mc.player.getY()),
+                MathHelper.lerp(tickDelta, mc.player.lastRenderZ, mc.player.getZ())
+        );
 
         ItemStack main = mc.player.getMainHandStack();
         ItemStack off = mc.player.getOffHandStack();
 
-        boolean isFT = server.is("Funtime");
-        String activeType = null;
-        ItemStack heldStack = null;
+        List<String> activeTypes = new ArrayList<>(2);
+        String mainType = resolveMatchingType(main);
+        if (mainType != null) activeTypes.add(mainType);
+        String offType = resolveMatchingType(off);
+        if (offType != null && !offType.equals(mainType)) activeTypes.add(offType);
 
-        String[] types = {"dez", "yavka", "fire_charge", "god_aura", "trap", "plast"};
-        for (String type : types) {
-            if (!isSettingAllowed(type)) continue;
-
-            if (isItemMatching(main, isFT, type)) {
-                activeType = type;
-                heldStack = main;
-                break;
-            } else if (isItemMatching(off, isFT, type)) {
-                activeType = type;
-                heldStack = off;
-                break;
-            }
-        }
-
-        if (activeType == null) {
-            plastHasSmoothedPose = false;
+        if (activeTypes.isEmpty()) {
             threatTimer = Math.max(0.0f, threatTimer - dt * 4.0f);
             return;
         }
 
         VertexConsumer quadBuffer = consumers.getBuffer(RenderLayers.debugQuads());
-        Vec3d playerPos = mc.player.getEntityPos();
-
         int accentColor = Theme.getAccent();
-        int alertColor = 0xFFFF2A4B;
-        int friendColor = 0xFF2BFF88;
+        boolean anyEnemy = false;
 
-        switch (activeType) {
-            case "dez":
-            case "yavka":
-            case "fire_charge": {
-                plastHasSmoothedPose = false;
-                float radius = 10.0f;
-                Vec3d center = new Vec3d(playerPos.x, playerPos.y + 0.02, playerPos.z);
-                boolean enemyInRadius = checkPlayersInRadius(mc.player, center, radius);
+        for (String type : activeTypes) {
+            boolean hit = renderFeature(mc, type, type.equals(mainType) ? main : off, quadBuffer, playerPos, camPos, tickDelta, accentColor);
+            if (hit) anyEnemy = true;
+        }
 
-                float targetThreat = enemyInRadius ? 1.0f : 0.0f;
-                threatTimer += (targetThreat - threatTimer) * Math.min(1.0f, dt * 6.0f);
+        float targetThreat = anyEnemy ? 1.0f : 0.0f;
+        threatTimer += (targetThreat - threatTimer) * Math.min(1.0f, dt * 8.0f);
+    }
 
-                renderCyberCircle(quadBuffer, center, camPos, radius, accentColor, alertColor, threatTimer, animTime);
-                break;
+    private String resolveMatchingType(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return null;
+        Item item = stack.getItem();
+        boolean strict = onlyDonate.isEnabled();
+
+        if (server.is(SRV_FT)) {
+            if (showTrap.isEnabled() && item == Items.NETHERITE_SCRAP && (!strict || isFunTimeTrap(stack))) {
+                return "ft_trap";
             }
-            case "god_aura": {
-                plastHasSmoothedPose = false;
-                float radius = isFT ? 2.0f : 2.5f;
-                Vec3d center = new Vec3d(playerPos.x, playerPos.y + 0.02, playerPos.z);
-                boolean friendInRadius = checkFriendsInRadius(mc.player, center, radius);
-                boolean enemyInRadius = checkPlayersInRadius(mc.player, center, radius);
-
-                float targetThreat = enemyInRadius ? 1.0f : 0.0f;
-                threatTimer += (targetThreat - threatTimer) * Math.min(1.0f, dt * 6.0f);
-
-                int baseCol = friendInRadius ? friendColor : accentColor;
-                renderCyberCircle(quadBuffer, center, camPos, radius, baseCol, alertColor, threatTimer, animTime);
-                break;
+            if (showPlast.isEnabled() && item == Items.DRIED_KELP && (!strict || isFunTimePlast(stack))) {
+                return "ft_plast";
             }
-            case "trap": {
-                plastHasSmoothedPose = false;
-                Vec3d cubeCenter = new Vec3d(playerPos.x, playerPos.y + 2.0, playerPos.z);
-                boolean enemyInTrap = checkPlayersInRadius(mc.player, cubeCenter, 2.5);
-
-                float targetThreat = enemyInTrap ? 1.0f : 0.0f;
-                threatTimer += (targetThreat - threatTimer) * Math.min(1.0f, dt * 6.0f);
-
-                renderHolographicTrap(quadBuffer, cubeCenter, camPos, 4.0f, accentColor, alertColor, threatTimer, animTime);
-                break;
+            if (showDez.isEnabled() && item == Items.ENDER_EYE && (!strict || matchesKeywordOrBukkit(stack, "disorient", "dez", "дез", "ослеп"))) {
+                return "ft_dez";
             }
-            case "plast": {
-                PlanePose targetPose = computePlastPose(mc, dt);
-                PlanePose smoothPose = smoothPlastPose(targetPose, dt);
-                boolean enemyNearPlast = checkPlayersInRadius(mc.player, smoothPose.center, 2.5);
+            if (showYavka.isEnabled() && item == Items.SUGAR && (!strict || matchesKeywordOrBukkit(stack, "dust", "yavka", "явн", "пыль", "световая вспышка"))) {
+                return "ft_yavka";
+            }
+            if (showFireCharge.isEnabled() && item == Items.FIRE_CHARGE && (!strict || matchesKeywordOrBukkit(stack, "fire", "smerch", "смерч", "огненная волна"))) {
+                return "ft_fire";
+            }
+            if (showGodAura.isEnabled() && item == Items.PHANTOM_MEMBRANE && (!strict || matchesKeywordOrBukkit(stack, "aura", "аур", "бож", "божественная аура"))) {
+                return "ft_aura";
+            }
+            if (showSnowball.isEnabled() && item == Items.SNOWBALL && (!strict || matchesKeywordOrBukkit(stack, "freeze", "snow", "снеж", "замороз", "ледяная сфера"))) {
+                return "ft_snowball";
+            }
+            if (showDrill.isEnabled() && isPickaxe(item) && resolveDrillSpec(stack, true) != null) {
+                return "drill_ft";
+            }
+            return null;
+        }
 
-                float targetThreat = enemyNearPlast ? 1.0f : 0.0f;
-                threatTimer += (targetThreat - threatTimer) * Math.min(1.0f, dt * 6.0f);
+        if (server.is(SRV_HW)) {
+            if (hwStun.isEnabled() && item == Items.NETHER_STAR && (!strict || matchesKeywordOrKringe(stack, "stun", "стан"))) {
+                return "hw_stun";
+            }
+            if (hwExplosiveTrap.isEnabled() && item == Items.PRISMARINE_SHARD && (!strict || matchesKeywordOrKringe(stack, "explos", "взрыв", "трап"))) {
+                return "hw_explosive_trap";
+            }
+            if (hwTrap.isEnabled() && item == Items.POPPED_CHORUS_FRUIT && (!strict || matchesKeywordOrKringe(stack, "trap", "трап"))) {
+                return "hw_trap";
+            }
+            if (hwJake.isEnabled() && item == Items.JACK_O_LANTERN && (!strict || isHolyWorldJake(stack))) {
+                return "hw_jake";
+            }
+            if (showDrill.isEnabled() && isPickaxe(item) && resolveDrillSpec(stack, false) != null) {
+                return "drill_hw";
+            }
+            return null;
+        }
 
-                renderHolographicPlast(quadBuffer, smoothPose, camPos, 4.0f, 4.0f, 1.5f, accentColor, alertColor, threatTimer, animTime);
-                break;
+        if (server.is(SRV_FC)) {
+            if (fcLightning.isEnabled() && item == Items.NETHER_STAR && (!strict || matchesKeywordOrBukkit(stack, "lightning", "молни", "шаров"))) {
+                return "fc_lightning";
+            }
+            if (fcSlime.isEnabled() && item == Items.SLIME_BALL && (!strict || matchesKeywordOrBukkit(stack, "slime", "слиз", "ком"))) {
+                return "fc_slime";
+            }
+            if (fcScute.isEnabled() && item == Items.TURTLE_SCUTE && (!strict || matchesKeywordOrBukkit(stack, "turtle", "scute", "черепа"))) {
+                return "fc_scute";
+            }
+            if (fcWeb.isEnabled() && item == Items.COBWEB && (!strict || matchesKeywordOrBukkit(stack, "web", "паутин", "судьб"))) {
+                return "fc_web";
+            }
+            if (fcStun.isEnabled() && item == Items.ENDER_EYE && (!strict || matchesKeywordOrBukkit(stack, "stun", "стан"))) {
+                return "fc_stun";
+            }
+            if (fcMagnet.isEnabled() && item == Items.FIREWORK_STAR && (!strict || matchesKeywordOrBukkit(stack, "magnet", "магнит"))) {
+                return "fc_magnet";
             }
         }
+
+        return null;
     }
 
-    private boolean isSettingAllowed(String type) {
-        return switch (type) {
-            case "dez" -> showDez.isEnabled();
-            case "yavka" -> showYavka.isEnabled();
-            case "fire_charge" -> showFireCharge.isEnabled();
-            case "god_aura" -> showGodAura.isEnabled();
-            case "trap" -> showTrap.isEnabled();
-            case "plast" -> showPlast.isEnabled();
-            default -> false;
-        };
-    }
-
-    private boolean isItemMatching(ItemStack stack, boolean isFT, String type) {
-        if (stack == null || stack.isEmpty()) return false;
-        Item item = stack.getItem();
-        String name = stack.getName().getString().toLowerCase();
-
+    private boolean renderFeature(MinecraftClient mc, String type, ItemStack stack, VertexConsumer buf,
+                                  Vec3d playerPos, Vec3d camPos, float tickDelta, int accentColor) {
         switch (type) {
-            case "dez":
-                if (item != Items.ENDER_EYE) return false;
-                if (isFT) {
-                    return containsCyrillicLetter(stack, 'Я') || name.contains("дез");
-                } else {
-                    return name.contains("ослеп") || name.contains("дез") || name.contains("сфер");
+            case "ft_dez":
+            case "ft_yavka":
+            case "ft_fire": {
+                double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
+                Vec3d circleCenter = new Vec3d(playerPos.x, groundY, playerPos.z);
+                boolean hit = hasEnemyInRadius(mc, playerPos, 10.0);
+                renderCyberCircle(buf, circleCenter, camPos, 10.0f, accentColor, HIT_COLOR, hit ? Math.max(threatTimer, 0.35f) : threatTimer, animTime);
+                return hit;
+            }
+            case "ft_aura": {
+                double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
+                Vec3d circleCenter = new Vec3d(playerPos.x, groundY, playerPos.z);
+                boolean friendIn = hasFriendInRadius(mc, playerPos, 2.0);
+                boolean enemyIn = hasEnemyInRadius(mc, playerPos, 2.0);
+                int baseCol = friendIn ? FRIEND_COLOR : accentColor;
+                renderCyberCircle(buf, circleCenter, camPos, 2.0f, baseCol, HIT_COLOR, enemyIn ? Math.max(threatTimer, 0.35f) : threatTimer, animTime);
+                return enemyIn;
+            }
+            case "ft_snowball": {
+                return renderSnowballZone(mc, buf, camPos, tickDelta, accentColor);
+            }
+            case "ft_trap": {
+                BlockPos pos = mc.player.getBlockPos();
+                boolean dragon = dragonTrap.isEnabled();
+                Box zone = dragon
+                        ? new Box(pos.getX() - 3, pos.getY(), pos.getZ() - 3, pos.getX() + 4, pos.getY() + 6, pos.getZ() + 4)
+                        : new Box(pos.getX() - 2, pos.getY(), pos.getZ() - 2, pos.getX() + 3, pos.getY() + 4, pos.getZ() + 3);
+                boolean hit = hasEnemyInBox(mc, zone);
+                renderZoneBox(buf, zone.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, true);
+                return hit;
+            }
+            case "ft_plast": {
+                return renderFunTimePlast(mc, buf, camPos, accentColor);
+            }
+            case "drill_ft": {
+                int[] spec = resolveDrillSpec(stack, true);
+                if (spec != null) {
+                    Box box = computeDrillBox(mc, spec[0], spec[1]);
+                    if (box != null) {
+                        renderZoneBox(buf, box.contract(0.005), camPos, accentColor, HIT_COLOR, 0.0f, animTime, false);
+                    }
                 }
-            case "yavka":
-                if (item != Items.SUGAR) return false;
-                if (isFT) {
-                    return containsCyrillicLetter(stack, 'Я') || name.contains("явк") || name.contains("пыль");
-                } else {
-                    return name.contains("пыль") || name.contains("явк") || name.contains("просвет");
+                return false;
+            }
+            case "hw_stun": {
+                Box box = new Box(playerPos.x - 15.0, playerPos.y - 15.0, playerPos.z - 15.0,
+                        playerPos.x + 15.0, playerPos.y + 15.0, playerPos.z + 15.0);
+                boolean hit = hasEnemyInBox(mc, box);
+                renderZoneBox(buf, box, camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, false);
+                double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
+                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 15.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime);
+                return hit;
+            }
+            case "hw_explosive_trap": {
+                BlockPos pos = mc.player.getBlockPos();
+                Box visual = new Box(pos.getX() - 3, pos.getY() - 3, pos.getZ() - 3, pos.getX() + 4, pos.getY(), pos.getZ() + 4);
+                Box detect = new Box(pos.getX() - 3, pos.getY() - 3, pos.getZ() - 3, pos.getX() + 4, pos.getY() + 4, pos.getZ() + 4);
+                boolean hit = hasEnemyInBox(mc, detect);
+                renderZoneBox(buf, visual.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, true);
+                return hit;
+            }
+            case "hw_trap": {
+                BlockPos pos = mc.player.getBlockPos();
+                Box zone = new Box(pos.getX() - 2, pos.getY(), pos.getZ() - 2, pos.getX() + 3, pos.getY() + 4, pos.getZ() + 3);
+                boolean hit = hasEnemyInBox(mc, zone);
+                renderZoneBox(buf, zone.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, true);
+                return hit;
+            }
+            case "hw_jake": {
+                double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
+                Vec3d circleCenter = new Vec3d(playerPos.x, groundY, playerPos.z);
+                boolean hit = hasEnemyInRadius(mc, playerPos, 15.0);
+                renderCyberCircle(buf, circleCenter, camPos, 15.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime);
+                return hit;
+            }
+            case "drill_hw": {
+                int[] spec = resolveDrillSpec(stack, false);
+                if (spec != null) {
+                    Box box = computeDrillBox(mc, spec[0], spec[1]);
+                    if (box != null) {
+                        renderZoneBox(buf, box.contract(0.005), camPos, accentColor, HIT_COLOR, 0.0f, animTime, false);
+                    }
                 }
-            case "fire_charge":
-                if (isFT) {
-                    if (item != Items.FIRE_CHARGE) return false;
-                    return containsCyrillicLetter(stack, 'С') || name.contains("смерч") || name.contains("заряд");
+                return false;
+            }
+            case "fc_lightning": {
+                Box box = new Box(playerPos.x - 10.0, playerPos.y - 10.0, playerPos.z - 10.0,
+                        playerPos.x + 10.0, playerPos.y + 10.0, playerPos.z + 10.0);
+                boolean hit = hasElytraEnemyInBox(mc, box);
+                renderZoneBox(buf, box, camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, false);
+                double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
+                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 10.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime);
+                return hit;
+            }
+            case "fc_slime": {
+                double y = playerPos.y + 1.0;
+                Box detect = new Box(playerPos.x - 5.0, y - 5.0, playerPos.z - 5.0, playerPos.x + 5.0, y + 5.0, playerPos.z + 5.0);
+                boolean hit = hasEnemyInBox(mc, detect);
+                double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
+                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 5.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime);
+                return hit;
+            }
+            case "fc_scute": {
+                BlockPos pos = mc.player.getBlockPos();
+                Box zone = new Box(pos.getX() - 3, pos.getY() - 1, pos.getZ() - 3, pos.getX() + 4, pos.getY() + 5, pos.getZ() + 4);
+                boolean hit = hasEnemyInBox(mc, zone);
+                renderZoneBox(buf, zone.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, true);
+                return hit;
+            }
+            case "fc_web": {
+                BlockPos pos = mc.player.getBlockPos();
+                float yaw = (mc.player.getYaw() % 360.0f + 360.0f) % 360.0f;
+                BlockPos base;
+                boolean xWide;
+                if (yaw >= 315.0f || yaw < 45.0f) {
+                    base = pos.add(0, 0, 3);
+                    xWide = true;
+                } else if (yaw >= 45.0f && yaw < 135.0f) {
+                    base = pos.add(-3, 0, 0);
+                    xWide = false;
+                } else if (yaw >= 135.0f && yaw < 225.0f) {
+                    base = pos.add(0, 0, -3);
+                    xWide = true;
                 } else {
-                    if (item != Items.FIRE_CHARGE && item != Items.FIREWORK_STAR) return false;
-                    return name.contains("смерч") || name.contains("огн") || name.contains("буря");
+                    base = pos.add(3, 0, 0);
+                    xWide = false;
                 }
-            case "god_aura":
-                if (item != Items.PHANTOM_MEMBRANE) return false;
-                if (isFT) {
-                    return containsCyrillicLetter(stack, 'У') || name.contains("аур") || name.contains("бож");
-                } else {
-                    return name.contains("аур") || name.contains("бог") || name.contains("благ");
-                }
-            case "trap":
-                if (isFT) {
-                    if (item != Items.NETHERITE_SCRAP) return false;
-                    return containsCyrillicLetter(stack, 'А') || name.contains("трап");
-                } else {
-                    if (item != Items.NETHERITE_SCRAP && item != Items.PRISMARINE_SHARD) return false;
-                    return name.contains("трап") || name.contains("лов");
-                }
-            case "plast":
-                if (item != Items.DRIED_KELP) return false;
-                if (isFT) {
-                    return containsCyrillicLetter(stack, 'П') || name.contains("пласт");
-                } else {
-                    return name.contains("пласт") || name.contains("стен") || name.contains("щит");
-                }
+                Box wall = xWide
+                        ? new Box(base.getX() - 1, base.getY(), base.getZ(), base.getX() + 2, base.getY() + 3, base.getZ() + 1)
+                        : new Box(base.getX(), base.getY(), base.getZ() - 1, base.getX() + 1, base.getY() + 3, base.getZ() + 2);
+                boolean hit = hasEnemyInBox(mc, wall);
+                renderZoneBox(buf, wall.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, true);
+                return hit;
+            }
+            case "fc_stun": {
+                Box box = new Box(playerPos.x - 30.0, playerPos.y - 30.0, playerPos.z - 30.0,
+                        playerPos.x + 30.0, playerPos.y + 30.0, playerPos.z + 30.0);
+                boolean hit = hasEnemyInBox(mc, box);
+                renderZoneBox(buf, box, camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, false);
+                double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
+                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 30.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime);
+                return hit;
+            }
+            case "fc_magnet": {
+                Box detect = new Box(playerPos.x - 7.0, playerPos.y - 6.0, playerPos.z - 7.0,
+                        playerPos.x + 7.0, playerPos.y + 8.0, playerPos.z + 7.0);
+                boolean hit = hasEnemyInBox(mc, detect);
+                double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
+                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 7.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime);
+                return hit;
+            }
             default:
                 return false;
         }
     }
 
-    private boolean containsCyrillicLetter(ItemStack stack, char letter) {
-        if (stack == null || stack.isEmpty()) return false;
-        String name = stack.getName().getString();
-        if (name == null || name.isEmpty()) return false;
-        String upper = name.toUpperCase();
-        return upper.indexOf(Character.toUpperCase(letter)) >= 0;
+    private boolean renderFunTimePlast(MinecraftClient mc, VertexConsumer buf, Vec3d camPos, int accentColor) {
+        BlockPos pos = mc.player.getBlockPos();
+        float yaw = mc.player.getYaw();
+        float pitch = mc.player.getPitch();
+        boolean dragon = dragonTrap.isEnabled();
+
+        if (Math.abs(pitch) > 45.0f) {
+            Box detect;
+            if (pitch < -45.0f) {
+                detect = dragon
+                        ? new Box(pos.getX() - 3, pos.getY() + 3, pos.getZ() - 3, pos.getX() + 4, pos.getY() + 7, pos.getZ() + 4)
+                        : new Box(pos.getX() - 2, pos.getY() + 3, pos.getZ() - 2, pos.getX() + 3, pos.getY() + 5, pos.getZ() + 3);
+            } else {
+                detect = dragon
+                        ? new Box(pos.getX() - 3, pos.getY() - 3, pos.getZ() - 3, pos.getX() + 4, pos.getY() - 1, pos.getZ() + 4)
+                        : new Box(pos.getX() - 2, pos.getY() - 3, pos.getZ() - 2, pos.getX() + 3, pos.getY() - 1, pos.getZ() + 3);
+            }
+            boolean hit = hasEnemyInBox(mc, detect);
+            renderZoneBox(buf, detect.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, true);
+            return hit;
+        }
+
+        float normYaw = (yaw % 360.0f + 360.0f) % 360.0f;
+        float diagThreshold = 22.0f;
+        boolean diagonal = Math.abs(normYaw - 45.0f) < diagThreshold
+                || Math.abs(normYaw - 135.0f) < diagThreshold
+                || Math.abs(normYaw - 225.0f) < diagThreshold
+                || Math.abs(normYaw - 315.0f) < diagThreshold;
+
+        if (diagonal) {
+            float d45 = Math.abs(normYaw - 45.0f);
+            float d135 = Math.abs(normYaw - 135.0f);
+            float d225 = Math.abs(normYaw - 225.0f);
+            float d315 = Math.abs(normYaw - 315.0f);
+            float minD = Math.min(Math.min(d45, d135), Math.min(d225, d315));
+
+            int snapped;
+            int ox;
+            int oz;
+            if (minD == d45) {
+                snapped = 45;
+                ox = -3;
+                oz = 2;
+            } else if (minD == d135) {
+                snapped = 135;
+                ox = -3;
+                oz = -2;
+            } else if (minD == d225) {
+                snapped = 225;
+                ox = 2;
+                oz = -2;
+            } else {
+                snapped = 315;
+                ox = 2;
+                oz = 2;
+            }
+
+            BlockPos origin = pos.add(ox, -1, oz);
+            Set<BlockPos> blocks = new HashSet<>();
+            int rangeMin = dragon ? -3 : -2;
+            int rangeMax = dragon ? 3 : 2;
+            int height = dragon ? 7 : 5;
+
+            for (int d = rangeMin; d <= rangeMax; d++) {
+                int dz = (snapped == 45 || snapped == 225) ? d : -d;
+                for (int y = 0; y < height; y++) {
+                    blocks.add(origin.add(d, y, dz));
+                    blocks.add(origin.add(d + 1, y, dz));
+                }
+            }
+
+            boolean hit = hasEnemyInBlockCluster(mc, blocks);
+            renderBlockCluster(buf, blocks, camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer);
+            return hit;
+        }
+
+        int forwardDist = 3;
+        BlockPos anchor;
+        boolean alongZ;
+        if (normYaw >= 315.0f || normYaw < 45.0f) {
+            anchor = pos.add(0, -1, forwardDist);
+            alongZ = true;
+        } else if (normYaw >= 45.0f && normYaw < 135.0f) {
+            anchor = pos.add(-forwardDist, -1, 0);
+            alongZ = false;
+        } else if (normYaw >= 135.0f && normYaw < 225.0f) {
+            anchor = pos.add(0, -1, -forwardDist);
+            alongZ = true;
+        } else {
+            anchor = pos.add(forwardDist, -1, 0);
+            alongZ = false;
+        }
+
+        Box detect;
+        if (!alongZ) {
+            detect = dragon
+                    ? new Box(anchor.getX() - 1, anchor.getY(), anchor.getZ() - 3, anchor.getX() + 1, anchor.getY() + 7, anchor.getZ() + 4)
+                    : new Box(anchor.getX() - 1, anchor.getY(), anchor.getZ() - 2, anchor.getX() + 1, anchor.getY() + 5, anchor.getZ() + 3);
+        } else {
+            detect = dragon
+                    ? new Box(anchor.getX() - 3, anchor.getY(), anchor.getZ() - 1, anchor.getX() + 4, anchor.getY() + 7, anchor.getZ() + 1)
+                    : new Box(anchor.getX() - 2, anchor.getY(), anchor.getZ() - 1, anchor.getX() + 3, anchor.getY() + 5, anchor.getZ() + 1);
+        }
+
+        boolean hit = hasEnemyInBox(mc, detect);
+        renderZoneBox(buf, detect.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, true);
+        return hit;
     }
 
-    private boolean checkPlayersInRadius(PlayerEntity self, Vec3d center, double radius) {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.world == null) return false;
-        double rSq = radius * radius;
-        for (PlayerEntity p : mc.world.getPlayers()) {
-            if (p == self || p.isSpectator() || !p.isAlive()) continue;
-            if (EntityUtil.isNakedInvisible(p)) continue;
-            if (FriendManager.getInstance().isFriend(p.getName().getString())) continue;
-            if (p.squaredDistanceTo(center) <= rSq) {
-                return true;
+    private boolean renderSnowballZone(MinecraftClient mc, VertexConsumer quadBuf, Vec3d camPos, float tickDelta, int accentColor) {
+        Vec3d start = mc.player.getCameraPosVec(tickDelta);
+        float yaw = mc.player.getYaw(tickDelta);
+        float pitch = mc.player.getPitch(tickDelta);
+
+        float cosP = MathHelper.cos(pitch * (float) (Math.PI / 180.0));
+        float sinP = MathHelper.sin(pitch * (float) (Math.PI / 180.0));
+        float cosY = MathHelper.cos(yaw * (float) (Math.PI / 180.0));
+        float sinY = MathHelper.sin(yaw * (float) (Math.PI / 180.0));
+        Vec3d dir = new Vec3d(-sinY * cosP, -sinP, cosY * cosP).normalize();
+
+        Vec3d vel = dir.multiply(1.5).add(0.0, mc.player.getVelocity().y * 0.5, 0.0);
+        Vec3d pos = start;
+        List<Vec3d> path = new ArrayList<>(64);
+        path.add(pos);
+
+        Vec3d impact = null;
+        for (int step = 0; step < 160; step++) {
+            Vec3d next = pos.add(vel);
+            BlockHitResult blockHit = mc.world.raycast(new RaycastContext(
+                    pos, next, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player
+            ));
+            Entity hitEntity = findEntityAlongSegment(mc, pos, blockHit.getType() != HitResult.Type.MISS ? blockHit.getPos() : next);
+            if (hitEntity != null) {
+                impact = hitEntity.getBoundingBox().expand(0.3).raycast(pos, next).orElse(hitEntity.getEntityPos());
+                path.add(impact);
+                break;
+            }
+            if (blockHit.getType() != HitResult.Type.MISS) {
+                impact = blockHit.getPos();
+                path.add(impact);
+                break;
+            }
+            if (next.y < mc.world.getBottomY()) {
+                impact = next;
+                path.add(impact);
+                break;
+            }
+            pos = next;
+            path.add(pos);
+            vel = vel.multiply(0.99).subtract(0.0, 0.03, 0.0);
+        }
+
+        if (impact == null) return false;
+
+        float radius = 5.0f;
+        boolean enemyInZone = hasEnemyInRadius(mc, impact, radius);
+        int drawColor = ColorUtil.interpolate(accentColor, HIT_COLOR, enemyInZone ? 1.0f : threatTimer);
+
+        if (path.size() >= 2) {
+            if (lineAllocator == null) {
+                lineAllocator = new BufferAllocator(16 * 1024);
+            }
+            try {
+                BufferBuilder mesh = new BufferBuilder(lineAllocator, DrawMode.LINES, VertexFormats.POSITION_COLOR_NORMAL_LINE_WIDTH);
+                Vector3f forward = new Vector3f(0, 0, -1).rotate(mc.gameRenderer.getCamera().getRotation());
+                float pixelScale = MathHelper.clamp(mc.getFramebuffer().textureHeight / 1080.0f, 0.78f, 1.75f);
+                TrajectoryLines lines = new TrajectoryLines(mesh, camPos, new Vec3d(forward.x, forward.y, forward.z), 1.6f, pixelScale, false);
+                lines.path(path, Vec3d.ZERO, drawColor);
+                var built = mesh.endNullable();
+                if (built != null) {
+                    MeshDrawUtil.drawLabeled(Pipelines.TRAJECTORY_LINE, built, "ItemRadius snowball");
+                }
+            } finally {
+                lineAllocator.reset();
             }
         }
-        return false;
+
+        double groundY = findGroundY(mc, impact.x, impact.y + 0.15, impact.z);
+        Vec3d ringCenter = new Vec3d(impact.x, Math.max(groundY, impact.y + 0.025), impact.z);
+        renderCyberCircle(quadBuf, ringCenter, camPos, radius, accentColor, HIT_COLOR, enemyInZone ? 1.0f : threatTimer, animTime);
+        return enemyInZone;
     }
 
-    private boolean checkFriendsInRadius(PlayerEntity self, Vec3d center, double radius) {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.world == null) return false;
-        double rSq = radius * radius;
-        for (PlayerEntity p : mc.world.getPlayers()) {
-            if (p == self || p.isSpectator() || !p.isAlive()) continue;
-            if (EntityUtil.isNakedInvisible(p)) continue;
-            if (FriendManager.getInstance().isFriend(p.getName().getString())) {
-                if (p.squaredDistanceTo(center) <= rSq) {
-                    return true;
+    private Entity findEntityAlongSegment(MinecraftClient mc, Vec3d start, Vec3d end) {
+        Entity closest = null;
+        double closestDist = Double.MAX_VALUE;
+        Box search = new Box(start, end).expand(1.0);
+        for (Entity candidate : mc.world.getOtherEntities(mc.player, search)) {
+            if (!candidate.isAlive() || candidate.isSpectator() || !(candidate instanceof LivingEntity) || EntityUtil.isNakedInvisible(candidate)) {
+                continue;
+            }
+            Optional<Vec3d> hit = candidate.getBoundingBox().expand(0.3).raycast(start, end);
+            if (hit.isPresent()) {
+                double distSq = start.squaredDistanceTo(hit.get());
+                if (distSq < closestDist) {
+                    closestDist = distSq;
+                    closest = candidate;
                 }
             }
         }
+        return closest;
+    }
+
+    private Box computeDrillBox(MinecraftClient mc, int radius, int depth) {
+        if (!(mc.crosshairTarget instanceof BlockHitResult hit) || hit.getType() != HitResult.Type.BLOCK) {
+            return null;
+        }
+        BlockPos pos = hit.getBlockPos();
+        Direction side = hit.getSide();
+        Direction.Axis axis = side.getAxis();
+        Direction opposite = side.getOpposite();
+
+        BlockPos p1 = offsetInPlane(pos, axis, -radius, -radius);
+        BlockPos p2 = offsetInPlane(pos.offset(opposite, depth - 1), axis, radius, radius);
+
+        return new Box(
+                Math.min(p1.getX(), p2.getX()),
+                Math.min(p1.getY(), p2.getY()),
+                Math.min(p1.getZ(), p2.getZ()),
+                Math.max(p1.getX(), p2.getX()) + 1,
+                Math.max(p1.getY(), p2.getY()) + 1,
+                Math.max(p1.getZ(), p2.getZ()) + 1
+        );
+    }
+
+    private static BlockPos offsetInPlane(BlockPos pos, Direction.Axis axis, int a, int b) {
+        return switch (axis) {
+            case X -> pos.add(0, a, b);
+            case Y -> pos.add(a, 0, b);
+            case Z -> pos.add(a, b, 0);
+        };
+    }
+
+    private boolean isFunTimeTrap(ItemStack stack) {
+        String ftTag = readBukkitTag(stack);
+        if ("trap".equals(ftTag) || readBukkitInt(stack, "minecraft:trap") == 1) return true;
+        String name = stack.getName().getString().toLowerCase(Locale.ROOT);
+        if (name.contains("трап") || name.contains("trap")) return true;
+        return hasLoreContaining(stack, "нерушимая клетка");
+    }
+
+    private boolean isFunTimePlast(ItemStack stack) {
+        String ftTag = readBukkitTag(stack);
+        if ("stratum".equals(ftTag) || readBukkitInt(stack, "minecraft:stratum") == 1) return true;
+        String name = stack.getName().getString().toLowerCase(Locale.ROOT);
+        if (name.contains("пласт") || name.contains("stratum")) return true;
+        return hasLoreContaining(stack, "нерушимая стена");
+    }
+
+    private boolean isHolyWorldJake(ItemStack stack) {
+        NbtComponent data = stack.get(DataComponentTypes.CUSTOM_DATA);
+        if (data != null) {
+            NbtCompound root = data.copyNbt();
+            NbtCompound kringe = root.getCompound("kringeItems").orElse(null);
+            if (kringe != null && "JakeLuminaire".equals(kringe.getString("type").orElse(""))) {
+                return true;
+            }
+        }
+        String name = stack.getName().getString().toLowerCase(Locale.ROOT);
+        return name.contains("джейк") || name.contains("jake");
+    }
+
+    private boolean matchesKeywordOrBukkit(ItemStack stack, String... keywords) {
+        String ftTag = readBukkitTag(stack);
+        String name = stack.getName().getString().toLowerCase(Locale.ROOT).replace('ё', 'е');
+        for (String kw : keywords) {
+            if (ftTag != null && ftTag.contains(kw)) return true;
+            if (name.contains(kw)) return true;
+            if (hasLoreContaining(stack, kw)) return true;
+        }
         return false;
     }
 
+    private boolean matchesKeywordOrKringe(ItemStack stack, String... keywords) {
+        NbtComponent data = stack.get(DataComponentTypes.CUSTOM_DATA);
+        if (data != null) {
+            NbtCompound root = data.copyNbt();
+            if (root.contains("kringeItems")) return true;
+        }
+        return matchesKeywordOrBukkit(stack, keywords);
+    }
+
+    private static String readBukkitTag(ItemStack stack) {
+        NbtComponent data = stack.get(DataComponentTypes.CUSTOM_DATA);
+        if (data == null) return null;
+        NbtCompound pbv = data.copyNbt().getCompound("PublicBukkitValues").orElse(null);
+        if (pbv == null || pbv.isEmpty()) return null;
+        String ftid = pbv.getString("minecraft:ftid").orElse("");
+        if (!ftid.isEmpty()) return ftid.toLowerCase(Locale.ROOT);
+        String don = pbv.getString("minecraft:don-item").orElse("");
+        return don.isEmpty() ? null : don.toLowerCase(Locale.ROOT);
+    }
+
+    private static int readBukkitInt(ItemStack stack, String key) {
+        NbtComponent data = stack.get(DataComponentTypes.CUSTOM_DATA);
+        if (data == null) return 0;
+        NbtCompound pbv = data.copyNbt().getCompound("PublicBukkitValues").orElse(null);
+        if (pbv == null) return 0;
+        return pbv.getInt(key).orElse(0);
+    }
+
+    private static boolean hasLoreContaining(ItemStack stack, String substr) {
+        LoreComponent lore = stack.get(DataComponentTypes.LORE);
+        if (lore == null) return false;
+        for (Text line : lore.lines()) {
+            String s = line.getString().toLowerCase(Locale.ROOT).replace('ё', 'е');
+            if (s.contains(substr)) return true;
+        }
+        return false;
+    }
+
+    private static boolean isPickaxe(Item item) {
+        return item == Items.WOODEN_PICKAXE || item == Items.STONE_PICKAXE
+                || item == Items.IRON_PICKAXE || item == Items.GOLDEN_PICKAXE
+                || item == Items.DIAMOND_PICKAXE || item == Items.NETHERITE_PICKAXE;
+    }
+
+    private static int[] resolveDrillSpec(ItemStack stack, boolean funTime) {
+        NbtComponent data = stack.get(DataComponentTypes.CUSTOM_DATA);
+        if (data != null) {
+            NbtCompound root = data.copyNbt();
+            NbtCompound pbv = root.getCompound("PublicBukkitValues").orElse(null);
+            if (pbv != null) {
+                NbtList enchants = pbv.getList("minecraft:custom-enchantments").orElse(null);
+                if (enchants != null) {
+                    for (int i = 0; i < enchants.size(); i++) {
+                        NbtCompound entry = enchants.getCompound(i).orElse(null);
+                        if (entry == null) continue;
+                        String type = entry.getString("minecraft:type").orElse("").toLowerCase(Locale.ROOT);
+                        if (type.isEmpty()) continue;
+                        if (funTime) {
+                            if (type.contains("mega")) return new int[]{4, 5};
+                            if (type.contains("bulldozer")) {
+                                int lvl = entry.getInt("minecraft:level").orElse(1);
+                                return new int[]{1, lvl >= 2 ? 3 : 1};
+                            }
+                        } else if (type.contains("drill")) {
+                            int lvl = entry.getInt("minecraft:level").orElse(1);
+                            return new int[]{1, lvl >= 2 ? 2 : 1};
+                        }
+                    }
+                }
+            }
+        }
+        LoreComponent lore = stack.get(DataComponentTypes.LORE);
+        if (lore != null) {
+            for (Text text : lore.lines()) {
+                String line = text.getString();
+                if (line == null) continue;
+                String lower = line.toLowerCase(Locale.ROOT);
+                if (funTime) {
+                    if (lower.contains("9x9x5") || lower.contains("мега-бульдозер")) return new int[]{4, 5};
+                    if (line.contains("Бульдозер II")) return new int[]{1, 3};
+                    if (line.contains("Бульдозер I")) return new int[]{1, 1};
+                } else {
+                    if (line.contains("Бур II")) return new int[]{1, 2};
+                    if (line.contains("Бур I")) return new int[]{1, 1};
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean hasEnemyInRadius(MinecraftClient mc, Vec3d center, double radius) {
+        if (mc.world == null || mc.player == null) return false;
+        double rSq = radius * radius;
+        for (PlayerEntity p : mc.world.getPlayers()) {
+            if (!isValidTarget(mc.player, p, true)) continue;
+            if (p.squaredDistanceTo(center) <= rSq) return true;
+        }
+        return false;
+    }
+
+    private boolean hasFriendInRadius(MinecraftClient mc, Vec3d center, double radius) {
+        if (mc.world == null || mc.player == null) return false;
+        double rSq = radius * radius;
+        for (PlayerEntity p : mc.world.getPlayers()) {
+            if (!isValidTarget(mc.player, p, false)) continue;
+            if (p.squaredDistanceTo(center) <= rSq) return true;
+        }
+        return false;
+    }
+
+    private boolean hasEnemyInBox(MinecraftClient mc, Box box) {
+        if (mc.world == null || mc.player == null) return false;
+        for (PlayerEntity p : mc.world.getPlayers()) {
+            if (!isValidTarget(mc.player, p, true)) continue;
+            if (box.contains(p.getEntityPos()) || box.intersects(p.getBoundingBox())) return true;
+        }
+        return false;
+    }
+
+    private boolean hasElytraEnemyInBox(MinecraftClient mc, Box box) {
+        if (mc.world == null || mc.player == null) return false;
+        for (PlayerEntity p : mc.world.getPlayers()) {
+            if (!isValidTarget(mc.player, p, true)) continue;
+            if (p.getEquippedStack(EquipmentSlot.CHEST).getItem() != Items.ELYTRA) continue;
+            if (box.contains(p.getEntityPos()) || box.intersects(p.getBoundingBox())) return true;
+        }
+        return false;
+    }
+
+    private boolean hasEnemyInBlockCluster(MinecraftClient mc, Set<BlockPos> blocks) {
+        if (mc.world == null || mc.player == null) return false;
+        for (PlayerEntity p : mc.world.getPlayers()) {
+            if (!isValidTarget(mc.player, p, true)) continue;
+            BlockPos bp = p.getBlockPos();
+            if (blocks.contains(bp) || blocks.contains(bp.up())) return true;
+        }
+        return false;
+    }
+
+    private static boolean isValidTarget(PlayerEntity self, PlayerEntity p, boolean enemyOnly) {
+        if (p == self || p.isSpectator() || !p.isAlive()) return false;
+        if (EntityUtil.isNakedInvisible(p)) return false;
+        boolean isFriend = FriendManager.getInstance().isFriend(p.getName().getString());
+        return enemyOnly != isFriend;
+    }
+
+    private static double findGroundY(MinecraftClient mc, double x, double y, double z) {
+        Vec3d start = new Vec3d(x, y + 0.35, z);
+        BlockHitResult hit = mc.world.raycast(new RaycastContext(
+                start, new Vec3d(x, y - 3.0, z),
+                RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player
+        ));
+        if (hit.getType() == HitResult.Type.BLOCK) {
+            return hit.getPos().y + 0.025;
+        }
+        return y + 0.025;
+    }
+
     private void renderCyberCircle(VertexConsumer buf, Vec3d center, Vec3d camPos, float radius,
-                                   int primaryCol, int alertCol, float threat, float time) {
-        int color = ColorUtil.interpolate(primaryCol, alertCol, threat);
+                                   int primaryCol, int hitCol, float threat, float time) {
+        int color = ColorUtil.interpolate(primaryCol, hitCol, threat);
         int r = (color >> 16) & 0xFF;
         int g = (color >> 8) & 0xFF;
         int b = color & 0xFF;
@@ -280,55 +863,41 @@ public class ItemRadius extends Module {
         float angleStep = (float) (2.0 * Math.PI / segments);
         float baseFillAlpha = (float) fillOpacity.get();
         if (threat > 0.05f) {
-            float warningPulse = (float) Math.sin(time * 12.0f) * 0.5f + 0.5f;
-            baseFillAlpha = MathHelper.lerp(warningPulse, baseFillAlpha, 110.0f);
+            float warningPulse = (float) Math.sin(time * 10.0f) * 0.5f + 0.5f;
+            baseFillAlpha = MathHelper.lerp(warningPulse, baseFillAlpha, Math.min(255.0f, baseFillAlpha + 55.0f));
         }
 
-        for (int i = 0; i < segments; i += 2) {
+        int alphaInner = Math.round(baseFillAlpha * 0.28f);
+        int alphaOuter = Math.round(baseFillAlpha * 0.78f);
+        float fillRadius = Math.max(0.2f, radius - 0.06f);
+
+        for (int i = 0; i < segments; i++) {
             float a1 = i * angleStep;
             float a2 = (i + 1) * angleStep;
-            float a3 = (i + 2) * angleStep;
 
-            float x1 = cx + (float) Math.sin(a1) * (radius - 0.08f);
-            float z1 = cz + (float) Math.cos(a1) * (radius - 0.08f);
+            float x1 = cx + MathHelper.sin(a1) * fillRadius;
+            float z1 = cz + MathHelper.cos(a1) * fillRadius;
+            float x2 = cx + MathHelper.sin(a2) * fillRadius;
+            float z2 = cz + MathHelper.cos(a2) * fillRadius;
 
-            float x2 = cx + (float) Math.sin(a2) * (radius - 0.08f);
-            float z2 = cz + (float) Math.cos(a2) * (radius - 0.08f);
-
-            float x3 = cx + (float) Math.sin(a3) * (radius - 0.08f);
-            float z3 = cz + (float) Math.cos(a3) * (radius - 0.08f);
-
-            int alphaInner = (int) (baseFillAlpha * 0.35f);
-            int alphaOuter = (int) (baseFillAlpha * 0.85f);
-
-            buf.vertex(cx, cy, cz).color(r, g, b, alphaInner);
-            buf.vertex(x1, cy, z1).color(r, g, b, alphaOuter);
-            buf.vertex(x2, cy, z2).color(r, g, b, alphaOuter);
-            buf.vertex(x3, cy, z3).color(r, g, b, alphaOuter);
+            drawTriDoubleSided(buf, cx, cy, cz, x1, cy, z1, x2, cy, z2, r, g, b, alphaInner, alphaOuter);
         }
 
         if (radarWave.isEnabled()) {
             float sweepAngle = (float) ((time * 2.2f) % (2.0 * Math.PI));
-            float sweepArc = (float) Math.toRadians(75.0);
-
+            float sweepArc = (float) Math.toRadians(72.0);
             for (int i = 0; i < segments; i++) {
                 float a1 = i * angleStep;
                 float a2 = (i + 1) * angleStep;
-
                 float diff = (a1 - sweepAngle + (float) (4.0 * Math.PI)) % (float) (2.0 * Math.PI);
                 if (diff < sweepArc) {
-                    float beamFactor = 1.0f - (diff / sweepArc);
-                    int beamAlpha = (int) (beamFactor * 130.0f);
-
-                    float x1 = cx + (float) Math.sin(a1) * (radius - 0.08f);
-                    float z1 = cz + (float) Math.cos(a1) * (radius - 0.08f);
-                    float x2 = cx + (float) Math.sin(a2) * (radius - 0.08f);
-                    float z2 = cz + (float) Math.cos(a2) * (radius - 0.08f);
-
-                    buf.vertex(cx, cy, cz).color(255, 255, 255, beamAlpha / 3);
-                    buf.vertex(cx, cy, cz).color(r, g, b, beamAlpha / 3);
-                    buf.vertex(x1, cy, z1).color(r, g, b, beamAlpha);
-                    buf.vertex(x2, cy, z2).color(r, g, b, beamAlpha);
+                    float factor = 1.0f - (diff / sweepArc);
+                    int beamAlpha = Math.round(factor * 115.0f);
+                    float x1 = cx + MathHelper.sin(a1) * fillRadius;
+                    float z1 = cz + MathHelper.cos(a1) * fillRadius;
+                    float x2 = cx + MathHelper.sin(a2) * fillRadius;
+                    float z2 = cz + MathHelper.cos(a2) * fillRadius;
+                    drawTriDoubleSided(buf, cx, cy + 0.002f, cz, x1, cy + 0.002f, z1, x2, cy + 0.002f, z2, r, g, b, beamAlpha / 4, beamAlpha);
                 }
             }
         }
@@ -336,418 +905,254 @@ public class ItemRadius extends Module {
         if (pulseRing.isEnabled()) {
             float pulsePhase = (time * 0.75f) % 1.0f;
             float pulseR = radius * pulsePhase;
-            int pulseAlpha = (int) ((1.0f - pulsePhase) * 180.0f);
-            float pWidth = 0.05f;
+            int pulseAlpha = Math.round((1.0f - pulsePhase) * 175.0f);
+            float halfW = 0.045f;
+            float inR = Math.max(0.01f, pulseR - halfW);
+            float outR = pulseR + halfW;
 
             for (int i = 0; i < segments; i++) {
                 float a1 = i * angleStep;
                 float a2 = (i + 1) * angleStep;
-
-                float inR = Math.max(0.01f, pulseR - pWidth);
-                float outR = pulseR + pWidth;
-
-                float ix1 = cx + (float) Math.sin(a1) * inR;
-                float iz1 = cz + (float) Math.cos(a1) * inR;
-                float ix2 = cx + (float) Math.sin(a2) * inR;
-                float iz2 = cz + (float) Math.cos(a2) * inR;
-
-                float ox1 = cx + (float) Math.sin(a1) * outR;
-                float oz1 = cz + (float) Math.cos(a1) * outR;
-                float ox2 = cx + (float) Math.sin(a2) * outR;
-                float oz2 = cz + (float) Math.cos(a2) * outR;
-
-                buf.vertex(ix1, cy + 0.005f, iz1).color(r, g, b, pulseAlpha);
-                buf.vertex(ox1, cy + 0.005f, oz1).color(r, g, b, pulseAlpha);
-                buf.vertex(ox2, cy + 0.005f, oz2).color(r, g, b, pulseAlpha);
-                buf.vertex(ix2, cy + 0.005f, iz2).color(r, g, b, pulseAlpha);
+                float s1 = MathHelper.sin(a1), c1 = MathHelper.cos(a1);
+                float s2 = MathHelper.sin(a2), c2 = MathHelper.cos(a2);
+                drawQuadDoubleSided(buf,
+                        cx + s1 * inR, cy + 0.005f, cz + c1 * inR,
+                        cx + s1 * outR, cy + 0.005f, cz + c1 * outR,
+                        cx + s2 * outR, cy + 0.005f, cz + c2 * outR,
+                        cx + s2 * inR, cy + 0.005f, cz + c2 * inR,
+                        r, g, b, pulseAlpha);
             }
         }
 
-        float coreHalfW = 0.06f;
-        float haloWidth = 0.22f;
+        float coreHalfW = 0.055f;
+        float haloWidth = 0.20f;
+        float rIn = Math.max(0.05f, radius - coreHalfW);
+        float rOut = radius + coreHalfW;
+        float rHalo = radius + haloWidth;
 
         for (int i = 0; i < segments; i++) {
             float a1 = i * angleStep;
             float a2 = (i + 1) * angleStep;
+            float s1 = MathHelper.sin(a1), c1 = MathHelper.cos(a1);
+            float s2 = MathHelper.sin(a2), c2 = MathHelper.cos(a2);
 
-            float sin1 = (float) Math.sin(a1);
-            float cos1 = (float) Math.cos(a1);
-            float sin2 = (float) Math.sin(a2);
-            float cos2 = (float) Math.cos(a2);
+            drawQuadDoubleSided(buf,
+                    cx + s1 * rIn, cy + 0.01f, cz + c1 * rIn,
+                    cx + s1 * rOut, cy + 0.01f, cz + c1 * rOut,
+                    cx + s2 * rOut, cy + 0.01f, cz + c2 * rOut,
+                    cx + s2 * rIn, cy + 0.01f, cz + c2 * rIn,
+                    r, g, b, 240);
 
-            float rIn = radius - coreHalfW;
-            float rOut = radius + coreHalfW;
-
-            float cInX1 = cx + sin1 * rIn;
-            float cInZ1 = cz + cos1 * rIn;
-            float cInX2 = cx + sin2 * rIn;
-            float cInZ2 = cz + cos2 * rIn;
-
-            float cOutX1 = cx + sin1 * rOut;
-            float cOutZ1 = cz + cos1 * rOut;
-            float cOutX2 = cx + sin2 * rOut;
-            float cOutZ2 = cz + cos2 * rOut;
-
-            buf.vertex(cInX1, cy + 0.01f, cInZ1).color(r, g, b, 230);
-            buf.vertex(cOutX1, cy + 0.01f, cOutZ1).color(r, g, b, 255);
-            buf.vertex(cOutX2, cy + 0.01f, cOutZ2).color(r, g, b, 255);
-            buf.vertex(cInX2, cy + 0.01f, cInZ2).color(r, g, b, 230);
-
-            float hOutX1 = cx + sin1 * (radius + haloWidth);
-            float hOutZ1 = cz + cos1 * (radius + haloWidth);
-            float hOutX2 = cx + sin2 * (radius + haloWidth);
-            float hOutZ2 = cz + cos2 * (radius + haloWidth);
-
-            buf.vertex(cOutX1, cy + 0.01f, cOutZ1).color(r, g, b, 140);
-            buf.vertex(hOutX1, cy + 0.01f, hOutZ1).color(r, g, b, 0);
-            buf.vertex(hOutX2, cy + 0.01f, hOutZ2).color(r, g, b, 0);
-            buf.vertex(cOutX2, cy + 0.01f, cOutZ2).color(r, g, b, 140);
-        }
-
-        float[] cardinalAngles = {0.0f, (float) (Math.PI * 0.5), (float) Math.PI, (float) (Math.PI * 1.5)};
-        for (float ca : cardinalAngles) {
-            float forwardX = (float) Math.sin(ca);
-            float forwardZ = (float) Math.cos(ca);
-            float perpX = -forwardZ;
-            float perpZ = forwardX;
-
-            float tickStartR = radius - 0.45f;
-            float tickEndR = radius + 0.35f;
-            float tickHalfThick = 0.05f;
-
-            float tx1 = cx + forwardX * tickStartR - perpX * tickHalfThick;
-            float tz1 = cz + forwardZ * tickStartR - perpZ * tickHalfThick;
-            float tx2 = cx + forwardX * tickStartR + perpX * tickHalfThick;
-            float tz2 = cz + forwardZ * tickStartR + perpZ * tickHalfThick;
-            float tx3 = cx + forwardX * tickEndR + perpX * tickHalfThick;
-            float tz3 = cz + forwardZ * tickEndR + perpZ * tickHalfThick;
-            float tx4 = cx + forwardX * tickEndR - perpX * tickHalfThick;
-            float tz4 = cz + forwardZ * tickEndR - perpZ * tickHalfThick;
-
-            buf.vertex(tx1, cy + 0.015f, tz1).color(255, 255, 255, 200);
-            buf.vertex(tx2, cy + 0.015f, tz2).color(255, 255, 255, 200);
-            buf.vertex(tx3, cy + 0.015f, tz3).color(r, g, b, 240);
-            buf.vertex(tx4, cy + 0.015f, tz4).color(r, g, b, 240);
+            drawQuadDoubleSidedGrad(buf,
+                    cx + s1 * rOut, cy + 0.01f, cz + c1 * rOut,
+                    cx + s1 * rHalo, cy + 0.01f, cz + c1 * rHalo,
+                    cx + s2 * rHalo, cy + 0.01f, cz + c2 * rHalo,
+                    cx + s2 * rOut, cy + 0.01f, cz + c2 * rOut,
+                    r, g, b, 130, 0);
         }
     }
 
-    private void renderHolographicTrap(VertexConsumer buf, Vec3d center, Vec3d camPos, float size,
-                                       int primaryCol, int alertCol, float threat, float time) {
-        int color = ColorUtil.interpolate(primaryCol, alertCol, threat);
+    private void renderZoneBox(VertexConsumer buf, Box box, Vec3d camPos,
+                               int primaryCol, int hitCol, float threat, float time, boolean showCorners) {
+        int color = ColorUtil.interpolate(primaryCol, hitCol, threat);
         int r = (color >> 16) & 0xFF;
         int g = (color >> 8) & 0xFF;
         int b = color & 0xFF;
 
-        float cx = (float) (center.x - camPos.x);
-        float cy = (float) (center.y - camPos.y);
-        float cz = (float) (center.z - camPos.z);
+        float x1 = (float) (box.minX - camPos.x);
+        float y1 = (float) (box.minY - camPos.y);
+        float z1 = (float) (box.minZ - camPos.z);
+        float x2 = (float) (box.maxX - camPos.x);
+        float y2 = (float) (box.maxY - camPos.y);
+        float z2 = (float) (box.maxZ - camPos.z);
 
-        float h = size * 0.5f;
-        float x1 = cx - h, x2 = cx + h;
-        float y1 = cy - h, y2 = cy + h;
-        float z1 = cz - h, z2 = cz + h;
+        int faceAlpha = Math.round(MathHelper.clamp((float) fillOpacity.get(), 10.0f, 100.0f) * (threat > 0.05f ? 0.9f : 0.65f));
+        if (faceAlpha > 0) {
+            drawQuadDoubleSided(buf, x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, r, g, b, faceAlpha);
+            drawQuadDoubleSided(buf, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, r, g, b, faceAlpha);
+            drawQuadDoubleSided(buf, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, r, g, b, faceAlpha);
+            drawQuadDoubleSided(buf, x1, y1, z2, x2, y1, z2, x2, y2, z2, x1, y2, z2, r, g, b, faceAlpha);
+            drawQuadDoubleSided(buf, x1, y1, z1, x1, y1, z2, x1, y2, z2, x1, y2, z1, r, g, b, faceAlpha);
+            drawQuadDoubleSided(buf, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, faceAlpha);
+        }
 
-        int faceAlpha = threat > 0.05f ? 45 : 24;
+        if (showCorners && y2 - y1 > 0.5f) {
+            float wave = (float) Math.sin(time * 3.0f) * 0.5f + 0.5f;
+            float scanY = MathHelper.lerp(wave, y1 + 0.08f, y2 - 0.08f);
+            int scanAlpha = Math.min(200, faceAlpha + 45);
+            drawQuadDoubleSided(buf, x1, scanY, z1, x2, scanY, z1, x2, scanY, z2, x1, scanY, z2, r, g, b, scanAlpha);
+        }
 
-        buf.vertex(x1, y1, z1).color(r, g, b, faceAlpha);
-        buf.vertex(x2, y1, z1).color(r, g, b, faceAlpha);
-        buf.vertex(x2, y1, z2).color(r, g, b, faceAlpha);
-        buf.vertex(x1, y1, z2).color(r, g, b, faceAlpha);
+        float edgeT = 0.018f;
+        int edgeA = 235;
+        drawSolidBox(buf, x1 - edgeT, y1 - edgeT, z1 - edgeT, x2 + edgeT, y1 + edgeT, z1 + edgeT, r, g, b, edgeA);
+        drawSolidBox(buf, x1 - edgeT, y1 - edgeT, z2 - edgeT, x2 + edgeT, y1 + edgeT, z2 + edgeT, r, g, b, edgeA);
+        drawSolidBox(buf, x1 - edgeT, y2 - edgeT, z1 - edgeT, x2 + edgeT, y2 + edgeT, z1 + edgeT, r, g, b, edgeA);
+        drawSolidBox(buf, x1 - edgeT, y2 - edgeT, z2 - edgeT, x2 + edgeT, y2 + edgeT, z2 + edgeT, r, g, b, edgeA);
 
-        buf.vertex(x1, y2, z1).color(r, g, b, faceAlpha);
-        buf.vertex(x1, y2, z2).color(r, g, b, faceAlpha);
-        buf.vertex(x2, y2, z2).color(r, g, b, faceAlpha);
-        buf.vertex(x2, y2, z1).color(r, g, b, faceAlpha);
+        drawSolidBox(buf, x1 - edgeT, y1, z1 - edgeT, x1 + edgeT, y2, z1 + edgeT, r, g, b, edgeA);
+        drawSolidBox(buf, x2 - edgeT, y1, z1 - edgeT, x2 + edgeT, y2, z1 + edgeT, r, g, b, edgeA);
+        drawSolidBox(buf, x1 - edgeT, y1, z2 - edgeT, x1 + edgeT, y2, z2 + edgeT, r, g, b, edgeA);
+        drawSolidBox(buf, x2 - edgeT, y1, z2 - edgeT, x2 + edgeT, y2, z2 + edgeT, r, g, b, edgeA);
 
-        buf.vertex(x1, y1, z1).color(r, g, b, faceAlpha);
-        buf.vertex(x1, y2, z1).color(r, g, b, faceAlpha);
-        buf.vertex(x2, y2, z1).color(r, g, b, faceAlpha);
-        buf.vertex(x2, y1, z1).color(r, g, b, faceAlpha);
+        drawSolidBox(buf, x1 - edgeT, y1 - edgeT, z1, x1 + edgeT, y1 + edgeT, z2, r, g, b, edgeA);
+        drawSolidBox(buf, x2 - edgeT, y1 - edgeT, z1, x2 + edgeT, y1 + edgeT, z2, r, g, b, edgeA);
+        drawSolidBox(buf, x1 - edgeT, y2 - edgeT, z1, x1 + edgeT, y2 + edgeT, z2, r, g, b, edgeA);
+        drawSolidBox(buf, x2 - edgeT, y2 - edgeT, z1, x2 + edgeT, y2 + edgeT, z2, r, g, b, edgeA);
 
-        buf.vertex(x1, y1, z2).color(r, g, b, faceAlpha);
-        buf.vertex(x2, y1, z2).color(r, g, b, faceAlpha);
-        buf.vertex(x2, y2, z2).color(r, g, b, faceAlpha);
-        buf.vertex(x1, y2, z2).color(r, g, b, faceAlpha);
-
-        buf.vertex(x1, y1, z1).color(r, g, b, faceAlpha);
-        buf.vertex(x1, y1, z2).color(r, g, b, faceAlpha);
-        buf.vertex(x1, y2, z2).color(r, g, b, faceAlpha);
-        buf.vertex(x1, y2, z1).color(r, g, b, faceAlpha);
-
-        buf.vertex(x2, y1, z1).color(r, g, b, faceAlpha);
-        buf.vertex(x2, y2, z1).color(r, g, b, faceAlpha);
-        buf.vertex(x2, y2, z2).color(r, g, b, faceAlpha);
-        buf.vertex(x2, y1, z2).color(r, g, b, faceAlpha);
-
-        float laserRelY = (float) Math.sin(time * 3.0f) * (h - 0.15f);
-        float ly = cy + laserRelY;
-        int laserAlpha = threat > 0.05f ? 110 : 65;
-
-        buf.vertex(x1, ly, z1).color(r, g, b, laserAlpha);
-        buf.vertex(x2, ly, z1).color(r, g, b, laserAlpha);
-        buf.vertex(x2, ly, z2).color(r, g, b, laserAlpha);
-        buf.vertex(x1, ly, z2).color(r, g, b, laserAlpha);
-
-        float bLen = 0.65f;
-        float bThick = 0.045f;
-        int bracketAlpha = 240;
-
-        float[] xs = {x1, x2};
-        float[] ys = {y1, y2};
-        float[] zs = {z1, z2};
-
-        for (float kx : xs) {
-            float dx = (kx == x1) ? 1.0f : -1.0f;
-            for (float ky : ys) {
-                float dy = (ky == y1) ? 1.0f : -1.0f;
-                for (float kz : zs) {
-                    float dz = (kz == z1) ? 1.0f : -1.0f;
-
-                    renderThickLineSegment(buf, kx, ky, kz, kx + dx * bLen, ky, kz, bThick, r, g, b, bracketAlpha);
-
-                    renderThickLineSegment(buf, kx, ky, kz, kx, ky + dy * bLen, kz, bThick, r, g, b, bracketAlpha);
-
-                    renderThickLineSegment(buf, kx, ky, kz, kx, ky, kz + dz * bLen, bThick, r, g, b, bracketAlpha);
+        if (showCorners) {
+            float bLen = Math.min(0.60f, Math.min(x2 - x1, Math.min(y2 - y1, z2 - z1)) * 0.25f);
+            float cT = 0.035f;
+            float[] xs = {x1, x2};
+            float[] ys = {y1, y2};
+            float[] zs = {z1, z2};
+            for (float kx : xs) {
+                float sx = kx == x1 ? bLen : -bLen;
+                for (float ky : ys) {
+                    float sy = ky == y1 ? bLen : -bLen;
+                    for (float kz : zs) {
+                        float sz = kz == z1 ? bLen : -bLen;
+                        drawSolidBox(buf, Math.min(kx, kx + sx) - cT, ky - cT, kz - cT, Math.max(kx, kx + sx) + cT, ky + cT, kz + cT, r, g, b, 255);
+                        drawSolidBox(buf, kx - cT, Math.min(ky, ky + sy) - cT, kz - cT, kx + cT, Math.max(ky, ky + sy) + cT, kz + cT, r, g, b, 255);
+                        drawSolidBox(buf, kx - cT, ky - cT, Math.min(kz, kz + sz) - cT, kx + cT, ky + cT, Math.max(kz, kz + sz) + cT, r, g, b, 255);
+                    }
                 }
             }
         }
     }
 
-    private void renderHolographicPlast(VertexConsumer buf, PlanePose pose, Vec3d camPos,
-                                        float width, float height, float thickness,
-                                        int primaryCol, int alertCol, float threat, float time) {
-        int color = ColorUtil.interpolate(primaryCol, alertCol, threat);
+    private void renderBlockCluster(VertexConsumer buf, Set<BlockPos> blocks, Vec3d camPos,
+                                    int primaryCol, int hitCol, float threat) {
+        if (blocks.isEmpty()) return;
+        int color = ColorUtil.interpolate(primaryCol, hitCol, threat);
         int r = (color >> 16) & 0xFF;
         int g = (color >> 8) & 0xFF;
         int b = color & 0xFF;
 
-        float hw = width * 0.5f;
-        float hh = height * 0.5f;
-        float ht = thickness * 0.5f;
-
-        Vec3d[] localVertices = {
-                new Vec3d(-hw, -hh, -ht),
-                new Vec3d(hw, -hh, -ht),
-                new Vec3d(hw, hh, -ht),
-                new Vec3d(-hw, hh, -ht),
-                new Vec3d(-hw, -hh, ht),
-                new Vec3d(hw, -hh, ht),
-                new Vec3d(hw, hh, ht),
-                new Vec3d(-hw, hh, ht)
-        };
-
-        Vec3d[] worldVertices = new Vec3d[8];
-        for (int i = 0; i < 8; i++) {
-            Vec3d rotated = rotatePosePoint(localVertices[i], pose.yawDeg, pose.pitchDeg);
-            worldVertices[i] = new Vec3d(
-                    pose.center.x + rotated.x - camPos.x,
-                    pose.center.y + rotated.y - camPos.y,
-                    pose.center.z + rotated.z - camPos.z
-            );
+        int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
+        for (BlockPos bp : blocks) {
+            minX = Math.min(minX, bp.getX());
+            minY = Math.min(minY, bp.getY());
+            minZ = Math.min(minZ, bp.getZ());
+            maxX = Math.max(maxX, bp.getX());
+            maxY = Math.max(maxY, bp.getY());
+            maxZ = Math.max(maxZ, bp.getZ());
         }
 
-        int barrierAlpha = threat > 0.05f ? 75 : 40;
+        int faceAlpha = Math.round(MathHelper.clamp((float) fillOpacity.get(), 10.0f, 100.0f) * 0.72f);
+        float edgeT = 0.015f;
 
-        renderQuad(buf, worldVertices[0], worldVertices[1], worldVertices[2], worldVertices[3], r, g, b, barrierAlpha);
+        for (BlockPos bp : blocks) {
+            float iMinX = bp.getX() == minX ? 0.01f : 0.0f;
+            float iMinY = bp.getY() == minY ? 0.01f : 0.0f;
+            float iMinZ = bp.getZ() == minZ ? 0.01f : 0.0f;
+            float iMaxX = bp.getX() == maxX ? 0.01f : 0.0f;
+            float iMaxY = bp.getY() == maxY ? 0.01f : 0.0f;
+            float iMaxZ = bp.getZ() == maxZ ? 0.01f : 0.0f;
 
-        renderQuad(buf, worldVertices[5], worldVertices[4], worldVertices[7], worldVertices[6], r, g, b, barrierAlpha);
+            float x1 = (float) (bp.getX() - camPos.x + iMinX);
+            float y1 = (float) (bp.getY() - camPos.y + iMinY);
+            float z1 = (float) (bp.getZ() - camPos.z + iMinZ);
+            float x2 = (float) (bp.getX() + 1 - camPos.x - iMaxX);
+            float y2 = (float) (bp.getY() + 1 - camPos.y - iMaxY);
+            float z2 = (float) (bp.getZ() + 1 - camPos.z - iMaxZ);
 
-        renderQuad(buf, worldVertices[3], worldVertices[2], worldVertices[6], worldVertices[7], r, g, b, barrierAlpha);
+            boolean down = blocks.contains(bp.down());
+            boolean up = blocks.contains(bp.up());
+            boolean north = blocks.contains(bp.north());
+            boolean south = blocks.contains(bp.south());
+            boolean west = blocks.contains(bp.west());
+            boolean east = blocks.contains(bp.east());
 
-        renderQuad(buf, worldVertices[4], worldVertices[5], worldVertices[1], worldVertices[0], r, g, b, barrierAlpha);
+            if (!down) drawQuadDoubleSided(buf, x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, r, g, b, faceAlpha);
+            if (!up) drawQuadDoubleSided(buf, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, r, g, b, faceAlpha);
+            if (!north) drawQuadDoubleSided(buf, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, r, g, b, faceAlpha);
+            if (!south) drawQuadDoubleSided(buf, x1, y1, z2, x2, y1, z2, x2, y2, z2, x1, y2, z2, r, g, b, faceAlpha);
+            if (!west) drawQuadDoubleSided(buf, x1, y1, z1, x1, y1, z2, x1, y2, z2, x1, y2, z1, r, g, b, faceAlpha);
+            if (!east) drawQuadDoubleSided(buf, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, faceAlpha);
 
-        renderQuad(buf, worldVertices[4], worldVertices[0], worldVertices[3], worldVertices[7], r, g, b, barrierAlpha);
-
-        renderQuad(buf, worldVertices[1], worldVertices[5], worldVertices[6], worldVertices[2], r, g, b, barrierAlpha);
-
-        float frameThick = 0.06f;
-        int frameAlpha = 245;
-
-        renderThickLineSegment(buf, worldVertices[0], worldVertices[1], frameThick, r, g, b, frameAlpha);
-        renderThickLineSegment(buf, worldVertices[1], worldVertices[2], frameThick, r, g, b, frameAlpha);
-        renderThickLineSegment(buf, worldVertices[2], worldVertices[3], frameThick, r, g, b, frameAlpha);
-        renderThickLineSegment(buf, worldVertices[3], worldVertices[0], frameThick, r, g, b, frameAlpha);
-
-        renderThickLineSegment(buf, worldVertices[4], worldVertices[5], frameThick, r, g, b, frameAlpha);
-        renderThickLineSegment(buf, worldVertices[5], worldVertices[6], frameThick, r, g, b, frameAlpha);
-        renderThickLineSegment(buf, worldVertices[6], worldVertices[7], frameThick, r, g, b, frameAlpha);
-        renderThickLineSegment(buf, worldVertices[7], worldVertices[4], frameThick, r, g, b, frameAlpha);
-
-        renderThickLineSegment(buf, worldVertices[0], worldVertices[4], frameThick, r, g, b, frameAlpha);
-        renderThickLineSegment(buf, worldVertices[1], worldVertices[5], frameThick, r, g, b, frameAlpha);
-        renderThickLineSegment(buf, worldVertices[2], worldVertices[6], frameThick, r, g, b, frameAlpha);
-        renderThickLineSegment(buf, worldVertices[3], worldVertices[7], frameThick, r, g, b, frameAlpha);
-
-        float waveProgress = (time * 1.5f) % 1.0f;
-        float waveY = MathHelper.lerp(waveProgress, -hh, hh);
-
-        Vec3d w1 = rotatePosePoint(new Vec3d(-hw, waveY, 0.0), pose.yawDeg, pose.pitchDeg);
-        Vec3d w2 = rotatePosePoint(new Vec3d(hw, waveY, 0.0), pose.yawDeg, pose.pitchDeg);
-
-        Vec3d wv1 = new Vec3d(pose.center.x + w1.x - camPos.x, pose.center.y + w1.y - camPos.y, pose.center.z + w1.z - camPos.z);
-        Vec3d wv2 = new Vec3d(pose.center.x + w2.x - camPos.x, pose.center.y + w2.y - camPos.y, pose.center.z + w2.z - camPos.z);
-
-        int pulseAlpha = (int) ((1.0f - Math.abs(waveProgress - 0.5f) * 2.0f) * 190.0f);
-        renderThickLineSegment(buf, wv1, wv2, 0.12f, 255, 255, 255, pulseAlpha);
-    }
-
-    private void renderQuad(VertexConsumer buf, Vec3d v1, Vec3d v2, Vec3d v3, Vec3d v4, int r, int g, int b, int a) {
-        buf.vertex((float) v1.x, (float) v1.y, (float) v1.z).color(r, g, b, a);
-        buf.vertex((float) v2.x, (float) v2.y, (float) v2.z).color(r, g, b, a);
-        buf.vertex((float) v3.x, (float) v3.y, (float) v3.z).color(r, g, b, a);
-        buf.vertex((float) v4.x, (float) v4.y, (float) v4.z).color(r, g, b, a);
-    }
-
-    private void renderThickLineSegment(VertexConsumer buf, Vec3d p1, Vec3d p2, float thickness, int r, int g, int b, int a) {
-        renderThickLineSegment(buf, (float) p1.x, (float) p1.y, (float) p1.z, (float) p2.x, (float) p2.y, (float) p2.z, thickness, r, g, b, a);
-    }
-
-    private void renderThickLineSegment(VertexConsumer buf, float x1, float y1, float z1, float x2, float y2, float z2,
-                                       float thickness, int r, int g, int b, int a) {
-        float dx = x2 - x1;
-        float dy = y2 - y1;
-        float dz = z2 - z1;
-        float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (len < 1e-4f) return;
-
-        float ht = thickness * 0.5f;
-
-        float px, py, pz;
-        if (Math.abs(dy / len) > 0.9f) {
-            px = ht; py = 0.0f; pz = 0.0f;
-        } else {
-            px = 0.0f; py = ht; pz = 0.0f;
-        }
-
-        buf.vertex(x1 - px, y1 - py, z1 - pz).color(r, g, b, a);
-        buf.vertex(x2 - px, y2 - py, z2 - pz).color(r, g, b, a);
-        buf.vertex(x2 + px, y2 + py, z2 + pz).color(r, g, b, a);
-        buf.vertex(x1 + px, y1 + py, z1 + pz).color(r, g, b, a);
-    }
-
-    private Vec3d rotatePosePoint(Vec3d pt, float yawDeg, float pitchDeg) {
-
-        double radPitch = Math.toRadians(pitchDeg);
-        double cosP = Math.cos(radPitch);
-        double sinP = Math.sin(radPitch);
-        double y1 = pt.y * cosP - pt.z * sinP;
-        double z1 = pt.y * sinP + pt.z * cosP;
-        double x1 = pt.x;
-
-        double radYaw = Math.toRadians(yawDeg);
-        double cosY = Math.cos(radYaw);
-        double sinY = Math.sin(radYaw);
-        double x2 = x1 * cosY + z1 * sinY;
-        double z2 = -x1 * sinY + z1 * cosY;
-        double y2 = y1;
-
-        return new Vec3d(x2, y2, z2);
-    }
-
-    private PlanePose computePlastPose(MinecraftClient mc, float dt) {
-        Vec3d start = mc.player.getEyePos();
-        Vec3d lookVec = mc.player.getRotationVec(1.0f);
-        Vec3d end = start.add(lookVec.multiply(4.0));
-
-        BlockHitResult hit = mc.world.raycast(new RaycastContext(
-                start, end, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player
-        ));
-
-        float pitch = mc.player.getPitch();
-        boolean isLookingDown = pitch > 45.0f;
-        boolean isLookingUp = pitch < -45.0f;
-        boolean isLookingHorizontal = !isLookingDown && !isLookingUp;
-
-        float thickness = 1.5f;
-        float halfThickness = thickness / 2.0f;
-
-        Vec3d center;
-        float yawDeg;
-        float pitchDeg;
-
-        if (hit.getType() == HitResult.Type.BLOCK && hit.getPos().distanceTo(start) <= 4.0) {
-            Vec3d hitPos = hit.getPos();
-            Direction face = hit.getSide();
-
-            if (isLookingDown) {
-                center = new Vec3d(
-                        Math.floor(hitPos.x) + 0.5,
-                        Math.floor(hitPos.y + 1.0) - 1.8 + halfThickness,
-                        Math.floor(hitPos.z) + 0.5
-                );
-                yawDeg = 0.0f;
-                pitchDeg = 90.0f;
-            } else if (isLookingUp) {
-                center = new Vec3d(
-                        Math.floor(hitPos.x) + 0.5,
-                        Math.floor(hitPos.y) - halfThickness + 1.6,
-                        Math.floor(hitPos.z) + 0.5
-                );
-                yawDeg = 0.0f;
-                pitchDeg = -90.0f;
-            } else {
-                double offsetX = face.getOffsetX() != 0 ? face.getOffsetX() * halfThickness : 0.0;
-                double offsetZ = face.getOffsetZ() != 0 ? face.getOffsetZ() * halfThickness : 0.0;
-                center = new Vec3d(
-                        Math.floor(hitPos.x) + 0.5 + offsetX,
-                        Math.floor(hitPos.y) + 0.5 + 1.6,
-                        Math.floor(hitPos.z) + 0.5 + offsetZ
-                );
-
-                yawDeg = switch (face) {
-                    case NORTH -> 180.0f;
-                    case SOUTH -> 0.0f;
-                    case WEST -> 90.0f;
-                    case EAST -> -90.0f;
-                    default -> -mc.player.getYaw();
-                };
-                pitchDeg = 0.0f;
+            if (!down) {
+                if (!west) drawSolidBox(buf, x1 - edgeT, y1 - edgeT, z1, x1 + edgeT, y1 + edgeT, z2, r, g, b, 235);
+                if (!east) drawSolidBox(buf, x2 - edgeT, y1 - edgeT, z1, x2 + edgeT, y1 + edgeT, z2, r, g, b, 235);
+                if (!north) drawSolidBox(buf, x1, y1 - edgeT, z1 - edgeT, x2, y1 + edgeT, z1 + edgeT, r, g, b, 235);
+                if (!south) drawSolidBox(buf, x1, y1 - edgeT, z2 - edgeT, x2, y1 + edgeT, z2 + edgeT, r, g, b, 235);
             }
-        } else {
-            Vec3d approx = start.add(lookVec.multiply(4.0));
-            double y = Math.floor(approx.y) + (isLookingDown ? (-1.8 + halfThickness) : isLookingUp ? (-halfThickness + 1.6) : (0.5 + 1.6));
-            center = new Vec3d(Math.floor(approx.x) + 0.5, y, Math.floor(approx.z) + 0.5);
-            yawDeg = -mc.player.getYaw();
-            pitchDeg = 0.0f;
+            if (!up) {
+                if (!west) drawSolidBox(buf, x1 - edgeT, y2 - edgeT, z1, x1 + edgeT, y2 + edgeT, z2, r, g, b, 235);
+                if (!east) drawSolidBox(buf, x2 - edgeT, y2 - edgeT, z1, x2 + edgeT, y2 + edgeT, z2, r, g, b, 235);
+                if (!north) drawSolidBox(buf, x1, y2 - edgeT, z1 - edgeT, x2, y2 + edgeT, z1 + edgeT, r, g, b, 235);
+                if (!south) drawSolidBox(buf, x1, y2 - edgeT, z2 - edgeT, x2, y2 + edgeT, z2 + edgeT, r, g, b, 235);
+            }
+            if (!west && !north) drawSolidBox(buf, x1 - edgeT, y1, z1 - edgeT, x1 + edgeT, y2, z1 + edgeT, r, g, b, 235);
+            if (!east && !north) drawSolidBox(buf, x2 - edgeT, y1, z1 - edgeT, x2 + edgeT, y2, z1 + edgeT, r, g, b, 235);
+            if (!east && !south) drawSolidBox(buf, x2 - edgeT, y1, z2 - edgeT, x2 + edgeT, y2, z2 + edgeT, r, g, b, 235);
+            if (!west && !south) drawSolidBox(buf, x1 - edgeT, y1, z2 - edgeT, x1 + edgeT, y2, z2 + edgeT, r, g, b, 235);
         }
-
-        if (!isLookingHorizontal) {
-            yawDeg = -mc.player.getYaw();
-        }
-
-        return new PlanePose(center, yawDeg, pitchDeg);
     }
 
-    private PlanePose smoothPlastPose(PlanePose target, float dt) {
-        if (!plastHasSmoothedPose) {
-            plastSmoothedCenter = target.center;
-            plastSmoothedYawDeg = target.yawDeg;
-            plastSmoothedPitchDeg = target.pitchDeg;
-            plastHasSmoothedPose = true;
-            return target;
-        }
-
-        float speed = Math.min(1.0f, dt * 16.0f);
-        plastSmoothedCenter = new Vec3d(
-                MathHelper.lerp(speed, plastSmoothedCenter.x, target.center.x),
-                MathHelper.lerp(speed, plastSmoothedCenter.y, target.center.y),
-                MathHelper.lerp(speed, plastSmoothedCenter.z, target.center.z)
-        );
-        plastSmoothedYawDeg = MathHelper.lerpAngleDegrees(speed, plastSmoothedYawDeg, target.yawDeg);
-        plastSmoothedPitchDeg = MathHelper.lerpAngleDegrees(speed, plastSmoothedPitchDeg, target.pitchDeg);
-
-        return new PlanePose(plastSmoothedCenter, plastSmoothedYawDeg, plastSmoothedPitchDeg);
+    private static void drawSolidBox(VertexConsumer buf,
+                                     float x1, float y1, float z1,
+                                     float x2, float y2, float z2,
+                                     int r, int g, int b, int a) {
+        if (x1 > x2) { float t = x1; x1 = x2; x2 = t; }
+        if (y1 > y2) { float t = y1; y1 = y2; y2 = t; }
+        if (z1 > z2) { float t = z1; z1 = z2; z2 = t; }
+        drawQuadDoubleSided(buf, x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, r, g, b, a);
+        drawQuadDoubleSided(buf, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, r, g, b, a);
+        drawQuadDoubleSided(buf, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, r, g, b, a);
+        drawQuadDoubleSided(buf, x1, y1, z2, x2, y1, z2, x2, y2, z2, x1, y2, z2, r, g, b, a);
+        drawQuadDoubleSided(buf, x1, y1, z1, x1, y1, z2, x1, y2, z2, x1, y2, z1, r, g, b, a);
+        drawQuadDoubleSided(buf, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, a);
     }
 
-    public static class PlanePose {
-        public final Vec3d center;
-        public final float yawDeg;
-        public final float pitchDeg;
+    private static void drawQuadDoubleSided(VertexConsumer buf,
+                                            float x1, float y1, float z1,
+                                            float x2, float y2, float z2,
+                                            float x3, float y3, float z3,
+                                            float x4, float y4, float z4,
+                                            int r, int g, int b, int a) {
+        buf.vertex(x1, y1, z1).color(r, g, b, a);
+        buf.vertex(x2, y2, z2).color(r, g, b, a);
+        buf.vertex(x3, y3, z3).color(r, g, b, a);
+        buf.vertex(x4, y4, z4).color(r, g, b, a);
 
-        public PlanePose(Vec3d center, float yawDeg, float pitchDeg) {
-            this.center = center;
-            this.yawDeg = yawDeg;
-            this.pitchDeg = pitchDeg;
-        }
+        buf.vertex(x4, y4, z4).color(r, g, b, a);
+        buf.vertex(x3, y3, z3).color(r, g, b, a);
+        buf.vertex(x2, y2, z2).color(r, g, b, a);
+        buf.vertex(x1, y1, z1).color(r, g, b, a);
+    }
+
+    private static void drawQuadDoubleSidedGrad(VertexConsumer buf,
+                                                float x1, float y1, float z1,
+                                                float x2, float y2, float z2,
+                                                float x3, float y3, float z3,
+                                                float x4, float y4, float z4,
+                                                int r, int g, int b, int aIn, int aOut) {
+        buf.vertex(x1, y1, z1).color(r, g, b, aIn);
+        buf.vertex(x2, y2, z2).color(r, g, b, aOut);
+        buf.vertex(x3, y3, z3).color(r, g, b, aOut);
+        buf.vertex(x4, y4, z4).color(r, g, b, aIn);
+
+        buf.vertex(x4, y4, z4).color(r, g, b, aIn);
+        buf.vertex(x3, y3, z3).color(r, g, b, aOut);
+        buf.vertex(x2, y2, z2).color(r, g, b, aOut);
+        buf.vertex(x1, y1, z1).color(r, g, b, aIn);
+    }
+
+    private static void drawTriDoubleSided(VertexConsumer buf,
+                                           float cx, float cy, float cz,
+                                           float x1, float y1, float z1,
+                                           float x2, float y2, float z2,
+                                           int r, int g, int b, int aCenter, int aEdge) {
+        buf.vertex(cx, cy, cz).color(r, g, b, aCenter);
+        buf.vertex(x1, y1, z1).color(r, g, b, aEdge);
+        buf.vertex(x2, y2, z2).color(r, g, b, aEdge);
+        buf.vertex(cx, cy, cz).color(r, g, b, aCenter);
+
+        buf.vertex(cx, cy, cz).color(r, g, b, aCenter);
+        buf.vertex(x2, y2, z2).color(r, g, b, aEdge);
+        buf.vertex(x1, y1, z1).color(r, g, b, aEdge);
+        buf.vertex(cx, cy, cz).color(r, g, b, aCenter);
     }
 }
