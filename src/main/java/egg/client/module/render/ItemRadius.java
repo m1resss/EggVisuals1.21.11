@@ -24,7 +24,6 @@ import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.LoreComponent;
 import net.minecraft.component.type.NbtComponent;
 import net.minecraft.entity.Entity;
-import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Item;
@@ -54,12 +53,11 @@ public class ItemRadius extends Module {
 
     private static final String SRV_FT = "FunTime";
     private static final String SRV_HW = "HolyWorld";
-    private static final String SRV_FC = "FunCubes";
 
     private static final int HIT_COLOR = 0xFF22C55E;
     private static final int FRIEND_COLOR = 0xFF2BFF88;
 
-    private final ModeSetting server = new ModeSetting("Сервер", SRV_FT, "Выбор сервера", SRV_FT, SRV_HW, SRV_FC);
+    private final ModeSetting server = new ModeSetting("Сервер", SRV_FT, "Выбор сервера", SRV_FT, SRV_HW);
 
     private final BooleanSetting showDez = new BooleanSetting("Дезориентация", true, "Радиус дезориентации (10м)");
     private final BooleanSetting showYavka = new BooleanSetting("Явная пыль", true, "Радиус явной пыли (10м)");
@@ -76,13 +74,6 @@ public class ItemRadius extends Module {
     private final BooleanSetting hwTrap = new BooleanSetting("Трапка HW", true, "Зона обычной трапки (плод хоруса)");
     private final BooleanSetting hwJake = new BooleanSetting("Светильник Джейка", true, "Радиус светильника Джейка (15м)");
 
-    private final BooleanSetting fcLightning = new BooleanSetting("Шаровая молния", true, "Зона сбития элитр (10м)");
-    private final BooleanSetting fcSlime = new BooleanSetting("Ком слизи", true, "Зона кома слизи (5м)");
-    private final BooleanSetting fcScute = new BooleanSetting("Черепаший захват", true, "Зона черепашьего захвата (7x6x7)");
-    private final BooleanSetting fcWeb = new BooleanSetting("Паутина судьбы", true, "Стена паутины 3x3 перед игроком");
-    private final BooleanSetting fcStun = new BooleanSetting("Стан FC", true, "Зона стана 60x60x60 (30м)");
-    private final BooleanSetting fcMagnet = new BooleanSetting("Магнитный шар", true, "Зона магнитного шара (7м)");
-
     private final BooleanSetting onlyDonate = new BooleanSetting("Только донат-NBT", false, "Проверять NBT и лор сервера (выкл — любые предметы)");
     private final SliderSetting fillOpacity = new SliderSetting("Прозрачность", 30.0, 0.0, 100.0, 5.0, "Прозрачность заливки");
 
@@ -91,7 +82,7 @@ public class ItemRadius extends Module {
     private BufferAllocator lineAllocator;
 
     public ItemRadius() {
-        super("ItemRadius", "Показывает зоны и радиусы донат-предметов (FunTime, HolyWorld, FunCubes)", Category.ESP);
+        super("ItemRadius", "Показывает зоны и радиусы донат-предметов (FunTime, HolyWorld)", Category.ESP);
 
         showDez.setVisible(() -> server.is(SRV_FT));
         showYavka.setVisible(() -> server.is(SRV_FT));
@@ -108,18 +99,10 @@ public class ItemRadius extends Module {
         hwTrap.setVisible(() -> server.is(SRV_HW));
         hwJake.setVisible(() -> server.is(SRV_HW));
 
-        fcLightning.setVisible(() -> server.is(SRV_FC));
-        fcSlime.setVisible(() -> server.is(SRV_FC));
-        fcScute.setVisible(() -> server.is(SRV_FC));
-        fcWeb.setVisible(() -> server.is(SRV_FC));
-        fcStun.setVisible(() -> server.is(SRV_FC));
-        fcMagnet.setVisible(() -> server.is(SRV_FC));
-
         addSettings(
                 server,
                 showDez, showYavka, showFireCharge, showGodAura, showSnowball, showTrap, dragonTrap, showPlast,
                 hwStun, hwExplosiveTrap, hwTrap, hwJake,
-                fcLightning, fcSlime, fcScute, fcWeb, fcStun, fcMagnet,
                 showDrill, onlyDonate, fillOpacity
         );
     }
@@ -230,27 +213,6 @@ public class ItemRadius extends Module {
             return null;
         }
 
-        if (server.is(SRV_FC)) {
-            if (fcLightning.isEnabled() && item == Items.NETHER_STAR && (!strict || matchesKeywordOrBukkit(stack, "lightning", "молни", "шаров"))) {
-                return "fc_lightning";
-            }
-            if (fcSlime.isEnabled() && item == Items.SLIME_BALL && (!strict || matchesKeywordOrBukkit(stack, "slime", "слиз", "ком"))) {
-                return "fc_slime";
-            }
-            if (fcScute.isEnabled() && item == Items.TURTLE_SCUTE && (!strict || matchesKeywordOrBukkit(stack, "turtle", "scute", "черепа"))) {
-                return "fc_scute";
-            }
-            if (fcWeb.isEnabled() && item == Items.COBWEB && (!strict || matchesKeywordOrBukkit(stack, "web", "паутин", "судьб"))) {
-                return "fc_web";
-            }
-            if (fcStun.isEnabled() && item == Items.ENDER_EYE && (!strict || matchesKeywordOrBukkit(stack, "stun", "стан"))) {
-                return "fc_stun";
-            }
-            if (fcMagnet.isEnabled() && item == Items.FIREWORK_STAR && (!strict || matchesKeywordOrBukkit(stack, "magnet", "магнит"))) {
-                return "fc_magnet";
-            }
-        }
-
         return null;
     }
 
@@ -341,72 +303,6 @@ public class ItemRadius extends Module {
                     }
                 }
                 return false;
-            }
-            case "fc_lightning": {
-                Box box = new Box(playerPos.x - 10.0, playerPos.y - 10.0, playerPos.z - 10.0,
-                        playerPos.x + 10.0, playerPos.y + 10.0, playerPos.z + 10.0);
-                boolean hit = hasElytraEnemyInBox(mc, box);
-                renderZoneBox(buf, box, camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, false);
-                double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
-                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 10.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer);
-                return hit;
-            }
-            case "fc_slime": {
-                double y = playerPos.y + 1.0;
-                Box detect = new Box(playerPos.x - 5.0, y - 5.0, playerPos.z - 5.0, playerPos.x + 5.0, y + 5.0, playerPos.z + 5.0);
-                boolean hit = hasEnemyInBox(mc, detect);
-                double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
-                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 5.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer);
-                return hit;
-            }
-            case "fc_scute": {
-                BlockPos pos = mc.player.getBlockPos();
-                Box zone = new Box(pos.getX() - 3, pos.getY() - 1, pos.getZ() - 3, pos.getX() + 4, pos.getY() + 5, pos.getZ() + 4);
-                boolean hit = hasEnemyInBox(mc, zone);
-                renderZoneBox(buf, zone.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, true);
-                return hit;
-            }
-            case "fc_web": {
-                BlockPos pos = mc.player.getBlockPos();
-                float yaw = (mc.player.getYaw() % 360.0f + 360.0f) % 360.0f;
-                BlockPos base;
-                boolean xWide;
-                if (yaw >= 315.0f || yaw < 45.0f) {
-                    base = pos.add(0, 0, 3);
-                    xWide = true;
-                } else if (yaw >= 45.0f && yaw < 135.0f) {
-                    base = pos.add(-3, 0, 0);
-                    xWide = false;
-                } else if (yaw >= 135.0f && yaw < 225.0f) {
-                    base = pos.add(0, 0, -3);
-                    xWide = true;
-                } else {
-                    base = pos.add(3, 0, 0);
-                    xWide = false;
-                }
-                Box wall = xWide
-                        ? new Box(base.getX() - 1, base.getY(), base.getZ(), base.getX() + 2, base.getY() + 3, base.getZ() + 1)
-                        : new Box(base.getX(), base.getY(), base.getZ() - 1, base.getX() + 1, base.getY() + 3, base.getZ() + 2);
-                boolean hit = hasEnemyInBox(mc, wall);
-                renderZoneBox(buf, wall.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, true);
-                return hit;
-            }
-            case "fc_stun": {
-                Box box = new Box(playerPos.x - 30.0, playerPos.y - 30.0, playerPos.z - 30.0,
-                        playerPos.x + 30.0, playerPos.y + 30.0, playerPos.z + 30.0);
-                boolean hit = hasEnemyInBox(mc, box);
-                renderZoneBox(buf, box, camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, false);
-                double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
-                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 30.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer);
-                return hit;
-            }
-            case "fc_magnet": {
-                Box detect = new Box(playerPos.x - 7.0, playerPos.y - 6.0, playerPos.z - 7.0,
-                        playerPos.x + 7.0, playerPos.y + 8.0, playerPos.z + 7.0);
-                boolean hit = hasEnemyInBox(mc, detect);
-                double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
-                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 7.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer);
-                return hit;
             }
             default:
                 return false;
@@ -800,16 +696,6 @@ public class ItemRadius extends Module {
         if (mc.world == null || mc.player == null) return false;
         for (PlayerEntity p : mc.world.getPlayers()) {
             if (!isValidTarget(mc.player, p, true)) continue;
-            if (box.contains(p.getEntityPos()) || box.intersects(p.getBoundingBox())) return true;
-        }
-        return false;
-    }
-
-    private boolean hasElytraEnemyInBox(MinecraftClient mc, Box box) {
-        if (mc.world == null || mc.player == null) return false;
-        for (PlayerEntity p : mc.world.getPlayers()) {
-            if (!isValidTarget(mc.player, p, true)) continue;
-            if (p.getEquippedStack(EquipmentSlot.CHEST).getItem() != Items.ELYTRA) continue;
             if (box.contains(p.getEntityPos()) || box.intersects(p.getBoundingBox())) return true;
         }
         return false;
