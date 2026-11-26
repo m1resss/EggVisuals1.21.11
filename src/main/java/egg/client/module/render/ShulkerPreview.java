@@ -8,12 +8,14 @@ import egg.client.module.Category;
 import egg.client.module.Module;
 import egg.client.module.setting.BooleanSetting;
 import egg.client.module.setting.SliderSetting;
+import egg.client.render.GuiOverlays;
+import egg.client.render.msdf.Draw2DProcessor;
+import egg.client.render.msdf.Fonts;
+import egg.client.render.msdf.pipeline.DrawBatcher;
 import egg.client.ui.theme.Theme;
 import egg.client.util.ColorUtil;
 import net.minecraft.block.ShulkerBoxBlock;
-import net.minecraft.item.BlockItem;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gl.GpuSampler;
 import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
@@ -27,40 +29,45 @@ import net.minecraft.client.texture.TextureSetup;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.ContainerComponent;
 import net.minecraft.component.type.LoreComponent;
+import net.minecraft.item.BlockItem;
 import net.minecraft.item.ItemStack;
-import net.minecraft.text.OrderedText;
-import net.minecraft.text.Text;
 import net.minecraft.util.DyeColor;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.collection.DefaultedList;
 import net.minecraft.util.math.MathHelper;
 import org.joml.Matrix3x2f;
+import org.joml.Vector4f;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class ShulkerPreview extends Module {
-    private static final Identifier ATLAS_ID = Identifier.of("egg", "shulker_preview_atlas");
-    private static final int PATCH_SIZE = 48;
-    private static final int ATLAS_W = PATCH_SIZE * 2;
+    private static final Identifier ATLAS_ID = Identifier.of("egg", "shulker_preview_atlas_v2");
+    private static final int PATCH_SIZE = 128;
+    private static final int ATLAS_W = PATCH_SIZE;
     private static final int ATLAS_H = PATCH_SIZE;
 
     private static final int COLS = 9;
     private static final int ROWS = 3;
     private static final int SLOT_COUNT = COLS * ROWS;
-    private static final float PAD = 7.0f;
-    private static final float HEADER_H = 17.0f;
-    private static final float SLOT_STEP = 18.0f;
-    private static final float CARD_W = PAD * 2.0f + COLS * SLOT_STEP;
-    private static final float CARD_H = PAD + HEADER_H + ROWS * SLOT_STEP + PAD;
+    private static final float PAD = 7.5f;
+    private static final float HEADER_H = 20.0f;
+    private static final float SLOT_STEP = 18.5f;
+    private static final float SLOT_SIZE = 17.0f;
+    private static final float CARD_W = PAD * 2.0f + COLS * SLOT_STEP - (SLOT_STEP - SLOT_SIZE);
+    private static final float CARD_H = PAD + HEADER_H + ROWS * SLOT_STEP - (SLOT_STEP - SLOT_SIZE) + PAD;
+    private static final float CARD_RADIUS = 8.0f;
 
     private static boolean atlasReady;
 
     private final BooleanSetting colorAccent = new BooleanSetting("Цвет шалкера", true, "Подсвечивать рамку и акцент цветом шалкера");
     private final BooleanSetting showEmpty = new BooleanSetting("Пустые шалкеры", true, "Показывать карточку при наведении на пустой шалкер");
     private final BooleanSetting hideVanilla = new BooleanSetting("Скрывать ванильный текст", true, "Заменять стандартный список предметов в подсказке на сетку 9x3");
-    private final SliderSetting opacity = new SliderSetting("Непрозрачность", 90.0, 45.0, 100.0, 5.0, "Непрозрачность фона карточки (%)");
+    private final SliderSetting opacity = new SliderSetting("Непрозрачность", 92.0, 45.0, 100.0, 5.0, "Непрозрачность фона карточки (%)");
     private final SliderSetting scale = new SliderSetting("Масштаб", 1.0, 0.75, 1.35, 0.05, "Масштаб карточки предпросмотра");
+
+    private ItemStack lastStack = ItemStack.EMPTY;
+    private long openStartedAt = 0L;
 
     public ShulkerPreview() {
         super("ShulkerPreview", "Показывает содержимое шалкеров и контейнеров сеткой 9x3 при наведении", Category.ESP);
@@ -97,6 +104,14 @@ public class ShulkerPreview extends Module {
         GpuTextureView texView = atlasTex.getGlTextureView();
         if (texView == null) return;
 
+        long now = System.nanoTime();
+        if (stack != lastStack) {
+            lastStack = stack;
+            openStartedAt = now;
+        }
+        float openT = Math.clamp((now - openStartedAt) / 100_000_000.0f, 0.0f, 1.0f);
+        float ease = 1.0f - (1.0f - openT) * (1.0f - openT);
+
         DefaultedList<ItemStack> items = DefaultedList.ofSize(SLOT_COUNT, ItemStack.EMPTY);
         ContainerComponent container = stack.get(DataComponentTypes.CONTAINER);
         if (container != null) {
@@ -108,14 +123,12 @@ public class ShulkerPreview extends Module {
             if (!items.get(i).isEmpty()) filledCount++;
         }
 
-        float s = MathHelper.clamp(scale.getValueFloat(), 0.75f, 1.35f);
-        float totalW = CARD_W * s;
-        float totalH = CARD_H * s;
-        if (totalW > screenWidth - 8.0f) {
-            s = Math.max(0.55f, (screenWidth - 8.0f) / CARD_W);
-            totalW = CARD_W * s;
-            totalH = CARD_H * s;
-        }
+        float baseScale = MathHelper.clamp(scale.getValueFloat(), 0.75f, 1.35f);
+        float maxFit = Math.max(0.55f, (screenWidth - 10.0f) / CARD_W);
+        float finalScale = Math.min(baseScale, maxFit);
+        float animScale = finalScale * (0.95f + 0.05f * ease);
+        float totalW = CARD_W * finalScale;
+        float totalH = CARD_H * finalScale;
 
         float x;
         float y;
@@ -141,51 +154,49 @@ public class ShulkerPreview extends Module {
         x = MathHelper.clamp(x, 4.0f, Math.max(4.0f, screenWidth - totalW - 4.0f));
         y = MathHelper.clamp(y, 4.0f, Math.max(4.0f, screenHeight - totalH - 4.0f));
 
-        float alpha = MathHelper.clamp(opacity.getValueFloat() / 100.0f, 0.4f, 1.0f);
+        float alpha = MathHelper.clamp(opacity.getValueFloat() / 100.0f, 0.4f, 1.0f) * (0.45f + 0.55f * ease);
         int accent = resolveAccentColor(stack);
-        int accentTint = ColorUtil.withAlpha(accent, Math.round(44 * alpha));
-        int borderCol = ColorUtil.withAlpha(accent, Math.round(195 * alpha));
-        int bgCol = ColorUtil.rgba(14, 16, 23, Math.round(236 * alpha));
-        int shadowCol = ColorUtil.rgba(4, 5, 9, Math.round(135 * alpha));
+        int bgCol = ColorUtil.rgba(13, 15, 22, Math.round(238 * alpha));
+        int shadowCol = ColorUtil.rgba(0, 0, 0, Math.round(118 * alpha));
+
+        float centerOffsetX = (CARD_W * finalScale - CARD_W * animScale) * 0.5f;
+        float centerOffsetY = (CARD_H * finalScale - CARD_H * animScale) * 0.5f;
+        float drawX = x + centerOffsetX;
+        float drawY = y + centerOffsetY;
+
+        float gridX = PAD;
+        float gridY = PAD + HEADER_H;
 
         context.createNewRootLayer();
         var matrices = context.getMatrices();
         matrices.pushMatrix();
-        matrices.translate(x, y);
-        matrices.scale(s, s);
+        matrices.translate(drawX, drawY);
+        matrices.scale(animScale, animScale);
         try {
             Matrix3x2f pose = new Matrix3x2f(matrices);
             List<NineSlice> slices = new ArrayList<>(32);
-            slices.add(new NineSlice(-1.5f, 1.0f, CARD_W + 3.0f, CARD_H + 3.0f, 9.0f, shadowCol, false));
-            slices.add(new NineSlice(0.0f, 0.0f, CARD_W, CARD_H, 7.5f, bgCol, false));
-            slices.add(new NineSlice(1.0f, 1.0f, CARD_W - 2.0f, HEADER_H + 2.0f, 6.5f, accentTint, false));
-            slices.add(new NineSlice(0.0f, 0.0f, CARD_W, CARD_H, 7.5f, borderCol, true));
+            slices.add(new NineSlice(-2.5f, 1.5f, CARD_W + 5.0f, CARD_H + 5.5f, 10.5f, shadowCol));
+            slices.add(new NineSlice(0.0f, 0.0f, CARD_W, CARD_H, CARD_RADIUS, bgCol));
 
-            float gridX = PAD;
-            float gridY = PAD + HEADER_H;
             for (int row = 0; row < ROWS; row++) {
                 for (int col = 0; col < COLS; col++) {
                     int idx = row * COLS + col;
                     boolean occupied = !items.get(idx).isEmpty();
                     int slotBg = occupied
-                            ? ColorUtil.rgba(30, 34, 48, Math.round(195 * alpha))
-                            : ColorUtil.rgba(21, 24, 34, Math.round(150 * alpha));
-                    int slotBorder = occupied
-                            ? ColorUtil.withAlpha(accent, Math.round(62 * alpha))
-                            : ColorUtil.rgba(52, 58, 76, Math.round(70 * alpha));
-                    float sx = gridX + col * SLOT_STEP + 0.5f;
-                    float sy = gridY + row * SLOT_STEP + 0.5f;
-                    slices.add(new NineSlice(sx, sy, 17.0f, 17.0f, 3.2f, slotBg, false));
-                    slices.add(new NineSlice(sx, sy, 17.0f, 17.0f, 3.2f, slotBorder, true));
+                            ? ColorUtil.rgba(30, 34, 48, Math.round(205 * alpha))
+                            : ColorUtil.rgba(19, 22, 31, Math.round(145 * alpha));
+                    float sx = gridX + col * SLOT_STEP;
+                    float sy = gridY + row * SLOT_STEP;
+                    slices.add(new NineSlice(sx, sy, SLOT_SIZE, SLOT_SIZE, 3.4f, slotBg));
                 }
             }
 
             GpuSampler sampler = RenderSystem.getSamplerCache().get(FilterMode.LINEAR);
             ScreenRect bounds = new ScreenRect(
-                    Math.max(0, (int) Math.floor(x - 3.0f * s)),
-                    Math.max(0, (int) Math.floor(y - 2.0f * s)),
-                    Math.max(1, (int) Math.ceil(totalW + 6.0f * s)),
-                    Math.max(1, (int) Math.ceil(totalH + 6.0f * s))
+                    Math.max(0, (int) Math.floor(drawX - 4.0f * animScale)),
+                    Math.max(0, (int) Math.floor(drawY - 3.0f * animScale)),
+                    Math.max(1, (int) Math.ceil(CARD_W * animScale + 8.0f * animScale)),
+                    Math.max(1, (int) Math.ceil(CARD_H * animScale + 8.0f * animScale))
             );
             context.state.addSimpleElement(new ShulkerCardRenderState(
                     RenderPipelines.GUI_TEXTURED,
@@ -195,30 +206,121 @@ public class ShulkerPreview extends Module {
                     slices
             ));
 
-            TextRenderer tr = mc.textRenderer;
-            String countText = filledCount == 0 ? "Пусто" : filledCount + "/27";
-            int countW = tr.getWidth(countText);
-            int maxTitleW = Math.max(40, (int) (CARD_W - PAD * 2.0f - countW - 8.0f));
-            OrderedText title = trimTitle(tr, stack.getName(), maxTitleW);
-            int titleColor = ColorUtil.withAlpha(0xFFF3F6FC, Math.round(250 * alpha));
-            int countColor = ColorUtil.withAlpha(filledCount == 0 ? 0xFF8C96AC : 0xFFB8C4DA, Math.round(235 * alpha));
-
-            context.drawText(tr, title, (int) PAD + 1, (int) PAD + 3, titleColor, false);
-            context.drawText(tr, countText, (int) (CARD_W - PAD - countW), (int) PAD + 3, countColor, false);
+            matrices.pushMatrix();
+            matrices.translate(PAD, PAD - 0.5f);
+            matrices.scale(0.68f, 0.68f);
+            context.drawItem(stack, 0, 0);
+            matrices.popMatrix();
 
             for (int row = 0; row < ROWS; row++) {
                 for (int col = 0; col < COLS; col++) {
                     ItemStack item = items.get(row * COLS + col);
                     if (item.isEmpty()) continue;
-                    int ix = Math.round(gridX + col * SLOT_STEP + 1.0f);
-                    int iy = Math.round(gridY + row * SLOT_STEP + 1.0f);
+                    int ix = Math.round(gridX + col * SLOT_STEP + 0.5f);
+                    int iy = Math.round(gridY + row * SLOT_STEP + 0.5f);
                     context.drawItem(item, ix, iy);
-                    context.drawStackOverlay(tr, item, ix, iy);
+                    context.drawStackOverlay(mc.textRenderer, item, ix, iy);
                 }
             }
         } finally {
             matrices.popMatrix();
         }
+
+        final String rawName = stack.getName().getString();
+        final int finalFilled = filledCount;
+        final float finalAlpha = alpha;
+        final float overlayX = drawX;
+        final float overlayY = drawY;
+        final float overlayScale = animScale;
+        final boolean[] occupiedFlags = new boolean[SLOT_COUNT];
+        for (int i = 0; i < SLOT_COUNT; i++) {
+            occupiedFlags[i] = !items.get(i).isEmpty();
+        }
+
+        GuiOverlays.defer(() -> {
+            Matrix3x2f hudMat = new Matrix3x2f().translate(overlayX, overlayY).scale(overlayScale, overlayScale);
+
+            int topTint = ColorUtil.withAlpha(accent, Math.round(40 * finalAlpha));
+            Draw2DProcessor.INSTANCE.a(hudMat, 0.5f, 0.5f, CARD_W - 1.0f, HEADER_H + 5.0f,
+                    new Vector4f(CARD_RADIUS, CARD_RADIUS, 0.0f, 0.0f), topTint, topTint, 0, 0);
+
+            int rimColor = ColorUtil.interpolate(
+                    ColorUtil.rgba(255, 255, 255, Math.round(48 * finalAlpha)),
+                    ColorUtil.withAlpha(accent, Math.round(165 * finalAlpha)),
+                    0.62f
+            );
+            Draw2DProcessor.INSTANCE.drawOutline(hudMat, 0.0f, 0.0f, CARD_W, CARD_H, CARD_RADIUS, 0.8f, rimColor);
+
+            float dividerY = PAD + HEADER_H - 4.0f;
+            int dividerCol = ColorUtil.interpolate(
+                    ColorUtil.rgba(255, 255, 255, Math.round(24 * finalAlpha)),
+                    ColorUtil.withAlpha(accent, Math.round(72 * finalAlpha)),
+                    0.45f
+            );
+            Draw2DProcessor.INSTANCE.drawRect(hudMat, PAD, dividerY, CARD_W - PAD * 2.0f, 0.6f, 0.3f, dividerCol);
+
+            String countLabel = finalFilled == 0 ? "Пусто" : finalFilled + "/27";
+            float badgeFont = 6.3f;
+            float badgeTextW = Fonts.b.a(countLabel, badgeFont);
+            float badgeW = badgeTextW + 9.0f;
+            float badgeH = 10.5f;
+            float badgeX = CARD_W - PAD - badgeW;
+            float badgeY = PAD + (11.5f - badgeH) * 0.5f;
+
+            int badgeBg = finalFilled == 0
+                    ? ColorUtil.rgba(255, 255, 255, Math.round(16 * finalAlpha))
+                    : ColorUtil.withAlpha(accent, Math.round(52 * finalAlpha));
+            int badgeBorder = finalFilled == 0
+                    ? ColorUtil.rgba(255, 255, 255, Math.round(28 * finalAlpha))
+                    : ColorUtil.withAlpha(accent, Math.round(135 * finalAlpha));
+            int badgeTextCol = finalFilled == 0
+                    ? ColorUtil.rgba(154, 162, 180, Math.round(230 * finalAlpha))
+                    : ColorUtil.withAlpha(ColorUtil.interpolate(0xFFFFFFFF, accent, 0.25f), Math.round(248 * finalAlpha));
+
+            Draw2DProcessor.INSTANCE.drawRect(hudMat, badgeX, badgeY, badgeW, badgeH, 3.5f, badgeBg);
+            Draw2DProcessor.INSTANCE.drawOutline(hudMat, badgeX, badgeY, badgeW, badgeH, 3.5f, 0.6f, badgeBorder);
+            Fonts.b.a(hudMat, countLabel, badgeX + 4.5f, Fonts.b.a(badgeFont, badgeY + badgeH * 0.5f), badgeFont, badgeTextCol);
+
+            float titleFont = 7.8f;
+            float titleX = PAD + 14.5f;
+            float maxTitleW = Math.max(24.0f, badgeX - titleX - 6.0f);
+            String title = trimMsdf(rawName, titleFont, maxTitleW);
+            int titleCol = ColorUtil.rgba(244, 247, 252, Math.round(252 * finalAlpha));
+            Fonts.b.a(hudMat, title, titleX, Fonts.b.a(titleFont, PAD + 5.6f), titleFont, titleCol);
+
+            for (int row = 0; row < ROWS; row++) {
+                for (int col = 0; col < COLS; col++) {
+                    int idx = row * COLS + col;
+                    boolean occupied = occupiedFlags[idx];
+                    float sx = gridX + col * SLOT_STEP;
+                    float sy = gridY + row * SLOT_STEP;
+                    int slotBorder = occupied
+                            ? ColorUtil.withAlpha(accent, Math.round(82 * finalAlpha))
+                            : ColorUtil.rgba(255, 255, 255, Math.round(18 * finalAlpha));
+                    Draw2DProcessor.INSTANCE.drawOutline(hudMat, sx, sy, SLOT_SIZE, SLOT_SIZE, 3.4f, 0.6f, slotBorder);
+                    if (!occupied) {
+                        float dotS = 1.8f;
+                        Draw2DProcessor.INSTANCE.drawRect(hudMat,
+                                sx + (SLOT_SIZE - dotS) * 0.5f,
+                                sy + (SLOT_SIZE - dotS) * 0.5f,
+                                dotS, dotS, dotS * 0.5f,
+                                ColorUtil.rgba(255, 255, 255, Math.round(24 * finalAlpha)));
+                    }
+                }
+            }
+
+            DrawBatcher.flushPending();
+        });
+    }
+
+    private static String trimMsdf(String text, float size, float maxWidth) {
+        if (text == null || text.isEmpty()) return "";
+        if (Fonts.b.a(text, size) <= maxWidth) return text;
+        StringBuilder sb = new StringBuilder(text);
+        while (sb.length() > 2 && Fonts.b.a(sb + "...", size) > maxWidth) {
+            sb.setLength(sb.length() - 1);
+        }
+        return sb + "...";
     }
 
     private int resolveAccentColor(ItemStack stack) {
@@ -238,24 +340,14 @@ public class ShulkerPreview extends Module {
         return Theme.getAccent();
     }
 
-    private static OrderedText trimTitle(TextRenderer tr, Text text, int maxWidth) {
-        if (tr.getWidth(text) <= maxWidth) {
-            return text.asOrderedText();
-        }
-        int dotsW = tr.getWidth("...");
-        Text trimmed = Text.literal(tr.trimToWidth(text.getString(), Math.max(12, maxWidth - dotsW)) + "...")
-                .setStyle(text.getStyle());
-        return trimmed.asOrderedText();
-    }
-
     private static void ensureAtlas(MinecraftClient client) {
         if (atlasReady || client == null || client.getTextureManager() == null) return;
         atlasReady = true;
 
         NativeImage image = new NativeImage(ATLAS_W, ATLAS_H, true);
         float half = PATCH_SIZE * 0.5f;
-        float outerR = 14.0f;
-        float halfExtent = half - 1.5f;
+        float outerR = 28.0f;
+        float halfExtent = half - 2.0f;
 
         for (int py = 0; py < PATCH_SIZE; py++) {
             float y = Math.abs((py + 0.5f) - half);
@@ -265,14 +357,9 @@ public class ShulkerPreview extends Module {
                 float dy = Math.max(0.0f, y - (halfExtent - outerR));
                 float dist = (float) Math.hypot(dx, dy) - outerR;
 
-                float fillAlpha = MathHelper.clamp(0.5f - dist / 1.35f, 0.0f, 1.0f);
+                float fillAlpha = MathHelper.clamp(0.5f - dist / 1.4f, 0.0f, 1.0f);
                 int fillArgb = (Math.round(fillAlpha * 255.0f) << 24) | 0x00FFFFFF;
                 image.setColorArgb(px, py, fillArgb);
-
-                float ringDist = Math.abs(dist + 0.7f);
-                float strokeAlpha = MathHelper.clamp(1.05f - ringDist / 1.15f, 0.0f, 1.0f) * fillAlpha;
-                int strokeArgb = (Math.round(strokeAlpha * 255.0f) << 24) | 0x00FFFFFF;
-                image.setColorArgb(PATCH_SIZE + px, py, strokeArgb);
             }
         }
 
@@ -281,7 +368,7 @@ public class ShulkerPreview extends Module {
         client.getTextureManager().registerTexture(ATLAS_ID, texture);
     }
 
-    private record NineSlice(float x, float y, float w, float h, float corner, int color, boolean outline) {}
+    private record NineSlice(float x, float y, float w, float h, float corner, int color) {}
 
     private static final class ShulkerCardRenderState implements SimpleGuiElementRenderState {
         private final RenderPipeline pipeline;
@@ -311,11 +398,9 @@ public class ShulkerPreview extends Module {
             float[] xs = {s.x, s.x + c, s.x + s.w - c, s.x + s.w};
             float[] ys = {s.y, s.y + c, s.y + s.h - c, s.y + s.h};
 
-            float baseU = s.outline ? 0.5f : 0.0f;
-            float uEdge = 16.0f / ATLAS_W;
-            float uHalf = 0.5f;
-            float[] us = {baseU, baseU + uEdge, baseU + uHalf - uEdge, baseU + uHalf};
-            float vEdge = 16.0f / ATLAS_H;
+            float uEdge = 32.0f / ATLAS_W;
+            float[] us = {0.0f, uEdge, 1.0f - uEdge, 1.0f};
+            float vEdge = 32.0f / ATLAS_H;
             float[] vs = {0.0f, vEdge, 1.0f - vEdge, 1.0f};
 
             for (int r = 0; r < 3; r++) {
@@ -325,7 +410,6 @@ public class ShulkerPreview extends Module {
                 float v0 = vs[r];
                 float v1 = vs[r + 1];
                 for (int col = 0; col < 3; col++) {
-                    if (s.outline && r == 1 && col == 1) continue;
                     float x0 = xs[col];
                     float x1 = xs[col + 1];
                     if (x1 <= x0 + 0.001f) continue;
