@@ -33,17 +33,10 @@ void main() {
     float localX = max(0.0, absX - gapHalf);
     float shiftedX = side * localX;
 
-    float videoAspect = 0.88;
-    float halfSpanX = videoAspect / aspect;
-    float vidU = 0.5 + shiftedX / (2.0 * halfSpanX);
-    float vidV = 1.0 - screenUv.y;
+    float vidU = clamp(0.5 + shiftedX * 0.5, 0.0, 1.0);
+    float vidV = clamp(1.0 - screenUv.y, 0.0, 1.0);
 
-    vec3 col = vec3(0.0);
-    if (vidU > 0.0 && vidU < 1.0) {
-        vec3 texRgb = texture(Sampler0, vec2(clamp(vidU, 0.0, 1.0), clamp(vidV, 0.0, 1.0))).rgb;
-        float edgeMask = smoothstep(0.0, 0.045, vidU) * smoothstep(1.0, 0.955, vidU);
-        col = texRgb * edgeMask * intro;
-    }
+    vec3 col = texture(Sampler0, vec2(vidU, vidV)).rgb * intro;
 
     float seamFlash = exp(-localX * 36.0) * smoothstep(0.0, 0.14, split) * (1.0 - smoothstep(0.76, 1.0, split));
     col += vec3(0.95, 0.62, 0.36) * seamFlash * 0.24;
