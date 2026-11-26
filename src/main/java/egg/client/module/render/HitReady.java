@@ -18,6 +18,7 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.decoration.ArmorStandEntity;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.util.hit.EntityHitResult;
@@ -27,48 +28,48 @@ import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
 
-import java.util.Locale;
 import java.util.Optional;
 
 public class HitReady extends Module {
 
-    private static final String STYLE_BOTH = "Кольцо и статус";
-    private static final String STYLE_RING = "Только прицел";
+    private static final String STYLE_BOTH = "Кольцо и плашка";
+    private static final String STYLE_RING = "Только кольцо";
     private static final String STYLE_PILL = "Только плашка";
 
-    private static final int COL_READY = 0xFF34D399;
+    private static final int COL_CAN = 0xFF22C55E;
     private static final int COL_CRIT = 0xFFFBBF24;
-    private static final int COL_COOLDOWN = 0xFFF59E0B;
-    private static final int COL_FAR = 0xFFF87171;
-    private static final int COL_BLOCKED = 0xFFFB7185;
+    private static final int COL_CANT = 0xFFEF4444;
     private static final int COL_FRIEND = 0xFF60A5FA;
-    private static final int COL_OFF_AIM = 0xFF94A3B8;
+    private static final int COL_IDLE = 0xFF94A3B8;
 
-    private final ModeSetting style = new ModeSetting("Вид", STYLE_BOTH, "Отображение индикатора удара",
+    private final ModeSetting style = new ModeSetting("Вид", STYLE_BOTH, "Способ отображения готовности удара",
             STYLE_BOTH, STYLE_RING, STYLE_PILL);
-    private final BooleanSetting showAlways = new BooleanSetting("Показывать всегда", false,
+    private final BooleanSetting showWithoutTarget = new BooleanSetting("Без цели", true,
             "Показывать индикатор даже когда рядом нет врагов");
+    private final BooleanSetting showReason = new BooleanSetting("Причина запрета", true,
+            "Дописывать причину, почему нельзя ударить (КД, далеко, мимо, щит)");
     private final BooleanSetting critIndicator = new BooleanSetting("Индикатор крита", true,
             "Подсвечивать золотым готовность критического удара");
-    private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", true,
+    private final BooleanSetting onlyPlayers = new BooleanSetting("Только игроки", false,
             "Реагировать только на других игроков");
-    private final SliderSetting ringRadius = new SliderSetting("Радиус кольца", 11.5, 7.0, 22.0, 0.5,
-            "Радиус индикатора вокруг прицела");
-    private final SliderSetting pillOffsetY = new SliderSetting("Отступ плашки", 19.0, 12.0, 42.0, 1.0,
-            "Смещение плашки статуса ниже прицела");
+    private final SliderSetting ringRadius = new SliderSetting("Радиус кольца", 12.0, 7.0, 22.0, 0.5,
+            "Радиус кольца вокруг прицела");
+    private final SliderSetting pillOffsetY = new SliderSetting("Отступ плашки", 20.0, 12.0, 44.0, 1.0,
+            "Смещение плашки ниже прицела");
 
     private float smoothAlpha = 0.0f;
     private float smoothRingFill = 1.0f;
-    private int smoothColor = COL_READY;
+    private int smoothColor = COL_IDLE;
     private float readyPop = 0.0f;
-    private AttackState lastState = AttackState.IDLE;
+    private boolean lastCanHit = false;
     private long lastFrameNanos = 0L;
 
     public HitReady() {
-        super("HitReady", "Показывает по прицелу, дистанции и КД, можно ли сейчас ударить цель", Category.ESP);
+        super("HitReady", "Чётко показывает у прицела, можно ли сейчас ударить цель или нет", Category.ESP);
         ringRadius.setVisible(() -> !style.is(STYLE_PILL));
         pillOffsetY.setVisible(() -> !style.is(STYLE_RING));
-        addSettings(style, showAlways, critIndicator, onlyPlayers, ringRadius, pillOffsetY);
+        showReason.setVisible(() -> !style.is(STYLE_RING));
+        addSettings(style, showWithoutTarget, showReason, critIndicator, onlyPlayers, ringRadius, pillOffsetY);
     }
 
     public void render(DrawContext context, RenderTickCounter tickCounter) {
@@ -87,23 +88,19 @@ public class HitReady extends Module {
         float tickProgress = tickCounter != null ? tickCounter.getTickProgress(true) : 1.0f;
         Probe probe = evaluateAttack(mc, tickProgress);
 
-        boolean visible = showAlways.isEnabled()
-                || probe.state != AttackState.IDLE
-                || probe.cooldown < 0.99f;
+        float targetAlpha = (showWithoutTarget.isEnabled() || probe.hasTarget || probe.cooldown < 0.96f)
+                ? probe.alphaScale : 0.0f;
 
-        float targetAlpha = visible ? probe.alphaScale : 0.0f;
-        float lerpRate = Math.clamp(dt * 16.0f, 0.0f, 1.0f);
-        smoothAlpha = MathHelper.lerp(lerpRate, smoothAlpha, targetAlpha);
-        smoothRingFill = MathHelper.lerp(Math.clamp(dt * 22.0f, 0.0f, 1.0f), smoothRingFill, probe.ringFill);
-        smoothColor = smoothAlpha < 0.02f ? probe.color : ColorUtil.interpolate(smoothColor, probe.color, Math.clamp(dt * 18.0f, 0.0f, 1.0f));
+        float rate = Math.clamp(dt * 18.0f, 0.0f, 1.0f);
+        smoothAlpha = MathHelper.lerp(rate, smoothAlpha, targetAlpha);
+        smoothRingFill = MathHelper.lerp(Math.clamp(dt * 24.0f, 0.0f, 1.0f), smoothRingFill, probe.ringFill);
+        smoothColor = smoothAlpha < 0.02f ? probe.color : ColorUtil.interpolate(smoothColor, probe.color, Math.clamp(dt * 22.0f, 0.0f, 1.0f));
 
-        boolean becameReady = (probe.state == AttackState.HIT_READY || probe.state == AttackState.CRIT_READY)
-                && lastState != AttackState.HIT_READY && lastState != AttackState.CRIT_READY;
-        if (becameReady) {
+        if (probe.canHit && !lastCanHit) {
             readyPop = 1.0f;
         }
-        readyPop = Math.max(0.0f, readyPop - dt * 6.5f);
-        lastState = probe.state;
+        readyPop = Math.max(0.0f, readyPop - dt * 6.0f);
+        lastCanHit = probe.canHit;
 
         if (smoothAlpha <= 0.02f) {
             return;
@@ -112,47 +109,46 @@ public class HitReady extends Module {
         float cx = mc.getWindow().getScaledWidth() * 0.5f;
         float cy = mc.getWindow().getScaledHeight() * 0.5f;
         boolean drawRing = !style.is(STYLE_PILL);
-        boolean drawPill = !style.is(STYLE_RING) && !probe.label.isEmpty();
+        boolean drawPill = !style.is(STYLE_RING);
 
         if (drawRing) {
             DrawBatcher.flushPending();
-            float r = ringRadius.getValueFloat() + readyPop * 1.6f;
-            float thickness = 1.65f + readyPop * 0.45f;
+            float r = ringRadius.getValueFloat() + readyPop * 1.8f;
+            float thickness = 2.3f + readyPop * 0.6f;
             float innerR = Math.max(4.0f, r - thickness * 0.5f);
             float outerR = innerR + thickness;
 
-            int haloColor = ColorUtil.rgba(10, 12, 16, Math.round(115.0f * smoothAlpha));
-            int trackColor = ColorUtil.rgba(255, 255, 255, Math.round(28.0f * smoothAlpha));
-            int activeColor = ColorUtil.withAlphaFloat(smoothColor, smoothAlpha * (0.94f));
+            int haloColor = ColorUtil.rgba(8, 10, 14, Math.round(145.0f * smoothAlpha));
+            int trackColor = ColorUtil.rgba(255, 255, 255, Math.round(32.0f * smoothAlpha));
+            int activeColor = ColorUtil.withAlphaFloat(smoothColor, smoothAlpha * 0.98f);
 
-            Primitive2D.drawRingArc(cx, cy, innerR - 0.6f, outerR + 0.6f, 0.0f, 360.0f, haloColor);
+            Primitive2D.drawRingArc(cx, cy, innerR - 0.7f, outerR + 0.7f, 0.0f, 360.0f, haloColor);
             Primitive2D.drawProgressRing(cx, cy, innerR, outerR, Math.clamp(smoothRingFill, 0.0f, 1.0f), trackColor, activeColor);
         }
 
-        if (drawPill) {
-            float fontSize = 6.7f;
+        if (drawPill && !probe.label.isEmpty()) {
+            float fontSize = 7.6f;
             float textW = Fonts.b.a(probe.label, fontSize);
-            float dotSize = 4.0f;
-            float padX = 5.0f;
-            float gap = 3.5f;
+            float dotSize = 4.5f;
+            float padX = 5.5f;
+            float gap = 4.0f;
             float pillW = padX * 2.0f + dotSize + gap + textW;
-            float pillH = 11.5f;
+            float pillH = 13.5f;
             float pillX = cx - pillW * 0.5f;
             float pillY = cy + pillOffsetY.getValueFloat();
-            float pillR = 4.0f;
+            float pillR = 4.5f;
 
-            int bgCol = ColorUtil.rgba(14, 16, 22, Math.round(196.0f * smoothAlpha));
-            int borderCol = ColorUtil.interpolate(
-                    ColorUtil.rgba(255, 255, 255, Math.round(36.0f * smoothAlpha)),
-                    ColorUtil.withAlphaFloat(smoothColor, smoothAlpha * 0.72f),
-                    0.55f
-            );
+            int bgCol = ColorUtil.rgba(12, 14, 20, Math.round(212.0f * smoothAlpha));
+            int borderCol = ColorUtil.withAlphaFloat(smoothColor, smoothAlpha * (probe.canHit ? 0.85f : 0.65f));
             int dotCol = ColorUtil.withAlphaFloat(smoothColor, smoothAlpha);
-            int txtCol = ColorUtil.rgba(244, 247, 252, Math.round(248.0f * smoothAlpha));
+            int txtCol = probe.hasTarget
+                    ? ColorUtil.interpolate(0xFFFFFFFF, smoothColor, probe.canHit ? 0.25f : 0.12f)
+                    : ColorUtil.rgba(215, 222, 234, Math.round(230.0f * smoothAlpha));
+            txtCol = ColorUtil.withAlphaFloat(txtCol, smoothAlpha);
 
             Draw2DProcessor.INSTANCE.drawPanelBlur(null, pillX, pillY, pillW, pillH, pillR, smoothAlpha);
             Draw2DProcessor.INSTANCE.drawRect(null, pillX, pillY, pillW, pillH, pillR, bgCol);
-            Draw2DProcessor.INSTANCE.drawOutline(null, pillX, pillY, pillW, pillH, pillR, 0.7f, borderCol);
+            Draw2DProcessor.INSTANCE.drawOutline(null, pillX, pillY, pillW, pillH, pillR, 0.85f, borderCol);
             Draw2DProcessor.INSTANCE.drawRect(null, pillX + padX, pillY + (pillH - dotSize) * 0.5f, dotSize, dotSize, dotSize * 0.5f, dotCol);
             Fonts.b.a(null, probe.label, pillX + padX + dotSize + gap, Fonts.b.a(fontSize, pillY + pillH * 0.5f), fontSize, txtCol);
         }
@@ -165,11 +161,12 @@ public class HitReady extends Module {
         float cooldown = Math.clamp(mc.player.getAttackCooldownProgress(tickProgress), 0.0f, 1.0f);
         boolean usingItem = mc.player.isUsingItem();
         boolean playersOnly = onlyPlayers.isEnabled();
+        boolean withReason = showReason.isEnabled();
         NoFriendDamage nfd = ModuleManager.getInstance().getModule(NoFriendDamage.class);
 
         Vec3d eye = mc.player.getEyePos();
         Vec3d look = mc.player.getRotationVec(tickProgress).normalize();
-        double scanRange = reach + 3.2;
+        double scanRange = reach + 3.5;
         Vec3d rayEnd = eye.add(look.multiply(scanRange));
 
         var blockHit = mc.world.raycast(new RaycastContext(
@@ -219,49 +216,43 @@ public class HitReady extends Module {
 
         if (aimedTarget != null) {
             if (nfd != null && nfd.shouldCancelAttack(aimedTarget)) {
-                return new Probe(AttackState.FRIEND, COL_FRIEND, "ДРУГ", cooldown, 1.0f, cooldown);
+                return new Probe(true, false, COL_FRIEND, withReason ? "НЕЛЬЗЯ · ДРУГ" : "НЕЛЬЗЯ", 1.0f, 0.92f, cooldown);
             }
             if (occluded) {
-                return new Probe(AttackState.BLOCKED_WALL, COL_FAR, "СТЕНА", 0.22f, 0.92f, cooldown);
+                return new Probe(true, false, COL_CANT, withReason ? "НЕЛЬЗЯ · СТЕНА" : "НЕЛЬЗЯ", 1.0f, 0.95f, cooldown);
             }
             if (aimedDist > reach + 0.01) {
-                return new Probe(AttackState.TOO_FAR, COL_FAR,
-                        String.format(Locale.US, "%.1fм", aimedDist),
-                        0.32f, 0.96f, cooldown);
+                return new Probe(true, false, COL_CANT, withReason ? "НЕЛЬЗЯ · ДАЛЕКО" : "НЕЛЬЗЯ", 1.0f, 0.95f, cooldown);
             }
             if (usingItem) {
-                return new Probe(AttackState.BLOCKED_ITEM, COL_BLOCKED, "ЗАНЯТ", 0.25f, 0.96f, cooldown);
+                return new Probe(true, false, COL_CANT, withReason ? "НЕЛЬЗЯ · ЗАНЯТ" : "НЕЛЬЗЯ", 1.0f, 0.96f, cooldown);
             }
-            if (cooldown < 0.99f) {
-                return new Probe(AttackState.COOLDOWN, COL_COOLDOWN,
-                        "КД " + Math.round(cooldown * 100.0f) + "%",
-                        cooldown, 1.0f, cooldown);
+            if (cooldown < 0.96f) {
+                return new Probe(true, false, COL_CANT, withReason ? "НЕЛЬЗЯ · КД" : "НЕЛЬЗЯ", cooldown, 0.98f, cooldown);
             }
             if (critIndicator.isEnabled() && isCritReady(mc)) {
-                return new Probe(AttackState.CRIT_READY, COL_CRIT, "КРИТ", 1.0f, 1.0f, cooldown);
+                return new Probe(true, true, COL_CRIT, "КРИТ", 1.0f, 1.0f, cooldown);
             }
-            return new Probe(AttackState.HIT_READY, COL_READY, "УДАР", 1.0f, 1.0f, cooldown);
+            return new Probe(true, true, COL_CAN, "МОЖНО", 1.0f, 1.0f, cooldown);
         }
 
         if (nearestTarget != null) {
             if (nfd != null && nfd.shouldCancelAttack(nearestTarget)) {
-                return new Probe(AttackState.FRIEND, COL_FRIEND, "ДРУГ", cooldown, 0.65f, cooldown);
+                return new Probe(true, false, COL_FRIEND, withReason ? "НЕЛЬЗЯ · ДРУГ" : "НЕЛЬЗЯ", 1.0f, 0.78f, cooldown);
+            }
+            if (usingItem) {
+                return new Probe(true, false, COL_CANT, withReason ? "НЕЛЬЗЯ · ЗАНЯТ" : "НЕЛЬЗЯ", 1.0f, 0.88f, cooldown);
             }
             if (nearestBoxDist <= reach + 0.02) {
-                if (usingItem) {
-                    return new Probe(AttackState.BLOCKED_ITEM, COL_BLOCKED, "ЗАНЯТ", 0.22f, 0.85f, cooldown);
-                }
-                return new Probe(AttackState.OFF_AIM, COL_OFF_AIM, "НАВЕДИ", cooldown, 0.86f, cooldown);
+                return new Probe(true, false, COL_CANT, withReason ? "НЕЛЬЗЯ · МИМО" : "НЕЛЬЗЯ", Math.max(0.25f, cooldown), 0.92f, cooldown);
             }
-            float fade = MathHelper.clamp((float) ((scanRange - nearestBoxDist) / 2.6), 0.15f, 0.72f);
-            return new Probe(AttackState.TOO_FAR, COL_OFF_AIM,
-                    String.format(Locale.US, "%.1fм", nearestBoxDist),
-                    cooldown * 0.6f, fade, cooldown);
+            return new Probe(true, false, COL_CANT, withReason ? "НЕЛЬЗЯ · ДАЛЕКО" : "НЕЛЬЗЯ", 0.35f, 0.80f, cooldown);
         }
 
-        String idleLabel = cooldown < 0.99f ? "КД " + Math.round(cooldown * 100.0f) + "%" : "ГОТОВ";
-        int idleCol = cooldown < 0.99f ? COL_COOLDOWN : COL_OFF_AIM;
-        return new Probe(AttackState.IDLE, idleCol, idleLabel, cooldown, showAlways.isEnabled() ? 0.78f : 0.0f, cooldown);
+        if (cooldown < 0.96f) {
+            return new Probe(false, false, COL_CANT, withReason ? "НЕЛЬЗЯ · КД" : "НЕЛЬЗЯ", cooldown, 0.75f, cooldown);
+        }
+        return new Probe(false, false, COL_IDLE, "НЕТ ЦЕЛИ", 1.0f, 0.52f, cooldown);
     }
 
     private static boolean isCritReady(MinecraftClient mc) {
@@ -277,6 +268,7 @@ public class HitReady extends Module {
     private static boolean isValidTarget(LivingEntity entity, boolean onlyPlayers) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (entity == null || entity == mc.player || !entity.isAlive() || entity.isSpectator()) return false;
+        if (entity instanceof ArmorStandEntity) return false;
         if (onlyPlayers && !(entity instanceof PlayerEntity)) return false;
         return !EntityUtil.isNakedInvisible(entity);
     }
@@ -298,7 +290,7 @@ public class HitReady extends Module {
     private void resetSmooth() {
         smoothAlpha = 0.0f;
         readyPop = 0.0f;
-        lastState = AttackState.IDLE;
+        lastCanHit = false;
         lastFrameNanos = 0L;
     }
 
@@ -308,17 +300,5 @@ public class HitReady extends Module {
         resetSmooth();
     }
 
-    private enum AttackState {
-        IDLE,
-        CRIT_READY,
-        HIT_READY,
-        COOLDOWN,
-        TOO_FAR,
-        OFF_AIM,
-        BLOCKED_WALL,
-        BLOCKED_ITEM,
-        FRIEND
-    }
-
-    private record Probe(AttackState state, int color, String label, float ringFill, float alphaScale, float cooldown) {}
+    private record Probe(boolean hasTarget, boolean canHit, int color, String label, float ringFill, float alphaScale, float cooldown) {}
 }
