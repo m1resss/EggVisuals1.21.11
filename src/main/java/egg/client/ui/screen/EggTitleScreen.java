@@ -73,6 +73,11 @@ public class EggTitleScreen extends Screen {
     private static final Identifier[] MAIN_ICONS = {ICON_SINGLEPLAYER, ICON_MULTIPLAYER, ICON_ACCOUNTS, ICON_SLIDERS, ICON_HEART};
     private static final Identifier[] CIRCLE_ICONS = {ICON_TG, ICON_DA, ICON_GEAR, ICON_EXIT};
 
+    private static final float ACCOUNT_ROW_HEIGHT = 18.0f;
+    private static final float ACCOUNT_ROW_STRIDE = 21.0f;
+    private static final float ACCOUNT_DELETE_SIZE = 14.0f;
+    private static final String RESTORE_ACCOUNT_LABEL = "Вернуть основной";
+
     private static final float CL_BTN_X = 14.0f;
     private static final float CL_BTN_Y = 14.0f;
     private static final float CL_BTN_SIZE = 24.0f;
@@ -190,12 +195,9 @@ public class EggTitleScreen extends Screen {
     private float accountRestoreHover;
     private float accountScroll;
     private float accountTargetScroll;
-    private float accountMaxScroll;
     private String accountStatusMessage;
     private boolean accountStatusIsError;
     private long accountStatusUntilNanos;
-    private int hoveredAccountIndex = -1;
-    private int hoveredDeleteIndex = -1;
 
     private boolean updateDismissed;
     private float updateAnim;
@@ -852,7 +854,7 @@ public class EggTitleScreen extends Screen {
         if (accountsOpen && !exitDialogOpen && accountsAnim > 0.2f) {
             AccountsRect rect = computeAccountsModalRect(width, height);
             if (hitRect(mouseX, mouseY, rect.listX, rect.listY, rect.listW, rect.listH)) {
-                accountTargetScroll = MathHelper.clamp(accountTargetScroll - (float) verticalAmount * 22.0f, 0.0f, accountMaxScroll);
+                accountTargetScroll = MathHelper.clamp(accountTargetScroll - (float) verticalAmount * ACCOUNT_ROW_STRIDE, 0.0f, rect.maxScroll);
                 return true;
             }
             return true;
@@ -947,25 +949,20 @@ public class EggTitleScreen extends Screen {
                 return true;
             }
 
-            if (hitRect(mx, my, rect.listX, rect.listY, rect.listW, rect.listH)) {
-                List<String> list = AccountManager.getInstance().getAccounts();
-                float rowH = 22.0f;
-                float rowGap = 4.0f;
-                float relY = (float) my - (rect.listY - accountScroll);
-                for (int i = 0; i < list.size(); i++) {
-                    float ry = i * (rowH + rowGap);
-                    if (relY >= ry && relY <= ry + rowH) {
-                        float delX = rect.listX + rect.listW - 18.0f;
-                        String targetNick = list.get(i);
-                        if (mx >= delX && mx <= rect.listX + rect.listW) {
-                            GuiSoundManager.playClick();
-                            AccountManager.getInstance().removeAccount(targetNick);
-                            accountStatusMessage = null;
-                            return true;
-                        }
-                        GuiSoundManager.playClick();
-                        submitAccountLogin(targetNick);
-                        return true;
+            if (hitRect(mx, my, rect.listX, rect.listY, rect.rowWidth(), rect.listH)) {
+                AccountManager mgr = AccountManager.getInstance();
+                List<String> list = mgr.getAccounts();
+                float scroll = MathHelper.clamp(accountScroll, 0.0f, rect.maxScroll);
+                int index = (int) ((my - rect.listY + scroll) / ACCOUNT_ROW_STRIDE);
+                float rowY = rect.rowY(index, scroll);
+                if (index < list.size() && my < rowY + ACCOUNT_ROW_HEIGHT) {
+                    String nick = list.get(index);
+                    GuiSoundManager.playClick();
+                    if (hitRect(mx, my, rect.deleteX(), rect.deleteY(rowY), ACCOUNT_DELETE_SIZE, ACCOUNT_DELETE_SIZE)) {
+                        mgr.removeAccount(nick);
+                        accountStatusMessage = null;
+                    } else {
+                        submitAccountLogin(nick);
                     }
                 }
             }
@@ -1240,30 +1237,27 @@ public class EggTitleScreen extends Screen {
         float ease = smooth(accountsAnim);
         AccountsRect rect = computeAccountsModalRect(sw, sh);
 
-        Draw2DProcessor.INSTANCE.drawRoundedBlur(rect.x, rect.y, rect.w, rect.h, 8.0f, ease);
-        Draw2DProcessor.INSTANCE.drawRect(null, rect.x, rect.y, rect.w, rect.h, 8.0f,
-                ColorUtil.rgba(14, 16, 22, (int) (226 * ease)));
-        Draw2DProcessor.INSTANCE.drawOutline(null, rect.x, rect.y, rect.w, rect.h, 8.0f, 1.0f,
-                ColorUtil.rgba(44, 49, 64, (int) (245 * ease)));
+        Draw2DProcessor.INSTANCE.drawRoundedBlur(rect.x, rect.y, rect.w, rect.h, 6.0f, ease);
+        Draw2DProcessor.INSTANCE.drawRect(null, rect.x, rect.y, rect.w, rect.h, 6.0f,
+                ColorUtil.withAlphaFloat(0xF016181F, ease));
+        Draw2DProcessor.INSTANCE.drawOutline(null, rect.x, rect.y, rect.w, rect.h, 6.0f, 0.65f,
+                ColorUtil.withAlphaFloat(0xC0393C49, ease));
 
-        float padX = 12.0f;
         AccountManager mgr = AccountManager.getInstance();
         String currentName = mgr.getCurrentUsername(client);
-
-        float titleY = Fonts.b.a(10.0f, rect.y + 17.0f);
-        Fonts.b.a(null, "Аккаунты", rect.x + padX, titleY, 10.0f, ColorUtil.withAlphaFloat(0xFFF0F3F9, ease));
+        float titleCenter = rect.closeY + rect.closeSize * 0.5f;
+        Fonts.b.a(null, "Аккаунты", rect.inputX, Fonts.b.a(10.2f, titleCenter), 10.2f,
+                ColorUtil.withAlphaFloat(0xFFF0F1F6, ease));
 
         boolean hovClose = accountsOpen && hitRect(mouseX, mouseY, rect.closeX, rect.closeY, rect.closeSize, rect.closeSize);
         accountCloseHover = MathHelper.lerp(hoverBlend, accountCloseHover, hovClose ? 1.0f : 0.0f);
-        float crossW = Fonts.sfRegular.a("×", 10.5f);
-        float crossY = Fonts.sfRegular.a(10.5f, rect.closeY + rect.closeSize * 0.5f);
-        Fonts.sfRegular.a(null, "×", rect.closeX + (rect.closeSize - crossW) * 0.5f, crossY, 10.5f,
-                ColorUtil.withAlphaFloat(ColorUtil.interpolate(0xFF7D869B, 0xFFE8EDF6, accountCloseHover), ease));
+        float crossW = Fonts.sfRegular.a("×", 10.0f);
+        Fonts.sfRegular.a(null, "×", rect.closeX + (rect.closeSize - crossW) * 0.5f, Fonts.sfRegular.a(10.0f, titleCenter), 10.0f,
+                ColorUtil.withAlphaFloat(ColorUtil.interpolate(0xFF9295A3, 0xFFF4F4FA, accountCloseHover), ease));
 
-        int inputBg = ColorUtil.withAlphaFloat(accountInputFocused ? ColorUtil.rgba(18, 21, 29, 240) : ColorUtil.rgba(16, 18, 25, 224), ease);
-        int inputBrd = ColorUtil.withAlphaFloat(accountInputFocused ? ColorUtil.rgba(78, 86, 110, 255) : ColorUtil.rgba(40, 45, 58, 245), ease);
-        Draw2DProcessor.INSTANCE.drawRect(null, rect.inputX, rect.inputY, rect.inputW, rect.inputH, 5.5f, inputBg);
-        Draw2DProcessor.INSTANCE.drawOutline(null, rect.inputX, rect.inputY, rect.inputW, rect.inputH, 5.5f, 1.0f, inputBrd);
+        int inputBg = accountInputFocused ? 0xFF282A36 : 0xFF22242E;
+        Draw2DProcessor.INSTANCE.drawRect(null, rect.inputX, rect.inputY, rect.inputW, rect.inputH, 4.0f,
+                ColorUtil.withAlphaFloat(inputBg, ease));
 
         String typed = accountInput.toString();
         float inputTextX = rect.inputX + 8.0f;
@@ -1271,7 +1265,7 @@ public class EggTitleScreen extends Screen {
         ScissorUtil.a((Matrix3x2f) null, rect.inputX + 4.0f, rect.inputY + 1.0f, rect.inputW - 8.0f, rect.inputH - 2.0f);
         try {
             if (typed.isEmpty()) {
-                Fonts.sfRegular.a(null, "Ник...", inputTextX, inputTextY, 8.4f,
+                Fonts.sfRegular.a(null, "Никнейм", inputTextX, inputTextY, 8.4f,
                         ColorUtil.withAlphaFloat(0xFF666F82, ease));
             } else {
                 if (accountInputFocused && accountInputAllSelected) {
@@ -1295,121 +1289,78 @@ public class EggTitleScreen extends Screen {
         boolean validTyped = AccountManager.isValidUsername(typed);
         boolean hovLogin = accountsOpen && hitRect(mouseX, mouseY, rect.loginX, rect.inputY, rect.loginW, rect.inputH);
         accountLoginHover = MathHelper.lerp(hoverBlend, accountLoginHover, hovLogin ? 1.0f : 0.0f);
-        int loginBg = ColorUtil.withAlphaFloat(
-                validTyped
-                        ? ColorUtil.interpolate(ColorUtil.rgba(24, 27, 37, 236), ColorUtil.rgba(35, 39, 53, 250), accountLoginHover)
-                        : ColorUtil.rgba(19, 21, 29, 210),
-                ease);
-        int loginBrd = ColorUtil.withAlphaFloat(
-                validTyped
-                        ? ColorUtil.interpolate(ColorUtil.rgba(58, 65, 85, 250), ColorUtil.rgba(96, 108, 138, 255), accountLoginHover)
-                        : ColorUtil.rgba(38, 42, 54, 220),
-                ease);
-        Draw2DProcessor.INSTANCE.drawRect(null, rect.loginX, rect.inputY, rect.loginW, rect.inputH, 5.5f, loginBg);
-        Draw2DProcessor.INSTANCE.drawOutline(null, rect.loginX, rect.inputY, rect.loginW, rect.inputH, 5.5f, 1.0f, loginBrd);
+        int loginBg = validTyped ? ColorUtil.interpolate(0xFFBDBBE1, 0xFFD4D2F2, accountLoginHover) : 0xFF252733;
+        Draw2DProcessor.INSTANCE.drawRect(null, rect.loginX, rect.inputY, rect.loginW, rect.inputH, 4.0f,
+                ColorUtil.withAlphaFloat(loginBg, ease));
         float loginTw = Fonts.b.a("Войти", 8.2f);
         float loginTy = Fonts.b.a(8.2f, rect.inputY + rect.inputH * 0.5f);
         Fonts.b.a(null, "Войти", rect.loginX + (rect.loginW - loginTw) * 0.5f, loginTy, 8.2f,
-                ColorUtil.withAlphaFloat(validTyped ? ColorUtil.interpolate(0xFFDDE3EE, 0xFFFFFFFF, accountLoginHover) : 0xFF6B7387, ease));
+                ColorUtil.withAlphaFloat(validTyped ? 0xFF212232 : 0xFF858898, ease));
 
         boolean hovRand = accountsOpen && hitRect(mouseX, mouseY, rect.randX, rect.inputY, rect.randW, rect.inputH);
         accountRandomHover = MathHelper.lerp(hoverBlend, accountRandomHover, hovRand ? 1.0f : 0.0f);
-        int randBg = ColorUtil.withAlphaFloat(ColorUtil.interpolate(ColorUtil.rgba(20, 23, 31, 228), ColorUtil.rgba(30, 34, 46, 246), accountRandomHover), ease);
-        int randBrd = ColorUtil.withAlphaFloat(ColorUtil.interpolate(ColorUtil.rgba(44, 49, 64, 245), ColorUtil.rgba(82, 92, 118, 255), accountRandomHover), ease);
-        Draw2DProcessor.INSTANCE.drawRect(null, rect.randX, rect.inputY, rect.randW, rect.inputH, 5.5f, randBg);
-        Draw2DProcessor.INSTANCE.drawOutline(null, rect.randX, rect.inputY, rect.randW, rect.inputH, 5.5f, 1.0f, randBrd);
+        int randBg = ColorUtil.interpolate(0xFF22242E, 0xFF303241, accountRandomHover);
+        Draw2DProcessor.INSTANCE.drawRect(null, rect.randX, rect.inputY, rect.randW, rect.inputH, 4.0f,
+                ColorUtil.withAlphaFloat(randBg, ease));
         drawDiceIcon(rect.randX + rect.randW * 0.5f, rect.inputY + rect.inputH * 0.5f,
                 ColorUtil.withAlphaFloat(ColorUtil.interpolate(0xFFB4BED2, 0xFFFFFFFF, accountRandomHover), ease));
 
         if (rect.hasError) {
-            Fonts.sfRegular.a(null, accountStatusMessage, rect.x + padX, rect.inputY + rect.inputH + 5.0f, 7.3f,
+            Fonts.sfRegular.a(null, trimTextToWidth(Fonts.sfRegular, accountStatusMessage, 7.3f, rect.listW),
+                    rect.inputX, rect.inputY + rect.inputH + 4.0f, 7.3f,
                     ColorUtil.withAlphaFloat(0xFFFF7A88, ease));
         }
 
         List<String> list = mgr.getAccounts();
-        float rowH = 22.0f;
-        float rowGap = 4.0f;
-        float contentH = list.isEmpty() ? 0.0f : list.size() * rowH + (list.size() - 1) * rowGap;
-        accountMaxScroll = Math.max(0.0f, contentH - rect.listH);
-        accountTargetScroll = MathHelper.clamp(accountTargetScroll, 0.0f, accountMaxScroll);
-        accountScroll = MathHelper.clamp(accountScroll, 0.0f, accountMaxScroll);
+        accountTargetScroll = MathHelper.clamp(accountTargetScroll, 0.0f, rect.maxScroll);
+        accountScroll = MathHelper.clamp(accountScroll, 0.0f, rect.maxScroll);
 
-        hoveredAccountIndex = -1;
-        hoveredDeleteIndex = -1;
-        String origName = mgr.getOriginalUsername();
-
-        if (!list.isEmpty() && rect.listH > 1.0f) {
-            Draw2DProcessor.INSTANCE.drawRect(null, rect.x + padX, rect.listY - 5.5f, rect.w - padX * 2.0f, 0.7f, 0.0f,
-                    ColorUtil.rgba(48, 54, 70, (int) (130 * ease)));
-
-            ScissorUtil.a((Matrix3x2f) null, rect.listX - 1.0f, rect.listY - 1.0f, rect.listW + 2.0f, rect.listH + 2.0f);
+        if (rect.listH > 0.0f) {
+            float rowWidth = rect.rowWidth();
+            ScissorUtil.a((Matrix3x2f) null, rect.listX, rect.listY, rowWidth, rect.listH);
             try {
-                boolean listHoverAllowed = accountsOpen && hitRect(mouseX, mouseY, rect.listX, rect.listY, rect.listW, rect.listH);
+                boolean overList = accountsOpen && hitRect(mouseX, mouseY, rect.listX, rect.listY, rowWidth, rect.listH);
                 for (int i = 0; i < list.size(); i++) {
+                    float rowY = rect.rowY(i, accountScroll);
+                    if (rowY + ACCOUNT_ROW_HEIGHT <= rect.listY) continue;
+                    if (rowY >= rect.listY + rect.listH) break;
+
                     String nick = list.get(i);
-                    float rx = rect.listX;
-                    float ry = rect.listY + i * (rowH + rowGap) - accountScroll;
-                    float rw = rect.listW - (accountMaxScroll > 1.0f ? 6.0f : 0.0f);
-                    if (ry + rowH < rect.listY || ry > rect.listY + rect.listH) continue;
+                    boolean active = nick.equalsIgnoreCase(currentName);
+                    boolean overRow = overList && hitRect(mouseX, mouseY, rect.listX, rowY, rowWidth, ACCOUNT_ROW_HEIGHT);
+                    float deleteX = rect.deleteX();
+                    float deleteY = rect.deleteY(rowY);
+                    boolean overDelete = overRow && hitRect(mouseX, mouseY, deleteX, deleteY, ACCOUNT_DELETE_SIZE, ACCOUNT_DELETE_SIZE);
+                    int rowBg = active ? (overRow ? 0xFF323445 : 0xFF2B2D3C) : (overRow ? 0xFF292B37 : 0xFF20222B);
+                    Draw2DProcessor.INSTANCE.drawRect(null, rect.listX, rowY, rowWidth, ACCOUNT_ROW_HEIGHT, 4.0f,
+                            ColorUtil.withAlphaFloat(rowBg, ease));
 
-                    boolean isActive = currentName != null && currentName.equalsIgnoreCase(nick);
-                    boolean isOrig = origName != null && origName.equalsIgnoreCase(nick);
-                    boolean hovRow = listHoverAllowed && hitRect(mouseX, mouseY, rx, ry, rw, rowH);
-                    float delSize = 14.0f;
-                    float delX = rx + rw - delSize - 5.0f;
-                    float delY = ry + (rowH - delSize) * 0.5f;
-                    boolean hovDel = listHoverAllowed && hitRect(mouseX, mouseY, delX, delY, delSize, delSize);
-                    if (hovRow) hoveredAccountIndex = i;
-                    if (hovDel) hoveredDeleteIndex = i;
-
-                    int rowBg = isActive
-                            ? (hovRow && !hovDel ? ColorUtil.rgba(29, 33, 45, 240) : ColorUtil.rgba(24, 28, 38, 232))
-                            : (hovRow && !hovDel ? ColorUtil.rgba(24, 27, 36, 232) : ColorUtil.rgba(18, 20, 27, 212));
-                    int rowBrd = isActive
-                            ? ColorUtil.rgba(84, 96, 124, 250)
-                            : (hovRow && !hovDel ? ColorUtil.rgba(62, 70, 92, 240) : ColorUtil.rgba(36, 40, 52, 220));
-                    Draw2DProcessor.INSTANCE.drawRect(null, rx, ry, rw, rowH, 5.5f, ColorUtil.withAlphaFloat(rowBg, ease));
-                    Draw2DProcessor.INSTANCE.drawOutline(null, rx, ry, rw, rowH, 5.5f, 0.9f, ColorUtil.withAlphaFloat(rowBrd, ease));
-
-                    float iconSz = 9.5f;
-                    float iconX = rx + 8.0f;
-                    float iconY = ry + (rowH - iconSz) * 0.5f;
-                    Draw2DProcessor.INSTANCE.a(null, ICON_SINGLEPLAYER, iconX, iconY, iconSz, iconSz, 0.0f,
-                            ColorUtil.withAlphaFloat(isActive ? 0xFFF2F5FC : 0xFF98A3B8, ease));
-
-                    Font nickFont = isActive ? Fonts.b : Fonts.sfRegular;
-                    float nickY = nickFont.a(8.5f, ry + rowH * 0.5f);
-                    float nickX = iconX + iconSz + 7.5f;
-                    nickFont.a(null, nick, nickX, nickY, 8.5f,
-                            ColorUtil.withAlphaFloat(isActive ? 0xFFFFFFFF : 0xFFD0D7E5, ease));
-
-                    String tag = isActive ? "активен" : (isOrig ? "исх." : null);
-                    if (tag != null) {
-                        float tagW = Fonts.sfRegular.a(tag, 7.2f);
-                        float tagY = Fonts.sfRegular.a(7.2f, ry + rowH * 0.5f);
-                        Fonts.sfRegular.a(null, tag, delX - tagW - 6.0f, tagY, 7.2f,
-                                ColorUtil.withAlphaFloat(isActive ? 0xFF9FB4D8 : 0xFF6B748A, ease));
+                    float centerY = rowY + ACCOUNT_ROW_HEIGHT * 0.5f;
+                    if (active) {
+                        Draw2DProcessor.INSTANCE.drawRect(null, rect.listX + 7.0f, centerY - 1.5f, 3.0f, 3.0f, 1.5f,
+                                ColorUtil.withAlphaFloat(0xFF83D9B5, ease));
                     }
+                    float nickX = rect.listX + 15.0f;
+                    Font nickFont = active ? Fonts.b : Fonts.sfRegular;
+                    nickFont.a(null, trimTextToWidth(nickFont, nick, 8.5f, deleteX - nickX - 4.0f),
+                            nickX, nickFont.a(8.5f, centerY), 8.5f,
+                            ColorUtil.withAlphaFloat(active ? 0xFFF5F5FA : 0xFFC8CBD7, ease));
 
-                    float trashSz = 8.5f;
-                    Draw2DProcessor.INSTANCE.a(null, ICON_TRASH, delX + (delSize - trashSz) * 0.5f, delY + (delSize - trashSz) * 0.5f,
-                            trashSz, trashSz, 0.0f, ColorUtil.withAlphaFloat(hovDel ? 0xFFFF8896 : 0xFF6F7990, ease));
+                    float iconSize = 7.0f;
+                    float iconInset = (ACCOUNT_DELETE_SIZE - iconSize) * 0.5f;
+                    Draw2DProcessor.INSTANCE.a(null, ICON_TRASH, deleteX + iconInset, deleteY + iconInset, iconSize, iconSize, 0.0f,
+                            ColorUtil.withAlphaFloat(overDelete ? 0xFFF2919B : 0xFF85889A, ease));
                 }
             } finally {
                 ScissorUtil.a((Matrix3x2f) null);
             }
 
-            if (accountMaxScroll > 1.0f && rect.listH > 16.0f) {
-                float trackX = rect.listX + rect.listW - 2.5f;
-                float trackY = rect.listY;
-                float trackH = rect.listH;
-                float ratio = MathHelper.clamp(rect.listH / Math.max(1.0f, contentH), 0.14f, 1.0f);
-                float thumbH = Math.max(14.0f, trackH * ratio);
-                float thumbY = trackY + (accountScroll / accountMaxScroll) * (trackH - thumbH);
-                Draw2DProcessor.INSTANCE.drawRect(null, trackX, trackY, 2.0f, trackH, 1.0f,
-                        ColorUtil.rgba(35, 40, 52, (int) (110 * ease)));
-                Draw2DProcessor.INSTANCE.drawRect(null, trackX, thumbY, 2.0f, thumbH, 1.0f,
-                        ColorUtil.rgba(128, 140, 168, (int) (185 * ease)));
+            if (rect.maxScroll > 0.0f) {
+                float thumbH = Math.min(rect.listH, Math.max(8.0f, rect.listH * rect.listH / (rect.listH + rect.maxScroll)));
+                float trackX = rect.listX + rect.listW - 1.5f;
+                float thumbY = rect.listY + (accountScroll / rect.maxScroll) * (rect.listH - thumbH);
+                Draw2DProcessor.INSTANCE.drawRect(null, trackX, thumbY, 1.5f, thumbH, 0.75f,
+                        ColorUtil.withAlphaFloat(0xFF646779, ease));
             }
         }
 
@@ -1417,7 +1368,7 @@ public class EggTitleScreen extends Screen {
             boolean hovRes = accountsOpen && hitRect(mouseX, mouseY, rect.restoreX, rect.restoreY, rect.restoreW, rect.restoreH);
             accountRestoreHover = MathHelper.lerp(hoverBlend, accountRestoreHover, hovRes ? 1.0f : 0.0f);
             int resCol = ColorUtil.interpolate(0xFF7D8BA6, 0xFFD0DCF0, accountRestoreHover);
-            Fonts.sfRegular.a(null, "Вернуть: " + origName, rect.restoreX, rect.restoreY, 7.4f,
+            Fonts.sfRegular.a(null, RESTORE_ACCOUNT_LABEL, rect.restoreX, rect.restoreY, 7.4f,
                     ColorUtil.withAlphaFloat(resCol, ease));
         }
     }
@@ -1446,45 +1397,43 @@ public class EggTitleScreen extends Screen {
         AccountManager mgr = AccountManager.getInstance();
         List<String> list = mgr.getAccounts();
         String orig = mgr.getOriginalUsername();
-        boolean hasRestore = orig != null && !mgr.isOriginalActive(client);
+        boolean hasRestore = orig != null && !mgr.isOriginalActive(client) && list.stream().noneMatch(orig::equalsIgnoreCase);
         boolean hasError = accountStatusIsError && accountStatusMessage != null && System.nanoTime() < accountStatusUntilNanos;
 
-        float w = MathHelper.clamp(sw * 0.34f, 212.0f, 232.0f);
-        float padX = 12.0f;
+        float w = Math.min(206.0f, sw - 14.0f);
+        float padX = 10.0f;
         float innerW = w - padX * 2.0f;
-        float headerH = 31.0f;
-        float inputH = 22.0f;
-        float errorH = hasError ? 13.0f : 0.0f;
-
-        float rowH = 22.0f;
-        float rowGap = 4.0f;
-        int visibleRows = Math.min(5, list.size());
-        float listH = visibleRows == 0 ? 0.0f : visibleRows * rowH + (visibleRows - 1) * rowGap;
-        float listGapTop = visibleRows == 0 ? 0.0f : 11.0f;
-        float restoreH = hasRestore ? 14.0f : 0.0f;
-        float h = headerH + inputH + errorH + listGapTop + listH + restoreH + 12.0f;
+        float headerH = 25.0f;
+        float inputH = 18.0f;
+        float errorH = hasError ? 12.0f : 0.0f;
+        float listGap = list.isEmpty() ? 0.0f : 7.0f;
+        float restoreH = hasRestore ? 13.0f : 0.0f;
+        float fixedH = headerH + inputH + errorH + listGap + restoreH + 9.0f;
+        float contentH = list.isEmpty() ? 0.0f : (list.size() - 1) * ACCOUNT_ROW_STRIDE + ACCOUNT_ROW_HEIGHT;
+        float maxListH = 4 * ACCOUNT_ROW_STRIDE + ACCOUNT_ROW_HEIGHT;
+        float listH = Math.min(contentH, Math.min(maxListH, Math.max(0.0f, sh - fixedH - 14.0f)));
+        float h = fixedH + listH;
 
         float ease = smooth(accountsAnim);
         float x = (sw - w) * 0.5f;
-        float y = (sh - h) * 0.5f + (1.0f - ease) * 8.0f;
-
+        float y = (sh - h) * 0.5f + (1.0f - ease) * 5.0f;
         float closeSize = 14.0f;
         float closeX = x + w - padX - closeSize + 2.0f;
-        float closeY = y + 10.0f;
+        float closeY = y + 5.0f;
 
         float inputY = y + headerH;
-        float randW = 22.0f;
-        float loginW = 46.0f;
-        float gap = 5.0f;
+        float randW = inputH;
+        float loginW = 35.0f;
+        float gap = 4.0f;
         float inputW = innerW - loginW - randW - gap * 2.0f;
         float inputX = x + padX;
-        float loginX = inputX + inputW + gap;
-        float randX = loginX + loginW + gap;
+        float randX = inputX + inputW + gap;
+        float loginX = randX + randW + gap;
 
-        float listY = inputY + inputH + errorH + listGapTop;
-        float restoreW = hasRestore ? Fonts.sfRegular.a("Вернуть: " + orig, 7.4f) : 0.0f;
+        float listY = inputY + inputH + errorH + listGap;
+        float restoreW = hasRestore ? Fonts.sfRegular.a(RESTORE_ACCOUNT_LABEL, 7.4f) : 0.0f;
         float restoreX = x + padX;
-        float restoreY = listY + listH + 6.0f;
+        float restoreY = listY + listH + 4.0f;
 
         return new AccountsRect(
                 x, y, w, h,
@@ -1492,7 +1441,7 @@ public class EggTitleScreen extends Screen {
                 inputX, inputY, inputW, inputH,
                 loginX, loginW,
                 randX, randW,
-                x + padX, listY, innerW, listH,
+                x + padX, listY, innerW, listH, Math.max(0.0f, contentH - listH),
                 hasError, hasRestore, restoreX, restoreY, restoreW, 10.0f
         );
     }
@@ -1623,9 +1572,25 @@ public class EggTitleScreen extends Screen {
             float inputX, float inputY, float inputW, float inputH,
             float loginX, float loginW,
             float randX, float randW,
-            float listX, float listY, float listW, float listH,
+            float listX, float listY, float listW, float listH, float maxScroll,
             boolean hasError, boolean hasRestore, float restoreX, float restoreY, float restoreW, float restoreH
-    ) {}
+    ) {
+        private float rowWidth() {
+            return listW - (maxScroll > 0.0f ? 5.0f : 0.0f);
+        }
+
+        private float rowY(int index, float scroll) {
+            return listY + index * ACCOUNT_ROW_STRIDE - scroll;
+        }
+
+        private float deleteX() {
+            return listX + rowWidth() - ACCOUNT_DELETE_SIZE - 3.0f;
+        }
+
+        private float deleteY(float rowY) {
+            return rowY + (ACCOUNT_ROW_HEIGHT - ACCOUNT_DELETE_SIZE) * 0.5f;
+        }
+    }
 
     private record WrappedLine(float yOffset, float height, boolean isDayHeader, String tag, String prefix, String rest) {}
 
