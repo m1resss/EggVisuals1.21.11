@@ -29,14 +29,18 @@ import java.util.List;
 public class JumpCircles extends Module {
     private static JumpCircles instance;
 
-    private final SliderSetting maxRadius = new SliderSetting("Размер", 2.8, 1.0, 6.0, 0.1, "Максимальный радиус раскрытия круга");
+    private static final String STYLE_CAUSTIC = "Каустика";
+    private static final String STYLE_PHASE = "Фаза";
+
+    private final ModeSetting style = new ModeSetting("Стиль", STYLE_PHASE, "Визуальный стиль круга при прыжке", STYLE_PHASE, STYLE_CAUSTIC);
+    private final SliderSetting maxRadius = new SliderSetting("Размер", 2.2, 1.0, 6.0, 0.1, "Максимальный радиус раскрытия круга");
     private final SliderSetting expandSpeed = new SliderSetting("Скорость", 1.0, 0.4, 3.0, 0.1, "Скорость раскрытия круга");
     private final SliderSetting dispersion = new SliderSetting("Дисперсия", 1.0, 0.0, 2.5, 0.1, "Сила хроматической аберрации и расщепления лучей");
     private final SliderSetting brightness = new SliderSetting("Яркость лучей", 1.4, 0.5, 3.0, 0.1, "Яркость и насыщенность свечения лучей");
-    private final ModeSetting palette = new ModeSetting("Палитра", "Радужная", "Радужная", "Акцент темы", "Кастомная");
+    private final ModeSetting palette = new ModeSetting("Палитра", "Акцент темы", "Акцент темы", "Радужная", "Кастомная");
     private final ColorSetting customColor = new ColorSetting("Цвет", 0xFF64B5F6, "Пользовательский цвет свечения");
-    private final SliderSetting twist = new SliderSetting("Закручивание", 0.85, -2.0, 2.0, 0.05, "Угол спирального закручивания каустики");
-    private final SliderSetting lifetime = new SliderSetting("Время жизни", 1.2, 0.5, 3.0, 0.1, "Длительность анимации круга в секундах");
+    private final SliderSetting twist = new SliderSetting("Закручивание", 0.85, -2.0, 2.0, 0.05, "Угол поворота и закручивания эффекта");
+    private final SliderSetting lifetime = new SliderSetting("Время жизни", 1.1, 0.5, 3.0, 0.1, "Длительность анимации круга в секундах");
 
     private final List<CausticCircle> circles = new ArrayList<>();
     private boolean wasOnGround = true;
@@ -81,8 +85,11 @@ public class JumpCircles extends Module {
         instance = this;
 
         this.customColor.setVisible(() -> "Кастомная".equals(this.palette.get()));
+        this.dispersion.setVisible(() -> STYLE_CAUSTIC.equals(this.style.get()));
+        this.brightness.setVisible(() -> STYLE_CAUSTIC.equals(this.style.get()));
 
         addSettings(
+            this.style,
             this.maxRadius,
             this.expandSpeed,
             this.dispersion,
@@ -216,7 +223,9 @@ public class JumpCircles extends Module {
                     0.0f, 0.0f
                 );
                 GpuBufferSlice slice = CausticUniformStorage.write(u);
-                MeshDrawUtil.drawWithUniform(Pipelines.JUMP_CAUSTIC, built, "jump caustic", "CausticUniforms", slice);
+                var pipeline = STYLE_PHASE.equals(this.style.get()) ? Pipelines.JUMP_PHASE : Pipelines.JUMP_CAUSTIC;
+                String label = STYLE_PHASE.equals(this.style.get()) ? "jump phase" : "jump caustic";
+                MeshDrawUtil.drawWithUniform(pipeline, built, label, "CausticUniforms", slice);
             }
             this.allocCaustic.reset();
         }
