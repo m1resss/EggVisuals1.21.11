@@ -22,9 +22,10 @@ public final class BracketsTargetRenderer {
     private static final float BRACKET_BOX = 0.64f;
     private static final float CORNER_RADIUS = 0.17f;
     private static final float ARM_START = 0.27f;
-    private static final float STROKE_HALF = 0.030f;
+    private static final float STROKE_HALF = 0.046f;
     private static final float QUAD_UV = 1.05f;
-    private static final int ARC_STEPS = 7;
+    private static final int ARC_STEPS = 8;
+    private static final int CAP_STEPS = 6;
 
     private static final float[] PATH_X = new float[ARC_STEPS + 3];
     private static final float[] PATH_Z = new float[ARC_STEPS + 3];
@@ -124,39 +125,47 @@ public final class BracketsTargetRenderer {
         int r = (finalColor >> 16) & 0xFF;
         int g = (finalColor >> 8) & 0xFF;
         int b = finalColor & 0xFF;
-        int a = Math.round(242.0f * alpha);
+        int a = Math.round(248.0f * alpha);
 
         if (allocator == null) {
-            allocator = new BufferAllocator(140 * 4 * VertexFormats.POSITION_TEXTURE_COLOR.getVertexSize());
+            allocator = new BufferAllocator(360 * 4 * VertexFormats.POSITION_TEXTURE_COLOR.getVertexSize());
         }
+
+        float cx = (float) feet.x;
+        float cz = (float) feet.z;
+
         try {
-            BufferBuilder mesh = new BufferBuilder(allocator, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
-            float cx = (float) feet.x;
-            float cz = (float) feet.z;
+            BufferBuilder solidMesh = new BufferBuilder(allocator, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+            emitSolidBrackets(solidMesh, cx, y, cz, halfH, quadHalf, angle, r, g, b, a);
+            var builtSolid = solidMesh.endNullable();
+            if (builtSolid != null) {
+                MeshDrawUtil.drawLabeled(Pipelines.TARGET_BRACKETS, builtSolid, "egg target brackets");
+            }
+        } finally {
+            allocator.reset();
+        }
 
-            emitBracketWalls(mesh, cx, y, cz, halfH, quadHalf, angle, r, g, b, a);
-            emitRotatedQuad(mesh, cx, y - halfH, cz, quadHalf, angle, 0.0f, r, g, b, a);
-            emitRotatedQuad(mesh, cx, y + halfH, cz, quadHalf, angle, 0.0f, r, g, b, a);
-
+        try {
+            BufferBuilder flatMesh = new BufferBuilder(allocator, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+            emitRotatedQuad(flatMesh, cx, y, cz, quadHalf, angle, 8.0f, r, g, b, a);
             if (hitAt != 0L && hitElapsed < 1.0f) {
                 float rippleHalf = baseRadius * (0.76f + 0.42f * smooth(hitElapsed));
                 int rippleAlpha = Math.round(185.0f * (1.0f - smooth(hitElapsed)) * alpha);
                 if (rippleAlpha > 2) {
-                    emitRotatedQuad(mesh, cx, y, cz, rippleHalf, angle, 4.0f, r, g, b, rippleAlpha);
+                    emitRotatedQuad(flatMesh, cx, y, cz, rippleHalf, angle, 4.0f, r, g, b, rippleAlpha);
                 }
             }
-
-            var built = mesh.endNullable();
-            if (built != null) {
-                MeshDrawUtil.drawLabeled(Pipelines.TARGET_BRACKETS, built, "egg target brackets");
+            var builtFlat = flatMesh.endNullable();
+            if (builtFlat != null) {
+                MeshDrawUtil.drawLabeled(Pipelines.TARGET_BRACKETS_FLAT, builtFlat, "egg target brackets flat");
             }
         } finally {
             allocator.reset();
         }
     }
 
-    private static void emitBracketWalls(BufferBuilder mesh, float cx, float y, float cz, float halfH, float quadHalf,
-                                         float angle, int r, int g, int b, int a) {
+    private static void emitSolidBrackets(BufferBuilder mesh, float cx, float y, float cz, float halfH, float quadHalf,
+                                          float angle, int r, int g, int b, int a) {
         float cos = MathHelper.cos(angle);
         float sin = MathHelper.sin(angle);
         float unitScale = quadHalf / QUAD_UV;
@@ -164,10 +173,9 @@ public final class BracketsTargetRenderer {
         float yBot = y - halfH;
         float yTop = y + halfH;
 
-        int innerR = Math.round(r * 0.78f);
-        int innerG = Math.round(g * 0.78f);
-        int innerB = Math.round(b * 0.78f);
-        int sideA = Math.round(a * 0.96f);
+        int wallR = Math.round(r * 0.88f);
+        int wallG = Math.round(g * 0.88f);
+        int wallB = Math.round(b * 0.88f);
 
         int n = PATH_X.length;
         for (int q = 0; q < 4; q++) {
@@ -175,45 +183,96 @@ public final class BracketsTargetRenderer {
             float qxSin = q == 0 ? 0.0f : (q == 1 ? 1.0f : (q == 2 ? 0.0f : -1.0f));
 
             for (int i = 0; i < n - 1; i++) {
-                float lx0 = (PATH_X[i] * qxCos - PATH_Z[i] * qxSin) * unitScale;
-                float lz0 = (PATH_X[i] * qxSin + PATH_Z[i] * qxCos) * unitScale;
+                float sx0 = (PATH_X[i] * qxCos - PATH_Z[i] * qxSin) * unitScale;
+                float sz0 = (PATH_X[i] * qxSin + PATH_Z[i] * qxCos) * unitScale;
                 float nx0 = (NORM_X[i] * qxCos - NORM_Z[i] * qxSin) * wallOffset;
                 float nz0 = (NORM_X[i] * qxSin + NORM_Z[i] * qxCos) * wallOffset;
 
-                float lx1 = (PATH_X[i + 1] * qxCos - PATH_Z[i + 1] * qxSin) * unitScale;
-                float lz1 = (PATH_X[i + 1] * qxSin + PATH_Z[i + 1] * qxCos) * unitScale;
+                float sx1 = (PATH_X[i + 1] * qxCos - PATH_Z[i + 1] * qxSin) * unitScale;
+                float sz1 = (PATH_X[i + 1] * qxSin + PATH_Z[i + 1] * qxCos) * unitScale;
                 float nx1 = (NORM_X[i + 1] * qxCos - NORM_Z[i + 1] * qxSin) * wallOffset;
                 float nz1 = (NORM_X[i + 1] * qxSin + NORM_Z[i + 1] * qxCos) * wallOffset;
 
-                emitWallSegment(mesh, cx, cz, yBot, yTop, cos, sin,
-                        lx0 + nx0, lz0 + nz0, lx1 + nx1, lz1 + nz1, r, g, b, sideA);
-                emitWallSegment(mesh, cx, cz, yBot, yTop, cos, sin,
-                        lx1 - nx1, lz1 - nz1, lx0 - nx0, lz0 - nz0, innerR, innerG, innerB, sideA);
+                float ox0 = sx0 + nx0;
+                float oz0 = sz0 + nz0;
+                float ix0 = sx0 - nx0;
+                float iz0 = sz0 - nz0;
+
+                float ox1 = sx1 + nx1;
+                float oz1 = sz1 + nz1;
+                float ix1 = sx1 - nx1;
+                float iz1 = sz1 - nz1;
+
+                emitCorner(mesh, cx, yTop, cz, ox0, oz0, cos, sin, 1.0f, 1.0f, r, g, b, a);
+                emitCorner(mesh, cx, yTop, cz, ox1, oz1, cos, sin, 1.0f, 1.0f, r, g, b, a);
+                emitCorner(mesh, cx, yTop, cz, ix1, iz1, cos, sin, -1.0f, 1.0f, r, g, b, a);
+                emitCorner(mesh, cx, yTop, cz, ix0, iz0, cos, sin, -1.0f, 1.0f, r, g, b, a);
+
+                emitCorner(mesh, cx, yBot, cz, ox0, oz0, cos, sin, 1.0f, 0.0f, r, g, b, a);
+                emitCorner(mesh, cx, yBot, cz, ix0, iz0, cos, sin, -1.0f, 0.0f, r, g, b, a);
+                emitCorner(mesh, cx, yBot, cz, ix1, iz1, cos, sin, -1.0f, 0.0f, r, g, b, a);
+                emitCorner(mesh, cx, yBot, cz, ox1, oz1, cos, sin, 1.0f, 0.0f, r, g, b, a);
+
+                emitWallSegment(mesh, cx, cz, yBot, yTop, cos, sin, ox0, oz0, ox1, oz1, wallR, wallG, wallB, a);
+                emitWallSegment(mesh, cx, cz, yBot, yTop, cos, sin, ix1, iz1, ix0, iz0, wallR, wallG, wallB, a);
             }
 
-            float sx = (PATH_X[0] * qxCos - PATH_Z[0] * qxSin) * unitScale;
-            float sz = (PATH_X[0] * qxSin + PATH_Z[0] * qxCos) * unitScale;
-            float snx = (NORM_X[0] * qxCos - NORM_Z[0] * qxSin) * wallOffset;
-            float snz = (NORM_X[0] * qxSin + NORM_Z[0] * qxCos) * wallOffset;
-            emitWallSegment(mesh, cx, cz, yBot, yTop, cos, sin,
-                    sx - snx, sz - snz, sx + snx, sz + snz, innerR, innerG, innerB, sideA);
+            float s0x = (PATH_X[0] * qxCos - PATH_Z[0] * qxSin) * unitScale;
+            float s0z = (PATH_X[0] * qxSin + PATH_Z[0] * qxCos) * unitScale;
+            float n0x = (NORM_X[0] * qxCos - NORM_Z[0] * qxSin) * wallOffset;
+            float n0z = (NORM_X[0] * qxSin + NORM_Z[0] * qxCos) * wallOffset;
+            float d0x = (-qxCos) * wallOffset;
+            float d0z = (-qxSin) * wallOffset;
+            emitRoundedCap(mesh, cx, cz, yBot, yTop, cos, sin, s0x, s0z, -n0x, -n0z, d0x, d0z, r, g, b, wallR, wallG, wallB, a);
 
-            float ex = (PATH_X[n - 1] * qxCos - PATH_Z[n - 1] * qxSin) * unitScale;
-            float ez = (PATH_X[n - 1] * qxSin + PATH_Z[n - 1] * qxCos) * unitScale;
-            float enx = (NORM_X[n - 1] * qxCos - NORM_Z[n - 1] * qxSin) * wallOffset;
-            float enz = (NORM_X[n - 1] * qxSin + NORM_Z[n - 1] * qxCos) * wallOffset;
-            emitWallSegment(mesh, cx, cz, yBot, yTop, cos, sin,
-                    ex + enx, ez + enz, ex - enx, ez - enz, innerR, innerG, innerB, sideA);
+            int last = n - 1;
+            float s1x = (PATH_X[last] * qxCos - PATH_Z[last] * qxSin) * unitScale;
+            float s1z = (PATH_X[last] * qxSin + PATH_Z[last] * qxCos) * unitScale;
+            float n1x = (NORM_X[last] * qxCos - NORM_Z[last] * qxSin) * wallOffset;
+            float n1z = (NORM_X[last] * qxSin + NORM_Z[last] * qxCos) * wallOffset;
+            float d1x = (qxSin) * wallOffset;
+            float d1z = (-qxCos) * wallOffset;
+            emitRoundedCap(mesh, cx, cz, yBot, yTop, cos, sin, s1x, s1z, n1x, n1z, d1x, d1z, r, g, b, wallR, wallG, wallB, a);
+        }
+    }
+
+    private static void emitRoundedCap(BufferBuilder mesh, float cx, float cz, float yBot, float yTop,
+                                       float cos, float sin, float sx, float sz,
+                                       float startX, float startZ, float tipX, float tipZ,
+                                       int r, int g, int b, int wr, int wg, int wb, int a) {
+        float px0 = sx + startX;
+        float pz0 = sz + startZ;
+        for (int s = 1; s <= CAP_STEPS; s++) {
+            float t = MathHelper.PI * ((float) s / CAP_STEPS);
+            float ct = MathHelper.cos(t);
+            float st = MathHelper.sin(t);
+            float px1 = sx + startX * ct + tipX * st;
+            float pz1 = sz + startZ * ct + tipZ * st;
+
+            emitCorner(mesh, cx, yTop, cz, sx, sz, cos, sin, 0.0f, 1.0f, r, g, b, a);
+            emitCorner(mesh, cx, yTop, cz, px0, pz0, cos, sin, 1.0f, 1.0f, r, g, b, a);
+            emitCorner(mesh, cx, yTop, cz, px1, pz1, cos, sin, 1.0f, 1.0f, r, g, b, a);
+            emitCorner(mesh, cx, yTop, cz, sx, sz, cos, sin, 0.0f, 1.0f, r, g, b, a);
+
+            emitCorner(mesh, cx, yBot, cz, sx, sz, cos, sin, 0.0f, 0.0f, r, g, b, a);
+            emitCorner(mesh, cx, yBot, cz, px1, pz1, cos, sin, 1.0f, 0.0f, r, g, b, a);
+            emitCorner(mesh, cx, yBot, cz, px0, pz0, cos, sin, 1.0f, 0.0f, r, g, b, a);
+            emitCorner(mesh, cx, yBot, cz, sx, sz, cos, sin, 0.0f, 0.0f, r, g, b, a);
+
+            emitWallSegment(mesh, cx, cz, yBot, yTop, cos, sin, px0, pz0, px1, pz1, wr, wg, wb, a);
+
+            px0 = px1;
+            pz0 = pz1;
         }
     }
 
     private static void emitWallSegment(BufferBuilder mesh, float cx, float cz, float yBot, float yTop,
                                         float cos, float sin, float lx0, float lz0, float lx1, float lz1,
                                         int r, int g, int b, int a) {
-        emitCorner(mesh, cx, yBot, cz, lx0, lz0, cos, sin, 7.0f, 0.0f, r, g, b, a);
-        emitCorner(mesh, cx, yBot, cz, lx1, lz1, cos, sin, 7.0f, 0.0f, r, g, b, a);
-        emitCorner(mesh, cx, yTop, cz, lx1, lz1, cos, sin, 7.0f, 1.0f, r, g, b, a);
-        emitCorner(mesh, cx, yTop, cz, lx0, lz0, cos, sin, 7.0f, 1.0f, r, g, b, a);
+        emitCorner(mesh, cx, yBot, cz, lx0, lz0, cos, sin, 2.0f, 0.0f, r, g, b, a);
+        emitCorner(mesh, cx, yBot, cz, lx1, lz1, cos, sin, 2.0f, 0.0f, r, g, b, a);
+        emitCorner(mesh, cx, yTop, cz, lx1, lz1, cos, sin, 2.0f, 1.0f, r, g, b, a);
+        emitCorner(mesh, cx, yTop, cz, lx0, lz0, cos, sin, 2.0f, 1.0f, r, g, b, a);
     }
 
     private static void emitRotatedQuad(BufferBuilder mesh, float cx, float y, float cz, float halfSize, float angle,
