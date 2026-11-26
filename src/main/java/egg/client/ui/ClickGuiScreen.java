@@ -3724,6 +3724,10 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
             return true;
         }
 
+        if (selectedCategory == Category.INVENTORY && egg.client.ui.section.InventoryConfigPanel.keyPressed(key)) {
+            return true;
+        }
+
         if (searchFocused) {
             lastBlinkTime = System.currentTimeMillis();
             if (key == GLFW.GLFW_KEY_ESCAPE) {
@@ -3916,6 +3920,9 @@ MODULE_KEYWORDS.put("CustomHitbox", new String[]{"хитбокс", "хитбок
     public boolean charTyped(CharInput input) {
         if (closing || (!closing && currentAnimProgress < 0.70f)) {
             return false;
+        }
+        if (selectedCategory == Category.INVENTORY && egg.client.ui.section.InventoryConfigPanel.charTyped(input.asString())) {
+            return true;
         }
         if (searchFocused) {
             String ch = input.asString();
