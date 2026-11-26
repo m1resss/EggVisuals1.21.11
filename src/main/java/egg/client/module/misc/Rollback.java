@@ -166,7 +166,10 @@ public class Rollback extends Module {
         synchronized (mailboxLock) {
             latestReadySlot = -1;
         }
-        triggerToast("Откат активен", "Буфер " + Math.round(durationSec.get()) + "с • " + saveBind.getKeyName(), false);
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc != null && mc.getWindow() != null) {
+            triggerToast("Откат активен", "Буфер " + Math.round(durationSec.get()) + "с • " + saveBind.getKeyName(), false);
+        }
     }
 
     @Override

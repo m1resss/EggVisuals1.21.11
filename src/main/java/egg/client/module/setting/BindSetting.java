@@ -1,5 +1,6 @@
 package egg.client.module.setting;
 
+import net.minecraft.client.MinecraftClient;
 import org.lwjgl.glfw.GLFW;
 import java.util.Locale;
 
@@ -54,9 +55,21 @@ public class BindSetting extends Setting {
                 default -> "M" + (btn + 1);
             };
         }
-        String name = GLFW.glfwGetKeyName(key, 0);
-        if (name != null && !name.isEmpty()) {
-            return name.toUpperCase(Locale.ROOT);
+        if (key >= GLFW.GLFW_KEY_A && key <= GLFW.GLFW_KEY_Z) {
+            return String.valueOf((char) ('A' + (key - GLFW.GLFW_KEY_A)));
+        }
+        if (key >= GLFW.GLFW_KEY_0 && key <= GLFW.GLFW_KEY_9) {
+            return String.valueOf((char) ('0' + (key - GLFW.GLFW_KEY_0)));
+        }
+        if (key >= GLFW.GLFW_KEY_F1 && key <= GLFW.GLFW_KEY_F25) {
+            return "F" + (key - GLFW.GLFW_KEY_F1 + 1);
+        }
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc != null && mc.getWindow() != null) {
+            String name = GLFW.glfwGetKeyName(key, 0);
+            if (name != null && !name.isEmpty()) {
+                return name.toUpperCase(Locale.ROOT);
+            }
         }
         return switch (key) {
             case GLFW.GLFW_KEY_LEFT_SHIFT -> "LSHIFT";
@@ -74,12 +87,7 @@ public class BindSetting extends Setting {
             case GLFW.GLFW_KEY_DOWN -> "DOWN";
             case GLFW.GLFW_KEY_LEFT -> "LEFT";
             case GLFW.GLFW_KEY_RIGHT -> "RIGHT";
-            default -> {
-                if (key >= GLFW.GLFW_KEY_F1 && key <= GLFW.GLFW_KEY_F25) {
-                    yield "F" + (key - GLFW.GLFW_KEY_F1 + 1);
-                }
-                yield "K" + key;
-            }
+            default -> "K" + key;
         };
     }
 }
