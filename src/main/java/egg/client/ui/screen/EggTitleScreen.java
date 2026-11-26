@@ -79,6 +79,7 @@ public class EggTitleScreen extends Screen {
 
     private static final List<ChangeDay> CHANGELOG_DAYS = List.of(
             new ChangeDay("ChangeLog 26.11.2026", List.of(
+                    new ChangeItem("[+]", "Trajectories: круглый радиус зоны эффекта у взрывных и туманных зелий (показывает, попадёт ли эффект по вам)"),
                     new ChangeItem("[//]", "ShulkerPreview: MSDF-текст, бейдж заполненности, мини-иконка контейнера и плавная SDF-обводка"),
                     new ChangeItem("[+]", "HitReach: 3D-круги дистанции удара на земле (зелёный — можно бить, жёлтый — крит, оранжевый — КД, красный — вне радиуса)")
             )),

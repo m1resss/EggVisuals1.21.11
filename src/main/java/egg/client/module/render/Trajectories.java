@@ -21,6 +21,7 @@ import net.minecraft.client.render.VertexFormats;
 import net.minecraft.client.util.BufferAllocator;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.ItemEnchantmentsComponent;
+import net.minecraft.component.type.PotionContentsComponent;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.projectile.ProjectileEntity;
@@ -33,6 +34,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.item.TridentItem;
 import net.minecraft.registry.tag.FluidTags;
+import egg.client.util.ColorUtil;
 import net.minecraft.util.Arm;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
@@ -69,15 +71,19 @@ public class Trajectories extends Module {
     private final SliderSetting smoothSpeed = new SliderSetting("Плавность", 22.0, 5.0, 40.0, 1.0, "Скорость плавного следования круга");
     private final SliderSetting pullThreshold = new SliderSetting("При натяжении", 0.0, 0.0, 1.0, 0.05, "Порог натяжения лука (0 - всегда)");
     private final BooleanSetting inFlightPrediction = new BooleanSetting("Линия летящих снарядов", true, "Прогноз полёта уже запущенных снарядов");
+    private final BooleanSetting potionRadius = new BooleanSetting("Радиус зелий", true, "Круглая зона на земле, где вы получите эффект от зелья");
+    private final BooleanSetting potionEffectColor = new BooleanSetting("Цвет эффекта зелья", true, "Цвет зоны по эффекту зелья (зелёный — вы в зоне)");
 
     private BufferAllocator lineAllocator;
+    private BufferAllocator potionAllocator;
 
     public Trajectories() {
         super("Trajectories", "Показывает линию полета стрел, зелий и жемчуга края", Category.ESP);
         customColor.setVisible(() -> "Кастом".equals(colorMode.get()));
         rayHeight.setVisible(() -> verticalRay.get());
         pullThreshold.setVisible(() -> showLine.get());
-        addSettings(colorMode, customColor, circleRadius, lineWidth, showLine, verticalRay, rayHeight, glowEffect, handOffset, smoothSpeed, pullThreshold, inFlightPrediction);
+        potionEffectColor.setVisible(() -> potionRadius.isEnabled());
+        addSettings(colorMode, customColor, circleRadius, lineWidth, showLine, verticalRay, rayHeight, glowEffect, handOffset, smoothSpeed, pullThreshold, inFlightPrediction, potionRadius, potionEffectColor);
     }
 
     @Override
@@ -86,6 +92,10 @@ public class Trajectories extends Module {
         if (lineAllocator != null) {
             lineAllocator.close();
             lineAllocator = null;
+        }
+        if (potionAllocator != null) {
+            potionAllocator.close();
+            potionAllocator = null;
         }
     }
 
@@ -120,12 +130,21 @@ public class Trajectories extends Module {
 
         VertexConsumer quadBuffer = consumers.getBuffer(RenderLayers.debugQuads());
         VertexConsumer glowBuffer = glowEffect.isEnabled() ? consumers.getBuffer(RenderLayers.lightning()) : null;
+        List<PotionZone> potionZones = potionRadius.isEnabled() ? new ArrayList<>(4) : null;
+
         if (showLine.isEnabled() && inFlightPrediction.isEnabled()) {
             Box viewRange = mc.player.getBoundingBox().expand(80.0);
             for (Entity entity : mc.world.getOtherEntities(mc.player, viewRange)) {
                 if (entity instanceof ProjectileEntity projectile && projectile.isAlive()
                         && projectile.getVelocity().lengthSquared() >= 0.0001) {
-                    lines.path(simulateInFlight(mc, projectile, tickDelta).path, Vec3d.ZERO, col);
+                    TrajectoryResult flyRes = simulateInFlight(mc, projectile, tickDelta);
+                    lines.path(flyRes.path, Vec3d.ZERO, col);
+                    if (potionZones != null && projectile instanceof PotionEntity potionEntity && flyRes.path.size() >= 2) {
+                        ItemStack potStack = potionEntity.getStack();
+                        if (isAreaPotion(potStack.getItem())) {
+                            potionZones.add(new PotionZone(flyRes.impactPoint, potStack));
+                        }
+                    }
                 }
             }
         }
@@ -133,9 +152,13 @@ public class Trajectories extends Module {
         ItemStack main = mc.player.getMainHandStack();
         ItemStack off = mc.player.getOffHandStack();
         if (isThrowableOrWeapon(main.getItem())) {
-            renderItemPrediction(mc, main, Hand.MAIN_HAND, quadBuffer, glowBuffer, camPos, col, tickDelta, lines);
+            renderItemPrediction(mc, main, Hand.MAIN_HAND, quadBuffer, glowBuffer, camPos, col, tickDelta, lines, potionZones);
         } else if (isThrowableOrWeapon(off.getItem())) {
-            renderItemPrediction(mc, off, Hand.OFF_HAND, quadBuffer, glowBuffer, camPos, col, tickDelta, lines);
+            renderItemPrediction(mc, off, Hand.OFF_HAND, quadBuffer, glowBuffer, camPos, col, tickDelta, lines, potionZones);
+        }
+
+        if (potionZones != null && !potionZones.isEmpty()) {
+            renderPotionZones(mc, potionZones, camPos, col);
         }
     }
 
@@ -159,7 +182,7 @@ public class Trajectories extends Module {
 
     private void renderItemPrediction(MinecraftClient mc, ItemStack stack, Hand hand,
                                       VertexConsumer quadBuffer, VertexConsumer glowBuffer, Vec3d camPos,
-                                      int color, float tickDelta, TrajectoryLines lines) {
+                                      int color, float tickDelta, TrajectoryLines lines, List<PotionZone> potionZones) {
         if (stack == null || stack.isEmpty()) return;
         Item item = stack.getItem();
 
@@ -254,6 +277,9 @@ public class Trajectories extends Module {
                             1.2f);
                 } else {
                     renderLandingCircle(quadBuffer, glowBuffer, res.impactPoint, camPos, res.impactSide, r, g, b, lines);
+                }
+                if (potionZones != null && isAreaPotion(item)) {
+                    potionZones.add(new PotionZone(res.impactPoint, stack));
                 }
             }
         }
@@ -549,6 +575,95 @@ public class Trajectories extends Module {
         buf.vertex(x2, y2, z2).color(r, g, b, a);
         buf.vertex(x1, y1, z1).color(r, g, b, a);
     }
+
+    private static boolean isAreaPotion(Item item) {
+        return item == Items.SPLASH_POTION || item == Items.LINGERING_POTION;
+    }
+
+    private void renderPotionZones(MinecraftClient mc, List<PotionZone> zones, Vec3d camPos, int fallbackCol) {
+        if (potionAllocator == null) {
+            potionAllocator = new BufferAllocator(16 * 4 * VertexFormats.POSITION_TEXTURE_COLOR.getVertexSize());
+        }
+        try {
+            BufferBuilder mesh = new BufferBuilder(potionAllocator, DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+            for (PotionZone zone : zones) {
+                Vec3d impact = zone.impactPoint;
+                boolean lingering = zone.stack.getItem() == Items.LINGERING_POTION;
+                double groundY = findPotionFloorY(mc, impact);
+                float dy = (float) Math.abs(impact.y - groundY);
+                float maxR = lingering ? 3.0f : 4.0f;
+                if (dy > (lingering ? 1.8f : 2.2f)) continue;
+
+                float effectiveR = lingering
+                        ? maxR
+                        : Math.max(0.45f, (float) Math.sqrt(Math.max(0.0, 16.0 - dy * dy)));
+
+                boolean inside = isPlayerReceivingPotion(mc.player, impact, lingering);
+
+                int potCol = fallbackCol;
+                if (potionEffectColor.isEnabled()) {
+                    PotionContentsComponent contents = zone.stack.get(DataComponentTypes.POTION_CONTENTS);
+                    if (contents != null) {
+                        int c = contents.getColor();
+                        if ((c & 0x00FFFFFF) != 0) {
+                            potCol = 0xFF000000 | (c & 0xFFFFFF);
+                        }
+                    }
+                }
+
+                int drawCol = inside ? ColorUtil.interpolate(potCol, 0xFF22C55E, 0.72f) : potCol;
+                float uOffset = inside ? 0.0f : 4.0f;
+                float alpha = inside ? 0.94f : 0.78f;
+
+                float uv = 1.04f;
+                float halfQuad = (effectiveR / 0.90f) * uv;
+                float cx = (float) (impact.x - camPos.x);
+                float cy = (float) (groundY - camPos.y);
+                float cz = (float) (impact.z - camPos.z);
+
+                int cr = (drawCol >> 16) & 0xFF;
+                int cg = (drawCol >> 8) & 0xFF;
+                int cb = drawCol & 0xFF;
+                int ca = Math.round(alpha * 255.0f);
+
+                mesh.vertex(cx - halfQuad, cy, cz - halfQuad).texture(uOffset - uv, -uv).color(cr, cg, cb, ca);
+                mesh.vertex(cx + halfQuad, cy, cz - halfQuad).texture(uOffset + uv, -uv).color(cr, cg, cb, ca);
+                mesh.vertex(cx + halfQuad, cy, cz + halfQuad).texture(uOffset + uv, uv).color(cr, cg, cb, ca);
+                mesh.vertex(cx - halfQuad, cy, cz + halfQuad).texture(uOffset - uv, uv).color(cr, cg, cb, ca);
+            }
+            var built = mesh.endNullable();
+            if (built != null) {
+                MeshDrawUtil.drawLabeled(Pipelines.REACH_CIRCLE, built, "egg potion radius");
+            }
+        } finally {
+            potionAllocator.reset();
+        }
+    }
+
+    private static double findPotionFloorY(MinecraftClient mc, Vec3d impact) {
+        Vec3d start = new Vec3d(impact.x, impact.y + 0.15, impact.z);
+        BlockHitResult hit = mc.world.raycast(new RaycastContext(
+                start, new Vec3d(impact.x, impact.y - 2.3, impact.z),
+                RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player));
+        if (hit.getType() == HitResult.Type.BLOCK) {
+            return hit.getPos().y + 0.025;
+        }
+        return impact.y + 0.025;
+    }
+
+    private static boolean isPlayerReceivingPotion(LivingEntity player, Vec3d impact, boolean lingering) {
+        if (lingering) {
+            double dx = player.getX() - impact.x;
+            double dz = player.getZ() - impact.z;
+            double dy = Math.abs(player.getY() - impact.y);
+            double r = 3.0 + player.getWidth() * 0.5;
+            return dx * dx + dz * dz <= r * r && dy <= 1.8;
+        }
+        Box impactBox = new Box(impact, impact).expand(4.0, 2.0, 4.0);
+        return player.getBoundingBox().intersects(impactBox) && player.getEntityPos().squaredDistanceTo(impact) < 16.0;
+    }
+
+    private record PotionZone(Vec3d impactPoint, ItemStack stack) {}
 
     private static class TrajectoryResult {
         final List<Vec3d> path;
