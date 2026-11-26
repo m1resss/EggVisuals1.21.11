@@ -1148,7 +1148,7 @@ public class ClickGuiScreen extends Screen {
         MODULE_KEYWORDS.put("Crosshair", new String[]{"прицел", "крестик", "точка", "кастом прицел", "crosshair"});
         MODULE_KEYWORDS.put("HitReach", new String[]{"круги дистанции", "круги", "круг", "удар", "хит", "рич", "дистанция", "крит", "хитрич", "hitreach", "reach", "attack"});
         MODULE_KEYWORDS.put("Hitmarker", new String[]{"хитмаркер", "маркер удара", "звук удара", "колокольчик", "hitmarker"});
-        MODULE_KEYWORDS.put("HitEffect", new String[]{"хитэффект", "эффект удара", "разрез", "слэш", "линза", "отголосок", "удар", "крит", "hiteffect", "slash", "impact"});
+        MODULE_KEYWORDS.put("HitEffect", new String[]{"хитэффект", "эффект удара", "разрез", "слэш", "линза", "удар", "крит", "hiteffect", "slash", "impact"});
         MODULE_KEYWORDS.put("HitSounds", new String[]{"хитсаунд", "хит саунд", "звук удара", "звуки попадания", "звук попадания", "hitsounds", "hitsound", "skeet", "neverlose"});
         MODULE_KEYWORDS.put("ItemPhysic", new String[]{"физика", "дроп", "вещи", "предметы", "реалистичный дроп", "item physic"});
         MODULE_KEYWORDS.put("TargetESP", new String[]{"таргет", "есп", "снежинки", "созвездие", "нейросеть", "нити", "паутинка", "симбиот", "вх", "бокс", "души", "кубы", "таргет есп", "target esp", "esp"});

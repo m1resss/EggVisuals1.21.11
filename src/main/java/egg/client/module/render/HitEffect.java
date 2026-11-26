@@ -14,15 +14,12 @@ import egg.client.util.ColorUtil;
 import egg.client.util.EntityUtil;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.BufferBuilder;
-import net.minecraft.client.render.RenderLayers;
-import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.VertexFormats;
 import net.minecraft.client.util.BufferAllocator;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Vector3f;
@@ -37,14 +34,13 @@ public class HitEffect extends Module {
 
     private static final String MODE_SLASH = "Разрез";
     private static final String MODE_IMPACT = "Линза";
-    private static final String MODE_ECHO = "Отголосок";
 
     private static final int CRIT_GOLD = 0xFFFFD15C;
 
     private static HitEffect instance;
 
     private final ModeSetting mode = new ModeSetting("Эффект", MODE_SLASH, "Стиль визуального эффекта при ударе",
-            MODE_SLASH, MODE_IMPACT, MODE_ECHO);
+            MODE_SLASH, MODE_IMPACT);
     private final BooleanSetting onlyCrits = new BooleanSetting("Только криты", false, "Показывать эффект только при критическом ударе");
     private final BooleanSetting critBoost = new BooleanSetting("Усиление критов", true, "Двойной эффект и золотистый оттенок при крите");
     private final ModeSetting colorMode = new ModeSetting("Цвет", "Тема", "Источник цвета эффекта", "Тема", "Радуга", "Кастом");
@@ -54,13 +50,12 @@ public class HitEffect extends Module {
 
     private final List<SlashPulse> slashes = new ArrayList<>();
     private final List<ImpactWave> impacts = new ArrayList<>();
-    private final List<EchoGhost> echoes = new ArrayList<>();
     private final Random random = new Random();
     private BufferAllocator quadAllocator;
     private boolean slashFlip = false;
 
     public HitEffect() {
-        super("HitEffect", "Отображает 3D-разрез, ударную линзу или фантомный отголосок при ударе", Category.ESP);
+        super("HitEffect", "Отображает 3D-разрез или ударную линзу в месте попадания", Category.ESP);
         instance = this;
         customColor.setVisible(() -> colorMode.is("Кастом"));
         addSettings(mode, onlyCrits, critBoost, colorMode, customColor, scale, duration);
@@ -75,7 +70,6 @@ public class HitEffect extends Module {
         super.onDisable();
         slashes.clear();
         impacts.clear();
-        echoes.clear();
         if (quadAllocator != null) {
             quadAllocator.close();
             quadAllocator = null;
@@ -120,7 +114,7 @@ public class HitEffect extends Module {
             if (slashes.size() > 32) {
                 slashes.removeFirst();
             }
-        } else if (mode.is(MODE_IMPACT)) {
+        } else {
             float size = (isCrit && critBoost.isEnabled() ? 1.08f : 0.85f) * s;
             impacts.add(new ImpactWave(target.getId(), shiftedHit, relOffset, normal, size, baseColor, now, durNanos));
             if (isCrit && critBoost.isEnabled()) {
@@ -130,22 +124,6 @@ public class HitEffect extends Module {
             if (impacts.size() > 32) {
                 impacts.removeFirst();
             }
-        } else {
-            Vec3d kbDir = new Vec3d(target.getX() - player.getX(), 0.14, target.getZ() - player.getZ());
-            if (kbDir.lengthSquared() < 1e-5) {
-                kbDir = new Vec3d(0.0, 0.18, 0.0);
-            } else {
-                kbDir = kbDir.normalize();
-            }
-            Box box = target.getBoundingBox();
-            float dist = (isCrit && critBoost.isEnabled() ? 0.56f : 0.38f) * s;
-            echoes.add(new EchoGhost(box, kbDir, dist, baseColor, now, durNanos));
-            if (isCrit && critBoost.isEnabled()) {
-                echoes.add(new EchoGhost(box, kbDir, dist * 1.42f, baseColor, now + 35_000_000L, durNanos));
-            }
-            if (echoes.size() > 24) {
-                echoes.removeFirst();
-            }
         }
     }
 
@@ -153,7 +131,7 @@ public class HitEffect extends Module {
         if (!isEnabled()) return;
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null || mc.world == null) return;
-        if (slashes.isEmpty() && impacts.isEmpty() && echoes.isEmpty()) return;
+        if (slashes.isEmpty() && impacts.isEmpty()) return;
 
         long now = System.nanoTime();
 
@@ -162,9 +140,6 @@ public class HitEffect extends Module {
         }
         if (!impacts.isEmpty()) {
             renderImpacts(mc, camPos, tickDelta, now);
-        }
-        if (!echoes.isEmpty()) {
-            renderEchoes(consumers, camPos, now);
         }
     }
 
@@ -251,39 +226,6 @@ public class HitEffect extends Module {
         }
     }
 
-    private void renderEchoes(VertexConsumerProvider consumers, Vec3d camPos, long now) {
-        VertexConsumer quadBuf = consumers.getBuffer(RenderLayers.debugQuads());
-        VertexConsumer glowBuf = consumers.getBuffer(RenderLayers.lightning());
-
-        Iterator<EchoGhost> it = echoes.iterator();
-        while (it.hasNext()) {
-            EchoGhost echo = it.next();
-            if (now < echo.startNanos) continue;
-            float t = (float) (now - echo.startNanos) / (float) echo.durNanos;
-            if (t >= 1.0f) {
-                it.remove();
-                continue;
-            }
-
-            float ease = 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
-            float fade = 1.0f - t * t;
-            double shift = echo.distance * ease;
-            double expand = 0.04 + ease * 0.10;
-            Box shifted = echo.box
-                    .offset(echo.dir.x * shift, echo.dir.y * shift, echo.dir.z * shift)
-                    .expand(expand);
-
-            int r = (echo.color >> 16) & 0xFF;
-            int g = (echo.color >> 8) & 0xFF;
-            int b = echo.color & 0xFF;
-
-            int fillA = Math.round(38.0f * fade);
-            int edgeA = Math.round(230.0f * fade);
-
-            renderGhostBox(quadBuf, glowBuf, shifted, camPos, r, g, b, fillA, edgeA);
-        }
-    }
-
     private static Vec3d resolveAnchor(MinecraftClient mc, int entityId, Vec3d fallbackPos, Vec3d relOffset, float tickDelta) {
         Entity e = mc.world.getEntityById(entityId);
         if (e != null && e.isAlive()) {
@@ -321,45 +263,6 @@ public class HitEffect extends Module {
         mesh.vertex(cx - ux + vx, cy - uy + vy, cz - uz + vz).texture(uShift - uv, uv).color(r, g, b, a);
     }
 
-    private static void renderGhostBox(VertexConsumer fillBuf, VertexConsumer edgeBuf, Box box, Vec3d camPos,
-                                       int r, int g, int b, int fillA, int edgeA) {
-        float x1 = (float) (box.minX - camPos.x);
-        float y1 = (float) (box.minY - camPos.y);
-        float z1 = (float) (box.minZ - camPos.z);
-        float x2 = (float) (box.maxX - camPos.x);
-        float y2 = (float) (box.maxY - camPos.y);
-        float z2 = (float) (box.maxZ - camPos.z);
-
-        if (fillA > 1) {
-            drawQuadDoubleSided(fillBuf, x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, r, g, b, fillA);
-            drawQuadDoubleSided(fillBuf, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, r, g, b, fillA);
-            drawQuadDoubleSided(fillBuf, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, r, g, b, fillA);
-            drawQuadDoubleSided(fillBuf, x1, y1, z2, x2, y1, z2, x2, y2, z2, x1, y2, z2, r, g, b, fillA);
-            drawQuadDoubleSided(fillBuf, x1, y1, z1, x1, y1, z2, x1, y2, z2, x1, y2, z1, r, g, b, fillA);
-            drawQuadDoubleSided(fillBuf, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, fillA);
-        }
-
-        if (edgeA > 1) {
-            float bLen = Math.min(0.28f, Math.min(x2 - x1, Math.min(y2 - y1, z2 - z1)) * 0.34f);
-            float t = 0.014f;
-            float[] xs = {x1, x2};
-            float[] ys = {y1, y2};
-            float[] zs = {z1, z2};
-            for (float kx : xs) {
-                float sx = kx == x1 ? bLen : -bLen;
-                for (float ky : ys) {
-                    float sy = ky == y1 ? bLen : -bLen;
-                    for (float kz : zs) {
-                        float sz = kz == z1 ? bLen : -bLen;
-                        drawSolidBox(edgeBuf, Math.min(kx, kx + sx) - t, ky - t, kz - t, Math.max(kx, kx + sx) + t, ky + t, kz + t, r, g, b, edgeA);
-                        drawSolidBox(edgeBuf, kx - t, Math.min(ky, ky + sy) - t, kz - t, kx + t, Math.max(ky, ky + sy) + t, kz + t, r, g, b, edgeA);
-                        drawSolidBox(edgeBuf, kx - t, ky - t, Math.min(kz, kz + sz) - t, kx + t, ky + t, Math.max(kz, kz + sz) + t, r, g, b, edgeA);
-                    }
-                }
-            }
-        }
-    }
-
     private int resolveColor(boolean isCrit) {
         int col;
         if (colorMode.is("Тема")) {
@@ -376,43 +279,9 @@ public class HitEffect extends Module {
         return col;
     }
 
-    private static void drawSolidBox(VertexConsumer buf,
-                                     float x1, float y1, float z1,
-                                     float x2, float y2, float z2,
-                                     int r, int g, int b, int a) {
-        if (x1 > x2) { float t = x1; x1 = x2; x2 = t; }
-        if (y1 > y2) { float t = y1; y1 = y2; y2 = t; }
-        if (z1 > z2) { float t = z1; z1 = z2; z2 = t; }
-        drawQuadDoubleSided(buf, x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, r, g, b, a);
-        drawQuadDoubleSided(buf, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, r, g, b, a);
-        drawQuadDoubleSided(buf, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, r, g, b, a);
-        drawQuadDoubleSided(buf, x1, y1, z2, x2, y1, z2, x2, y2, z2, x1, y2, z2, r, g, b, a);
-        drawQuadDoubleSided(buf, x1, y1, z1, x1, y1, z2, x1, y2, z2, x1, y2, z1, r, g, b, a);
-        drawQuadDoubleSided(buf, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, a);
-    }
-
-    private static void drawQuadDoubleSided(VertexConsumer buf,
-                                            float x1, float y1, float z1,
-                                            float x2, float y2, float z2,
-                                            float x3, float y3, float z3,
-                                            float x4, float y4, float z4,
-                                            int r, int g, int b, int a) {
-        buf.vertex(x1, y1, z1).color(r, g, b, a);
-        buf.vertex(x2, y2, z2).color(r, g, b, a);
-        buf.vertex(x3, y3, z3).color(r, g, b, a);
-        buf.vertex(x4, y4, z4).color(r, g, b, a);
-
-        buf.vertex(x4, y4, z4).color(r, g, b, a);
-        buf.vertex(x3, y3, z3).color(r, g, b, a);
-        buf.vertex(x2, y2, z2).color(r, g, b, a);
-        buf.vertex(x1, y1, z1).color(r, g, b, a);
-    }
-
     private record SlashPulse(int entityId, Vec3d fallbackPos, Vec3d relOffset, Vec3d normal,
                               float roll, float size, int color, long startNanos, long durNanos) {}
 
     private record ImpactWave(int entityId, Vec3d fallbackPos, Vec3d relOffset, Vec3d normal,
                               float size, int color, long startNanos, long durNanos) {}
-
-    private record EchoGhost(Box box, Vec3d dir, float distance, int color, long startNanos, long durNanos) {}
 }
