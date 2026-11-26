@@ -84,12 +84,9 @@ public class ItemRadius extends Module {
     private final BooleanSetting fcMagnet = new BooleanSetting("Магнитный шар", true, "Зона магнитного шара (7м)");
 
     private final BooleanSetting onlyDonate = new BooleanSetting("Только донат-NBT", false, "Проверять NBT и лор сервера (выкл — любые предметы)");
-    private final BooleanSetting radarWave = new BooleanSetting("Радарная волна", true, "Анимированный сканирующий луч на круге");
-    private final BooleanSetting pulseRing = new BooleanSetting("Пульсация", true, "Расширяющееся эхо-кольцо на круге");
-    private final SliderSetting fillOpacity = new SliderSetting("Прозрачность", 40.0, 5.0, 100.0, 5.0, "Прозрачность заливки");
+    private final SliderSetting fillOpacity = new SliderSetting("Прозрачность", 30.0, 0.0, 100.0, 5.0, "Прозрачность заливки");
 
     private float threatTimer = 0.0f;
-    private float animTime = 0.0f;
     private long lastFrameNanos = 0L;
     private BufferAllocator lineAllocator;
 
@@ -123,7 +120,7 @@ public class ItemRadius extends Module {
                 showDez, showYavka, showFireCharge, showGodAura, showSnowball, showTrap, dragonTrap, showPlast,
                 hwStun, hwExplosiveTrap, hwTrap, hwJake,
                 fcLightning, fcSlime, fcScute, fcWeb, fcStun, fcMagnet,
-                showDrill, onlyDonate, radarWave, pulseRing, fillOpacity
+                showDrill, onlyDonate, fillOpacity
         );
     }
 
@@ -146,7 +143,6 @@ public class ItemRadius extends Module {
         if (lastFrameNanos == 0L) lastFrameNanos = now;
         float dt = Math.clamp((float) ((now - lastFrameNanos) * 1e-9), 0.001f, 0.05f);
         lastFrameNanos = now;
-        animTime += dt;
 
         float tickDelta = mc.getRenderTickCounter() != null ? mc.getRenderTickCounter().getTickProgress(false) : 1.0f;
         Vec3d playerPos = new Vec3d(
@@ -267,7 +263,7 @@ public class ItemRadius extends Module {
                 double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
                 Vec3d circleCenter = new Vec3d(playerPos.x, groundY, playerPos.z);
                 boolean hit = hasEnemyInRadius(mc, playerPos, 10.0);
-                renderCyberCircle(buf, circleCenter, camPos, 10.0f, accentColor, HIT_COLOR, hit ? Math.max(threatTimer, 0.35f) : threatTimer, animTime);
+                renderCyberCircle(buf, circleCenter, camPos, 10.0f, accentColor, HIT_COLOR, hit ? Math.max(threatTimer, 0.35f) : threatTimer);
                 return hit;
             }
             case "ft_aura": {
@@ -276,7 +272,7 @@ public class ItemRadius extends Module {
                 boolean friendIn = hasFriendInRadius(mc, playerPos, 2.0);
                 boolean enemyIn = hasEnemyInRadius(mc, playerPos, 2.0);
                 int baseCol = friendIn ? FRIEND_COLOR : accentColor;
-                renderCyberCircle(buf, circleCenter, camPos, 2.0f, baseCol, HIT_COLOR, enemyIn ? Math.max(threatTimer, 0.35f) : threatTimer, animTime);
+                renderCyberCircle(buf, circleCenter, camPos, 2.0f, baseCol, HIT_COLOR, enemyIn ? Math.max(threatTimer, 0.35f) : threatTimer);
                 return enemyIn;
             }
             case "ft_snowball": {
@@ -289,7 +285,7 @@ public class ItemRadius extends Module {
                         ? new Box(pos.getX() - 3, pos.getY(), pos.getZ() - 3, pos.getX() + 4, pos.getY() + 6, pos.getZ() + 4)
                         : new Box(pos.getX() - 2, pos.getY(), pos.getZ() - 2, pos.getX() + 3, pos.getY() + 4, pos.getZ() + 3);
                 boolean hit = hasEnemyInBox(mc, zone);
-                renderZoneBox(buf, zone.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, true);
+                renderZoneBox(buf, zone.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, true);
                 return hit;
             }
             case "ft_plast": {
@@ -300,7 +296,7 @@ public class ItemRadius extends Module {
                 if (spec != null) {
                     Box box = computeDrillBox(mc, spec[0], spec[1]);
                     if (box != null) {
-                        renderZoneBox(buf, box.contract(0.005), camPos, accentColor, HIT_COLOR, 0.0f, animTime, false);
+                        renderZoneBox(buf, box.contract(0.005), camPos, accentColor, HIT_COLOR, 0.0f, false);
                     }
                 }
                 return false;
@@ -309,9 +305,9 @@ public class ItemRadius extends Module {
                 Box box = new Box(playerPos.x - 15.0, playerPos.y - 15.0, playerPos.z - 15.0,
                         playerPos.x + 15.0, playerPos.y + 15.0, playerPos.z + 15.0);
                 boolean hit = hasEnemyInBox(mc, box);
-                renderZoneBox(buf, box, camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, false);
+                renderZoneBox(buf, box, camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, false);
                 double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
-                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 15.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime);
+                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 15.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer);
                 return hit;
             }
             case "hw_explosive_trap": {
@@ -319,21 +315,21 @@ public class ItemRadius extends Module {
                 Box visual = new Box(pos.getX() - 3, pos.getY() - 3, pos.getZ() - 3, pos.getX() + 4, pos.getY(), pos.getZ() + 4);
                 Box detect = new Box(pos.getX() - 3, pos.getY() - 3, pos.getZ() - 3, pos.getX() + 4, pos.getY() + 4, pos.getZ() + 4);
                 boolean hit = hasEnemyInBox(mc, detect);
-                renderZoneBox(buf, visual.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, true);
+                renderZoneBox(buf, visual.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, true);
                 return hit;
             }
             case "hw_trap": {
                 BlockPos pos = mc.player.getBlockPos();
                 Box zone = new Box(pos.getX() - 2, pos.getY(), pos.getZ() - 2, pos.getX() + 3, pos.getY() + 4, pos.getZ() + 3);
                 boolean hit = hasEnemyInBox(mc, zone);
-                renderZoneBox(buf, zone.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, true);
+                renderZoneBox(buf, zone.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, true);
                 return hit;
             }
             case "hw_jake": {
                 double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
                 Vec3d circleCenter = new Vec3d(playerPos.x, groundY, playerPos.z);
                 boolean hit = hasEnemyInRadius(mc, playerPos, 15.0);
-                renderCyberCircle(buf, circleCenter, camPos, 15.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime);
+                renderCyberCircle(buf, circleCenter, camPos, 15.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer);
                 return hit;
             }
             case "drill_hw": {
@@ -341,7 +337,7 @@ public class ItemRadius extends Module {
                 if (spec != null) {
                     Box box = computeDrillBox(mc, spec[0], spec[1]);
                     if (box != null) {
-                        renderZoneBox(buf, box.contract(0.005), camPos, accentColor, HIT_COLOR, 0.0f, animTime, false);
+                        renderZoneBox(buf, box.contract(0.005), camPos, accentColor, HIT_COLOR, 0.0f, false);
                     }
                 }
                 return false;
@@ -350,9 +346,9 @@ public class ItemRadius extends Module {
                 Box box = new Box(playerPos.x - 10.0, playerPos.y - 10.0, playerPos.z - 10.0,
                         playerPos.x + 10.0, playerPos.y + 10.0, playerPos.z + 10.0);
                 boolean hit = hasElytraEnemyInBox(mc, box);
-                renderZoneBox(buf, box, camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, false);
+                renderZoneBox(buf, box, camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, false);
                 double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
-                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 10.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime);
+                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 10.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer);
                 return hit;
             }
             case "fc_slime": {
@@ -360,14 +356,14 @@ public class ItemRadius extends Module {
                 Box detect = new Box(playerPos.x - 5.0, y - 5.0, playerPos.z - 5.0, playerPos.x + 5.0, y + 5.0, playerPos.z + 5.0);
                 boolean hit = hasEnemyInBox(mc, detect);
                 double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
-                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 5.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime);
+                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 5.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer);
                 return hit;
             }
             case "fc_scute": {
                 BlockPos pos = mc.player.getBlockPos();
                 Box zone = new Box(pos.getX() - 3, pos.getY() - 1, pos.getZ() - 3, pos.getX() + 4, pos.getY() + 5, pos.getZ() + 4);
                 boolean hit = hasEnemyInBox(mc, zone);
-                renderZoneBox(buf, zone.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, true);
+                renderZoneBox(buf, zone.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, true);
                 return hit;
             }
             case "fc_web": {
@@ -392,16 +388,16 @@ public class ItemRadius extends Module {
                         ? new Box(base.getX() - 1, base.getY(), base.getZ(), base.getX() + 2, base.getY() + 3, base.getZ() + 1)
                         : new Box(base.getX(), base.getY(), base.getZ() - 1, base.getX() + 1, base.getY() + 3, base.getZ() + 2);
                 boolean hit = hasEnemyInBox(mc, wall);
-                renderZoneBox(buf, wall.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, true);
+                renderZoneBox(buf, wall.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, true);
                 return hit;
             }
             case "fc_stun": {
                 Box box = new Box(playerPos.x - 30.0, playerPos.y - 30.0, playerPos.z - 30.0,
                         playerPos.x + 30.0, playerPos.y + 30.0, playerPos.z + 30.0);
                 boolean hit = hasEnemyInBox(mc, box);
-                renderZoneBox(buf, box, camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, false);
+                renderZoneBox(buf, box, camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, false);
                 double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
-                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 30.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime);
+                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 30.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer);
                 return hit;
             }
             case "fc_magnet": {
@@ -409,7 +405,7 @@ public class ItemRadius extends Module {
                         playerPos.x + 7.0, playerPos.y + 8.0, playerPos.z + 7.0);
                 boolean hit = hasEnemyInBox(mc, detect);
                 double groundY = findGroundY(mc, playerPos.x, playerPos.y, playerPos.z);
-                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 7.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime);
+                renderCyberCircle(buf, new Vec3d(playerPos.x, groundY, playerPos.z), camPos, 7.0f, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer);
                 return hit;
             }
             default:
@@ -435,7 +431,7 @@ public class ItemRadius extends Module {
                         : new Box(pos.getX() - 2, pos.getY() - 3, pos.getZ() - 2, pos.getX() + 3, pos.getY() - 1, pos.getZ() + 3);
             }
             boolean hit = hasEnemyInBox(mc, detect);
-            renderZoneBox(buf, detect.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, true);
+            renderZoneBox(buf, detect.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, true);
             return hit;
         }
 
@@ -522,7 +518,7 @@ public class ItemRadius extends Module {
         }
 
         boolean hit = hasEnemyInBox(mc, detect);
-        renderZoneBox(buf, detect.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, animTime, true);
+        renderZoneBox(buf, detect.contract(0.01), camPos, accentColor, HIT_COLOR, hit ? 1.0f : threatTimer, true);
         return hit;
     }
 
@@ -596,7 +592,7 @@ public class ItemRadius extends Module {
 
         double groundY = findGroundY(mc, impact.x, impact.y + 0.15, impact.z);
         Vec3d ringCenter = new Vec3d(impact.x, Math.max(groundY, impact.y + 0.025), impact.z);
-        renderCyberCircle(quadBuf, ringCenter, camPos, radius, accentColor, HIT_COLOR, enemyInZone ? 1.0f : threatTimer, animTime);
+        renderCyberCircle(quadBuf, ringCenter, camPos, radius, accentColor, HIT_COLOR, enemyInZone ? 1.0f : threatTimer);
         return enemyInZone;
     }
 
@@ -849,7 +845,7 @@ public class ItemRadius extends Module {
     }
 
     private void renderCyberCircle(VertexConsumer buf, Vec3d center, Vec3d camPos, float radius,
-                                   int primaryCol, int hitCol, float threat, float time) {
+                                   int primaryCol, int hitCol, float threat) {
         int color = ColorUtil.interpolate(primaryCol, hitCol, threat);
         int r = (color >> 16) & 0xFF;
         int g = (color >> 8) & 0xFF;
@@ -862,70 +858,27 @@ public class ItemRadius extends Module {
         int segments = 72;
         float angleStep = (float) (2.0 * Math.PI / segments);
         float baseFillAlpha = (float) fillOpacity.get();
-        if (threat > 0.05f) {
-            float warningPulse = (float) Math.sin(time * 10.0f) * 0.5f + 0.5f;
-            baseFillAlpha = MathHelper.lerp(warningPulse, baseFillAlpha, Math.min(255.0f, baseFillAlpha + 55.0f));
-        }
 
-        int alphaInner = Math.round(baseFillAlpha * 0.28f);
-        int alphaOuter = Math.round(baseFillAlpha * 0.78f);
-        float fillRadius = Math.max(0.2f, radius - 0.06f);
-
-        for (int i = 0; i < segments; i++) {
-            float a1 = i * angleStep;
-            float a2 = (i + 1) * angleStep;
-
-            float x1 = cx + MathHelper.sin(a1) * fillRadius;
-            float z1 = cz + MathHelper.cos(a1) * fillRadius;
-            float x2 = cx + MathHelper.sin(a2) * fillRadius;
-            float z2 = cz + MathHelper.cos(a2) * fillRadius;
-
-            drawTriDoubleSided(buf, cx, cy, cz, x1, cy, z1, x2, cy, z2, r, g, b, alphaInner, alphaOuter);
-        }
-
-        if (radarWave.isEnabled()) {
-            float sweepAngle = (float) ((time * 2.2f) % (2.0 * Math.PI));
-            float sweepArc = (float) Math.toRadians(72.0);
-            for (int i = 0; i < segments; i++) {
-                float a1 = i * angleStep;
-                float a2 = (i + 1) * angleStep;
-                float diff = (a1 - sweepAngle + (float) (4.0 * Math.PI)) % (float) (2.0 * Math.PI);
-                if (diff < sweepArc) {
-                    float factor = 1.0f - (diff / sweepArc);
-                    int beamAlpha = Math.round(factor * 115.0f);
-                    float x1 = cx + MathHelper.sin(a1) * fillRadius;
-                    float z1 = cz + MathHelper.cos(a1) * fillRadius;
-                    float x2 = cx + MathHelper.sin(a2) * fillRadius;
-                    float z2 = cz + MathHelper.cos(a2) * fillRadius;
-                    drawTriDoubleSided(buf, cx, cy + 0.002f, cz, x1, cy + 0.002f, z1, x2, cy + 0.002f, z2, r, g, b, beamAlpha / 4, beamAlpha);
-                }
-            }
-        }
-
-        if (pulseRing.isEnabled()) {
-            float pulsePhase = (time * 0.75f) % 1.0f;
-            float pulseR = radius * pulsePhase;
-            int pulseAlpha = Math.round((1.0f - pulsePhase) * 175.0f);
-            float halfW = 0.045f;
-            float inR = Math.max(0.01f, pulseR - halfW);
-            float outR = pulseR + halfW;
+        if (baseFillAlpha > 0.5f) {
+            int alphaInner = Math.round(baseFillAlpha * 0.45f);
+            int alphaOuter = Math.round(baseFillAlpha * 0.85f);
+            float fillRadius = Math.max(0.2f, radius - 0.05f);
 
             for (int i = 0; i < segments; i++) {
                 float a1 = i * angleStep;
                 float a2 = (i + 1) * angleStep;
-                float s1 = MathHelper.sin(a1), c1 = MathHelper.cos(a1);
-                float s2 = MathHelper.sin(a2), c2 = MathHelper.cos(a2);
-                drawQuadDoubleSided(buf,
-                        cx + s1 * inR, cy + 0.005f, cz + c1 * inR,
-                        cx + s1 * outR, cy + 0.005f, cz + c1 * outR,
-                        cx + s2 * outR, cy + 0.005f, cz + c2 * outR,
-                        cx + s2 * inR, cy + 0.005f, cz + c2 * inR,
-                        r, g, b, pulseAlpha);
+
+                float x1 = cx + MathHelper.sin(a1) * fillRadius;
+                float z1 = cz + MathHelper.cos(a1) * fillRadius;
+                float x2 = cx + MathHelper.sin(a2) * fillRadius;
+                float z2 = cz + MathHelper.cos(a2) * fillRadius;
+
+                drawTriDoubleSided(buf, cx, cy, cz, x1, cy, z1, x2, cy, z2, r, g, b, alphaInner, alphaOuter);
             }
         }
 
-        float coreHalfW = 0.055f;
-        float haloWidth = 0.20f;
+        float coreHalfW = 0.045f;
+        float haloWidth = 0.14f;
         float rIn = Math.max(0.05f, radius - coreHalfW);
         float rOut = radius + coreHalfW;
         float rHalo = radius + haloWidth;
@@ -941,19 +894,19 @@ public class ItemRadius extends Module {
                     cx + s1 * rOut, cy + 0.01f, cz + c1 * rOut,
                     cx + s2 * rOut, cy + 0.01f, cz + c2 * rOut,
                     cx + s2 * rIn, cy + 0.01f, cz + c2 * rIn,
-                    r, g, b, 240);
+                    r, g, b, 235);
 
             drawQuadDoubleSidedGrad(buf,
                     cx + s1 * rOut, cy + 0.01f, cz + c1 * rOut,
                     cx + s1 * rHalo, cy + 0.01f, cz + c1 * rHalo,
                     cx + s2 * rHalo, cy + 0.01f, cz + c2 * rHalo,
                     cx + s2 * rOut, cy + 0.01f, cz + c2 * rOut,
-                    r, g, b, 130, 0);
+                    r, g, b, 90, 0);
         }
     }
 
     private void renderZoneBox(VertexConsumer buf, Box box, Vec3d camPos,
-                               int primaryCol, int hitCol, float threat, float time, boolean showCorners) {
+                               int primaryCol, int hitCol, float threat, boolean showCorners) {
         int color = ColorUtil.interpolate(primaryCol, hitCol, threat);
         int r = (color >> 16) & 0xFF;
         int g = (color >> 8) & 0xFF;
@@ -966,7 +919,7 @@ public class ItemRadius extends Module {
         float y2 = (float) (box.maxY - camPos.y);
         float z2 = (float) (box.maxZ - camPos.z);
 
-        int faceAlpha = Math.round(MathHelper.clamp((float) fillOpacity.get(), 10.0f, 100.0f) * (threat > 0.05f ? 0.9f : 0.65f));
+        int faceAlpha = Math.round(MathHelper.clamp((float) fillOpacity.get(), 0.0f, 100.0f) * 0.65f);
         if (faceAlpha > 0) {
             drawQuadDoubleSided(buf, x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, r, g, b, faceAlpha);
             drawQuadDoubleSided(buf, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, r, g, b, faceAlpha);
@@ -974,13 +927,6 @@ public class ItemRadius extends Module {
             drawQuadDoubleSided(buf, x1, y1, z2, x2, y1, z2, x2, y2, z2, x1, y2, z2, r, g, b, faceAlpha);
             drawQuadDoubleSided(buf, x1, y1, z1, x1, y1, z2, x1, y2, z2, x1, y2, z1, r, g, b, faceAlpha);
             drawQuadDoubleSided(buf, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, faceAlpha);
-        }
-
-        if (showCorners && y2 - y1 > 0.5f) {
-            float wave = (float) Math.sin(time * 3.0f) * 0.5f + 0.5f;
-            float scanY = MathHelper.lerp(wave, y1 + 0.08f, y2 - 0.08f);
-            int scanAlpha = Math.min(200, faceAlpha + 45);
-            drawQuadDoubleSided(buf, x1, scanY, z1, x2, scanY, z1, x2, scanY, z2, x1, scanY, z2, r, g, b, scanAlpha);
         }
 
         float edgeT = 0.018f;
